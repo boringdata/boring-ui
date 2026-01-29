@@ -62,4 +62,18 @@ export default {
     cloudMode: true,
     workflows: false,
   },
+
+  // Design token customization
+  styles: {
+    light: {
+      accent: '#8b5cf6',     // Purple
+      accentHover: '#7c3aed',
+      accentLight: '#f3e8ff',
+    },
+    dark: {
+      accent: '#a78bfa',     // Lighter purple for dark mode
+      accentHover: '#c4b5fd',
+      accentLight: '#6d28d9',
+    },
+  },
 }

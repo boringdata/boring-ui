@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { stylesSchema } from '../styles/schema';
 
 /**
  * Zod schema for app.config.js
@@ -73,6 +74,7 @@ export const appConfigSchema = z.object({
   panels: panelsSchema.default({}),
   api: apiSchema.default({}),
   features: featuresSchema.default({}),
+  styles: stylesSchema.optional(),
 });
 
 /**

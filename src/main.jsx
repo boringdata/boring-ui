@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import './styles/index.css'
 import { configureStorage, migrateAllLegacyKeys } from './utils/storage'
+import { StyleProvider } from './styles/StyleProvider'
 
 // Configure storage with default prefix
 // Apps can import and call configureStorage() with custom prefix before this file loads
@@ -43,4 +44,11 @@ window.addEventListener('error', (event) => {
   }
 })
 
-createRoot(document.getElementById('root')).render(<App />)
+// Get styles configuration from global config if provided
+const stylesConfig = window.__BORING_UI_CONFIG__?.styles
+
+createRoot(document.getElementById('root')).render(
+  <StyleProvider styles={stylesConfig}>
+    <App />
+  </StyleProvider>
+)

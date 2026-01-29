@@ -63,6 +63,20 @@ export default {
     workflows: true,  // Enable workflow components from examples/kurt/
   },
 
+  // Design token customization
+  styles: {
+    light: {
+      accent: '#3b82f6',     // Blue
+      accentHover: '#2563eb',
+      accentLight: '#dbeafe',
+    },
+    dark: {
+      accent: '#60a5fa',     // Lighter blue for dark mode
+      accentHover: '#93c5fd',
+      accentLight: '#1e3a5f',
+    },
+  },
+
   // Workflow components reference (from examples/kurt/)
   // These components provide:
   // - WorkflowList: List and filter workflows
