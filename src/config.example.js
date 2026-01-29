@@ -31,6 +31,8 @@ export default {
   storage: {
     prefix: 'myapp',          // Keys will be: myapp-layout, myapp-tabs, etc.
     layoutVersion: 1,         // Increment to force layout reset for all users
+    // Optional: migrate old localStorage keys to new ones
+    // migrateLegacyKeys: { 'old-key': 'new-key' },
   },
 
   // Panel configuration

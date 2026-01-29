@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react'
 
-const THEME_STORAGE_KEY = 'kurt-web-theme'
+const DEFAULT_STORAGE_KEY = 'boring-ui-theme'
 
 // Get initial theme from localStorage or system preference
-const getInitialTheme = () => {
+const getInitialTheme = (storageKey = DEFAULT_STORAGE_KEY, defaultTheme = 'system') => {
   // Check localStorage first
   try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY)
+    const stored = localStorage.getItem(storageKey)
     if (stored === 'dark' || stored === 'light') {
       return stored
     }
@@ -14,12 +14,16 @@ const getInitialTheme = () => {
     // Ignore localStorage errors
   }
 
-  // Fall back to system preference
-  if (typeof window !== 'undefined' && window.matchMedia) {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  // If default is 'system' or not set, use system preference
+  if (defaultTheme === 'system') {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    }
+    return 'light'
   }
 
-  return 'light'
+  // Use explicit default
+  return defaultTheme === 'dark' ? 'dark' : 'light'
 }
 
 // Apply theme to document
@@ -30,9 +34,9 @@ const applyTheme = (theme) => {
 }
 
 // Persist theme to localStorage
-const persistTheme = (theme) => {
+const persistTheme = (theme, storageKey = DEFAULT_STORAGE_KEY) => {
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme)
+    localStorage.setItem(storageKey, theme)
   } catch {
     // Ignore localStorage errors
   }
@@ -41,8 +45,8 @@ const persistTheme = (theme) => {
 // Theme context for app-wide access
 const ThemeContext = createContext(null)
 
-export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(getInitialTheme)
+export function ThemeProvider({ children, storageKey = DEFAULT_STORAGE_KEY, defaultTheme = 'system' }) {
+  const [theme, setTheme] = useState(() => getInitialTheme(storageKey, defaultTheme))
 
   // Apply theme on mount and when it changes
   useEffect(() => {
@@ -66,10 +70,14 @@ export function ThemeProvider({ children }) {
 
     const handleChange = (e) => {
       // Only auto-switch if user hasn't explicitly set a preference
-      const stored = localStorage.getItem(THEME_STORAGE_KEY)
-      if (!stored) {
-        const newTheme = e.matches ? 'dark' : 'light'
-        setTheme(newTheme)
+      try {
+        const stored = localStorage.getItem(storageKey)
+        if (!stored) {
+          const newTheme = e.matches ? 'dark' : 'light'
+          setTheme(newTheme)
+        }
+      } catch {
+        // Ignore localStorage errors
       }
     }
 
@@ -82,22 +90,22 @@ export function ThemeProvider({ children }) {
     // Legacy browsers
     mediaQuery.addListener(handleChange)
     return () => mediaQuery.removeListener(handleChange)
-  }, [])
+  }, [storageKey])
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
       const next = prev === 'dark' ? 'light' : 'dark'
-      persistTheme(next)
+      persistTheme(next, storageKey)
       return next
     })
-  }, [])
+  }, [storageKey])
 
   const setThemeExplicit = useCallback((newTheme) => {
     if (newTheme === 'dark' || newTheme === 'light') {
       setTheme(newTheme)
-      persistTheme(newTheme)
+      persistTheme(newTheme, storageKey)
     }
-  }, [])
+  }, [storageKey])
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme: setThemeExplicit }}>
@@ -113,6 +121,9 @@ export function useTheme() {
   }
   return context
 }
+
+// Export utilities for standalone usage
+export { getInitialTheme, applyTheme, persistTheme, DEFAULT_STORAGE_KEY }
 
 // Initialize theme immediately to prevent flash
 // This runs before React hydration

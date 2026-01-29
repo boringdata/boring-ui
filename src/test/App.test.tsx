@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { STORAGE_KEYS, getStorageKey, configureStorage, resetMigrationState } from '../utils/storage'
 
 // Test utilities for the collapsed state logic
 describe('Collapsed State Logic', () => {
@@ -9,13 +10,13 @@ describe('Collapsed State Logic', () => {
     const buildDockviewClassName = (collapsed: {
       filetree: boolean
       terminal: boolean
-      workflows: boolean
+      shell: boolean
     }) => {
       return [
         'dockview-theme-abyss',
         collapsed.filetree && 'filetree-is-collapsed',
         collapsed.terminal && 'terminal-is-collapsed',
-        collapsed.workflows && 'workflows-is-collapsed',
+        collapsed.shell && 'shell-is-collapsed',
       ]
         .filter(Boolean)
         .join(' ')
@@ -25,7 +26,7 @@ describe('Collapsed State Logic', () => {
       const result = buildDockviewClassName({
         filetree: false,
         terminal: false,
-        workflows: false,
+        shell: false,
       })
       expect(result).toBe('dockview-theme-abyss')
     })
@@ -34,7 +35,7 @@ describe('Collapsed State Logic', () => {
       const result = buildDockviewClassName({
         filetree: true,
         terminal: false,
-        workflows: false,
+        shell: false,
       })
       expect(result).toBe('dockview-theme-abyss filetree-is-collapsed')
     })
@@ -43,28 +44,28 @@ describe('Collapsed State Logic', () => {
       const result = buildDockviewClassName({
         filetree: false,
         terminal: true,
-        workflows: false,
+        shell: false,
       })
       expect(result).toBe('dockview-theme-abyss terminal-is-collapsed')
     })
 
-    it('should include workflows-is-collapsed when workflows is collapsed', () => {
+    it('should include shell-is-collapsed when shell is collapsed', () => {
       const result = buildDockviewClassName({
         filetree: false,
         terminal: false,
-        workflows: true,
+        shell: true,
       })
-      expect(result).toBe('dockview-theme-abyss workflows-is-collapsed')
+      expect(result).toBe('dockview-theme-abyss shell-is-collapsed')
     })
 
     it('should include all collapsed classes when all panels are collapsed', () => {
       const result = buildDockviewClassName({
         filetree: true,
         terminal: true,
-        workflows: true,
+        shell: true,
       })
       expect(result).toBe(
-        'dockview-theme-abyss filetree-is-collapsed terminal-is-collapsed workflows-is-collapsed'
+        'dockview-theme-abyss filetree-is-collapsed terminal-is-collapsed shell-is-collapsed'
       )
     })
   })
@@ -72,29 +73,13 @@ describe('Collapsed State Logic', () => {
   describe('RightHeaderActions chevron visibility', () => {
     // Extracted logic for testing
     const shouldShowChevron = (panels: { id: string }[]) => {
-      const hasWorkflowsPanel = panels.some((p) => p.id === 'workflows')
       const hasShellPanel = panels.some((p) => p.id === 'shell')
-
-      // Show chevron on:
-      // 1. Combined group (has both workflows and shell)
-      // 2. Shell-only group when split (rightmost)
-      // Don't show on workflows-only group when split (leftmost)
-      return (hasWorkflowsPanel && hasShellPanel) || (hasShellPanel && !hasWorkflowsPanel)
+      return hasShellPanel
     }
 
-    it('should show chevron when group has both workflows and shell', () => {
-      const panels = [{ id: 'workflows' }, { id: 'shell' }]
-      expect(shouldShowChevron(panels)).toBe(true)
-    })
-
-    it('should show chevron when group has only shell (split, rightmost)', () => {
+    it('should show chevron when group has shell panel', () => {
       const panels = [{ id: 'shell' }]
       expect(shouldShowChevron(panels)).toBe(true)
-    })
-
-    it('should NOT show chevron when group has only workflows (split, leftmost)', () => {
-      const panels = [{ id: 'workflows' }]
-      expect(shouldShowChevron(panels)).toBe(false)
     })
 
     it('should NOT show chevron for unrelated panels', () => {
@@ -110,7 +95,7 @@ describe('Collapsed State Logic', () => {
 })
 
 describe('Collapsed State Persistence', () => {
-  const SIDEBAR_COLLAPSED_KEY = 'kurt-web-sidebar-collapsed'
+  const SIDEBAR_COLLAPSED_KEY = getStorageKey(STORAGE_KEYS.SIDEBAR_COLLAPSED)
   let mockStorage: Record<string, string> = {}
 
   beforeEach(() => {
@@ -135,16 +120,16 @@ describe('Collapsed State Persistence', () => {
       } catch {
         // Ignore parse errors
       }
-      return { filetree: false, terminal: false, workflows: false }
+      return { filetree: false, terminal: false, shell: false }
     }
 
     it('should return default state when nothing is saved', () => {
       const result = loadCollapsedState()
-      expect(result).toEqual({ filetree: false, terminal: false, workflows: false })
+      expect(result).toEqual({ filetree: false, terminal: false, shell: false })
     })
 
     it('should return saved state when available', () => {
-      const savedState = { filetree: true, terminal: false, workflows: true }
+      const savedState = { filetree: true, terminal: false, shell: true }
       mockStorage[SIDEBAR_COLLAPSED_KEY] = JSON.stringify(savedState)
       const result = loadCollapsedState()
       expect(result).toEqual(savedState)
@@ -153,7 +138,7 @@ describe('Collapsed State Persistence', () => {
     it('should return default state on parse error', () => {
       mockStorage[SIDEBAR_COLLAPSED_KEY] = 'invalid json'
       const result = loadCollapsedState()
-      expect(result).toEqual({ filetree: false, terminal: false, workflows: false })
+      expect(result).toEqual({ filetree: false, terminal: false, shell: false })
     })
   })
 
@@ -161,7 +146,7 @@ describe('Collapsed State Persistence', () => {
     const saveCollapsedState = (state: {
       filetree: boolean
       terminal: boolean
-      workflows: boolean
+      shell: boolean
     }) => {
       try {
         localStorage.setItem(SIDEBAR_COLLAPSED_KEY, JSON.stringify(state))
@@ -171,7 +156,7 @@ describe('Collapsed State Persistence', () => {
     }
 
     it('should save state to localStorage', () => {
-      const state = { filetree: true, terminal: false, workflows: true }
+      const state = { filetree: true, terminal: false, shell: true }
       saveCollapsedState(state)
       expect(mockStorage[SIDEBAR_COLLAPSED_KEY]).toBe(JSON.stringify(state))
     })
@@ -179,7 +164,7 @@ describe('Collapsed State Persistence', () => {
 })
 
 describe('Panel Size Management', () => {
-  const PANEL_SIZES_KEY = 'kurt-web-panel-sizes'
+  const PANEL_SIZES_KEY = getStorageKey(STORAGE_KEYS.PANEL_SIZES)
   let mockStorage: Record<string, string> = {}
 
   beforeEach(() => {
@@ -201,16 +186,16 @@ describe('Panel Size Management', () => {
       } catch {
         // Ignore parse errors
       }
-      return { filetree: 280, terminal: 400, workflows: 250 }
+      return { filetree: 280, terminal: 400, shell: 250 }
     }
 
     it('should return default sizes when nothing is saved', () => {
       const result = loadPanelSizes()
-      expect(result).toEqual({ filetree: 280, terminal: 400, workflows: 250 })
+      expect(result).toEqual({ filetree: 280, terminal: 400, shell: 250 })
     })
 
     it('should return saved sizes when available', () => {
-      const savedSizes = { filetree: 300, terminal: 450, workflows: 200 }
+      const savedSizes = { filetree: 300, terminal: 450, shell: 200 }
       mockStorage[PANEL_SIZES_KEY] = JSON.stringify(savedSizes)
       const result = loadPanelSizes()
       expect(result).toEqual(savedSizes)
@@ -228,7 +213,7 @@ describe('Layout Restoration with Collapsed State', () => {
 
     it('should apply collapsed constraints when filetree is collapsed', () => {
       const api = createMockApi()
-      const collapsed = { filetree: true, terminal: false, workflows: false }
+      const collapsed = { filetree: true, terminal: false, shell: false }
 
       // Apply collapsed constraints
       if (collapsed.filetree) {
@@ -245,7 +230,7 @@ describe('Layout Restoration with Collapsed State', () => {
 
     it('should apply expanded constraints when filetree is expanded', () => {
       const api = createMockApi()
-      const collapsed = { filetree: false, terminal: false, workflows: false }
+      const collapsed = { filetree: false, terminal: false, shell: false }
       const savedSize = 300
 
       // Apply expanded constraints
@@ -263,7 +248,7 @@ describe('Layout Restoration with Collapsed State', () => {
 
     it('should apply collapsed constraints when terminal is collapsed', () => {
       const api = createMockApi()
-      const collapsed = { filetree: false, terminal: true, workflows: false }
+      const collapsed = { filetree: false, terminal: true, shell: false }
 
       if (collapsed.terminal) {
         api.setConstraints({ minimumWidth: 48, maximumWidth: 48 })
@@ -277,11 +262,11 @@ describe('Layout Restoration with Collapsed State', () => {
       expect(api.setSize).toHaveBeenCalledWith({ width: 48 })
     })
 
-    it('should apply collapsed constraints when workflows is collapsed', () => {
+    it('should apply collapsed constraints when shell is collapsed', () => {
       const api = createMockApi()
-      const collapsed = { filetree: false, terminal: false, workflows: true }
+      const collapsed = { filetree: false, terminal: false, shell: true }
 
-      if (collapsed.workflows) {
+      if (collapsed.shell) {
         api.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
         api.setSize({ height: 36 })
       }
@@ -293,12 +278,12 @@ describe('Layout Restoration with Collapsed State', () => {
       expect(api.setSize).toHaveBeenCalledWith({ height: 36 })
     })
 
-    it('should apply expanded constraints when workflows is expanded', () => {
+    it('should apply expanded constraints when shell is expanded', () => {
       const api = createMockApi()
-      const collapsed = { filetree: false, terminal: false, workflows: false }
+      const collapsed = { filetree: false, terminal: false, shell: false }
       const savedHeight = 300
 
-      if (!collapsed.workflows) {
+      if (!collapsed.shell) {
         api.setConstraints({ minimumHeight: 100, maximumHeight: Infinity })
         api.setSize({ height: savedHeight })
       }
@@ -312,74 +297,9 @@ describe('Layout Restoration with Collapsed State', () => {
   })
 })
 
-describe('Split Panel Collapse Handling', () => {
-  describe('applyCollapsedStateToSplitPanels', () => {
-    const createMockApi = () => ({
-      setConstraints: vi.fn(),
-      setSize: vi.fn(),
-    })
-
-    it('should apply constraints to both groups when workflows and shell are split', () => {
-      const workflowsApi = createMockApi()
-      const shellApi = createMockApi()
-      const collapsed = { workflows: true }
-
-      // Simulate applying collapsed state to split panels
-      const workflowsGroup = { api: workflowsApi }
-      const shellGroup = { api: shellApi }
-      const areSplit = workflowsGroup !== shellGroup
-
-      if (collapsed.workflows) {
-        workflowsApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
-        workflowsApi.setSize({ height: 36 })
-
-        if (areSplit) {
-          shellApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
-          shellApi.setSize({ height: 36 })
-        }
-      }
-
-      expect(workflowsApi.setConstraints).toHaveBeenCalledWith({
-        minimumHeight: 36,
-        maximumHeight: 36,
-      })
-      expect(workflowsApi.setSize).toHaveBeenCalledWith({ height: 36 })
-      expect(shellApi.setConstraints).toHaveBeenCalledWith({
-        minimumHeight: 36,
-        maximumHeight: 36,
-      })
-      expect(shellApi.setSize).toHaveBeenCalledWith({ height: 36 })
-    })
-
-    it('should not apply to shell when panels are in the same group', () => {
-      const sharedApi = createMockApi()
-      const collapsed = { workflows: true }
-
-      // Both panels in same group
-      const workflowsGroup = { api: sharedApi }
-      const shellGroup = workflowsGroup // Same reference
-      const areSplit = workflowsGroup !== shellGroup
-
-      if (collapsed.workflows) {
-        sharedApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
-        sharedApi.setSize({ height: 36 })
-
-        // This should NOT run because areSplit is false
-        if (areSplit) {
-          sharedApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
-        }
-      }
-
-      // Should only be called once (not twice)
-      expect(sharedApi.setConstraints).toHaveBeenCalledTimes(1)
-      expect(sharedApi.setSize).toHaveBeenCalledTimes(1)
-    })
-  })
-})
-
 describe('Layout Structure Validation (Drift Detection)', () => {
   // Essential panels that must exist
-  const ESSENTIAL_PANELS = ['filetree', 'terminal', 'workflows', 'shell']
+  const ESSENTIAL_PANELS = ['filetree', 'terminal', 'shell']
 
   // Extracted validation logic for testing
   const validateLayoutStructure = (layout: {
@@ -450,15 +370,6 @@ describe('Layout Structure Validation (Drift Detection)', () => {
       }
     }
 
-    // Validate workflows is not mixed with filetree or terminal
-    const workflowsGroupIdx = panelToGroup['workflows']
-    if (workflowsGroupIdx !== undefined) {
-      const workflowsGroup = groups[workflowsGroupIdx]
-      if (workflowsGroup.includes('filetree') || workflowsGroup.includes('terminal')) {
-        return false
-      }
-    }
-
     return true
   }
 
@@ -467,7 +378,6 @@ describe('Layout Structure Validation (Drift Detection)', () => {
     panels: {
       filetree: { id: 'filetree', contentComponent: 'filetree' },
       terminal: { id: 'terminal', contentComponent: 'terminal' },
-      workflows: { id: 'workflows', contentComponent: 'workflows' },
       shell: { id: 'shell', contentComponent: 'shell' },
       'empty-center': { id: 'empty-center', contentComponent: 'empty' },
     },
@@ -480,7 +390,7 @@ describe('Layout Structure Validation (Drift Detection)', () => {
             type: 'branch',
             data: [
               { type: 'leaf', data: { views: [{ id: 'empty-center' }] } },
-              { type: 'leaf', data: { views: [{ id: 'workflows' }, { id: 'shell' }] } },
+              { type: 'leaf', data: { views: [{ id: 'shell' }] } },
             ],
           },
           { type: 'leaf', data: { views: [{ id: 'terminal' }] } },
@@ -492,34 +402,6 @@ describe('Layout Structure Validation (Drift Detection)', () => {
   describe('valid layouts', () => {
     it('should accept a valid layout with all essential panels', () => {
       const layout = createValidLayout()
-      expect(validateLayoutStructure(layout)).toBe(true)
-    })
-
-    it('should accept layout with workflows and shell in separate groups', () => {
-      const layout = {
-        panels: {
-          filetree: { id: 'filetree' },
-          terminal: { id: 'terminal' },
-          workflows: { id: 'workflows' },
-          shell: { id: 'shell' },
-        },
-        grid: {
-          root: {
-            type: 'branch',
-            data: [
-              { type: 'leaf', data: { views: [{ id: 'filetree' }] } },
-              {
-                type: 'branch',
-                data: [
-                  { type: 'leaf', data: { views: [{ id: 'workflows' }] } },
-                  { type: 'leaf', data: { views: [{ id: 'shell' }] } },
-                ],
-              },
-              { type: 'leaf', data: { views: [{ id: 'terminal' }] } },
-            ],
-          },
-        },
-      }
       expect(validateLayoutStructure(layout)).toBe(true)
     })
 
@@ -551,12 +433,6 @@ describe('Layout Structure Validation (Drift Detection)', () => {
       expect(validateLayoutStructure(layout)).toBe(false)
     })
 
-    it('should reject layout missing workflows panel', () => {
-      const layout = createValidLayout()
-      delete (layout.panels as Record<string, unknown>)['workflows']
-      expect(validateLayoutStructure(layout)).toBe(false)
-    })
-
     it('should reject layout missing shell panel', () => {
       const layout = createValidLayout()
       delete (layout.panels as Record<string, unknown>)['shell']
@@ -570,7 +446,6 @@ describe('Layout Structure Validation (Drift Detection)', () => {
         panels: {
           filetree: { id: 'filetree' },
           terminal: { id: 'terminal' },
-          workflows: { id: 'workflows' },
           shell: { id: 'shell' },
         },
         grid: {
@@ -579,7 +454,6 @@ describe('Layout Structure Validation (Drift Detection)', () => {
             data: [
               // Shell wrongly in filetree group
               { type: 'leaf', data: { views: [{ id: 'filetree' }, { id: 'shell' }] } },
-              { type: 'leaf', data: { views: [{ id: 'workflows' }] } },
               { type: 'leaf', data: { views: [{ id: 'terminal' }] } },
             ],
           },
@@ -593,7 +467,6 @@ describe('Layout Structure Validation (Drift Detection)', () => {
         panels: {
           filetree: { id: 'filetree' },
           terminal: { id: 'terminal' },
-          workflows: { id: 'workflows' },
           shell: { id: 'shell' },
         },
         grid: {
@@ -601,55 +474,8 @@ describe('Layout Structure Validation (Drift Detection)', () => {
             type: 'branch',
             data: [
               { type: 'leaf', data: { views: [{ id: 'filetree' }] } },
-              { type: 'leaf', data: { views: [{ id: 'workflows' }] } },
               // Shell wrongly in terminal group
               { type: 'leaf', data: { views: [{ id: 'terminal' }, { id: 'shell' }] } },
-            ],
-          },
-        },
-      }
-      expect(validateLayoutStructure(layout)).toBe(false)
-    })
-
-    it('should reject layout with workflows in filetree group', () => {
-      const layout = {
-        panels: {
-          filetree: { id: 'filetree' },
-          terminal: { id: 'terminal' },
-          workflows: { id: 'workflows' },
-          shell: { id: 'shell' },
-        },
-        grid: {
-          root: {
-            type: 'branch',
-            data: [
-              // Workflows wrongly in filetree group
-              { type: 'leaf', data: { views: [{ id: 'filetree' }, { id: 'workflows' }] } },
-              { type: 'leaf', data: { views: [{ id: 'shell' }] } },
-              { type: 'leaf', data: { views: [{ id: 'terminal' }] } },
-            ],
-          },
-        },
-      }
-      expect(validateLayoutStructure(layout)).toBe(false)
-    })
-
-    it('should reject layout with workflows in terminal group', () => {
-      const layout = {
-        panels: {
-          filetree: { id: 'filetree' },
-          terminal: { id: 'terminal' },
-          workflows: { id: 'workflows' },
-          shell: { id: 'shell' },
-        },
-        grid: {
-          root: {
-            type: 'branch',
-            data: [
-              { type: 'leaf', data: { views: [{ id: 'filetree' }] } },
-              { type: 'leaf', data: { views: [{ id: 'shell' }] } },
-              // Workflows wrongly in terminal group
-              { type: 'leaf', data: { views: [{ id: 'terminal' }, { id: 'workflows' }] } },
             ],
           },
         },
@@ -662,7 +488,6 @@ describe('Layout Structure Validation (Drift Detection)', () => {
         panels: {
           filetree: { id: 'filetree' },
           terminal: { id: 'terminal' },
-          workflows: { id: 'workflows' },
           shell: { id: 'shell' },
         },
         grid: {
@@ -671,7 +496,7 @@ describe('Layout Structure Validation (Drift Detection)', () => {
             data: [
               // Terminal wrongly in filetree group
               { type: 'leaf', data: { views: [{ id: 'filetree' }, { id: 'terminal' }] } },
-              { type: 'leaf', data: { views: [{ id: 'workflows' }, { id: 'shell' }] } },
+              { type: 'leaf', data: { views: [{ id: 'shell' }] } },
             ],
           },
         },
@@ -692,7 +517,6 @@ describe('Layout Structure Validation (Drift Detection)', () => {
         panels: {
           filetree: { id: 'filetree' },
           terminal: { id: 'terminal' },
-          workflows: { id: 'workflows' },
           shell: { id: 'shell' },
         },
       }

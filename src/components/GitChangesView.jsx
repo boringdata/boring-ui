@@ -1,45 +1,25 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React from 'react'
 import { Check, FileText } from 'lucide-react'
+import { useGitStatus, STATUS_CONFIG } from '../hooks/useGitStatus'
 
-const apiBase = import.meta.env.VITE_API_URL || ''
-const apiUrl = (path) => `${apiBase}${path}`
+/**
+ * GitChangesView - Displays a list of changed files with their git status
+ *
+ * Uses useGitStatus hook for automatic polling and API integration
+ *
+ * @param {object} props
+ * @param {function} [props.onOpenDiff] - Callback when a file is clicked (path, status)
+ * @param {string} [props.activeDiffFile] - Currently active diff file path
+ * @param {number} [props.pollInterval] - Custom poll interval (uses config default if not provided)
+ */
+export default function GitChangesView({ onOpenDiff, activeDiffFile, pollInterval }) {
+  const { status, loading, error } = useGitStatus({
+    polling: true,
+    pollInterval,
+  })
 
-const STATUS_CONFIG = {
-  M: { label: 'Modified', className: 'git-status-modified', icon: 'M' },
-  U: { label: 'Untracked', className: 'git-status-new', icon: 'U' },
-  A: { label: 'Added', className: 'git-status-added', icon: 'A' },
-  D: { label: 'Deleted', className: 'git-status-deleted', icon: 'D' },
-}
-
-export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
-  const [changes, setChanges] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  const fetchGitStatus = useCallback(() => {
-    fetch(apiUrl('/api/git/status'))
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.available && data.files) {
-          setChanges(data.files)
-          setError(null)
-        } else if (!data.available) {
-          setError('Git not available')
-          setChanges({})
-        }
-        setLoading(false)
-      })
-      .catch((err) => {
-        setError(err.message)
-        setLoading(false)
-      })
-  }, [])
-
-  useEffect(() => {
-    fetchGitStatus()
-    const interval = setInterval(fetchGitStatus, 5000)
-    return () => clearInterval(interval)
-  }, [fetchGitStatus])
+  // Extract files from status
+  const changes = status?.files || {}
 
   const handleFileClick = (path, status) => {
     if (onOpenDiff) {
@@ -76,10 +56,19 @@ export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
     )
   }
 
+  // Handle git not available
+  if (status && !status.available) {
+    return (
+      <div className="git-changes-view">
+        <div className="git-changes-error">Git not available</div>
+      </div>
+    )
+  }
+
   if (error) {
     return (
       <div className="git-changes-view">
-        <div className="git-changes-error">{error}</div>
+        <div className="git-changes-error">{error.message || 'Failed to fetch git status'}</div>
       </div>
     )
   }
@@ -111,8 +100,11 @@ export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
           return (
             <div key={status} className="git-changes-group">
               <div className="git-changes-group-header">
-                <span className={`git-status-badge ${config.className}`}>
-                  {config.icon}
+                <span
+                  className={`git-status-badge ${config.className}`}
+                  style={{ backgroundColor: `${config.color}20`, color: config.color }}
+                >
+                  {status}
                 </span>
                 <span className="git-changes-group-label">
                   {config.label} ({files.length})

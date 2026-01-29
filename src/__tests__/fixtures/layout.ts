@@ -62,15 +62,23 @@ export const collapsedStates = {
   },
 }
 
-// localStorage key constants (matching App.jsx)
+// Import storage keys from utils for test consistency
+// Note: Tests may need to call configureStorage() to set up the prefix
+import { STORAGE_KEYS as UTIL_STORAGE_KEYS, getStorageKey } from '../../utils/storage'
+
+// Re-export for backward compatibility in tests
+// Tests should use getStorageKey() with these key names
 export const STORAGE_KEYS = {
-  TABS: 'kurt-web-tabs',
-  LAYOUT: 'kurt-web-layout',
-  SIDEBAR_COLLAPSED: 'kurt-web-sidebar-collapsed',
-  PANEL_SIZES: 'kurt-web-panel-sizes',
-  TERMINAL_SESSIONS: 'kurt-web-terminal-sessions',
-  TERMINAL_ACTIVE: 'kurt-web-terminal-active',
+  TABS: UTIL_STORAGE_KEYS.TABS,
+  LAYOUT: UTIL_STORAGE_KEYS.LAYOUT,
+  SIDEBAR_COLLAPSED: UTIL_STORAGE_KEYS.SIDEBAR_COLLAPSED,
+  PANEL_SIZES: UTIL_STORAGE_KEYS.PANEL_SIZES,
+  TERMINAL_SESSIONS: UTIL_STORAGE_KEYS.TERMINAL_SESSIONS,
+  TERMINAL_ACTIVE: UTIL_STORAGE_KEYS.TERMINAL_ACTIVE,
 }
+
+// Helper to get full storage key with prefix
+export { getStorageKey }
 
 // Tab fixtures
 export const tabs = {
@@ -187,6 +195,7 @@ export const terminalSessions = {
 }
 
 // Helper to set up localStorage with fixtures
+// Uses getStorageKey to apply proper prefix
 export const setupLocalStorage = (options: {
   tabs?: typeof tabs.empty
   panelSizes?: typeof panelSizes.default
@@ -196,28 +205,28 @@ export const setupLocalStorage = (options: {
   layout?: object
 } = {}) => {
   if (options.tabs) {
-    localStorage.setItem(STORAGE_KEYS.TABS, JSON.stringify(options.tabs))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.TABS), JSON.stringify(options.tabs))
   }
   if (options.panelSizes) {
-    localStorage.setItem(STORAGE_KEYS.PANEL_SIZES, JSON.stringify(options.panelSizes))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.PANEL_SIZES), JSON.stringify(options.panelSizes))
   }
   if (options.collapsed) {
-    localStorage.setItem(STORAGE_KEYS.SIDEBAR_COLLAPSED, JSON.stringify(options.collapsed))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.SIDEBAR_COLLAPSED), JSON.stringify(options.collapsed))
   }
   if (options.sessions) {
-    localStorage.setItem(STORAGE_KEYS.TERMINAL_SESSIONS, JSON.stringify(options.sessions))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.TERMINAL_SESSIONS), JSON.stringify(options.sessions))
   }
   if (options.activeSession) {
-    localStorage.setItem(STORAGE_KEYS.TERMINAL_ACTIVE, options.activeSession)
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.TERMINAL_ACTIVE), options.activeSession)
   }
   if (options.layout) {
-    localStorage.setItem(STORAGE_KEYS.LAYOUT, JSON.stringify(options.layout))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.LAYOUT), JSON.stringify(options.layout))
   }
 }
 
 // Clear specific localStorage keys
 export const clearLocalStorage = () => {
-  Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key))
+  Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(getStorageKey(key)))
 }
 
 // Approval/Review fixtures

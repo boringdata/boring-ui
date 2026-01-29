@@ -2,11 +2,14 @@
  * Tests for UserMenu component
  *
  * Features tested:
- * - Avatar rendering with email initial
+ * - Avatar rendering with email initial, displayName, or avatar URL
  * - Dropdown open/close behavior
  * - Click outside to close
  * - Workspace name display
+ * - Cloud mode vs local mode
+ * - onLogout callback
  * - Accessibility attributes
+ * - className prop
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -14,9 +17,12 @@ import UserMenu from '../../components/UserMenu'
 
 describe('UserMenu', () => {
   const defaultProps = {
-    email: 'john@example.com',
-    workspaceName: 'My Workspace',
-    workspaceId: 'ws-123',
+    user: {
+      email: 'john@example.com',
+      workspace: 'My Workspace',
+      displayName: 'John Doe',
+    },
+    isCloudMode: true,
   }
 
   beforeEach(() => {
@@ -28,32 +34,49 @@ describe('UserMenu', () => {
   })
 
   describe('Avatar Rendering', () => {
-    it('renders first letter of email as avatar', () => {
+    it('renders first letter of displayName as avatar', () => {
       render(<UserMenu {...defaultProps} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       expect(avatar).toHaveTextContent('J')
     })
 
-    it('renders uppercase letter for avatar', () => {
-      render(<UserMenu {...defaultProps} email="alice@example.com" />)
+    it('renders first letter of email when no displayName', () => {
+      render(<UserMenu user={{ email: 'alice@example.com' }} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       expect(avatar).toHaveTextContent('A')
     })
 
-    it('renders question mark when email is empty', () => {
-      render(<UserMenu {...defaultProps} email="" />)
+    it('renders uppercase letter for avatar', () => {
+      render(<UserMenu user={{ displayName: 'alice' }} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      expect(avatar).toHaveTextContent('A')
+    })
+
+    it('renders question mark when no user data', () => {
+      render(<UserMenu user={{}} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       expect(avatar).toHaveTextContent('?')
     })
 
-    it('renders question mark when email is undefined', () => {
-      render(<UserMenu {...defaultProps} email={undefined as unknown as string} />)
+    it('renders question mark when user is undefined', () => {
+      render(<UserMenu />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       expect(avatar).toHaveTextContent('?')
+    })
+
+    it('renders avatar image when avatar URL is provided', () => {
+      render(<UserMenu user={{ avatar: 'https://example.com/avatar.png' }} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      const img = avatar.querySelector('img')
+      expect(img).toBeInTheDocument()
+      expect(img).toHaveAttribute('src', 'https://example.com/avatar.png')
+      expect(img).toHaveAttribute('alt', 'User avatar')
     })
   })
 
@@ -112,7 +135,7 @@ describe('UserMenu', () => {
     })
   })
 
-  describe('Dropdown Content', () => {
+  describe('Dropdown Content - Cloud Mode', () => {
     it('displays user email', () => {
       render(<UserMenu {...defaultProps} />)
 
@@ -122,8 +145,17 @@ describe('UserMenu', () => {
       expect(screen.getByText('john@example.com')).toBeInTheDocument()
     })
 
+    it('displays display name', () => {
+      render(<UserMenu {...defaultProps} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      fireEvent.click(avatar)
+
+      expect(screen.getByText('John Doe')).toBeInTheDocument()
+    })
+
     it('displays workspace name when available', () => {
-      render(<UserMenu {...defaultProps} workspaceName="My Workspace" />)
+      render(<UserMenu {...defaultProps} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(avatar)
@@ -132,7 +164,12 @@ describe('UserMenu', () => {
     })
 
     it('hides workspace when name looks like UUID', () => {
-      render(<UserMenu {...defaultProps} workspaceName="9459aaea-4d1e-4933-88f9-538646f60e7e" />)
+      render(
+        <UserMenu
+          user={{ email: 'test@example.com', workspace: '9459aaea-4d1e-4933-88f9-538646f60e7e' }}
+          isCloudMode={true}
+        />
+      )
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(avatar)
@@ -141,30 +178,107 @@ describe('UserMenu', () => {
       expect(screen.queryByText(/9459aaea/)).not.toBeInTheDocument()
     })
 
-    it('displays manage workspace button', () => {
-      render(<UserMenu {...defaultProps} />)
+    it('displays logout button when onLogout is provided', () => {
+      const onLogout = vi.fn()
+      render(<UserMenu {...defaultProps} onLogout={onLogout} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(avatar)
 
-      expect(screen.getByRole('menuitem', { name: 'Manage workspace' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Logout' })).toBeInTheDocument()
     })
 
-    it('closes dropdown when manage workspace is clicked', () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
-
+    it('does not display logout button when onLogout is not provided', () => {
       render(<UserMenu {...defaultProps} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(avatar)
 
-      const manageButton = screen.getByRole('menuitem', { name: 'Manage workspace' })
-      fireEvent.click(manageButton)
+      expect(screen.queryByRole('menuitem', { name: 'Logout' })).not.toBeInTheDocument()
+    })
 
+    it('calls onLogout and closes dropdown when logout is clicked', () => {
+      const onLogout = vi.fn()
+      render(<UserMenu {...defaultProps} onLogout={onLogout} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      fireEvent.click(avatar)
+
+      const logoutButton = screen.getByRole('menuitem', { name: 'Logout' })
+      fireEvent.click(logoutButton)
+
+      expect(onLogout).toHaveBeenCalledTimes(1)
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-      expect(consoleSpy).toHaveBeenCalledWith('Manage workspace clicked', 'ws-123')
+    })
+  })
 
-      consoleSpy.mockRestore()
+  describe('Local Mode', () => {
+    it('displays "Local Mode" text in local mode', () => {
+      render(<UserMenu isCloudMode={false} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      fireEvent.click(avatar)
+
+      expect(screen.getByText('Local Mode')).toBeInTheDocument()
+    })
+
+    it('applies local mode class to avatar', () => {
+      render(<UserMenu isCloudMode={false} />)
+
+      expect(document.querySelector('.user-avatar--local')).toBeInTheDocument()
+    })
+
+    it('displays Exit button instead of Logout in local mode', () => {
+      const onLogout = vi.fn()
+      render(<UserMenu isCloudMode={false} onLogout={onLogout} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      fireEvent.click(avatar)
+
+      expect(screen.getByRole('menuitem', { name: 'Exit' })).toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'Logout' })).not.toBeInTheDocument()
+    })
+
+    it('calls onLogout when Exit is clicked in local mode', () => {
+      const onLogout = vi.fn()
+      render(<UserMenu isCloudMode={false} onLogout={onLogout} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      fireEvent.click(avatar)
+
+      const exitButton = screen.getByRole('menuitem', { name: 'Exit' })
+      fireEvent.click(exitButton)
+
+      expect(onLogout).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not show user info in local mode', () => {
+      render(
+        <UserMenu
+          user={{ email: 'test@example.com', displayName: 'Test User' }}
+          isCloudMode={false}
+        />
+      )
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      fireEvent.click(avatar)
+
+      expect(screen.queryByText('test@example.com')).not.toBeInTheDocument()
+      expect(screen.queryByText('Test User')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('className prop', () => {
+    it('applies additional className to container', () => {
+      render(<UserMenu {...defaultProps} className="custom-class" />)
+
+      expect(document.querySelector('.user-menu.custom-class')).toBeInTheDocument()
+    })
+
+    it('applies className in local mode', () => {
+      render(<UserMenu isCloudMode={false} className="local-custom" />)
+
+      expect(document.querySelector('.user-menu.local-custom')).toBeInTheDocument()
     })
   })
 
@@ -209,13 +323,14 @@ describe('UserMenu', () => {
     })
 
     it('menu items have role menuitem', () => {
-      render(<UserMenu {...defaultProps} />)
+      const onLogout = vi.fn()
+      render(<UserMenu {...defaultProps} onLogout={onLogout} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(avatar)
 
       const menuItems = screen.getAllByRole('menuitem')
-      expect(menuItems).toHaveLength(1) // Manage workspace
+      expect(menuItems).toHaveLength(1) // Logout
     })
   })
 
@@ -250,8 +365,17 @@ describe('UserMenu', () => {
       expect(document.querySelector('.user-menu-email')).toBeInTheDocument()
     })
 
+    it('applies user-menu-name class to display name', () => {
+      render(<UserMenu {...defaultProps} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      fireEvent.click(avatar)
+
+      expect(document.querySelector('.user-menu-name')).toBeInTheDocument()
+    })
+
     it('applies user-menu-workspace class when workspace name available', () => {
-      render(<UserMenu {...defaultProps} workspaceName="My Workspace" />)
+      render(<UserMenu {...defaultProps} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(avatar)
@@ -260,7 +384,8 @@ describe('UserMenu', () => {
     })
 
     it('applies user-menu-divider class', () => {
-      render(<UserMenu {...defaultProps} />)
+      const onLogout = vi.fn()
+      render(<UserMenu {...defaultProps} onLogout={onLogout} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(avatar)
@@ -269,12 +394,43 @@ describe('UserMenu', () => {
     })
 
     it('applies user-menu-item class to menu items', () => {
-      render(<UserMenu {...defaultProps} />)
+      const onLogout = vi.fn()
+      render(<UserMenu {...defaultProps} onLogout={onLogout} />)
 
       const avatar = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(avatar)
 
       expect(document.querySelector('.user-menu-item')).toBeInTheDocument()
+    })
+
+    it('applies user-menu-header class to header section', () => {
+      render(<UserMenu {...defaultProps} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      fireEvent.click(avatar)
+
+      expect(document.querySelector('.user-menu-header')).toBeInTheDocument()
+    })
+  })
+
+  // Backward compatibility tests
+  describe('Backward Compatibility', () => {
+    it('works with minimal props', () => {
+      render(<UserMenu />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      expect(avatar).toBeInTheDocument()
+      expect(avatar).toHaveTextContent('?')
+    })
+
+    it('works with only email provided', () => {
+      render(<UserMenu user={{ email: 'test@example.com' }} />)
+
+      const avatar = screen.getByRole('button', { name: 'User menu' })
+      fireEvent.click(avatar)
+
+      expect(avatar).toHaveTextContent('T')
+      expect(screen.getByText('test@example.com')).toBeInTheDocument()
     })
   })
 })

@@ -4,16 +4,22 @@ import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 import { ThemeProvider } from './hooks/useTheme'
-import ThemeToggle from './components/ThemeToggle'
-import UserMenu from './components/UserMenu'
+import { ConfigProvider } from './config'
+import Header from './components/Header'
+import {
+  removeItem,
+  getJSON,
+  setJSON,
+  LEGACY_PREFIX,
+  STORAGE_KEYS,
+  getPrefix,
+} from './utils/storage'
 import FileTreePanel from './panels/FileTreePanel'
 import EditorPanel from './panels/EditorPanel'
 import TerminalPanel from './panels/TerminalPanel'
 import ShellTerminalPanel from './panels/ShellTerminalPanel'
 import EmptyPanel from './panels/EmptyPanel'
 import ReviewPanel from './panels/ReviewPanel'
-import WorkflowsPanel from './panels/WorkflowsPanel'
-import WorkflowTerminalPanel from './panels/WorkflowTerminalPanel'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
@@ -29,14 +35,12 @@ const components = {
   shell: ShellTerminalPanel,
   empty: EmptyPanel,
   review: ReviewPanel,
-  workflows: WorkflowsPanel,
-  workflowTerminal: WorkflowTerminalPanel,
 }
 
 const KNOWN_COMPONENTS = new Set(Object.keys(components))
 
 // Essential panels that must exist in layout
-const ESSENTIAL_PANELS = ['filetree', 'terminal', 'workflows', 'shell']
+const ESSENTIAL_PANELS = ['filetree', 'terminal', 'shell']
 
 // Validate layout structure to detect drift
 // Returns true if layout is valid, false if it has drifted
@@ -100,26 +104,8 @@ const validateLayoutStructure = (layout) => {
     }
   }
 
-  // Validate workflows and shell can only share a group with each other (or with editors/reviews)
-  const workflowsGroupIdx = panelToGroup['workflows']
-  const shellGroupIdx = panelToGroup['shell']
-
-  // If workflows and shell are in different groups, that's ok (user split them)
-  // But if they share a group, only workflows, shell, or editors/reviews are allowed
-  if (workflowsGroupIdx === shellGroupIdx && workflowsGroupIdx !== undefined) {
-    const sharedGroup = groups[workflowsGroupIdx]
-    const invalidPanels = sharedGroup.filter((p) =>
-      p !== 'workflows' && p !== 'shell' &&
-      !p.startsWith('editor-') && !p.startsWith('review-') &&
-      ESSENTIAL_PANELS.includes(p)
-    )
-    if (invalidPanels.length > 0) {
-      console.warn('[Layout drift] workflows/shell group has invalid panels:', invalidPanels)
-      return false
-    }
-  }
-
   // Validate shell is not mixed with filetree or terminal
+  const shellGroupIdx = panelToGroup['shell']
   if (shellGroupIdx !== undefined) {
     const shellGroup = groups[shellGroupIdx]
     if (shellGroup.includes('filetree') || shellGroup.includes('terminal')) {
@@ -128,19 +114,10 @@ const validateLayoutStructure = (layout) => {
     }
   }
 
-  // Validate workflows is not mixed with filetree or terminal
-  if (workflowsGroupIdx !== undefined) {
-    const workflowsGroup = groups[workflowsGroupIdx]
-    if (workflowsGroup.includes('filetree') || workflowsGroup.includes('terminal')) {
-      console.warn('[Layout drift] workflows is in wrong group with filetree/terminal')
-      return false
-    }
-  }
-
   return true
 }
 
-// Custom tab component that hides close button (for workflows/shell tabs)
+// Custom tab component that hides close button (for shell tabs)
 const TabWithoutClose = (props) => <DockviewDefaultTab {...props} hideClose />
 
 const tabComponents = {
@@ -152,7 +129,7 @@ const getFileName = (path) => {
   return parts[parts.length - 1]
 }
 
-const LAYOUT_VERSION = 21 // Increment to force layout reset
+const LAYOUT_VERSION = 22 // Increment to force layout reset after removing workflows
 
 // Generate a short hash from the project root path for localStorage keys
 const hashProjectRoot = (root) => {
@@ -167,12 +144,16 @@ const hashProjectRoot = (root) => {
 }
 
 // Storage key generators (project-specific)
-const getStorageKey = (projectRoot, suffix) => `kurt-web-${hashProjectRoot(projectRoot)}-${suffix}`
+// Uses the configured prefix from storage utilities
+const getStorageKey = (projectRoot, suffix) => {
+  const prefix = getPrefix()
+  return `${prefix}-${hashProjectRoot(projectRoot)}-${suffix}`
+}
 
 // Load saved tabs from localStorage
 const loadSavedTabs = (projectRoot) => {
   try {
-    const saved = localStorage.getItem(getStorageKey(projectRoot, 'tabs'))
+    const saved = localStorage.getItem(getStorageKey(projectRoot, STORAGE_KEYS.TABS))
     if (saved) {
       return JSON.parse(saved)
     }
@@ -185,7 +166,7 @@ const loadSavedTabs = (projectRoot) => {
 // Save open tabs to localStorage
 const saveTabs = (projectRoot, paths) => {
   try {
-    localStorage.setItem(getStorageKey(projectRoot, 'tabs'), JSON.stringify(paths))
+    localStorage.setItem(getStorageKey(projectRoot, STORAGE_KEYS.TABS), JSON.stringify(paths))
   } catch {
     // Ignore storage errors
   }
@@ -193,14 +174,14 @@ const saveTabs = (projectRoot, paths) => {
 
 const loadLayout = (projectRoot) => {
   try {
-    const raw = localStorage.getItem(getStorageKey(projectRoot, 'layout'))
+    const raw = localStorage.getItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT))
     if (!raw) return null
     const parsed = JSON.parse(raw)
 
     // Check layout version - force reset if outdated
     if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
       console.info('[Layout] Version outdated, resetting layout')
-      localStorage.removeItem(getStorageKey(projectRoot, 'layout'))
+      localStorage.removeItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT))
       return null
     }
 
@@ -213,7 +194,7 @@ const loadLayout = (projectRoot) => {
       )
       if (hasUnknown) {
         console.info('[Layout] Unknown components found, resetting layout')
-        localStorage.removeItem(getStorageKey(projectRoot, 'layout'))
+        localStorage.removeItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT))
         return null
       }
     }
@@ -221,7 +202,7 @@ const loadLayout = (projectRoot) => {
     // Validate layout structure to detect drift
     if (!validateLayoutStructure(parsed)) {
       console.info('[Layout] Structure drift detected, resetting layout')
-      localStorage.removeItem(getStorageKey(projectRoot, 'layout'))
+      localStorage.removeItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT))
       return null
     }
 
@@ -258,54 +239,28 @@ const pruneEmptyGroups = (api) => {
 const saveLayout = (projectRoot, layout) => {
   try {
     const layoutWithVersion = { ...layout, version: LAYOUT_VERSION }
-    localStorage.setItem(getStorageKey(projectRoot, 'layout'), JSON.stringify(layoutWithVersion))
+    localStorage.setItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT), JSON.stringify(layoutWithVersion))
   } catch {
     // Ignore storage errors
   }
 }
 
 // Collapsed state and panel sizes are shared across projects (UI preference)
-const SIDEBAR_COLLAPSED_KEY = 'kurt-web-sidebar-collapsed'
-const PANEL_SIZES_KEY = 'kurt-web-panel-sizes'
-
+// Uses storage utilities for consistent key prefixing
 const loadCollapsedState = () => {
-  try {
-    const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
-    if (saved) {
-      return JSON.parse(saved)
-    }
-  } catch {
-    // Ignore parse errors
-  }
-  return { filetree: false, terminal: false, workflows: false }
+  return getJSON(STORAGE_KEYS.SIDEBAR_COLLAPSED, { filetree: false, terminal: false, shell: false })
 }
 
 const saveCollapsedState = (state) => {
-  try {
-    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, JSON.stringify(state))
-  } catch {
-    // Ignore storage errors
-  }
+  setJSON(STORAGE_KEYS.SIDEBAR_COLLAPSED, state)
 }
 
 const loadPanelSizes = () => {
-  try {
-    const saved = localStorage.getItem(PANEL_SIZES_KEY)
-    if (saved) {
-      return JSON.parse(saved)
-    }
-  } catch {
-    // Ignore parse errors
-  }
-  return { filetree: 280, terminal: 400, workflows: 250 }
+  return getJSON(STORAGE_KEYS.PANEL_SIZES, { filetree: 280, terminal: 400, shell: 250 })
 }
 
 const savePanelSizes = (sizes) => {
-  try {
-    localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(sizes))
-  } catch {
-    // Ignore storage errors
-  }
+  setJSON(STORAGE_KEYS.PANEL_SIZES, sizes)
 }
 
 export default function App() {
@@ -368,50 +323,43 @@ export default function App() {
     })
   }, [collapsed.terminal, dockApi])
 
-  const toggleWorkflows = useCallback(() => {
-    if (!collapsed.workflows && dockApi) {
+  const toggleShell = useCallback(() => {
+    if (!collapsed.shell && dockApi) {
       // Capture current size before collapsing
-      const workflowsPanel = dockApi.getPanel('workflows')
-      const workflowsGroup = workflowsPanel?.group
-      if (workflowsGroup) {
-        const currentHeight = workflowsGroup.api.height
+      const shellPanel = dockApi.getPanel('shell')
+      const shellGroup = shellPanel?.group
+      if (shellGroup) {
+        const currentHeight = shellGroup.api.height
         if (currentHeight > 36) {
-          panelSizesRef.current = { ...panelSizesRef.current, workflows: currentHeight }
+          panelSizesRef.current = { ...panelSizesRef.current, shell: currentHeight }
           savePanelSizes(panelSizesRef.current)
         }
       }
     }
     setCollapsed((prev) => {
-      const next = { ...prev, workflows: !prev.workflows }
+      const next = { ...prev, shell: !prev.shell }
       saveCollapsedState(next)
       return next
     })
-  }, [collapsed.workflows, dockApi])
+  }, [collapsed.shell, dockApi])
 
-  // Right header actions component - shows collapse button on rightmost workflows/shell group
+  // Right header actions component - shows collapse button on shell group
   const RightHeaderActions = useCallback(
     (props) => {
       const panels = props.group?.panels || []
-      const hasWorkflowsPanel = panels.some((p) => p.id === 'workflows')
       const hasShellPanel = panels.some((p) => p.id === 'shell')
 
-      // Show chevron on:
-      // 1. Combined group (has both workflows and shell)
-      // 2. Shell-only group when split (rightmost)
-      // Don't show on workflows-only group when split (leftmost)
-      const showChevron = (hasWorkflowsPanel && hasShellPanel) || (hasShellPanel && !hasWorkflowsPanel)
-
-      if (!showChevron) return null
+      if (!hasShellPanel) return null
 
       return (
         <button
           type="button"
           className="tab-collapse-btn"
-          onClick={toggleWorkflows}
-          title={collapsed.workflows ? 'Expand panel' : 'Collapse panel'}
-          aria-label={collapsed.workflows ? 'Expand panel' : 'Collapse panel'}
+          onClick={toggleShell}
+          title={collapsed.shell ? 'Expand panel' : 'Collapse panel'}
+          aria-label={collapsed.shell ? 'Expand panel' : 'Collapse panel'}
         >
-          {collapsed.workflows ? (
+          {collapsed.shell ? (
             <ChevronDown size={14} />
           ) : (
             <ChevronUp size={14} />
@@ -419,7 +367,7 @@ export default function App() {
         </button>
       )
     },
-    [collapsed.workflows, toggleWorkflows]
+    [collapsed.shell, toggleShell]
   )
 
   // Apply collapsed state to dockview groups
@@ -477,47 +425,26 @@ export default function App() {
       }
     }
 
-    const workflowsPanel = dockApi.getPanel('workflows')
     const shellPanel = dockApi.getPanel('shell')
-    const workflowsGroup = workflowsPanel?.group
     const shellGroup = shellPanel?.group
 
-    // Apply constraints to workflows group
-    if (workflowsGroup) {
-      if (collapsed.workflows) {
-        workflowsGroup.api.setConstraints({
-          minimumHeight: 36,
-          maximumHeight: 36,
-        })
-        workflowsGroup.api.setSize({ height: 36 })
-      } else {
-        // Clear height constraints to allow resizing (use Infinity to explicitly remove max)
-        workflowsGroup.api.setConstraints({
-          minimumHeight: 100,
-          maximumHeight: Infinity,
-        })
-        // Only set size on subsequent runs (user toggled), not on initial load
-        if (!isFirstRun) {
-          workflowsGroup.api.setSize({ height: panelSizesRef.current.workflows })
-        }
-      }
-    }
-
-    // If shell is in a separate group (user split the panels), apply same constraints
-    if (shellGroup && shellGroup !== workflowsGroup) {
-      if (collapsed.workflows) {
+    // Apply constraints to shell group
+    if (shellGroup) {
+      if (collapsed.shell) {
         shellGroup.api.setConstraints({
           minimumHeight: 36,
           maximumHeight: 36,
         })
         shellGroup.api.setSize({ height: 36 })
       } else {
+        // Clear height constraints to allow resizing (use Infinity to explicitly remove max)
         shellGroup.api.setConstraints({
           minimumHeight: 100,
           maximumHeight: Infinity,
         })
+        // Only set size on subsequent runs (user toggled), not on initial load
         if (!isFirstRun) {
-          shellGroup.api.setSize({ height: panelSizesRef.current.workflows })
+          shellGroup.api.setSize({ height: panelSizesRef.current.shell })
         }
       }
     }
@@ -707,9 +634,9 @@ export default function App() {
         return true
       }
 
-      // Priority: existing editor group > centerGroupRef > empty panel > workflows > fallback
+      // Priority: existing editor group > centerGroupRef > empty panel > shell > fallback
       const emptyPanel = dockApi.getPanel('empty-center')
-      const workflowsPanel = dockApi.getPanel('workflows')
+      const shellPanel = dockApi.getPanel('shell')
       const centerGroup = centerGroupRef.current
 
       // Find existing editor panels to add as sibling tab
@@ -724,9 +651,9 @@ export default function App() {
         position = { referenceGroup: centerGroup }
       } else if (emptyPanel?.group) {
         position = { referenceGroup: emptyPanel.group }
-      } else if (workflowsPanel?.group) {
-        // Add above workflows to maintain center column structure
-        position = { direction: 'above', referenceGroup: workflowsPanel.group }
+      } else if (shellPanel?.group) {
+        // Add above shell to maintain center column structure
+        position = { direction: 'above', referenceGroup: shellPanel.group }
       } else {
         position = { direction: 'right', referencePanel: 'filetree' }
       }
@@ -786,7 +713,7 @@ export default function App() {
 
       // Use empty panel's group first to maintain layout hierarchy
       const emptyPanel = dockApi.getPanel('empty-center')
-      const workflowsPanel = dockApi.getPanel('workflows')
+      const shellPanel = dockApi.getPanel('shell')
       const centerGroup = centerGroupRef.current
 
       let position
@@ -794,8 +721,8 @@ export default function App() {
         position = { referenceGroup: emptyPanel.group }
       } else if (centerGroup) {
         position = { referenceGroup: centerGroup }
-      } else if (workflowsPanel?.group) {
-        position = { direction: 'above', referenceGroup: workflowsPanel.group }
+      } else if (shellPanel?.group) {
+        position = { direction: 'above', referenceGroup: shellPanel.group }
       } else {
         position = { direction: 'right', referencePanel: 'filetree' }
       }
@@ -843,13 +770,13 @@ export default function App() {
 
       // Get panel references for positioning
       const emptyPanel = dockApi.getPanel('empty-center')
-      const workflowsPanel = dockApi.getPanel('workflows')
+      const shellPanel = dockApi.getPanel('shell')
 
       // Find existing editor/review panels to add as sibling tab
       const allPanels = Array.isArray(dockApi.panels) ? dockApi.panels : []
       const existingEditorPanel = allPanels.find(p => p.id.startsWith('editor-') || p.id.startsWith('review-'))
 
-      // Priority: existing editor group > centerGroupRef > empty panel > workflows > fallback
+      // Priority: existing editor group > centerGroupRef > empty panel > shell > fallback
       let position
       if (existingEditorPanel?.group) {
         // Add as tab next to existing editors/reviews
@@ -858,9 +785,9 @@ export default function App() {
         position = { referenceGroup: centerGroupRef.current }
       } else if (emptyPanel?.group) {
         position = { referenceGroup: emptyPanel.group }
-      } else if (workflowsPanel?.group) {
-        // Add above workflows to maintain center column structure
-        position = { direction: 'above', referenceGroup: workflowsPanel.group }
+      } else if (shellPanel?.group) {
+        // Add above shell to maintain center column structure
+        position = { direction: 'above', referenceGroup: shellPanel.group }
       } else {
         position = { direction: 'right', referencePanel: 'filetree' }
       }
@@ -926,11 +853,11 @@ export default function App() {
         })
       }
 
-      const workflowsPanel = api.getPanel('workflows')
-      const workflowsGroup = workflowsPanel?.group
-      if (workflowsGroup) {
-        // Don't lock or hide header - workflows/shell share this group with tabs
-        workflowsGroup.api.setConstraints({
+      const shellPanel = api.getPanel('shell')
+      const shellGroup = shellPanel?.group
+      if (shellGroup) {
+        // Don't lock or hide header - shell has collapse button
+        shellGroup.api.setConstraints({
           minimumHeight: 100,
           maximumHeight: Infinity,
         })
@@ -938,14 +865,13 @@ export default function App() {
     }
 
     const ensureCorePanels = () => {
-      // Layout goal: [filetree | [editor / [workflows | shell]] | terminal]
+      // Layout goal: [filetree | [editor / shell] | terminal]
       //
       // Strategy: Create in order that establishes correct hierarchy
       // 1. filetree (left)
       // 2. terminal (right) - agent sessions column
       // 3. empty-center (left of terminal) - center column for editors
-      // 4. workflows (below empty-center) - bottom left of center
-      // 5. shell (right of workflows) - bottom right of center, next to workflows
+      // 4. shell (below empty-center) - bottom of center
 
       let filetreePanel = api.getPanel('filetree')
       if (!filetreePanel) {
@@ -989,32 +915,15 @@ export default function App() {
         })
       }
 
-      // Add workflows panel BELOW the center group - splits only center column
-      let workflowsPanel = api.getPanel('workflows')
-      if (!workflowsPanel && emptyPanel?.group) {
-        workflowsPanel = api.addPanel({
-          id: 'workflows',
-          component: 'workflows',
-          tabComponent: 'noClose',
-          title: 'Workflows',
-          position: { direction: 'below', referenceGroup: emptyPanel.group },
-          params: {
-            collapsed: false,
-            onToggleCollapse: () => {},
-            onAttachWorkflow: () => {},
-          },
-        })
-      }
-
-      // Add shell panel as a tab in the same group as workflows
+      // Add shell panel BELOW the center group - splits only center column
       let shellPanel = api.getPanel('shell')
-      if (!shellPanel && workflowsPanel?.group) {
+      if (!shellPanel && emptyPanel?.group) {
         shellPanel = api.addPanel({
           id: 'shell',
           component: 'shell',
           tabComponent: 'noClose',
           title: 'Shell',
-          position: { referenceGroup: workflowsPanel.group },
+          position: { direction: 'below', referenceGroup: emptyPanel.group },
           params: {
             collapsed: false,
             onToggleCollapse: () => {},
@@ -1022,10 +931,10 @@ export default function App() {
         })
       }
 
-      // Show tabs for the workflows/shell group
-      if (workflowsPanel?.group) {
-        workflowsPanel.group.header.hidden = false
-        workflowsPanel.group.locked = true // Lock group to prevent closing tabs
+      // Show tabs for the shell group
+      if (shellPanel?.group) {
+        shellPanel.group.header.hidden = false
+        shellPanel.group.locked = true // Lock group to prevent closing tabs
       }
 
       // Set centerGroupRef from editor panels if any exist
@@ -1048,13 +957,18 @@ export default function App() {
     // Check if there's a saved layout - if so, DON'T create panels here
     // Let the layout restoration effect handle it to avoid creating->destroying->recreating
     // We check localStorage directly since projectRoot isn't available yet
-    // Look for any layout key that might match
+    // Look for any layout key that might match (check both current prefix and legacy prefix)
     let hasSavedLayout = false
     let invalidLayoutFound = false
+    const storagePrefix = getPrefix()
+    const layoutSuffix = `-${STORAGE_KEYS.LAYOUT}`
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
-        if (key && key.startsWith('kurt-web-') && key.endsWith('-layout')) {
+        // Check for keys with current prefix or legacy prefix
+        const matchesCurrentPrefix = key && key.startsWith(`${storagePrefix}-`) && key.endsWith(layoutSuffix)
+        const matchesLegacyPrefix = key && key.startsWith(`${LEGACY_PREFIX}-`) && key.endsWith(layoutSuffix)
+        if (matchesCurrentPrefix || matchesLegacyPrefix) {
           const raw = localStorage.getItem(key)
           if (raw) {
             const parsed = JSON.parse(raw)
@@ -1073,11 +987,11 @@ export default function App() {
               console.warn('[Layout] Invalid layout detected in onReady, clearing and reloading:', key)
               localStorage.removeItem(key)
               // Clear related session storage
-              const prefix = key.replace('-layout', '')
-              localStorage.removeItem(`${prefix}-tabs`)
-              localStorage.removeItem('kurt-web-terminal-sessions')
-              localStorage.removeItem('kurt-web-terminal-active')
-              localStorage.removeItem('kurt-web-terminal-chat-interface')
+              const keyPrefix = key.replace(layoutSuffix, '')
+              localStorage.removeItem(`${keyPrefix}-${STORAGE_KEYS.TABS}`)
+              removeItem(STORAGE_KEYS.TERMINAL_SESSIONS)
+              removeItem(STORAGE_KEYS.TERMINAL_ACTIVE)
+              removeItem(STORAGE_KEYS.TERMINAL_CHAT_INTERFACE)
               invalidLayoutFound = true
             }
           }
@@ -1102,15 +1016,15 @@ export default function App() {
     requestAnimationFrame(() => {
       const filetreeGroup = api.getPanel('filetree')?.group
       const terminalGroup = api.getPanel('terminal')?.group
-      const workflowsGroup = api.getPanel('workflows')?.group
+      const shellGroup = api.getPanel('shell')?.group
       if (filetreeGroup) {
         api.getGroup(filetreeGroup.id)?.api.setSize({ width: panelSizesRef.current.filetree })
       }
       if (terminalGroup) {
         api.getGroup(terminalGroup.id)?.api.setSize({ width: panelSizesRef.current.terminal })
       }
-      if (workflowsGroup) {
-        api.getGroup(workflowsGroup.id)?.api.setSize({ height: panelSizesRef.current.workflows })
+      if (shellGroup) {
+        api.getGroup(shellGroup.id)?.api.setSize({ height: panelSizesRef.current.shell })
       }
     })
 
@@ -1146,8 +1060,8 @@ export default function App() {
       let centerGroup = centerGroupRef.current
       const groupStillExists = centerGroup && api.groups?.includes(centerGroup)
 
-      // Get workflows panel to position relative to it
-      const workflowsPanel = api.getPanel('workflows')
+      // Get shell panel to position relative to it
+      const shellPanel = api.getPanel('shell')
 
       let emptyPanel
       if (groupStillExists && centerGroup.panels?.length > 0) {
@@ -1158,13 +1072,13 @@ export default function App() {
           title: '',
           position: { referenceGroup: centerGroup },
         })
-      } else if (workflowsPanel?.group) {
-        // Center group is gone, add above workflows panel
+      } else if (shellPanel?.group) {
+        // Center group is gone, add above shell panel
         emptyPanel = api.addPanel({
           id: 'empty-center',
           component: 'empty',
           title: '',
-          position: { direction: 'above', referenceGroup: workflowsPanel.group },
+          position: { direction: 'above', referenceGroup: shellPanel.group },
         })
       } else {
         // Fallback: add to the right of filetree
@@ -1197,16 +1111,16 @@ export default function App() {
     const savePanelSizesNow = () => {
       const filetreePanel = api.getPanel('filetree')
       const terminalPanel = api.getPanel('terminal')
-      const workflowsPanel = api.getPanel('workflows')
+      const shellPanel = api.getPanel('shell')
 
       const filetreeGroup = filetreePanel?.group
       const terminalGroup = terminalPanel?.group
-      const workflowsGroup = workflowsPanel?.group
+      const shellGroup = shellPanel?.group
 
       const newSizes = { ...panelSizesRef.current }
       let changed = false
 
-      // Only save if not collapsed (width > 48 for sidebars, height > 36 for workflows)
+      // Only save if not collapsed (width > 48 for sidebars, height > 36 for shell)
       if (filetreeGroup && filetreeGroup.api.width > 48) {
         if (newSizes.filetree !== filetreeGroup.api.width) {
           newSizes.filetree = filetreeGroup.api.width
@@ -1219,9 +1133,9 @@ export default function App() {
           changed = true
         }
       }
-      if (workflowsGroup && workflowsGroup.api.height > 36) {
-        if (newSizes.workflows !== workflowsGroup.api.height) {
-          newSizes.workflows = workflowsGroup.api.height
+      if (shellGroup && shellGroup.api.height > 36) {
+        if (newSizes.shell !== shellGroup.api.height) {
+          newSizes.shell = shellGroup.api.height
           changed = true
         }
       }
@@ -1271,20 +1185,7 @@ export default function App() {
       .catch(() => setUserContext({ is_cloud_mode: false }))
   }, [])
 
-  // Set browser tab title to workspace name or folder name
-  useEffect(() => {
-    const workspaceName = userContext?.workspace?.name
-    // Use workspace name if available and not a UUID
-    if (workspaceName && !workspaceName.includes('-')) {
-      document.title = `${workspaceName} - Kurt`
-    } else if (projectRoot) {
-      // Fallback to folder name from projectRoot
-      const folderName = projectRoot.split('/').filter(Boolean).pop() || 'Kurt'
-      document.title = `${folderName} - Kurt`
-    } else {
-      document.title = 'Kurt'
-    }
-  }, [userContext?.workspace?.name, projectRoot])
+  // Document title is now handled by the Header component via branding config
 
   // Restore layout once projectRoot is loaded and dockApi is available
   const layoutRestorationRan = useRef(false)
@@ -1302,7 +1203,7 @@ export default function App() {
         requestAnimationFrame(() => {
           const ftGroup = dockApi.getPanel('filetree')?.group
           const tGroup = dockApi.getPanel('terminal')?.group
-          const wGroup = dockApi.getPanel('workflows')?.group
+          const sGroup = dockApi.getPanel('shell')?.group
 
           if (ftGroup) {
             const ftApi = dockApi.getGroup(ftGroup.id)?.api
@@ -1328,30 +1229,15 @@ export default function App() {
               }
             }
           }
-          if (wGroup) {
-            const wApi = dockApi.getGroup(wGroup.id)?.api
-            if (wApi) {
-              if (collapsed.workflows) {
-                wApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
-                wApi.setSize({ height: 36 })
-              } else {
-                wApi.setConstraints({ minimumHeight: 100, maximumHeight: Infinity })
-                wApi.setSize({ height: panelSizesRef.current.workflows })
-              }
-            }
-          }
-
-          const shellPanel = dockApi.getPanel('shell')
-          const shellGroup = shellPanel?.group
-          if (shellGroup && shellGroup !== wGroup) {
-            const sApi = dockApi.getGroup(shellGroup.id)?.api
+          if (sGroup) {
+            const sApi = dockApi.getGroup(sGroup.id)?.api
             if (sApi) {
-              if (collapsed.workflows) {
+              if (collapsed.shell) {
                 sApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
                 sApi.setSize({ height: 36 })
               } else {
                 sApi.setConstraints({ minimumHeight: 100, maximumHeight: Infinity })
-                sApi.setSize({ height: panelSizesRef.current.workflows })
+                sApi.setSize({ height: panelSizesRef.current.shell })
               }
             }
           }
@@ -1372,7 +1258,7 @@ export default function App() {
         // After restoring, apply locked panels and cleanup
         const filetreePanel = dockApi.getPanel('filetree')
         const terminalPanel = dockApi.getPanel('terminal')
-        const workflowsPanel = dockApi.getPanel('workflows')
+        const shellPanel = dockApi.getPanel('shell')
 
         const filetreeGroup = filetreePanel?.group
         if (filetreeGroup) {
@@ -1386,30 +1272,14 @@ export default function App() {
           terminalGroup.header.hidden = true
         }
 
-        const workflowsGroup = workflowsPanel?.group
-        if (workflowsGroup) {
+        const shellGroup = shellPanel?.group
+        if (shellGroup) {
           // Lock group to prevent closing tabs, but show header
-          workflowsGroup.locked = true
-          workflowsGroup.header.hidden = false
-          workflowsGroup.api.setConstraints({
+          shellGroup.locked = true
+          shellGroup.header.hidden = false
+          shellGroup.api.setConstraints({
             minimumHeight: 100,
             maximumHeight: Infinity,
-          })
-        }
-
-        // Ensure shell panel exists (might be missing from older layouts)
-        let shellPanel = dockApi.getPanel('shell')
-        if (!shellPanel && workflowsPanel?.group) {
-          shellPanel = dockApi.addPanel({
-            id: 'shell',
-            component: 'shell',
-            tabComponent: 'noClose',
-            title: 'Shell',
-            position: { referenceGroup: workflowsPanel.group },
-            params: {
-              collapsed: false,
-              onToggleCollapse: () => {},
-            },
           })
         }
 
@@ -1454,7 +1324,7 @@ export default function App() {
         requestAnimationFrame(() => {
           const ftGroup = dockApi.getPanel('filetree')?.group
           const tGroup = dockApi.getPanel('terminal')?.group
-          const wGroup = dockApi.getPanel('workflows')?.group
+          const sGroup = dockApi.getPanel('shell')?.group
 
           // For collapsed panels, set collapsed size; for expanded, use saved size
           if (ftGroup) {
@@ -1481,31 +1351,15 @@ export default function App() {
               }
             }
           }
-          if (wGroup) {
-            const wApi = dockApi.getGroup(wGroup.id)?.api
-            if (wApi) {
-              if (collapsed.workflows) {
-                wApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
-                wApi.setSize({ height: 36 })
-              } else {
-                wApi.setConstraints({ minimumHeight: 100, maximumHeight: Infinity })
-                wApi.setSize({ height: panelSizesRef.current.workflows })
-              }
-            }
-          }
-
-          // Also handle shell group if it's separate from workflows
-          const shellPanel = dockApi.getPanel('shell')
-          const shellGroup = shellPanel?.group
-          if (shellGroup && shellGroup !== wGroup) {
-            const sApi = dockApi.getGroup(shellGroup.id)?.api
+          if (sGroup) {
+            const sApi = dockApi.getGroup(sGroup.id)?.api
             if (sApi) {
-              if (collapsed.workflows) {
+              if (collapsed.shell) {
                 sApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
                 sApi.setSize({ height: 36 })
               } else {
                 sApi.setConstraints({ minimumHeight: 100, maximumHeight: Infinity })
-                sApi.setSize({ height: panelSizesRef.current.workflows })
+                sApi.setSize({ height: panelSizesRef.current.shell })
               }
             }
           }
@@ -1590,63 +1444,18 @@ export default function App() {
     }
   }, [dockApi, collapsed.terminal, toggleTerminal, approvals, focusReviewPanel, handleDecision, normalizeApprovalPath])
 
-  // Open a dedicated terminal panel for workflow attachment
-  const openWorkflowTerminal = useCallback(
-    (workflowId) => {
-      if (!dockApi) return
-
-      const panelId = `workflow-terminal-${workflowId}`
-      const existingPanel = dockApi.getPanel(panelId)
-
-      if (existingPanel) {
-        existingPanel.api.setActive()
-        return
-      }
-
-      // Add in center area
-      const position = centerGroupRef.current
-        ? { referenceGroup: centerGroupRef.current }
-        : { direction: 'right', referencePanel: 'filetree' }
-
-      const panel = dockApi.addPanel({
-        id: panelId,
-        component: 'workflowTerminal',
-        title: `Workflow: ${workflowId.slice(0, 8)}`,
-        position,
-        params: {
-          workflowId,
-        },
-      })
-
-      if (panel?.group) {
-        panel.group.header.hidden = false
-        centerGroupRef.current = panel.group
-      }
-    },
-    [dockApi]
-  )
-
-  // Update workflows panel params
+  // Update shell panel params
   // projectRoot dependency ensures this runs after layout restoration
   useEffect(() => {
     if (!dockApi) return
-    const workflowsPanel = dockApi.getPanel('workflows')
-    if (workflowsPanel) {
-      workflowsPanel.api.updateParameters({
-        collapsed: collapsed.workflows,
-        onToggleCollapse: toggleWorkflows,
-        onAttachWorkflow: openWorkflowTerminal,
-      })
-    }
-    // Also update shell panel with collapse state for the tab button
     const shellPanel = dockApi.getPanel('shell')
     if (shellPanel) {
       shellPanel.api.updateParameters({
-        collapsed: collapsed.workflows,
-        onToggleCollapse: toggleWorkflows,
+        collapsed: collapsed.shell,
+        onToggleCollapse: toggleShell,
       })
     }
-  }, [dockApi, collapsed.workflows, toggleWorkflows, openWorkflowTerminal, projectRoot])
+  }, [dockApi, collapsed.shell, toggleShell, projectRoot])
 
   // Restore saved tabs when dockApi and projectRoot become available
   const hasRestoredTabs = useRef(false)
@@ -1750,29 +1559,15 @@ export default function App() {
     'dockview-theme-abyss',
     collapsed.filetree && 'filetree-is-collapsed',
     collapsed.terminal && 'terminal-is-collapsed',
-    collapsed.workflows && 'workflows-is-collapsed',
+    collapsed.shell && 'shell-is-collapsed',
   ].filter(Boolean).join(' ')
 
   return (
     <ThemeProvider>
-      <div className="app-container">
-        <header className="app-header">
-          <div className="app-header-brand">
-            <div className="app-header-logo">K</div>
-            <span className="app-header-title">Kurt</span>
-          </div>
-          <div className="app-header-controls">
-            <ThemeToggle />
-            {userContext?.is_cloud_mode && userContext?.user && (
-              <UserMenu
-                email={userContext.user.email}
-                workspaceName={userContext.workspace?.name || 'Workspace'}
-                workspaceId={userContext.workspace?.id || ''}
-              />
-            )}
-          </div>
-        </header>
-        <DockviewReact
+      <ConfigProvider>
+        <div className="app-container">
+          <Header userContext={userContext} projectRoot={projectRoot} />
+          <DockviewReact
           className={dockviewClassName}
           components={components}
           tabComponents={tabComponents}
@@ -1780,8 +1575,9 @@ export default function App() {
           onReady={onReady}
           showDndOverlay={showDndOverlay}
           onDidDrop={onDidDrop}
-        />
-      </div>
+          />
+        </div>
+      </ConfigProvider>
     </ThemeProvider>
   )
 }

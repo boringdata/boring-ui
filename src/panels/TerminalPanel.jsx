@@ -2,11 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Copy, Plus, X } from 'lucide-react'
 import Terminal from '../components/Terminal'
 import ClaudeStreamChat from '../components/chat/ClaudeStreamChat'
+import { getItem, setItem, removeItem, STORAGE_KEYS } from '../utils/storage'
 
-const SESSION_STORAGE_KEY = 'kurt-web-terminal-sessions'
-const VIEW_MODE_KEY = 'kurt-web-terminal-view-mode'
-const ACTIVE_SESSION_KEY = 'kurt-web-terminal-active'
-const CHAT_INTERFACE_KEY = 'kurt-web-terminal-chat-interface'
 const DEFAULT_PROVIDER = 'claude'
 
 const createSessionId = () => {
@@ -18,7 +15,7 @@ const createSessionId = () => {
 
 const loadSessions = () => {
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+    const raw = getItem(STORAGE_KEYS.TERMINAL_SESSIONS)
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed) || parsed.length === 0) return null
@@ -30,7 +27,7 @@ const loadSessions = () => {
 
 const loadActiveSession = () => {
   try {
-    const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
+    const raw = getItem(STORAGE_KEYS.TERMINAL_ACTIVE)
     if (!raw) return null
     const id = Number(raw)
     return Number.isNaN(id) ? null : id
@@ -67,11 +64,7 @@ export default function TerminalPanel({ params }) {
   // Always in chat mode (removed raw/chat toggle)
   const viewMode = 'chat'
   const [chatInterface, setChatInterface] = useState(() => {
-    try {
-      return localStorage.getItem(CHAT_INTERFACE_KEY) || 'web'
-    } catch {
-      return 'web'
-    }
+    return getItem(STORAGE_KEYS.TERMINAL_CHAT_INTERFACE) || 'web'
   })
   const [sessions, setSessions] = useState(() => {
     const saved = loadSessions()
@@ -182,29 +175,21 @@ export default function TerminalPanel({ params }) {
   }, [sessions, activeId])
 
   useEffect(() => {
-    try {
-      if (sessions.length === 0) {
-        localStorage.removeItem(SESSION_STORAGE_KEY)
-      } else {
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(serializeSessions(sessions)))
-      }
-      if (activeId == null) {
-        localStorage.removeItem(ACTIVE_SESSION_KEY)
-      } else {
-        localStorage.setItem(ACTIVE_SESSION_KEY, String(activeId))
-      }
-    } catch (error) {
-      // Ignore storage errors
+    if (sessions.length === 0) {
+      removeItem(STORAGE_KEYS.TERMINAL_SESSIONS)
+    } else {
+      setItem(STORAGE_KEYS.TERMINAL_SESSIONS, JSON.stringify(serializeSessions(sessions)))
+    }
+    if (activeId == null) {
+      removeItem(STORAGE_KEYS.TERMINAL_ACTIVE)
+    } else {
+      setItem(STORAGE_KEYS.TERMINAL_ACTIVE, String(activeId))
     }
   }, [sessions, activeId])
 
   // Save chat interface preference
   useEffect(() => {
-    try {
-      localStorage.setItem(CHAT_INTERFACE_KEY, chatInterface)
-    } catch {
-      // Ignore storage errors
-    }
+    setItem(STORAGE_KEYS.TERMINAL_CHAT_INTERFACE, chatInterface)
   }, [chatInterface])
 
   if (collapsed) {

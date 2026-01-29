@@ -1,7 +1,28 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import './styles.css'
+import './styles/index.css'
+import { configureStorage, migrateAllLegacyKeys } from './utils/storage'
+
+// Configure storage with default prefix
+// Apps can import and call configureStorage() with custom prefix before this file loads
+// or use the config system to set storage.prefix
+const storageConfig = window.__BORING_UI_CONFIG__?.storage || {}
+if (storageConfig.prefix) {
+  configureStorage({
+    prefix: storageConfig.prefix,
+    migrateLegacyKeys: storageConfig.migrateLegacyKeys,
+  })
+}
+
+// Migrate legacy 'kurt-web-' keys to new prefix if configured
+// This runs once on app load
+if (storageConfig.prefix && storageConfig.prefix !== 'kurt-web') {
+  const migrated = migrateAllLegacyKeys()
+  if (migrated.length > 0) {
+    console.info('[Storage] Migrated legacy keys:', migrated)
+  }
+}
 
 // Suppress known xterm.js renderer race condition errors during layout transitions
 // These occur when the terminal is destroyed while renderer is still initializing

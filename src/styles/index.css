@@ -1,0 +1,21 @@
+/* ==========================================================================
+   Boring UI - Main Stylesheet
+
+   This file imports all modular CSS files in the correct order.
+   Import order matters for CSS specificity and cascading.
+   ========================================================================== */
+
+/* 1. Design Tokens (CSS Custom Properties) - must be first */
+@import './tokens.css';
+
+/* 2. Base Styles (Reset, Typography, Global Styles) */
+@import './base.css';
+
+/* 3. Layout (DockView, Panels, App Structure) */
+@import './layout.css';
+
+/* 4. Component Styles */
+@import './filetree.css';
+@import './chat.css';
+@import './terminal.css';
+@import './components.css';
