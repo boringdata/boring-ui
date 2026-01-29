@@ -1,12 +1,13 @@
 import React from 'react'
 import { clsx } from 'clsx'
+import { isActivationKey } from '../../utils/a11y'
 
 const buttonVariants = {
-  primary: 'bg-accent text-white hover:bg-accent-hover focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-bg-primary',
-  secondary: 'bg-bg-secondary text-text-primary hover:bg-bg-tertiary border border-border dark:text-text-primary dark:border-border',
-  ghost: 'text-text-primary hover:bg-bg-hover dark:text-text-primary dark:hover:bg-bg-hover',
-  outline: 'border-2 border-accent text-accent hover:bg-accent-light dark:border-accent dark:text-accent',
-  danger: 'bg-error text-white hover:bg-error-hover focus:ring-2 focus:ring-error focus:ring-offset-2 dark:focus:ring-offset-bg-primary',
+  primary: 'bg-accent text-white hover:bg-accent-hover focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:outline-none focus-visible:ring-2 dark:focus:ring-offset-bg-primary',
+  secondary: 'bg-bg-secondary text-text-primary hover:bg-bg-tertiary border border-border dark:text-text-primary dark:border-border focus:ring-2 focus:ring-offset-2 focus:outline-none focus-visible:ring-2',
+  ghost: 'text-text-primary hover:bg-bg-hover dark:text-text-primary dark:hover:bg-bg-hover focus:ring-2 focus:ring-offset-2 focus:outline-none focus-visible:ring-2',
+  outline: 'border-2 border-accent text-accent hover:bg-accent-light dark:border-accent dark:text-accent focus:ring-2 focus:ring-offset-2 focus:outline-none focus-visible:ring-2',
+  danger: 'bg-error text-white hover:bg-error-hover focus:ring-2 focus:ring-error focus:ring-offset-2 focus:outline-none focus-visible:ring-2 dark:focus:ring-offset-bg-primary',
 }
 
 const buttonSizes = {
@@ -28,6 +29,8 @@ const buttonSizes = {
  * @param {string} className - Additional CSS classes
  * @param {React.ReactNode} icon - Icon element to display
  * @param {boolean} iconRight - Place icon on right side
+ * @param {string} ariaLabel - Accessibility label
+ * @param {boolean} ariaPressed - Toggle button pressed state
  */
 const Button = React.forwardRef(({
   variant = 'primary',
@@ -38,8 +41,18 @@ const Button = React.forwardRef(({
   className,
   icon,
   iconRight = false,
+  ariaLabel,
+  ariaPressed,
   ...props
 }, ref) => {
+  const handleKeyDown = (e) => {
+    // Allow Space key to activate button (in addition to Enter which is native)
+    if (isActivationKey(e) && !disabled && !loading) {
+      e.preventDefault()
+      e.currentTarget.click()
+    }
+  }
+
   return (
     <button
       ref={ref}
@@ -47,7 +60,7 @@ const Button = React.forwardRef(({
       className={clsx(
         // Base styles
         'inline-flex items-center justify-center font-medium transition-colors duration-fast',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+        'focus:outline-none',
         'disabled:opacity-50 disabled:cursor-not-allowed',
         // Variant styles
         buttonVariants[variant],
@@ -57,14 +70,20 @@ const Button = React.forwardRef(({
         className
       )}
       aria-busy={loading}
+      aria-label={ariaLabel}
+      aria-pressed={ariaPressed}
+      onKeyDown={handleKeyDown}
       {...props}
     >
       {loading && (
-        <span className="inline-block w-4 h-4 mr-2 border-2 border-current border-r-transparent rounded-full animate-spin" />
+        <span
+          className="inline-block w-4 h-4 mr-2 border-2 border-current border-r-transparent rounded-full animate-spin"
+          aria-hidden="true"
+        />
       )}
-      {icon && !iconRight && <span className={children ? 'mr-2' : ''}>{icon}</span>}
+      {icon && !iconRight && <span className={children ? 'mr-2' : ''} aria-hidden="true">{icon}</span>}
       {children}
-      {icon && iconRight && <span className="ml-2">{icon}</span>}
+      {icon && iconRight && <span className="ml-2" aria-hidden="true">{icon}</span>}
     </button>
   )
 })
