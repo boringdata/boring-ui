@@ -1,0 +1,75 @@
+/* Progress Bar Animations */
+
+.progress-bar-container {
+  position: relative;
+  background-color: var(--color-foreground, #000);
+  opacity: 0.1;
+}
+
+.progress-bar-fill {
+  position: relative;
+  height: 100%;
+  border-radius: inherit;
+  will-change: width;
+}
+
+/* Indeterminate animation */
+@keyframes progress-indeterminate {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.progress-bar-indeterminate {
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
+  width: 35% !important;
+}
+
+/* Shimmer effect for indeterminate */
+.progress-bar-indeterminate::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Smooth transition for determinate progress */
+.progress-bar-fill {
+  transition: width 0.3s ease-in-out;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar-indeterminate {
+    animation: none;
+  }
+
+  .progress-bar-indeterminate::after {
+    animation: none;
+  }
+
+  .progress-bar-fill {
+    transition: none;
+  }
+}
