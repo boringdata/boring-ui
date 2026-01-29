@@ -3,11 +3,11 @@ import { clsx } from 'clsx'
 import { isActivationKey } from '../../utils/a11y'
 
 const buttonVariants = {
-  primary: 'bg-accent text-white hover:bg-accent-hover focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:outline-none focus-visible:ring-2 dark:focus:ring-offset-bg-primary',
-  secondary: 'bg-bg-secondary text-text-primary hover:bg-bg-tertiary border border-border dark:text-text-primary dark:border-border focus:ring-2 focus:ring-offset-2 focus:outline-none focus-visible:ring-2',
-  ghost: 'text-text-primary hover:bg-bg-hover dark:text-text-primary dark:hover:bg-bg-hover focus:ring-2 focus:ring-offset-2 focus:outline-none focus-visible:ring-2',
-  outline: 'border-2 border-accent text-accent hover:bg-accent-light dark:border-accent dark:text-accent focus:ring-2 focus:ring-offset-2 focus:outline-none focus-visible:ring-2',
-  danger: 'bg-error text-white hover:bg-error-hover focus:ring-2 focus:ring-error focus:ring-offset-2 focus:outline-none focus-visible:ring-2 dark:focus:ring-offset-bg-primary',
+  primary: 'bg-accent text-white hover:bg-accent-hover focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:outline-none focus-visible:ring-2 transition-all duration-150 ease-spring dark:focus:ring-offset-bg-primary hover:shadow-md active:scale-95',
+  secondary: 'bg-bg-secondary text-text-primary hover:bg-bg-tertiary border border-border dark:text-text-primary dark:border-border focus:ring-2 focus:ring-offset-2 focus:outline-none focus-visible:ring-2 transition-all duration-150 ease-spring hover:shadow-sm active:scale-95',
+  ghost: 'text-text-primary hover:bg-bg-hover dark:text-text-primary dark:hover:bg-bg-hover focus:ring-2 focus:ring-offset-2 focus:outline-none focus-visible:ring-2 transition-all duration-150 ease-spring active:scale-95',
+  outline: 'border-2 border-accent text-accent hover:bg-accent-light dark:border-accent dark:text-accent focus:ring-2 focus:ring-offset-2 focus:outline-none focus-visible:ring-2 transition-all duration-150 ease-spring active:scale-95',
+  danger: 'bg-error text-white hover:bg-error-hover focus:ring-2 focus:ring-error focus:ring-offset-2 focus:outline-none focus-visible:ring-2 transition-all duration-150 ease-spring dark:focus:ring-offset-bg-primary hover:shadow-md active:scale-95',
 }
 
 const buttonSizes = {
@@ -59,8 +59,7 @@ const Button = React.forwardRef(({
       disabled={disabled || loading}
       className={clsx(
         // Base styles
-        'inline-flex items-center justify-center font-medium transition-colors duration-fast',
-        'focus:outline-none',
+        'inline-flex items-center justify-center font-medium',
         'disabled:opacity-50 disabled:cursor-not-allowed',
         // Variant styles
         buttonVariants[variant],

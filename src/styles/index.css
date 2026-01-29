@@ -11,6 +11,9 @@
 /* 2. Base Styles (Reset, Typography, Global Styles) */
 @import './base.css';
 
+/* 2.5. Animations & Micro-interactions */
+@import './animations.css';
+
 /* 3. Layout (DockView, Panels, App Structure) */
 @import './layout.css';
 
