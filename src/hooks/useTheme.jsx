@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react'
+import { getItem, setItem, STORAGE_KEYS } from '../utils/storage'
 
-const DEFAULT_STORAGE_KEY = 'boring-ui-theme'
+const DEFAULT_STORAGE_KEY = STORAGE_KEYS.THEME
 
-// Get initial theme from localStorage or system preference
-const getInitialTheme = (storageKey = DEFAULT_STORAGE_KEY, defaultTheme = 'system') => {
-  // Check localStorage first
+// Get initial theme from storage or system preference
+const getInitialTheme = (storageKeySuffix = DEFAULT_STORAGE_KEY, defaultTheme = 'system') => {
+  // Check storage first
   try {
-    const stored = localStorage.getItem(storageKey)
+    const stored = getItem(storageKeySuffix)
     if (stored === 'dark' || stored === 'light') {
       return stored
     }
   } catch {
-    // Ignore localStorage errors
+    // Ignore storage errors
   }
 
   // If default is 'system' or not set, use system preference
@@ -33,12 +34,12 @@ const applyTheme = (theme) => {
   }
 }
 
-// Persist theme to localStorage
-const persistTheme = (theme, storageKey = DEFAULT_STORAGE_KEY) => {
+// Persist theme to storage
+const persistTheme = (theme, storageKeySuffix = DEFAULT_STORAGE_KEY) => {
   try {
-    localStorage.setItem(storageKey, theme)
+    setItem(storageKeySuffix, theme)
   } catch {
-    // Ignore localStorage errors
+    // Ignore storage errors
   }
 }
 
@@ -71,13 +72,13 @@ export function ThemeProvider({ children, storageKey = DEFAULT_STORAGE_KEY, defa
     const handleChange = (e) => {
       // Only auto-switch if user hasn't explicitly set a preference
       try {
-        const stored = localStorage.getItem(storageKey)
+        const stored = getItem(storageKey)
         if (!stored) {
           const newTheme = e.matches ? 'dark' : 'light'
           setTheme(newTheme)
         }
       } catch {
-        // Ignore localStorage errors
+        // Ignore storage errors
       }
     }
 

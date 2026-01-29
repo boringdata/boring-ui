@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Sun, Moon } from 'lucide-react'
+import { getItem, setItem, STORAGE_KEYS } from '../utils/storage'
 
 // Default storage key for theme persistence
-const DEFAULT_STORAGE_KEY = 'boring-ui-theme'
+const DEFAULT_STORAGE_KEY = STORAGE_KEYS.THEME
 
 /**
  * Get the system's preferred color scheme
@@ -15,17 +16,17 @@ const getSystemTheme = () => {
 }
 
 /**
- * Get initial theme from localStorage or system preference
+ * Get initial theme from storage or system preference
  */
-const getInitialTheme = (storageKey, defaultTheme) => {
-  // Check localStorage first
+const getInitialTheme = (storageKeySuffix, defaultTheme) => {
+  // Check storage first
   try {
-    const stored = localStorage.getItem(storageKey)
+    const stored = getItem(storageKeySuffix)
     if (stored === 'dark' || stored === 'light') {
       return stored
     }
   } catch {
-    // Ignore localStorage errors
+    // Ignore storage errors
   }
 
   // If default is 'system', use system preference
@@ -47,13 +48,13 @@ const applyTheme = (theme) => {
 }
 
 /**
- * Persist theme to localStorage
+ * Persist theme to storage
  */
-const persistTheme = (theme, storageKey) => {
+const persistTheme = (theme, storageKeySuffix) => {
   try {
-    localStorage.setItem(storageKey, theme)
+    setItem(storageKeySuffix, theme)
   } catch {
-    // Ignore localStorage errors
+    // Ignore storage errors
   }
 }
 
@@ -116,14 +117,14 @@ export default function ThemeToggle({
     const handleChange = (e) => {
       // Only auto-switch if user hasn't explicitly set a preference
       try {
-        const stored = localStorage.getItem(storageKey)
+        const stored = getItem(storageKey)
         if (!stored) {
           const newTheme = e.matches ? 'dark' : 'light'
           setInternalTheme(newTheme)
           onChange?.(newTheme)
         }
       } catch {
-        // Ignore localStorage errors
+        // Ignore storage errors
       }
     }
 
