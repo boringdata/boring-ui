@@ -93,7 +93,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
   const [renaming, setRenaming] = useState(null)
   const [dragOver, setDragOver] = useState(null)
   const [newFileInput, setNewFileInput] = useState(null) // { parentDir: string, name: string }
-  const [kurtConfig, setKurtConfig] = useState(null)
+  const [apiConfig, setApiConfig] = useState(null)
   const [collapsedSections, setCollapsedSections] = useState({ other: true }) // "Other" collapsed by default
   const renameInputRef = useRef(null)
   const newFileInputRef = useRef(null)
@@ -141,13 +141,13 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     fetchGitStatus()
   }, [])
 
-  // Fetch Kurt config for section organization
+  // Fetch API config for section organization
   const fetchConfig = useCallback(() => {
     fetch(apiUrl('/api/config'))
       .then((r) => r.json())
       .then(async (data) => {
         if (data.paths) {
-          setKurtConfig(data.paths)
+          setApiConfig(data.paths)
           // Auto-expand section folders on initial load based on configured sections
           const sectionKeys = validSections.map((s) => s.key)
           const toExpand = {}
@@ -483,7 +483,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
   const handleDragStart = (event, entry) => {
     event.dataTransfer.setData('text/plain', entry.path)
-    event.dataTransfer.setData('application/x-kurt-file', JSON.stringify({
+    event.dataTransfer.setData('application/x-boring-ui-file', JSON.stringify({
       path: entry.path,
       name: entry.name,
       is_dir: entry.is_dir,
@@ -508,7 +508,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
     if (!destEntry.is_dir) return
 
-    const fileData = event.dataTransfer.getData('application/x-kurt-file')
+    const fileData = event.dataTransfer.getData('application/x-boring-ui-file')
     if (!fileData) return
 
     const srcFile = JSON.parse(fileData)
@@ -539,7 +539,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     event.preventDefault()
     setDragOver(null)
 
-    const fileData = event.dataTransfer.getData('application/x-kurt-file')
+    const fileData = event.dataTransfer.getData('application/x-boring-ui-file')
     if (!fileData) return
 
     const srcFile = JSON.parse(fileData)
@@ -681,7 +681,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
   // Organize entries into sections based on app config and kurt config
   const organizeEntriesIntoSections = () => {
-    if (!kurtConfig || entries.length === 0) {
+    if (!apiConfig || entries.length === 0) {
       return null // Return null to use flat rendering
     }
 
@@ -691,7 +691,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
     for (const sectionConfig of validSections) {
       const { key, label, icon: iconName } = sectionConfig
-      const path = kurtConfig[key]
+      const path = apiConfig[key]
 
       if (!path) {
         // Section key doesn't exist in kurt config, skip silently
@@ -725,7 +725,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
       let matched = false
       for (const key of sectionKeys) {
-        const sectionPath = kurtConfig[key]
+        const sectionPath = apiConfig[key]
         if (sectionPath && entry.path === sectionPath) {
           if (sections[key]) {
             sections[key].entries.push(entry)

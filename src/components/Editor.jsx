@@ -746,7 +746,7 @@ export default function Editor({
   }, [])
 
   const handleDrop = useCallback((event) => {
-    const fileData = event.dataTransfer.getData('application/x-kurt-file')
+    const fileData = event.dataTransfer.getData('application/x-boring-ui-file')
     if (fileData && editor) {
       event.preventDefault()
       try {
@@ -762,7 +762,7 @@ export default function Editor({
   }, [editor])
 
   const handleDragOver = useCallback((event) => {
-    if (event.dataTransfer.types.includes('application/x-kurt-file')) {
+    if (event.dataTransfer.types.includes('application/x-boring-ui-file')) {
       event.preventDefault()
       event.stopPropagation()
     }

@@ -6,7 +6,7 @@
  */
 
 // Default prefix when not using config context (module-level fallback)
-let modulePrefix = 'kurt-web';
+let modulePrefix = 'boring-ui';
 let legacyMigrationMap = null;
 let migrationCompleted = false;
 
