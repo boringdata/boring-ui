@@ -1,0 +1,148 @@
+import { Meta } from '@storybook/blocks';
+
+<Meta title="Design System/Overview" />
+
+# Design System
+
+Welcome to the boring-ui design system. This documentation covers our design tokens, components, and patterns.
+
+## Colors
+
+### Primary Colors
+
+- **Primary**: Used for main actions and interactive elements
+- **Success**: Indicates successful operations
+- **Warning**: Highlights cautions and warnings
+- **Error**: Indicates errors and destructive actions
+- **Info**: Provides additional information
+
+### Semantic Colors
+
+- **Foreground**: Main text color
+- **Background**: Primary background
+- **Muted**: Secondary text, disabled states
+
+## Typography
+
+### Font Families
+
+- **Sans**: Inter, system fonts for body text
+- **Mono**: JetBrains Mono, for code and technical content
+
+### Sizes
+
+- **xs**: 12px - Small labels and captions
+- **sm**: 14px - Secondary text
+- **base**: 16px - Body text
+- **lg**: 18px - Large text
+- **xl**: 20px - Headings
+- **2xl**: 24px - Main headings
+
+### Font Weights
+
+- **normal**: 400 - Regular text
+- **medium**: 500 - Emphasized text
+- **semibold**: 600 - Headings
+
+## Spacing
+
+Our spacing uses a 4px base unit:
+
+- **4px** - space-1
+- **8px** - space-2
+- **12px** - space-3
+- **16px** - space-4
+- **20px** - space-5
+- **24px** - space-6
+- **32px** - space-8
+- **40px** - space-10
+- **48px** - space-12
+- **64px** - space-16
+
+## Breakpoints
+
+Mobile-first responsive design:
+
+- **xs**: 0px (default)
+- **sm**: 640px
+- **md**: 768px
+- **lg**: 1024px
+- **xl**: 1280px
+- **2xl**: 1536px
+
+## Border Radius
+
+- **none**: 0px
+- **sm**: 6px
+- **md**: 8px
+- **lg**: 12px
+- **xl**: 16px
+- **2xl**: 24px
+- **full**: 9999px
+
+## Shadows
+
+Shadows provide depth and hierarchy:
+
+- **sm**: Used for subtle depth
+- **md**: Default shadow for elevated elements
+- **lg**: Strong emphasis
+
+## Animation Tokens
+
+- **spring**: Smooth, natural motion
+- **ease-in-out**: Smooth easing
+- **150ms** to **300ms**: Duration for interactions
+
+## Component Patterns
+
+### Button Pattern
+
+Buttons follow a consistent structure:
+
+```tsx
+<Button variant="primary" size="md">
+  Click me
+</Button>
+```
+
+**Variants**: primary, secondary, tertiary, danger
+**Sizes**: sm, md, lg
+
+### Alert Pattern
+
+Alerts communicate messages:
+
+```tsx
+<Alert variant="success" title="Success" description="All done!" />
+```
+
+**Variants**: success, warning, error, info
+
+### Accessibility
+
+All components follow WCAG 2.1 AA standards:
+
+- Minimum touch targets: 44x44px
+- Color contrast: 4.5:1 for text
+- Keyboard navigation: Full support
+- Screen reader: Semantic HTML and ARIA
+
+## Dark Mode
+
+All colors support both light and dark modes through CSS variables.
+
+## Best Practices
+
+1. **Use semantic colors** - Choose colors that convey meaning
+2. **Maintain contrast** - Ensure readability
+3. **Consistent spacing** - Use the spacing scale
+4. **Touch-friendly** - Minimum 44px targets
+5. **Keyboard support** - All interactive elements must be keyboard accessible
+6. **Responsive** - Test on all breakpoints
+
+## Resources
+
+- [WCAG 2.1 Guidelines](https://www.w3.org/WAI/WCAG21/quickref/)
+- [Accessible Color Contrast](https://webaim.org/articles/contrast/)
+- [Mobile-First Design](https://www.uxpin.com/studio/blog/a-hands-on-guide-to-mobile-first-design/)
