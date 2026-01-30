@@ -1,0 +1,480 @@
+/* ==========================================================================
+   Chat Message Animations & Styling - STORY-C001
+   World-class message display with 60fps animations
+   ========================================================================== */
+
+/* ---------- Message Container ---------- */
+.message-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  animation: message-slide-in 300ms var(--ease-out) forwards;
+  animation-delay: var(--animation-delay, 0ms);
+  opacity: 0;
+}
+
+.message-role-user {
+  align-items: flex-end;
+  margin-left: auto;
+  max-width: 80%;
+}
+
+.message-role-assistant {
+  align-items: flex-start;
+  margin-right: auto;
+  max-width: 90%;
+}
+
+/* ---------- Message Header (Avatar + Meta) ---------- */
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-2);
+}
+
+.message-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-semibold);
+  font-size: var(--text-sm);
+  animation: avatar-pop 400ms var(--ease-spring);
+}
+
+.avatar-user {
+  background: linear-gradient(135deg, var(--color-accent), #f97316);
+  color: white;
+  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.2);
+}
+
+.avatar-assistant {
+  background: linear-gradient(135deg, var(--color-info), #7c3aed);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.message-author {
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.message-time {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* ---------- Message Bubble ---------- */
+.message-bubble {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-xl);
+  line-height: var(--leading-relaxed);
+  word-wrap: break-word;
+  max-width: 100%;
+  animation: bubble-appear 250ms var(--ease-out);
+  will-change: transform, opacity;
+}
+
+.message-bubble-user {
+  background: linear-gradient(135deg, var(--color-accent) 0%, #f97316 100%);
+  color: white;
+  border-bottom-right-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.15);
+}
+
+.message-bubble-assistant {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+/* Hover effect */
+.message-bubble:hover {
+  transition: all 150ms var(--ease-spring);
+}
+
+.message-bubble-user:hover {
+  box-shadow: 0 6px 16px rgba(234, 88, 12, 0.25);
+  transform: translateY(-1px);
+}
+
+.message-bubble-assistant:hover {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border-strong);
+}
+
+/* ---------- Message Content Wrapper ---------- */
+.message-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.message-role-user .message-content-wrapper {
+  align-items: flex-end;
+}
+
+/* ---------- Message Text ---------- */
+.message-text {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  font-size: var(--text-base);
+}
+
+/* Optimized for mobile */
+@media (max-width: 640px) {
+  .message-role-user {
+    max-width: 90%;
+  }
+
+  .message-role-assistant {
+    max-width: 100%;
+  }
+
+  .message-text {
+    font-size: var(--text-sm);
+  }
+}
+
+/* ---------- Skeleton Loader (Streaming) ---------- */
+.message-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 12px;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-tertiary) 0%,
+    var(--color-bg-hover) 50%,
+    var(--color-bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius-md);
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-line-1 {
+  width: 100%;
+}
+
+.skeleton-line-2 {
+  width: 95%;
+}
+
+.skeleton-line-3 {
+  width: 85%;
+}
+
+/* ---------- Streaming Indicator ---------- */
+.message-streaming-indicator {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  padding-top: var(--space-2);
+}
+
+.streaming-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--color-accent);
+  border-radius: var(--radius-full);
+  animation: typing-bounce 1.4s infinite;
+}
+
+.streaming-dot:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.streaming-dot:nth-child(2) {
+  animation-delay: 200ms;
+}
+
+.streaming-dot:nth-child(3) {
+  animation-delay: 400ms;
+}
+
+/* ---------- Message Reactions ---------- */
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 150ms var(--ease-spring);
+  animation: reaction-pop 300ms var(--ease-spring) forwards;
+  animation-delay: var(--animation-delay, 0ms);
+  opacity: 0;
+}
+
+.reaction-chip:hover {
+  background: var(--color-bg-hover);
+  transform: scale(1.1);
+  box-shadow: var(--shadow-md);
+}
+
+.reaction-emoji {
+  font-size: 1.2em;
+}
+
+.reaction-count {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+}
+
+/* ---------- Keyframe Animations ---------- */
+
+/* Message slide in from bottom with fade */
+@keyframes message-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Bubble appearance with subtle scale */
+@keyframes bubble-appear {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Avatar pop animation */
+@keyframes avatar-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Reaction pop animation */
+@keyframes reaction-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotate(-10deg);
+  }
+  70% {
+    transform: scale(1.15) rotate(5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+/* Typing indicator - bouncing dots */
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.8;
+  }
+  30% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+}
+
+/* Skeleton loader shimmer effect */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Skeleton pulse effect */
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* ---------- Utility Classes ---------- */
+
+/* Fade in animation (used in components) */
+.animate-fade-in {
+  animation: fade-in-message 200ms var(--ease-out);
+}
+
+@keyframes fade-in-message {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Slide up animation */
+.animate-slide-up {
+  animation: slide-up-message 250ms var(--ease-out);
+}
+
+@keyframes slide-up-message {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scale in animation */
+.animate-scale-in {
+  animation: scale-in-message 200ms var(--ease-spring);
+}
+
+@keyframes scale-in-message {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ---------- Responsive Design ---------- */
+
+/* Mobile optimization */
+@media (max-width: 640px) {
+  .message-container {
+    margin-bottom: var(--space-3);
+  }
+
+  .message-bubble {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+  }
+
+  .message-header {
+    gap: var(--space-2);
+  }
+
+  .message-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: var(--text-xs);
+  }
+}
+
+/* Tablet */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .message-role-user {
+    max-width: 75%;
+  }
+
+  .message-role-assistant {
+    max-width: 85%;
+  }
+}
+
+/* ---------- Reduced Motion Support ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .message-container,
+  .message-bubble,
+  .message-avatar,
+  .reaction-chip,
+  .streaming-dot,
+  .skeleton-line {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------- Dark Mode Adjustments ---------- */
+[data-theme='dark'] {
+  .message-bubble-assistant {
+    background: var(--color-bg-secondary);
+    border-color: var(--color-border);
+  }
+
+  .message-bubble-assistant:hover {
+    background: var(--color-bg-tertiary);
+  }
+
+  .reaction-chip {
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-border);
+  }
+
+  .reaction-chip:hover {
+    background: var(--color-bg-hover);
+  }
+
+  .skeleton-line {
+    background: linear-gradient(
+      90deg,
+      var(--color-bg-secondary) 0%,
+      var(--color-bg-tertiary) 50%,
+      var(--color-bg-secondary) 100%
+    );
+  }
+}
+
+/* ---------- Print Styles ---------- */
+@media print {
+  .message-streaming-indicator,
+  .message-skeleton {
+    display: none;
+  }
+
+  .message-container {
+    page-break-inside: avoid;
+  }
+}
