@@ -1,11 +1,14 @@
 /**
- * Accessibility utilities for WCAG 2.1 AA compliance
+ * Accessibility (a11y) Utilities
+ * Collection of helper functions for WCAG 2.1 AAA compliance
+ * Includes contrast checking, ARIA utilities, and keyboard navigation helpers
  */
 
 /**
- * Check if color contrast ratio meets WCAG AA standard
- * @param {string} foreground - Hex color for foreground
- * @param {string} background - Hex color for background
+ * Get contrast ratio between two colors
+ * Formula per WCAG 2.0
+ * @param {string} foreground - CSS color value (hex, rgb, named)
+ * @param {string} background - CSS color value (hex, rgb, named)
  * @returns {object} {ratio: number, isAACompliant: boolean, isAAACompliant: boolean}
  */
 export function getContrastRatio(foreground, background) {

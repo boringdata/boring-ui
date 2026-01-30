@@ -23,7 +23,10 @@
 @import './terminal.css';
 @import './components.css';
 
-/* 5. Responsive & Mobile Overrides (must be last for override specificity) */
+/* 4.5. Accessibility & WCAG AAA Compliance */
+@import './accessibility-overrides.css';
+
+/* 5. Responsive & Mobile Overrides */
 @import './responsive.css';
 @import './mobile-overrides.css';
 
