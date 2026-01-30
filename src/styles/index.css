@@ -22,3 +22,13 @@
 @import './chat.css';
 @import './terminal.css';
 @import './components.css';
+
+/* 5. Responsive & Mobile Overrides (must be last for override specificity) */
+@import './responsive.css';
+@import './mobile-overrides.css';
+
+/* 6. Skeleton, Spinner, and Loading Components */
+@import './skeleton.css';
+@import './spinner.css';
+@import './progressbar.css';
+@import './toast.css';
