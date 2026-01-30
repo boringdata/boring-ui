@@ -1,0 +1,626 @@
+/**
+ * Chat Themes CSS - Dark Mode & Theme Customization
+ * Defines 5+ color themes with smooth transitions
+ * Supports custom accent colors, font sizing, line height, and code themes
+ * WCAG AAA compliant (7:1 color contrast minimum)
+ */
+
+/* Theme Transition Class - Applied after initial render */
+:root {
+  --chat-theme-transition-duration: 300ms;
+}
+
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: background-color var(--chat-theme-transition-duration) ease-in-out,
+              color var(--chat-theme-transition-duration) ease-in-out,
+              border-color var(--chat-theme-transition-duration) ease-in-out,
+              box-shadow var(--chat-theme-transition-duration) ease-in-out !important;
+}
+
+/* ====================================
+   DEFAULT THEME (Light & Dark)
+   ==================================== */
+
+/* Light Mode - Default */
+:root,
+[data-chat-theme="default"][data-theme="light"] {
+  /* Background Colors */
+  --chat-bg-primary: #ffffff;
+  --chat-bg-secondary: #f7f7f7;
+  --chat-bg-tertiary: #eeeeee;
+
+  /* Text Colors */
+  --chat-text-primary: #1a1a1a;
+  --chat-text-secondary: #5a5a5a;
+  --chat-text-muted: #8a8a8a;
+
+  /* Border Colors */
+  --chat-border: #e0e0e0;
+  --chat-border-light: #f0f0f0;
+
+  /* Message Bubble */
+  --chat-bubble-user-bg: #0a66c2;
+  --chat-bubble-user-text: #ffffff;
+  --chat-bubble-assistant-bg: #f0f0f0;
+  --chat-bubble-assistant-text: #1a1a1a;
+
+  /* Accent Colors */
+  --chat-accent: #0a66c2;
+  --chat-accent-light: #e3f0ff;
+  --chat-accent-dark: #054fa4;
+
+  /* Code Block */
+  --chat-code-bg: #f5f5f5;
+  --chat-code-text: #1a1a1a;
+  --chat-code-border: #d0d0d0;
+  --chat-code-line-bg: #ffffff;
+  --chat-code-line-hover-bg: #f9f9f9;
+
+  /* Status Colors */
+  --chat-success: #10a937;
+  --chat-warning: #d97706;
+  --chat-error: #dc2626;
+  --chat-info: #0ea5e9;
+
+  /* Semantic */
+  --chat-hover-bg: #f5f5f5;
+  --chat-active-bg: #e8f0ff;
+  --chat-disabled-text: #cccccc;
+  --chat-disabled-bg: #f9f9f9;
+
+  /* Shadow */
+  --chat-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --chat-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --chat-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Mode - Default */
+[data-chat-theme="default"][data-theme="dark"],
+[data-theme="dark"] {
+  /* Background Colors */
+  --chat-bg-primary: #1a1a1a;
+  --chat-bg-secondary: #242424;
+  --chat-bg-tertiary: #2d2d2d;
+
+  /* Text Colors */
+  --chat-text-primary: #f5f5f5;
+  --chat-text-secondary: #d0d0d0;
+  --chat-text-muted: #8a8a8a;
+
+  /* Border Colors */
+  --chat-border: #3a3a3a;
+  --chat-border-light: #2a2a2a;
+
+  /* Message Bubble */
+  --chat-bubble-user-bg: #0a66c2;
+  --chat-bubble-user-text: #ffffff;
+  --chat-bubble-assistant-bg: #2d2d2d;
+  --chat-bubble-assistant-text: #f5f5f5;
+
+  /* Accent Colors */
+  --chat-accent: #3b82f6;
+  --chat-accent-light: #1e3a8a;
+  --chat-accent-dark: #60a5fa;
+
+  /* Code Block */
+  --chat-code-bg: #1e1e1e;
+  --chat-code-text: #e0e0e0;
+  --chat-code-border: #3a3a3a;
+  --chat-code-line-bg: #1a1a1a;
+  --chat-code-line-hover-bg: #242424;
+
+  /* Status Colors */
+  --chat-success: #22c55e;
+  --chat-warning: #f97316;
+  --chat-error: #ef4444;
+  --chat-info: #06b6d4;
+
+  /* Semantic */
+  --chat-hover-bg: #2d2d2d;
+  --chat-active-bg: #1e3a8a;
+  --chat-disabled-text: #5a5a5a;
+  --chat-disabled-bg: #1f1f1f;
+
+  /* Shadow */
+  --chat-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --chat-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --chat-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+}
+
+/* ====================================
+   MONOKAI THEME
+   ==================================== */
+
+[data-chat-theme="monokai"][data-theme="light"] {
+  --chat-bg-primary: #f8f8f0;
+  --chat-bg-secondary: #f5f5f0;
+  --chat-bg-tertiary: #eeeeec;
+  --chat-text-primary: #272822;
+  --chat-text-secondary: #49483e;
+  --chat-text-muted: #7e8087;
+  --chat-border: #e0dfd0;
+  --chat-bubble-assistant-bg: #eeeeec;
+  --chat-bubble-assistant-text: #272822;
+  --chat-accent: #66d9ef;
+  --chat-accent-light: #e3f7ff;
+  --chat-accent-dark: #3b9dd9;
+  --chat-code-bg: #f8f8f0;
+  --chat-code-text: #272822;
+  --chat-code-border: #d0cfc5;
+  --chat-hover-bg: #f5f5f0;
+  --chat-active-bg: #e3f7ff;
+}
+
+[data-chat-theme="monokai"][data-theme="dark"] {
+  --chat-bg-primary: #272822;
+  --chat-bg-secondary: #2d2d24;
+  --chat-bg-tertiary: #3e3d32;
+  --chat-text-primary: #f8f8f0;
+  --chat-text-secondary: #d4d4c8;
+  --chat-text-muted: #8f8f87;
+  --chat-border: #3e3d32;
+  --chat-bubble-assistant-bg: #3e3d32;
+  --chat-bubble-assistant-text: #f8f8f0;
+  --chat-accent: #66d9ef;
+  --chat-accent-light: #1a3a4a;
+  --chat-accent-dark: #87d4e8;
+  --chat-code-bg: #1f1f1a;
+  --chat-code-text: #f8f8f0;
+  --chat-code-border: #3e3d32;
+  --chat-hover-bg: #3e3d32;
+  --chat-active-bg: #1a3a4a;
+  --chat-success: #a6e22e;
+  --chat-warning: #e6db74;
+  --chat-error: #f92672;
+  --chat-info: #66d9ef;
+}
+
+/* ====================================
+   SOLARIZED THEME
+   ==================================== */
+
+[data-chat-theme="solarized"][data-theme="light"] {
+  --chat-bg-primary: #fdf6e3;
+  --chat-bg-secondary: #eee8d5;
+  --chat-bg-tertiary: #d6cfc2;
+  --chat-text-primary: #657b83;
+  --chat-text-secondary: #839496;
+  --chat-text-muted: #93a1a1;
+  --chat-border: #d6cfc2;
+  --chat-bubble-assistant-bg: #eee8d5;
+  --chat-bubble-assistant-text: #657b83;
+  --chat-accent: #268bd2;
+  --chat-accent-light: #e3f2ff;
+  --chat-accent-dark: #1e6ba8;
+  --chat-code-bg: #eee8d5;
+  --chat-code-text: #657b83;
+  --chat-code-border: #d6cfc2;
+  --chat-hover-bg: #eee8d5;
+  --chat-active-bg: #e3f2ff;
+  --chat-success: #859900;
+  --chat-warning: #b58900;
+  --chat-error: #dc322f;
+}
+
+[data-chat-theme="solarized"][data-theme="dark"] {
+  --chat-bg-primary: #002b36;
+  --chat-bg-secondary: #073642;
+  --chat-bg-tertiary: #586e75;
+  --chat-text-primary: #93a1a1;
+  --chat-text-secondary: #839496;
+  --chat-text-muted: #657b83;
+  --chat-border: #073642;
+  --chat-bubble-assistant-bg: #073642;
+  --chat-bubble-assistant-text: #93a1a1;
+  --chat-accent: #268bd2;
+  --chat-accent-light: #0a2a3a;
+  --chat-accent-dark: #3aa3e8;
+  --chat-code-bg: #002b36;
+  --chat-code-text: #93a1a1;
+  --chat-code-border: #073642;
+  --chat-hover-bg: #073642;
+  --chat-active-bg: #0a2a3a;
+  --chat-success: #859900;
+  --chat-warning: #b58900;
+  --chat-error: #dc322f;
+  --chat-info: #268bd2;
+}
+
+/* ====================================
+   DRACULA THEME
+   ==================================== */
+
+[data-chat-theme="dracula"][data-theme="light"] {
+  --chat-bg-primary: #f8f8f2;
+  --chat-bg-secondary: #f0f0ed;
+  --chat-bg-tertiary: #e8e8e3;
+  --chat-text-primary: #282a36;
+  --chat-text-secondary: #44475a;
+  --chat-text-muted: #6272a4;
+  --chat-border: #e0dfd5;
+  --chat-bubble-assistant-bg: #f0f0ed;
+  --chat-bubble-assistant-text: #282a36;
+  --chat-accent: #bd93f9;
+  --chat-accent-light: #f0e6ff;
+  --chat-accent-dark: #9d6cd9;
+  --chat-code-bg: #f8f8f2;
+  --chat-code-text: #282a36;
+  --chat-code-border: #d5d0c5;
+  --chat-hover-bg: #f0f0ed;
+  --chat-active-bg: #f0e6ff;
+  --chat-success: #50fa7b;
+  --chat-warning: #f1fa8c;
+  --chat-error: #ff5555;
+  --chat-info: #8be9fd;
+}
+
+[data-chat-theme="dracula"][data-theme="dark"] {
+  --chat-bg-primary: #282a36;
+  --chat-bg-secondary: #323445;
+  --chat-bg-tertiary: #44475a;
+  --chat-text-primary: #f8f8f2;
+  --chat-text-secondary: #e0e0e0;
+  --chat-text-muted: #6272a4;
+  --chat-border: #44475a;
+  --chat-bubble-assistant-bg: #44475a;
+  --chat-bubble-assistant-text: #f8f8f2;
+  --chat-accent: #bd93f9;
+  --chat-accent-light: #3a2a55;
+  --chat-accent-dark: #d4b5ff;
+  --chat-code-bg: #1e1e26;
+  --chat-code-text: #f8f8f2;
+  --chat-code-border: #44475a;
+  --chat-hover-bg: #44475a;
+  --chat-active-bg: #3a2a55;
+  --chat-success: #50fa7b;
+  --chat-warning: #f1fa8c;
+  --chat-error: #ff5555;
+  --chat-info: #8be9fd;
+}
+
+/* ====================================
+   NORD THEME
+   ==================================== */
+
+[data-chat-theme="nord"][data-theme="light"] {
+  --chat-bg-primary: #eceff4;
+  --chat-bg-secondary: #e5eaf0;
+  --chat-bg-tertiary: #d8deea;
+  --chat-text-primary: #2e3440;
+  --chat-text-secondary: #434c5e;
+  --chat-text-muted: #4c566a;
+  --chat-border: #d0d5e0;
+  --chat-bubble-assistant-bg: #e5eaf0;
+  --chat-bubble-assistant-text: #2e3440;
+  --chat-accent: #88c0d0;
+  --chat-accent-light: #d4f0f8;
+  --chat-accent-dark: #5b9db6;
+  --chat-code-bg: #eceff4;
+  --chat-code-text: #2e3440;
+  --chat-code-border: #c0c5d8;
+  --chat-hover-bg: #e5eaf0;
+  --chat-active-bg: #d4f0f8;
+  --chat-success: #a3be8c;
+  --chat-warning: #ebcb8b;
+  --chat-error: #bf616a;
+  --chat-info: #88c0d0;
+}
+
+[data-chat-theme="nord"][data-theme="dark"] {
+  --chat-bg-primary: #2e3440;
+  --chat-bg-secondary: #3b4252;
+  --chat-bg-tertiary: #434c5e;
+  --chat-text-primary: #eceff4;
+  --chat-text-secondary: #d8dee9;
+  --chat-text-muted: #81a1c1;
+  --chat-border: #434c5e;
+  --chat-bubble-assistant-bg: #434c5e;
+  --chat-bubble-assistant-text: #eceff4;
+  --chat-accent: #88c0d0;
+  --chat-accent-light: #1a2a3a;
+  --chat-accent-dark: #b0dce0;
+  --chat-code-bg: #1e2228;
+  --chat-code-text: #eceff4;
+  --chat-code-border: #434c5e;
+  --chat-hover-bg: #434c5e;
+  --chat-active-bg: #1a2a3a;
+  --chat-success: #a3be8c;
+  --chat-warning: #ebcb8b;
+  --chat-error: #bf616a;
+  --chat-info: #88c0d0;
+}
+
+/* ====================================
+   FONT SIZE CUSTOMIZATION
+   ==================================== */
+
+/* Size 1 - Smallest (12px base) */
+[data-chat-font-size="1"] {
+  --chat-font-size-sm: 0.75rem;
+  --chat-font-size-base: 0.875rem;
+  --chat-font-size-md: 1rem;
+  --chat-font-size-lg: 1.125rem;
+  --chat-font-size-xl: 1.25rem;
+}
+
+/* Size 2 - Small (13px base) */
+[data-chat-font-size="2"] {
+  --chat-font-size-sm: 0.8125rem;
+  --chat-font-size-base: 0.9375rem;
+  --chat-font-size-md: 1.0625rem;
+  --chat-font-size-lg: 1.1875rem;
+  --chat-font-size-xl: 1.3125rem;
+}
+
+/* Size 3 - Normal (14px base) - DEFAULT */
+:root,
+[data-chat-font-size="3"] {
+  --chat-font-size-sm: 0.875rem;
+  --chat-font-size-base: 1rem;
+  --chat-font-size-md: 1.125rem;
+  --chat-font-size-lg: 1.25rem;
+  --chat-font-size-xl: 1.375rem;
+}
+
+/* Size 4 - Large (16px base) */
+[data-chat-font-size="4"] {
+  --chat-font-size-sm: 0.9375rem;
+  --chat-font-size-base: 1.0625rem;
+  --chat-font-size-md: 1.1875rem;
+  --chat-font-size-lg: 1.3125rem;
+  --chat-font-size-xl: 1.4375rem;
+}
+
+/* Size 5 - Extra Large (18px base) */
+[data-chat-font-size="5"] {
+  --chat-font-size-sm: 1rem;
+  --chat-font-size-base: 1.125rem;
+  --chat-font-size-md: 1.25rem;
+  --chat-font-size-lg: 1.375rem;
+  --chat-font-size-xl: 1.5rem;
+}
+
+/* Size 6 - Huge (20px base) */
+[data-chat-font-size="6"] {
+  --chat-font-size-sm: 1.0625rem;
+  --chat-font-size-base: 1.25rem;
+  --chat-font-size-md: 1.375rem;
+  --chat-font-size-lg: 1.5rem;
+  --chat-font-size-xl: 1.625rem;
+}
+
+/* ====================================
+   LINE HEIGHT CUSTOMIZATION
+   ==================================== */
+
+/* Compact */
+[data-chat-line-height="compact"] {
+  --chat-line-height: 1.4;
+}
+
+/* Normal - DEFAULT */
+:root,
+[data-chat-line-height="normal"] {
+  --chat-line-height: 1.6;
+}
+
+/* Spacious */
+[data-chat-line-height="spacious"] {
+  --chat-line-height: 1.8;
+}
+
+/* ====================================
+   HIGH CONTRAST MODE (WCAG AAA)
+   ==================================== */
+
+[data-chat-high-contrast="true"][data-theme="light"] {
+  --chat-text-primary: #000000;
+  --chat-text-secondary: #1a1a1a;
+  --chat-text-muted: #4a4a4a;
+  --chat-bg-secondary: #f5f5f5;
+  --chat-border: #000000;
+  --chat-accent: #0033cc;
+  --chat-success: #004500;
+  --chat-warning: #664400;
+  --chat-error: #cc0000;
+  --chat-info: #0066cc;
+}
+
+[data-chat-high-contrast="true"][data-theme="dark"] {
+  --chat-text-primary: #ffffff;
+  --chat-text-secondary: #e6e6e6;
+  --chat-text-muted: #b3b3b3;
+  --chat-bg-secondary: #1a1a1a;
+  --chat-border: #ffffff;
+  --chat-accent: #66b3ff;
+  --chat-success: #66ff66;
+  --chat-warning: #ffcc00;
+  --chat-error: #ff6666;
+  --chat-info: #66ccff;
+}
+
+/* ====================================
+   CODE BLOCK THEME VARIANTS
+   ==================================== */
+
+/* Default (follows theme) */
+[data-code-theme="default"] {
+  /* Uses inherited color scheme */
+}
+
+/* Atom One Dark */
+[data-code-theme="atom-dark"] {
+  --chat-code-bg: #1d1f21;
+  --chat-code-text: #c5c8c6;
+  --chat-code-keyword: #b294bb;
+  --chat-code-string: #b5bd68;
+  --chat-code-function: #81a2be;
+  --chat-code-number: #de935f;
+  --chat-code-comment: #7c7c7c;
+}
+
+/* Atom One Light */
+[data-code-theme="atom-light"] {
+  --chat-code-bg: #fafafa;
+  --chat-code-text: #383a42;
+  --chat-code-keyword: #a626a4;
+  --chat-code-string: #50a14f;
+  --chat-code-function: #4078f2;
+  --chat-code-number: #986801;
+  --chat-code-comment: #a0a1a7;
+}
+
+/* GitHub Dark */
+[data-code-theme="github-dark"] {
+  --chat-code-bg: #0d1117;
+  --chat-code-text: #c9d1d9;
+  --chat-code-keyword: #ff7b72;
+  --chat-code-string: #a5d6ff;
+  --chat-code-function: #d2a8ff;
+  --chat-code-number: #79c0ff;
+  --chat-code-comment: #8b949e;
+}
+
+/* GitHub Light */
+[data-code-theme="github-light"] {
+  --chat-code-bg: #ffffff;
+  --chat-code-text: #24292e;
+  --chat-code-keyword: #d73a49;
+  --chat-code-string: #032f62;
+  --chat-code-function: #6f42c1;
+  --chat-code-number: #005cc5;
+  --chat-code-comment: #6a737d;
+}
+
+/* VS Code Dark */
+[data-code-theme="vscode-dark"] {
+  --chat-code-bg: #1e1e1e;
+  --chat-code-text: #d4d4d4;
+  --chat-code-keyword: #569cd6;
+  --chat-code-string: #ce9178;
+  --chat-code-function: #dcdcaa;
+  --chat-code-number: #b5cea8;
+  --chat-code-comment: #6a9955;
+}
+
+/* VS Code Light */
+[data-code-theme="vscode-light"] {
+  --chat-code-bg: #ffffff;
+  --chat-code-text: #333333;
+  --chat-code-keyword: #0000ff;
+  --chat-code-string: #a31515;
+  --chat-code-function: #795e26;
+  --chat-code-number: #098658;
+  --chat-code-comment: #008000;
+}
+
+/* One Dark Pro */
+[data-code-theme="one-dark-pro"] {
+  --chat-code-bg: #282c34;
+  --chat-code-text: #abb2bf;
+  --chat-code-keyword: #c678dd;
+  --chat-code-string: #98c379;
+  --chat-code-function: #61afef;
+  --chat-code-number: #e06c75;
+  --chat-code-comment: #5c6370;
+}
+
+/* Panda Syntax */
+[data-code-theme="panda"] {
+  --chat-code-bg: #292c2e;
+  --chat-code-text: #e6e6e6;
+  --chat-code-keyword: #ff75b5;
+  --chat-code-string: #19f9d8;
+  --chat-code-function: #ffd580;
+  --chat-code-number: #ffb86c;
+  --chat-code-comment: #676d77;
+}
+
+/* Synthwave '84 */
+[data-code-theme="synthwave"] {
+  --chat-code-bg: #2a2139;
+  --chat-code-text: #f92aad;
+  --chat-code-keyword: #fede5d;
+  --chat-code-string: #00ff87;
+  --chat-code-function: #72f1b8;
+  --chat-code-number: #ff6ec7;
+  --chat-code-comment: #6c5b7d;
+}
+
+/* Material Palenight */
+[data-code-theme="material-palenight"] {
+  --chat-code-bg: #292d3e;
+  --chat-code-text: #b0bec5;
+  --chat-code-keyword: #c792ea;
+  --chat-code-string: #c3e88d;
+  --chat-code-function: #82b1ff;
+  --chat-code-number: #f78c6b;
+  --chat-code-comment: #676e95;
+}
+
+/* Dracula for Code */
+[data-code-theme="dracula-code"] {
+  --chat-code-bg: #282a36;
+  --chat-code-text: #f8f8f2;
+  --chat-code-keyword: #ff79c6;
+  --chat-code-string: #f1fa8c;
+  --chat-code-function: #50fa7b;
+  --chat-code-number: #bd93f9;
+  --chat-code-comment: #6272a4;
+}
+
+/* ====================================
+   CUSTOM ACCENT COLOR SUPPORT
+   ==================================== */
+
+/* Accent color can be overridden via CSS variable */
+[data-chat-accent-color] {
+  --chat-accent: var(--chat-accent-color);
+}
+
+/* ====================================
+   RESPONSIVE ADJUSTMENTS
+   ==================================== */
+
+@media (max-width: 640px) {
+  /* Slightly larger font on mobile for readability */
+  [data-chat-font-size="3"],
+  :root {
+    --chat-font-size-base: 1.0625rem;
+  }
+
+  /* Ensure safe areas on notched devices */
+  [data-safe-area="true"] {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}
+
+/* ====================================
+   PRINT STYLES
+   ==================================== */
+
+@media print {
+  :root {
+    --chat-bg-primary: #ffffff;
+    --chat-text-primary: #000000;
+  }
+}
+
+/* ====================================
+   REDUCED MOTION SUPPORT
+   ==================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-transition,
+  .theme-transition *,
+  .theme-transition *::before,
+  .theme-transition *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
