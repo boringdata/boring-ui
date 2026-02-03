@@ -180,10 +180,16 @@ class S3Storage(Storage):
         full_prefix = f'{self.bucket}/{prefix}' if prefix else self.bucket
         files = self.fs.ls(full_prefix)
         entries = []
+        # Calculate the key prefix to strip from full paths
+        strip_prefix = f'{self.bucket}/'
+        if self.prefix:
+            strip_prefix += f'{self.prefix}/'
         for f in files:
             name = f.split('/')[-1]
             is_dir = f.endswith('/')
-            entries.append({'name': name, 'path': f, 'is_dir': is_dir})
+            # Return relative path (strip bucket and configured prefix)
+            rel_path = f[len(strip_prefix):] if f.startswith(strip_prefix) else f
+            entries.append({'name': name, 'path': rel_path, 'is_dir': is_dir})
         return entries
 
     def read_file(self, path: Path) -> str:
