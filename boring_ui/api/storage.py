@@ -81,7 +81,7 @@ class LocalStorage(Storage):
         base = self._abs(path)
         entries = []
         try:
-            for child in sorted(base.iterdir()):
+            for child in base.iterdir():
                 entry = {
                     'name': child.name,
                     'path': str(child.relative_to(self.root)),
@@ -95,7 +95,8 @@ class LocalStorage(Storage):
                 entries.append(entry)
         except FileNotFoundError:
             return []
-        return entries
+        # Sort: directories first, then alphabetically by name (case-insensitive)
+        return sorted(entries, key=lambda e: (not e['is_dir'], e['name'].lower()))
 
     def read_file(self, path: Path) -> str:
         p = self._abs(path)
