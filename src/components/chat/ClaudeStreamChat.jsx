@@ -22,54 +22,21 @@ import GlobToolRenderer from './GlobToolRenderer'
 import GrepToolRenderer from './GrepToolRenderer'
 import ToolUseBlock, { ToolOutput } from './ToolUseBlock'
 import PermissionPanel from './PermissionPanel'
-import { getStorageKey, getItem, setItem, STORAGE_KEYS } from '../../utils/storage'
 import './styles.css'
+import { buildApiUrl, getWsBase } from '../../utils/apiBase'
 
-/**
- * ClaudeStreamChat - Reusable Claude Code chat component
- *
- * A standalone, configurable chat component that implements the Claude Code UI patterns
- * including message rendering, tool use blocks, permission panels, and streaming support.
- *
- * @example
- * // Basic usage with API URL
- * <ClaudeStreamChat apiUrl="http://localhost:3000" />
- *
- * @example
- * // With custom WebSocket URL and session management
- * <ClaudeStreamChat
- *   apiUrl="http://localhost:3000"
- *   wsUrl="ws://localhost:3000/ws/claude-stream"
- *   sessionId={currentSessionId}
- *   onSessionChange={(id) => setCurrentSessionId(id)}
- *   onMessage={(msg) => console.log('Message:', msg)}
- *   className="my-chat-panel"
- * />
- *
- * Props interface:
- * @param {string} [apiUrl] - Base API URL (e.g., 'http://localhost:3000'). Falls back to VITE_API_URL env var.
- * @param {string} [wsUrl] - WebSocket URL override. If not provided, derived from apiUrl.
- * @param {string} [sessionId] - Initial/controlled session ID
- * @param {function} [onSessionChange] - Callback when session changes: (id: string) => void
- * @param {function} [onMessage] - Callback for all messages from the stream: (message: any) => void
- * @param {string} [className] - Additional CSS class name for the root container
- * @param {boolean} [showSessionPicker=true] - Whether to show the session picker UI
- * @param {boolean} [resume=false] - Whether to resume existing session
- * @param {function} [onSessionStarted] - Callback when session is established: (sessionId: string) => void
- *
- * Features:
- * - Streaming message support with real-time updates
- * - Tool use blocks (Bash, Read, Write, Edit, Grep, Glob)
- * - Permission panel for tool approvals
- * - Slash commands menu (/, @)
- * - File attachments and image pasting
- * - Session management (new, switch, resume)
- * - Thinking mode support
- * - Model selection (Sonnet, Opus, Haiku)
- * - Error handling with retry/restart options
- * - Resizable input area
- * - Dark theme matching Claude Code VSCode extension
- */
+// Generate a valid UUID, with fallback for environments without crypto.randomUUID
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  // Fallback: generate UUID v4 format using Math.random
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
 
 // Helper to safely find content in arrays (content might be a string sometimes)
 const findContent = (content, predicate) => {
@@ -127,11 +94,12 @@ const DEFAULT_SLASH_COMMANDS = [
   { id: 'restart', label: '/restart', description: 'Restart session', group: 'commands', isAction: true },
 ]
 
+const HISTORY_STORAGE_PREFIX = 'kurt-web-claude-stream-history'
 const HISTORY_LIMIT = 200
 
 const getHistoryKey = (sessionId) => {
   if (!sessionId) return null
-  return getStorageKey(`${STORAGE_KEYS.CLAUDE_STREAM_HISTORY}-${sessionId}`)
+  return `${HISTORY_STORAGE_PREFIX}-${sessionId}`
 }
 
 const loadStoredHistory = (sessionId) => {
@@ -183,6 +151,7 @@ const normalizeSlashCommands = (commands) => {
   return [...DEFAULT_SLASH_COMMANDS, ...extraCommands]
 }
 
+const CLI_OPTIONS_KEY = 'kurt-web-claude-cli-options'
 const DEFAULT_CLI_OPTIONS = {
   model: '',
   maxThinkingTokens: '',
@@ -224,39 +193,14 @@ const buildFileSpec = (attachment) => {
   return `${attachment.fileId}:${attachment.relativePath}`
 }
 
-/**
- * Get API base URL - supports both prop-based and environment variable configuration
- * @param {string} [configuredApiUrl] - API URL from props
- * @returns {string} - Normalized API base URL
- */
-const getApiBase = (configuredApiUrl) => {
-  const apiUrl = configuredApiUrl || import.meta.env.VITE_API_URL || ''
-  return apiUrl ? apiUrl.replace(/\/$/, '') : ''
-}
-
-/**
- * Build WebSocket URL for Claude streaming
- * @param {Object} params - Connection parameters
- * @param {string} params.sessionId - Session ID
- * @param {string} params.mode - Permission mode
- * @param {boolean} params.forceNew - Force new session
- * @param {boolean} params.resume - Resume existing session
- * @param {Object} params.options - CLI options
- * @param {string[]} params.fileSpecs - File specifications
- * @param {string} [params.apiUrl] - API URL from props
- * @param {string} [params.wsUrl] - WebSocket URL override
- * @returns {string} - WebSocket URL
- */
-const buildWsUrl = ({
+const buildWsUrl = (
   sessionId,
   mode,
   forceNew = false,
   resume = false,
   options = {},
-  fileSpecs = [],
-  apiUrl: configuredApiUrl,
-  wsUrl: configuredWsUrl,
-}) => {
+  fileSpecs = []
+) => {
   const queryParams = new URLSearchParams()
   if (sessionId) queryParams.set('session_id', sessionId)
   if (mode) queryParams.set('mode', mode)
@@ -274,30 +218,14 @@ const buildWsUrl = ({
     })
   }
   const params = queryParams.toString() ? `?${queryParams.toString()}` : ''
-
-  // Use explicit wsUrl if provided
-  if (configuredWsUrl) {
-    return `${configuredWsUrl.replace(/\/$/, '')}${params}`
-  }
-
-  // Derive from apiUrl
-  const apiUrl = configuredApiUrl || import.meta.env.VITE_API_URL || ''
-  if (apiUrl) {
-    const url = new URL(apiUrl)
-    const protocol = url.protocol === 'https:' ? 'wss' : 'ws'
-    return `${protocol}://${url.host}/ws/claude-stream${params}`
-  }
-
-  // Fall back to current host
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const host = window.location.host
-  return `${protocol}://${host}/ws/claude-stream${params}`
+  const wsBase = getWsBase()
+  return `${wsBase}/ws/claude-stream${params}`
 }
 
-const uploadAttachment = async (file, apiUrl) => {
+const uploadAttachment = async (file) => {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(`${getApiBase(apiUrl)}/api/attachments`, {
+  const res = await fetch(buildApiUrl('/api/attachments'), {
     method: 'POST',
     body: formData,
   })
@@ -307,9 +235,9 @@ const uploadAttachment = async (file, apiUrl) => {
   return res.json()
 }
 
-const fetchSessions = async (apiUrl) => {
+const fetchSessions = async () => {
   try {
-    const res = await fetch(`${getApiBase(apiUrl)}/api/sessions`)
+    const res = await fetch(buildApiUrl('/api/sessions'))
     if (!res.ok) return []
     const data = await res.json()
     return data.sessions || []
@@ -318,10 +246,10 @@ const fetchSessions = async (apiUrl) => {
   }
 }
 
-const searchFiles = async (query, onError, apiUrl) => {
+const searchFiles = async (query, onError) => {
   if (!query || query.length < 1) return []
   try {
-    const res = await fetch(`${getApiBase(apiUrl)}/api/search?q=${encodeURIComponent(query)}`)
+    const res = await fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}`))
     if (!res.ok) {
       onError?.({
         title: 'File search failed',
@@ -353,9 +281,9 @@ const searchFiles = async (query, onError, apiUrl) => {
   }
 }
 
-const fetchMentionDefaults = async (onError, apiUrl) => {
+const fetchMentionDefaults = async (onError) => {
   try {
-    const res = await fetch(`${getApiBase(apiUrl)}/api/tree?path=.`)
+    const res = await fetch(buildApiUrl('/api/tree?path=.'))
     if (!res.ok) {
       onError?.({
         title: 'File list failed',
@@ -389,9 +317,9 @@ const fetchMentionDefaults = async (onError, apiUrl) => {
   }
 }
 
-const createNewSession = async (apiUrl) => {
+const createNewSession = async () => {
   try {
-    const res = await fetch(`${getApiBase(apiUrl)}/api/sessions`, { method: 'POST' })
+    const res = await fetch(buildApiUrl('/api/sessions'), { method: 'POST' })
     if (!res.ok) return null
     const data = await res.json()
     return data.session_id
@@ -400,9 +328,9 @@ const createNewSession = async (apiUrl) => {
   }
 }
 
-const fetchPendingApprovals = async (apiUrl) => {
+const fetchPendingApprovals = async () => {
   try {
-    const res = await fetch(`${getApiBase(apiUrl)}/api/approval/pending`)
+    const res = await fetch(buildApiUrl('/api/approval/pending'))
     if (!res.ok) return []
     const data = await res.json()
     return data.requests || []
@@ -411,9 +339,9 @@ const fetchPendingApprovals = async (apiUrl) => {
   }
 }
 
-const submitApprovalDecision = async (requestId, decision, reason, apiUrl) => {
+const submitApprovalDecision = async (requestId, decision, reason) => {
   try {
-    const res = await fetch(`${getApiBase(apiUrl)}/api/approval/decision`, {
+    const res = await fetch(buildApiUrl('/api/approval/decision'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ request_id: requestId, decision, reason }),
@@ -532,11 +460,6 @@ const useClaudeStreamRuntime = (
   clearComposerRef,
   onSettingsSync,
   clearHistoryRef,
-  // New props for reusability
-  apiUrl,
-  wsUrl,
-  onSessionChange,
-  onMessage,
 ) => {
   const wsRef = useRef(null)
   const queueRef = useRef([])
@@ -551,19 +474,9 @@ const useClaudeStreamRuntime = (
   const clearFileAttachmentsRef = useRef(clearFileAttachments)
   const imageCacheRef = useRef(imageCache)
   const permissionToolRef = useRef(new Map())
-  const apiUrlRef = useRef(apiUrl)
-  const wsUrlRef = useRef(wsUrl)
   const [sessionName, setSessionName] = useState('New conversation')
   const [isConnected, setIsConnected] = useState(false)
   const [restartCounter, setRestartCounter] = useState(0)
-
-  // Keep URL refs updated
-  useEffect(() => {
-    apiUrlRef.current = apiUrl
-  }, [apiUrl])
-  useEffect(() => {
-    wsUrlRef.current = wsUrl
-  }, [wsUrl])
 
   useEffect(() => {
     return () => {
@@ -648,16 +561,7 @@ const useClaudeStreamRuntime = (
 
     return new Promise((resolve, reject) => {
       const shouldForceNew = optionsChanged || attachmentsChanged
-      const url = buildWsUrl({
-        sessionId,
-        mode: useMode,
-        forceNew: shouldForceNew,
-        resume: shouldResume,
-        options: optionsRef.current,
-        fileSpecs,
-        apiUrl: apiUrlRef.current,
-        wsUrl: wsUrlRef.current,
-      })
+      const url = buildWsUrl(sessionId, useMode, shouldForceNew, shouldResume, optionsRef.current, fileSpecs)
       console.log('[ClaudeStream] Connecting to:', url)
       const ws = new WebSocket(url)
       wsRef.current = ws
@@ -734,15 +638,11 @@ const useClaudeStreamRuntime = (
         if (payload.type === 'system' && payload.subtype === 'connected' && payload.session_id) {
           setSessionName(payload.session_id)
           setCurrentSessionId(payload.session_id)
-          // Notify parent of session change
-          onSessionChange?.(payload.session_id)
           // Sync settings from backend
           if (payload.settings) {
             onSettingsSync?.(payload.settings)
           }
         }
-        // Forward all messages to callback if provided
-        onMessage?.(payload)
         if (payload.type === 'system' && payload.subtype === 'error') {
           onError?.({
             title: 'Claude session error',
@@ -772,9 +672,8 @@ const useClaudeStreamRuntime = (
           }
           setIsConnected(false)
           // Generate new session ID and reconnect
-          const newSessionId = crypto.randomUUID()
+          const newSessionId = generateUUID()
           setCurrentSessionId(newSessionId)
-          onSessionChange?.(newSessionId)
           resumeRef.current = false
           // Explicitly reconnect after state update
           setTimeout(() => {
@@ -797,7 +696,7 @@ const useClaudeStreamRuntime = (
         }
       }
     })
-  }, [setCurrentSessionId, onControlMessage, onError, onSlashCommands, onSettingsSync, onSessionChange, onMessage])
+  }, [setCurrentSessionId, onControlMessage, onError, onSlashCommands, onSettingsSync])
 
   const nextPayload = useCallback(async () => {
     // If connection is closed and queue is empty, return null to signal termination
@@ -847,17 +746,15 @@ const useClaudeStreamRuntime = (
       .map((attachment) => buildFileSpec(attachment))
       .filter(Boolean)
     // Reconnect with force_new to restart CLI with new settings
-    const wsUrlValue = buildWsUrl({
-      sessionId: currentSessionId,
-      mode: modeRef.current,
-      forceNew: true,
-      resume: resumeRef.current,
-      options: optionsRef.current,
+    const wsUrl = buildWsUrl(
+      currentSessionId,
+      modeRef.current,
+      true,
+      resumeRef.current,
+      optionsRef.current,
       fileSpecs,
-      apiUrl: apiUrlRef.current,
-      wsUrl: wsUrlRef.current,
-    })
-    const ws = new WebSocket(wsUrlValue)
+    ) // force_new=true
+    const ws = new WebSocket(wsUrl)
     wsRef.current = ws
     ws.onopen = () => {
       if (wsRef.current !== ws) return
@@ -888,7 +785,6 @@ const useClaudeStreamRuntime = (
         if (payload.type === 'system' && payload.subtype === 'connected') {
           console.log('[ClaudeStream] Session restarted with new permissions')
         }
-        onMessage?.(payload)
         queueRef.current?.push(payload)
         const waiter = waitersRef.current?.shift()
         if (waiter) waiter()
@@ -897,7 +793,7 @@ const useClaudeStreamRuntime = (
       }
     }
     return ws
-  }, [currentSessionId, onMessage])
+  }, [currentSessionId])
 
   // Send approval decision through WebSocket
   // For control_response: decision is "allow" or "deny", toolInput is the original tool input
@@ -1297,37 +1193,50 @@ const useClaudeStreamRuntime = (
         if (payload.type === 'result') {
           running = false
 
-          const finalText = extractResultText(payload)
-          if (finalText && !hasAssistantText) {
-            parts.push({ type: 'text', text: finalText })
+          // Handle error_during_execution - display errors to the user
+          if (payload.subtype === 'error_during_execution' || payload.errors?.length > 0) {
+            const errors = payload.errors || []
+            const errorMessages = errors.map(e => typeof e === 'string' ? e : e.message || JSON.stringify(e))
+            const errorText = errorMessages.length > 0
+              ? `⚠️ Error: ${errorMessages.join('\n')}`
+              : '⚠️ An error occurred during execution'
+            console.log('[ClaudeStream] Error during execution:', errorText)
+            parts.push({ type: 'text', text: errorText })
             textPartIndex = parts.length - 1
-          }
-
-          // Add the latest command output (if any) now that we have the final result
-          if (latestCommandOutput) {
-            console.log('[ClaudeStream] Adding final output:', latestCommandOutput.slice(0, 50))
-            parts.push({ type: 'text', text: latestCommandOutput })
-            textPartIndex = parts.length - 1
-          }
-
-          // Check for permission denials BEFORE signaling end
-          // In --print mode, Claude reports denied tools in the result
-          if (payload.permission_denials?.length > 0) {
-            console.log('[ClaudeStream] Permission denials found:', JSON.stringify(payload.permission_denials, null, 2))
-            // Show the first denied tool for user to grant permission
-            const denial = payload.permission_denials[0]
-            onStreamingChange?.({
-              type: 'permission_denied',
-              payload: {
-                tool_name: denial.tool_name,
-                tool_use_id: denial.tool_use_id,
-                tool_input: denial.tool_input,
-              },
-            })
-            // Don't call onStreamingChange(false) - keep showing the panel
-          } else {
-            // No denials, signal end of streaming
             onStreamingChange?.(false)
+          } else {
+            const finalText = extractResultText(payload)
+            if (finalText && !hasAssistantText) {
+              parts.push({ type: 'text', text: finalText })
+              textPartIndex = parts.length - 1
+            }
+
+            // Add the latest command output (if any) now that we have the final result
+            if (latestCommandOutput) {
+              console.log('[ClaudeStream] Adding final output:', latestCommandOutput.slice(0, 50))
+              parts.push({ type: 'text', text: latestCommandOutput })
+              textPartIndex = parts.length - 1
+            }
+
+            // Check for permission denials BEFORE signaling end
+            // In --print mode, Claude reports denied tools in the result
+            if (payload.permission_denials?.length > 0) {
+              console.log('[ClaudeStream] Permission denials found:', JSON.stringify(payload.permission_denials, null, 2))
+              // Show the first denied tool for user to grant permission
+              const denial = payload.permission_denials[0]
+              onStreamingChange?.({
+                type: 'permission_denied',
+                payload: {
+                  tool_name: denial.tool_name,
+                  tool_use_id: denial.tool_use_id,
+                  tool_input: denial.tool_input,
+                },
+              })
+              // Don't call onStreamingChange(false) - keep showing the panel
+            } else {
+              // No denials, signal end of streaming
+              onStreamingChange?.(false)
+            }
           }
         }
 
@@ -1543,7 +1452,6 @@ const ComposerShell = ({
   onModelSelect,
   clearComposerRef,
   inputAreaHeight,
-  apiUrl,
 }) => {
   const api = useAssistantApi()
   const composerApi = useMemo(() => api.composer(), [api])
@@ -1657,10 +1565,10 @@ const ComposerShell = ({
 
     if (query.length < 1) {
       timerId = window.setTimeout(() => {
-        fetchMentionDefaults(onError, apiUrl).then(handleResults)
+        fetchMentionDefaults(onError).then(handleResults)
       }, 150)
     } else {
-      searchFiles(query, onError, apiUrl).then(handleResults)
+      searchFiles(query, onError).then(handleResults)
     }
 
     return () => {
@@ -1669,7 +1577,7 @@ const ComposerShell = ({
         window.clearTimeout(timerId)
       }
     }
-  }, [showAtMenu, menuFilter, onError, apiUrl])
+  }, [showAtMenu, menuFilter, onError])
 
   const handleMenuSelect = (item, type) => {
     if (type === 'at') {
@@ -2421,7 +2329,6 @@ const Thread = ({
   onToggleThinking,
   onModelSelect,
   clearComposerRef,
-  apiUrl,
 }) => {
   const [showModeMenu, setShowModeMenu] = useState(false)
   const sessionDropdownRef = useRef(null)
@@ -2592,41 +2499,27 @@ const Thread = ({
         onModelSelect={onModelSelect}
         clearComposerRef={clearComposerRef}
         inputAreaHeight={inputAreaHeight}
-        apiUrl={apiUrl}
       />
     </ChatPanel>
   )
 }
 
 export default function ClaudeStreamChat({
-  // URL configuration props
-  apiUrl,
-  wsUrl,
-  // Session management props
-  sessionId: initialSessionId = null,
-  onSessionChange,
-  // Message callback
-  onMessage,
-  // Styling
-  className,
-  // Legacy props (maintained for backward compatibility)
-  initialSessionId: legacyInitialSessionId,
+  initialSessionId = null,
   provider = 'claude',
   resume = false,
   onSessionStarted,
   showSessionPicker = true,
 }) {
-  // Support both new and legacy prop names
-  const effectiveSessionId = initialSessionId ?? legacyInitialSessionId ?? null
   const [attachments, setAttachments] = useState([])
   const [contextFiles, setContextFiles] = useState([])
   const [sessions, setSessions] = useState([])
-  const [currentSessionId, setCurrentSessionId] = useState(effectiveSessionId)
+  const [currentSessionId, setCurrentSessionId] = useState(initialSessionId)
   const [showSessionDropdown, setShowSessionDropdown] = useState(false)
   const [mode, setMode] = useState('ask')
   const [cliOptions, setCliOptions] = useState(() => {
     try {
-      const raw = getItem(STORAGE_KEYS.CLI_OPTIONS)
+      const raw = localStorage.getItem(CLI_OPTIONS_KEY)
       if (raw) {
         return { ...DEFAULT_CLI_OPTIONS, ...JSON.parse(raw) }
       }
@@ -2646,23 +2539,27 @@ export default function ClaudeStreamChat({
   const retryMessageRef = useRef(null)
   const modeChangeRef = useRef(false)
 
-  // Update session ID when sessionId prop changes
+  // Update session ID when initialSessionId prop changes
   useEffect(() => {
-    if (effectiveSessionId && effectiveSessionId !== currentSessionId) {
-      setCurrentSessionId(effectiveSessionId)
+    if (initialSessionId && initialSessionId !== currentSessionId) {
+      setCurrentSessionId(initialSessionId)
     }
-  }, [effectiveSessionId])
+  }, [initialSessionId])
 
   useEffect(() => {
-    setItem(STORAGE_KEYS.CLI_OPTIONS, JSON.stringify(normalizeStoredOptions(cliOptions)))
+    try {
+      localStorage.setItem(CLI_OPTIONS_KEY, JSON.stringify(normalizeStoredOptions(cliOptions)))
+    } catch {
+      // Ignore storage errors
+    }
   }, [cliOptions])
 
   // Fetch sessions on mount and when dropdown opens
   useEffect(() => {
     if (showSessionDropdown) {
-      fetchSessions(apiUrl).then(setSessions)
+      fetchSessions().then(setSessions)
     }
-  }, [showSessionDropdown, apiUrl])
+  }, [showSessionDropdown])
 
   // Note: Approval polling removed - using native stream-json permission messages instead
   // The hook-based approach can be re-enabled by uncommenting and configuring .claude/settings.json hooks
@@ -2892,11 +2789,6 @@ export default function ClaudeStreamChat({
     clearComposerRef,
     handleSettingsSync,
     clearHistoryRef,
-    // New props for reusability
-    apiUrl,
-    wsUrl,
-    onSessionChange,
-    onMessage,
   )
   const streamStartedRef = useRef(false)
 
@@ -3022,12 +2914,11 @@ export default function ClaudeStreamChat({
   }, [])
 
   const handleNewSession = useCallback(async () => {
-    const newId = await createNewSession(apiUrl)
+    const newId = await createNewSession()
     if (newId) {
       switchSession(newId, false)
-      onSessionChange?.(newId)
       // Refresh sessions list
-      fetchSessions(apiUrl).then(setSessions)
+      fetchSessions().then(setSessions)
     } else {
       logError({
         title: 'Could not start a new session',
@@ -3041,7 +2932,7 @@ export default function ClaudeStreamChat({
         canRestart: true,
       })
     }
-  }, [switchSession, logError, apiUrl, onSessionChange])
+  }, [switchSession, logError])
 
   const handleSelectSession = useCallback((sessionId) => {
     switchSession(sessionId)
@@ -3062,7 +2953,7 @@ export default function ClaudeStreamChat({
           status: 'uploading',
         },
       ])
-      uploadAttachment(file, apiUrl)
+      uploadAttachment(file)
         .then((data) => {
           setFileAttachments((prev) => prev.map((item) => (
             item.id === tempId
@@ -3100,7 +2991,7 @@ export default function ClaudeStreamChat({
           })
         })
     })
-  }, [logError, apiUrl])
+  }, [logError])
   const handleRegisterImages = useCallback((image) => {
     if (!image?.id) return
     setImageCache((prev) => ({ ...prev, [image.id]: image }))
@@ -3133,7 +3024,7 @@ export default function ClaudeStreamChat({
   const isThinkingEnabled = Boolean(cliOptions.maxThinkingTokens && Number(cliOptions.maxThinkingTokens) > 0)
 
   return (
-    <div className={className} style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+    <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
       <style>{chatThemeVars}</style>
       <RuntimeProvider key={runtimeKey} adapter={adapter} initialMessages={historySeed}>
         <HistoryPersister sessionId={currentSessionId || sessionName} />
@@ -3170,7 +3061,6 @@ export default function ClaudeStreamChat({
           onToggleThinking={handleToggleThinking}
           onModelSelect={handleModelSelect}
           clearComposerRef={clearComposerRef}
-          apiUrl={apiUrl}
         />
         <ErrorLogModal
           isOpen={showErrorLog}

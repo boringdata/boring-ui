@@ -115,4 +115,35 @@ def create_app(
             },
         }
 
+    # Project endpoint (expected by frontend)
+    @app.get('/api/project')
+    async def get_project():
+        """Get project root for the frontend."""
+        return {
+            'root': str(config.workspace_root),
+        }
+
+    # Claude session endpoints (aligned with kurt-core)
+    @app.get('/api/sessions')
+    async def list_sessions():
+        """List active Claude stream sessions."""
+        from .stream_bridge import _SESSION_REGISTRY
+        return {
+            'sessions': [
+                {
+                    'id': session_id,
+                    'alive': session.is_alive(),
+                    'clients': len(session.clients),
+                    'history_count': len(session.history),
+                }
+                for session_id, session in _SESSION_REGISTRY.items()
+            ],
+        }
+
+    @app.post('/api/sessions')
+    async def create_session():
+        """Create a new session ID (client will connect via WebSocket)."""
+        import uuid
+        return {'session_id': str(uuid.uuid4())}
+
     return app

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Copy } from 'lucide-react'
 import Terminal from '../components/Terminal'
-import { getItem, setItem, removeItem, STORAGE_KEYS } from '../utils/storage'
+
+const SESSION_STORAGE_KEY = 'kurt-web-shell-sessions'
+const ACTIVE_SESSION_KEY = 'kurt-web-shell-active'
 
 const createSessionId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -12,7 +14,7 @@ const createSessionId = () => {
 
 const loadSessions = () => {
   try {
-    const raw = getItem(STORAGE_KEYS.SHELL_SESSIONS)
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed) || parsed.length === 0) return null
@@ -24,7 +26,7 @@ const loadSessions = () => {
 
 const loadActiveSession = () => {
   try {
-    const raw = getItem(STORAGE_KEYS.SHELL_ACTIVE)
+    const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
     if (!raw) return null
     const id = Number(raw)
     return Number.isNaN(id) ? null : id
@@ -160,15 +162,19 @@ export default function ShellTerminalPanel() {
   }, [sessions, activeId])
 
   useEffect(() => {
-    if (sessions.length === 0) {
-      removeItem(STORAGE_KEYS.SHELL_SESSIONS)
-    } else {
-      setItem(STORAGE_KEYS.SHELL_SESSIONS, JSON.stringify(serializeSessions(sessions)))
-    }
-    if (activeId == null) {
-      removeItem(STORAGE_KEYS.SHELL_ACTIVE)
-    } else {
-      setItem(STORAGE_KEYS.SHELL_ACTIVE, String(activeId))
+    try {
+      if (sessions.length === 0) {
+        localStorage.removeItem(SESSION_STORAGE_KEY)
+      } else {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(serializeSessions(sessions)))
+      }
+      if (activeId == null) {
+        localStorage.removeItem(ACTIVE_SESSION_KEY)
+      } else {
+        localStorage.setItem(ACTIVE_SESSION_KEY, String(activeId))
+      }
+    } catch {
+      // Ignore storage errors
     }
   }, [sessions, activeId])
 

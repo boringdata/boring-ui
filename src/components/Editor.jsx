@@ -591,6 +591,9 @@ export default function Editor({
       StarterKit.configure({
         // Disable default codeBlock, we use CodeBlockLowlight for syntax highlighting
         codeBlock: false,
+        // Disable extensions we configure separately to avoid duplicate extension warnings
+        link: false,
+        underline: false,
       }),
       Underline,
       Link.configure({
@@ -746,7 +749,7 @@ export default function Editor({
   }, [])
 
   const handleDrop = useCallback((event) => {
-    const fileData = event.dataTransfer.getData('application/x-boring-ui-file')
+    const fileData = event.dataTransfer.getData('application/x-kurt-file')
     if (fileData && editor) {
       event.preventDefault()
       try {
@@ -762,7 +765,7 @@ export default function Editor({
   }, [editor])
 
   const handleDragOver = useCallback((event) => {
-    if (event.dataTransfer.types.includes('application/x-boring-ui-file')) {
+    if (event.dataTransfer.types.includes('application/x-kurt-file')) {
       event.preventDefault()
       event.stopPropagation()
     }

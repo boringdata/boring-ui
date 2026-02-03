@@ -184,7 +184,6 @@ export function setupApiMocks(overrides: Record<string, unknown> = {}) {
   const defaults: Record<string, unknown> = {
     '/api/tree': { entries: [] },
     '/api/git/status': { available: true, files: {} },
-    '/api/workflows': { workflows: [] },
     '/api/file': { content: '' },
     '/api/search': { results: [] },
     '/api/approval': [],

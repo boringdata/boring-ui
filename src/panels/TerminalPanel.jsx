@@ -2,20 +2,29 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Copy, Plus, X } from 'lucide-react'
 import Terminal from '../components/Terminal'
 import ClaudeStreamChat from '../components/chat/ClaudeStreamChat'
-import { getItem, setItem, removeItem, STORAGE_KEYS } from '../utils/storage'
 
+const SESSION_STORAGE_KEY = 'kurt-web-terminal-sessions'
+const VIEW_MODE_KEY = 'kurt-web-terminal-view-mode'
+const ACTIVE_SESSION_KEY = 'kurt-web-terminal-active'
+const CHAT_INTERFACE_KEY = 'kurt-web-terminal-chat-interface'
 const DEFAULT_PROVIDER = 'claude'
 
 const createSessionId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID()
   }
-  return `session-${Math.random().toString(36).slice(2)}`
+  // Fallback: generate UUID v4 format using Math.random
+  // Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
 }
 
 const loadSessions = () => {
   try {
-    const raw = getItem(STORAGE_KEYS.TERMINAL_SESSIONS)
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed) || parsed.length === 0) return null
@@ -27,7 +36,7 @@ const loadSessions = () => {
 
 const loadActiveSession = () => {
   try {
-    const raw = getItem(STORAGE_KEYS.TERMINAL_ACTIVE)
+    const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
     if (!raw) return null
     const id = Number(raw)
     return Number.isNaN(id) ? null : id
@@ -64,7 +73,11 @@ export default function TerminalPanel({ params }) {
   // Always in chat mode (removed raw/chat toggle)
   const viewMode = 'chat'
   const [chatInterface, setChatInterface] = useState(() => {
-    return getItem(STORAGE_KEYS.TERMINAL_CHAT_INTERFACE) || 'web'
+    try {
+      return localStorage.getItem(CHAT_INTERFACE_KEY) || 'web'
+    } catch {
+      return 'web'
+    }
   })
   const [sessions, setSessions] = useState(() => {
     const saved = loadSessions()
@@ -175,21 +188,29 @@ export default function TerminalPanel({ params }) {
   }, [sessions, activeId])
 
   useEffect(() => {
-    if (sessions.length === 0) {
-      removeItem(STORAGE_KEYS.TERMINAL_SESSIONS)
-    } else {
-      setItem(STORAGE_KEYS.TERMINAL_SESSIONS, JSON.stringify(serializeSessions(sessions)))
-    }
-    if (activeId == null) {
-      removeItem(STORAGE_KEYS.TERMINAL_ACTIVE)
-    } else {
-      setItem(STORAGE_KEYS.TERMINAL_ACTIVE, String(activeId))
+    try {
+      if (sessions.length === 0) {
+        localStorage.removeItem(SESSION_STORAGE_KEY)
+      } else {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(serializeSessions(sessions)))
+      }
+      if (activeId == null) {
+        localStorage.removeItem(ACTIVE_SESSION_KEY)
+      } else {
+        localStorage.setItem(ACTIVE_SESSION_KEY, String(activeId))
+      }
+    } catch (error) {
+      // Ignore storage errors
     }
   }, [sessions, activeId])
 
   // Save chat interface preference
   useEffect(() => {
-    setItem(STORAGE_KEYS.TERMINAL_CHAT_INTERFACE, chatInterface)
+    try {
+      localStorage.setItem(CHAT_INTERFACE_KEY, chatInterface)
+    } catch {
+      // Ignore storage errors
+    }
   }, [chatInterface])
 
   if (collapsed) {

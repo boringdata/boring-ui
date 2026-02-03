@@ -4,16 +4,8 @@ import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 import { ThemeProvider } from './hooks/useTheme'
-import { ConfigProvider } from './config'
-import Header from './components/Header'
-import {
-  removeItem,
-  getJSON,
-  setJSON,
-  LEGACY_PREFIX,
-  STORAGE_KEYS,
-  getPrefix,
-} from './utils/storage'
+import { buildApiUrl } from './utils/apiBase'
+import ThemeToggle from './components/ThemeToggle'
 import FileTreePanel from './panels/FileTreePanel'
 import EditorPanel from './panels/EditorPanel'
 import TerminalPanel from './panels/TerminalPanel'
@@ -24,9 +16,6 @@ import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
 const POC_MODE = new URLSearchParams(window.location.search).get('poc')
-
-const apiBase = import.meta.env.VITE_API_URL || ''
-const apiUrl = (path) => `${apiBase}${path}`
 
 const components = {
   filetree: FileTreePanel,
@@ -144,16 +133,12 @@ const hashProjectRoot = (root) => {
 }
 
 // Storage key generators (project-specific)
-// Uses the configured prefix from storage utilities
-const getStorageKey = (projectRoot, suffix) => {
-  const prefix = getPrefix()
-  return `${prefix}-${hashProjectRoot(projectRoot)}-${suffix}`
-}
+const getStorageKey = (projectRoot, suffix) => `kurt-web-${hashProjectRoot(projectRoot)}-${suffix}`
 
 // Load saved tabs from localStorage
 const loadSavedTabs = (projectRoot) => {
   try {
-    const saved = localStorage.getItem(getStorageKey(projectRoot, STORAGE_KEYS.TABS))
+    const saved = localStorage.getItem(getStorageKey(projectRoot, 'tabs'))
     if (saved) {
       return JSON.parse(saved)
     }
@@ -166,7 +151,7 @@ const loadSavedTabs = (projectRoot) => {
 // Save open tabs to localStorage
 const saveTabs = (projectRoot, paths) => {
   try {
-    localStorage.setItem(getStorageKey(projectRoot, STORAGE_KEYS.TABS), JSON.stringify(paths))
+    localStorage.setItem(getStorageKey(projectRoot, 'tabs'), JSON.stringify(paths))
   } catch {
     // Ignore storage errors
   }
@@ -174,14 +159,14 @@ const saveTabs = (projectRoot, paths) => {
 
 const loadLayout = (projectRoot) => {
   try {
-    const raw = localStorage.getItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT))
+    const raw = localStorage.getItem(getStorageKey(projectRoot, 'layout'))
     if (!raw) return null
     const parsed = JSON.parse(raw)
 
     // Check layout version - force reset if outdated
     if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
       console.info('[Layout] Version outdated, resetting layout')
-      localStorage.removeItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT))
+      localStorage.removeItem(getStorageKey(projectRoot, 'layout'))
       return null
     }
 
@@ -194,7 +179,7 @@ const loadLayout = (projectRoot) => {
       )
       if (hasUnknown) {
         console.info('[Layout] Unknown components found, resetting layout')
-        localStorage.removeItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT))
+        localStorage.removeItem(getStorageKey(projectRoot, 'layout'))
         return null
       }
     }
@@ -202,7 +187,7 @@ const loadLayout = (projectRoot) => {
     // Validate layout structure to detect drift
     if (!validateLayoutStructure(parsed)) {
       console.info('[Layout] Structure drift detected, resetting layout')
-      localStorage.removeItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT))
+      localStorage.removeItem(getStorageKey(projectRoot, 'layout'))
       return null
     }
 
@@ -239,28 +224,54 @@ const pruneEmptyGroups = (api) => {
 const saveLayout = (projectRoot, layout) => {
   try {
     const layoutWithVersion = { ...layout, version: LAYOUT_VERSION }
-    localStorage.setItem(getStorageKey(projectRoot, STORAGE_KEYS.LAYOUT), JSON.stringify(layoutWithVersion))
+    localStorage.setItem(getStorageKey(projectRoot, 'layout'), JSON.stringify(layoutWithVersion))
   } catch {
     // Ignore storage errors
   }
 }
 
 // Collapsed state and panel sizes are shared across projects (UI preference)
-// Uses storage utilities for consistent key prefixing
+const SIDEBAR_COLLAPSED_KEY = 'kurt-web-sidebar-collapsed'
+const PANEL_SIZES_KEY = 'kurt-web-panel-sizes'
+
 const loadCollapsedState = () => {
-  return getJSON(STORAGE_KEYS.SIDEBAR_COLLAPSED, { filetree: false, terminal: false, shell: false })
+  try {
+    const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+    if (saved) {
+      return JSON.parse(saved)
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return { filetree: false, terminal: false }
 }
 
 const saveCollapsedState = (state) => {
-  setJSON(STORAGE_KEYS.SIDEBAR_COLLAPSED, state)
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, JSON.stringify(state))
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 const loadPanelSizes = () => {
-  return getJSON(STORAGE_KEYS.PANEL_SIZES, { filetree: 280, terminal: 400, shell: 250 })
+  try {
+    const saved = localStorage.getItem(PANEL_SIZES_KEY)
+    if (saved) {
+      return JSON.parse(saved)
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return { filetree: 280, terminal: 400, shell: 250 }
 }
 
 const savePanelSizes = (sizes) => {
-  setJSON(STORAGE_KEYS.PANEL_SIZES, sizes)
+  try {
+    localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(sizes))
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 export default function App() {
@@ -280,7 +291,6 @@ export default function App() {
   const ensureCorePanelsRef = useRef(null)
   const [projectRoot, setProjectRoot] = useState(null) // null = not loaded yet, '' = loaded but empty
   const projectRootRef = useRef(null) // Stable ref for callbacks
-  const [userContext, setUserContext] = useState(null)
 
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
@@ -457,7 +467,7 @@ export default function App() {
     let isActive = true
 
     const fetchApprovals = () => {
-      fetch(apiUrl('/api/approval/pending'))
+      fetch(buildApiUrl('/api/approval/pending'))
         .then((r) => r.json())
         .then((data) => {
           if (!isActive) return
@@ -495,7 +505,7 @@ export default function App() {
         setApprovals([])
       }
       try {
-        await fetch(apiUrl('/api/approval/decision'), {
+        await fetch(buildApiUrl('/api/approval/decision'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ request_id: requestId, decision, reason }),
@@ -610,7 +620,7 @@ export default function App() {
         }
       }
 
-      fetch(apiUrl(`/api/file?path=${encodeURIComponent(path)}`))
+      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
         .then((r) => r.json())
         .then((data) => {
           addEditorPanel(data.content || '')
@@ -957,18 +967,12 @@ export default function App() {
     // Check if there's a saved layout - if so, DON'T create panels here
     // Let the layout restoration effect handle it to avoid creating->destroying->recreating
     // We check localStorage directly since projectRoot isn't available yet
-    // Look for any layout key that might match (check both current prefix and legacy prefix)
     let hasSavedLayout = false
     let invalidLayoutFound = false
-    const storagePrefix = getPrefix()
-    const layoutSuffix = `-${STORAGE_KEYS.LAYOUT}`
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
-        // Check for keys with current prefix or legacy prefix
-        const matchesCurrentPrefix = key && key.startsWith(`${storagePrefix}-`) && key.endsWith(layoutSuffix)
-        const matchesLegacyPrefix = key && key.startsWith(`${LEGACY_PREFIX}-`) && key.endsWith(layoutSuffix)
-        if (matchesCurrentPrefix || matchesLegacyPrefix) {
+        if (key && key.startsWith('kurt-web-') && key.endsWith('-layout')) {
           const raw = localStorage.getItem(key)
           if (raw) {
             const parsed = JSON.parse(raw)
@@ -987,11 +991,11 @@ export default function App() {
               console.warn('[Layout] Invalid layout detected in onReady, clearing and reloading:', key)
               localStorage.removeItem(key)
               // Clear related session storage
-              const keyPrefix = key.replace(layoutSuffix, '')
-              localStorage.removeItem(`${keyPrefix}-${STORAGE_KEYS.TABS}`)
-              removeItem(STORAGE_KEYS.TERMINAL_SESSIONS)
-              removeItem(STORAGE_KEYS.TERMINAL_ACTIVE)
-              removeItem(STORAGE_KEYS.TERMINAL_CHAT_INTERFACE)
+              const keyPrefix = key.replace('-layout', '')
+              localStorage.removeItem(`${keyPrefix}-tabs`)
+              localStorage.removeItem('kurt-web-terminal-sessions')
+              localStorage.removeItem('kurt-web-terminal-active')
+              localStorage.removeItem('kurt-web-terminal-chat-interface')
               invalidLayoutFound = true
             }
           }
@@ -1162,7 +1166,7 @@ export default function App() {
   // Fetch project root for copy path feature and project-specific storage
   useEffect(() => {
     const fetchProjectRoot = () => {
-      fetch(apiUrl('/api/project'))
+      fetch(buildApiUrl('/api/project'))
         .then((r) => r.json())
         .then((data) => {
           const root = data.root || ''
@@ -1177,15 +1181,15 @@ export default function App() {
     fetchProjectRoot()
   }, [])
 
-  // Fetch user context for cloud mode detection and user menu
+  // Set browser tab title to folder name
   useEffect(() => {
-    fetch(apiUrl('/api/me'))
-      .then((res) => res.json())
-      .then((data) => setUserContext(data))
-      .catch(() => setUserContext({ is_cloud_mode: false }))
-  }, [])
-
-  // Document title is now handled by the Header component via branding config
+    if (projectRoot) {
+      const folderName = projectRoot.split('/').filter(Boolean).pop() || 'Kurt'
+      document.title = `${folderName} - Kurt`
+    } else {
+      document.title = 'Kurt'
+    }
+  }, [projectRoot])
 
   // Restore layout once projectRoot is loaded and dockApi is available
   const layoutRestorationRan = useRef(false)
@@ -1564,10 +1568,21 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <ConfigProvider>
-        <div className="app-container">
-          <Header userContext={userContext} projectRoot={projectRoot} />
-          <DockviewReact
+      <div className="app-container">
+        <header className="app-header">
+          <div className="app-header-brand">
+            <div className="app-header-logo" aria-hidden="true">
+              K
+            </div>
+            <div className="app-header-title">
+              {projectRoot?.split('/').pop() || 'Workspace'}
+            </div>
+          </div>
+          <div className="app-header-controls">
+            <ThemeToggle />
+          </div>
+        </header>
+        <DockviewReact
           className={dockviewClassName}
           components={components}
           tabComponents={tabComponents}
@@ -1575,9 +1590,8 @@ export default function App() {
           onReady={onReady}
           showDndOverlay={showDndOverlay}
           onDidDrop={onDidDrop}
-          />
-        </div>
-      </ConfigProvider>
+        />
+      </div>
     </ThemeProvider>
   )
 }

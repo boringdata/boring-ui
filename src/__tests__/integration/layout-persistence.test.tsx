@@ -64,7 +64,6 @@ describe('Layout Persistence', () => {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.PANEL_SIZES) || '{}')
       expect(saved.filetree).toBe(400)
       expect(saved.terminal).toBe(500)
-      expect(saved.workflows).toBe(350)
     })
 
     it('uses default sizes when no saved state', () => {
@@ -98,20 +97,12 @@ describe('Layout Persistence', () => {
       expect(saved.filetree).toBe(false)
     })
 
-    it('restores workflows collapsed state', () => {
-      setupLocalStorage({ collapsed: collapsedStates.workflowsCollapsed })
-
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.SIDEBAR_COLLAPSED) || '{}')
-      expect(saved.workflows).toBe(true)
-    })
-
     it('handles all panels collapsed', () => {
       setupLocalStorage({ collapsed: collapsedStates.allCollapsed })
 
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.SIDEBAR_COLLAPSED) || '{}')
       expect(saved.filetree).toBe(true)
       expect(saved.terminal).toBe(true)
-      expect(saved.workflows).toBe(true)
     })
   })
 

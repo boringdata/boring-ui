@@ -2,9 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import Editor from '../components/Editor'
 import CodeEditor from '../components/CodeEditor'
 import GitDiff from '../components/GitDiff'
-
-const apiBase = import.meta.env.VITE_API_URL || ''
-const apiUrl = (path) => `${apiBase}${path}`
+import { buildApiUrl } from '../utils/apiBase'
 
 // Check if file is markdown
 const isMarkdownFile = (filepath) => {
@@ -52,7 +50,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     setDiffError('')
     try {
       const response = await fetch(
-        apiUrl(`/api/git/diff?path=${encodeURIComponent(path)}`)
+        buildApiUrl(`/api/git/diff?path=${encodeURIComponent(path)}`)
       )
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
@@ -70,7 +68,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     if (!path) return
     try {
       const response = await fetch(
-        apiUrl(`/api/git/show?path=${encodeURIComponent(path)}`)
+        buildApiUrl(`/api/git/show?path=${encodeURIComponent(path)}`)
       )
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
@@ -114,7 +112,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       // Don't poll while saving or if dirty - prevents race conditions
       if (!isActive || isSaving || isDirty) return
 
-      fetch(apiUrl(`/api/file?path=${encodeURIComponent(path)}`))
+      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
         .then((r) => r.json())
         .then((data) => {
           if (!isActive || isSaving || isDirty) return
@@ -142,7 +140,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     setContent(newContent)
     setIsSaving(true)
     try {
-      await fetch(apiUrl(`/api/file?path=${encodeURIComponent(path)}`), {
+      await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newContent }),
@@ -186,7 +184,7 @@ export default function EditorPanel({ params: initialParams, api }) {
 
   const reloadFromDisk = () => {
     if (!path) return
-    fetch(apiUrl(`/api/file?path=${encodeURIComponent(path)}`))
+    fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
       .then((r) => r.json())
       .then((data) => {
         setContent(data.content || '')

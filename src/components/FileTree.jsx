@@ -1,88 +1,24 @@
-import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import * as LucideIcons from 'lucide-react'
-import { useConfig } from '../config'
+import { Search, X, Folder, FolderOpen, File, FolderInput, ChevronRight, ChevronDown, MoreHorizontal, Settings } from 'lucide-react'
+import { buildApiUrl } from '../utils/apiBase'
 
-const { Search, X, Folder, FolderOpen, File, ChevronRight, ChevronDown, MoreHorizontal, Settings } = LucideIcons
+const configPath = import.meta.env.VITE_CONFIG_PATH || ''
 
-const apiBase = import.meta.env.VITE_API_URL || ''
-const apiUrl = (path) => `${apiBase}${path}`
-
-/**
- * Get a Lucide icon component by its name string
- * @param {string} iconName - PascalCase icon name (e.g., 'LayoutDashboard', 'Database')
- * @returns {React.ComponentType | null} The icon component or null if not found
- */
-const getLucideIcon = (iconName) => {
-  if (!iconName || typeof iconName !== 'string') return null
-  const icon = LucideIcons[iconName]
-  if (!icon || typeof icon !== 'function') return null
-  return icon
+// Section icons by config key (not path name)
+const SECTION_ICONS = {
+  projects: Folder,
+  sources: FolderInput,
 }
 
-/**
- * Check if a filename matches a pattern (supports glob-style wildcards)
- * @param {string} filename - The filename to check
- * @param {string} pattern - The pattern to match against (exact match or glob with *)
- * @returns {boolean} True if the filename matches the pattern
- */
-const matchesPattern = (filename, pattern) => {
-  // Exact match
-  if (pattern === filename) return true
-
-  // Handle glob patterns with *
-  if (pattern.includes('*')) {
-    // Escape special regex characters except *
-    const escapedPattern = pattern
-      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '.*')
-    const regex = new RegExp(`^${escapedPattern}$`)
-    return regex.test(filename)
-  }
-
-  return false
-}
-
-/**
- * Check if a filename matches any pattern in an array of patterns
- * @param {string} filename - The filename to check
- * @param {string[]} patterns - Array of patterns to match against
- * @returns {boolean} True if the filename matches any pattern
- */
-const matchesAnyPattern = (filename, patterns) => {
-  if (!patterns || patterns.length === 0) return false
-  return patterns.some(pattern => matchesPattern(filename, pattern))
+// Capitalize first letter for display
+const formatSectionLabel = (path) => {
+  if (!path) return 'Other'
+  const name = path.replace(/^\./, '') // Remove leading dot
+  return name.charAt(0).toUpperCase() + name.slice(1)
 }
 
 export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRenamed, onFileMoved, projectRoot, activeFile, creatingFile, onFileCreated, onCancelCreate }) {
-  // Get sections configuration from app config
-  const config = useConfig()
-
-  // Process and validate configured sections
-  const validSections = useMemo(() => {
-    const configuredSections = config.fileTree?.sections || []
-    return configuredSections.filter((section) => {
-      if (!section.key || typeof section.key !== 'string') {
-        console.warn('[FileTree] Invalid section: missing or invalid "key"', section)
-        return false
-      }
-      if (!section.label || typeof section.label !== 'string') {
-        console.warn(`[FileTree] Invalid section "${section.key}": missing or invalid "label"`)
-        return false
-      }
-      if (!section.icon || typeof section.icon !== 'string') {
-        console.warn(`[FileTree] Invalid section "${section.key}": missing or invalid "icon"`)
-        return false
-      }
-      // Validate that the icon exists in Lucide
-      const iconComponent = getLucideIcon(section.icon)
-      if (!iconComponent) {
-        console.warn(`[FileTree] Section "${section.key}": unknown Lucide icon "${section.icon}", using default Folder icon`)
-      }
-      return true
-    })
-  }, [config.fileTree?.sections])
-
   const [entries, setEntries] = useState([])
   const [expandedDirs, setExpandedDirs] = useState({})
   const [searchQuery, setSearchQuery] = useState('')
@@ -93,7 +29,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
   const [renaming, setRenaming] = useState(null)
   const [dragOver, setDragOver] = useState(null)
   const [newFileInput, setNewFileInput] = useState(null) // { parentDir: string, name: string }
-  const [apiConfig, setApiConfig] = useState(null)
+  const [kurtConfig, setKurtConfig] = useState(null)
   const [collapsedSections, setCollapsedSections] = useState({ other: true }) // "Other" collapsed by default
   const renameInputRef = useRef(null)
   const newFileInputRef = useRef(null)
@@ -105,14 +41,14 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
   }, [expandedDirs])
 
   const fetchDir = (dirPath) => {
-    return fetch(apiUrl(`/api/tree?path=${encodeURIComponent(dirPath)}`))
+    return fetch(buildApiUrl(`/api/tree?path=${encodeURIComponent(dirPath)}`))
       .then((r) => r.json())
       .then((data) => data.entries || [])
       .catch(() => [])
   }
 
   const fetchGitStatus = () => {
-    fetch(apiUrl('/api/git/status'))
+    fetch(buildApiUrl('/api/git/status'))
       .then((r) => r.json())
       .then((data) => {
         if (data.available && data.files) {
@@ -141,18 +77,19 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     fetchGitStatus()
   }, [])
 
-  // Fetch API config for section organization
-  const fetchConfig = useCallback(() => {
-    fetch(apiUrl('/api/config'))
+  // Fetch config for section organization
+  const fetchConfig = () => {
+    const query = configPath ? `?config_path=${encodeURIComponent(configPath)}` : ''
+    fetch(buildApiUrl(`/api/config${query}`))
       .then((r) => r.json())
       .then(async (data) => {
         if (data.paths) {
-          setApiConfig(data.paths)
-          // Auto-expand section folders on initial load based on configured sections
-          const sectionKeys = validSections.map((s) => s.key)
+          setKurtConfig(data.paths)
+          // Auto-expand section folders on initial load (projects, sources)
+          const sectionPaths = ['projects', 'sources']
           const toExpand = {}
           const toCollapse = {}
-          for (const key of sectionKeys) {
+          for (const key of sectionPaths) {
             const path = data.paths[key]
             if (path) {
               const children = await fetchDir(path)
@@ -173,7 +110,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         }
       })
       .catch(() => {})
-  }, [validSections])
+  }
 
   useEffect(() => {
     let retryCount = 0
@@ -216,7 +153,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
     setIsSearching(true)
     const timeoutId = setTimeout(() => {
-      fetch(apiUrl(`/api/search?q=${encodeURIComponent(searchQuery)}`))
+      fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(searchQuery)}`))
         .then((r) => r.json())
         .then((data) => {
           setSearchResults(data.results || [])
@@ -329,7 +266,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!window.confirm(confirmMsg)) return
 
     try {
-      const res = await fetch(apiUrl(`/api/file?path=${encodeURIComponent(entry.path)}`), {
+      const res = await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(entry.path)}`), {
         method: 'DELETE',
       })
       if (res.ok) {
@@ -360,7 +297,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     }
 
     try {
-      const res = await fetch(apiUrl('/api/file/rename'), {
+      const res = await fetch(buildApiUrl('/api/file/rename'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ old_path: oldPath, new_path: newPath }),
@@ -414,7 +351,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
       : fileName
 
     try {
-      const res = await fetch(apiUrl(`/api/file?path=${encodeURIComponent(filePath)}`), {
+      const res = await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(filePath)}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: '' }),
@@ -483,7 +420,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
   const handleDragStart = (event, entry) => {
     event.dataTransfer.setData('text/plain', entry.path)
-    event.dataTransfer.setData('application/x-boring-ui-file', JSON.stringify({
+    event.dataTransfer.setData('application/x-kurt-file', JSON.stringify({
       path: entry.path,
       name: entry.name,
       is_dir: entry.is_dir,
@@ -508,7 +445,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
     if (!destEntry.is_dir) return
 
-    const fileData = event.dataTransfer.getData('application/x-boring-ui-file')
+    const fileData = event.dataTransfer.getData('application/x-kurt-file')
     if (!fileData) return
 
     const srcFile = JSON.parse(fileData)
@@ -517,7 +454,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (destEntry.path.startsWith(srcFile.path + '/')) return
 
     try {
-      const res = await fetch(apiUrl('/api/file/move'), {
+      const res = await fetch(buildApiUrl('/api/file/move'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: destEntry.path }),
@@ -539,7 +476,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     event.preventDefault()
     setDragOver(null)
 
-    const fileData = event.dataTransfer.getData('application/x-boring-ui-file')
+    const fileData = event.dataTransfer.getData('application/x-kurt-file')
     if (!fileData) return
 
     const srcFile = JSON.parse(fileData)
@@ -547,7 +484,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!srcFile.path.includes('/')) return
 
     try {
-      const res = await fetch(apiUrl('/api/file/move'), {
+      const res = await fetch(buildApiUrl('/api/file/move'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: '.' }),
@@ -676,60 +613,47 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     }))
   }
 
-  // Get configurable config file patterns from app config
-  const configFilePatterns = config.fileTree?.configFiles || []
-
-  // Organize entries into sections based on app config and kurt config
+  // Organize entries into sections based on kurt config
   const organizeEntriesIntoSections = () => {
-    if (!apiConfig || entries.length === 0) {
+    if (!kurtConfig || entries.length === 0) {
       return null // Return null to use flat rendering
     }
 
-    // Use configured sections from app config (already validated)
+    // Build section mapping: configKey -> path
+    // Order: projects, sources (folders only)
+    const sectionOrder = ['projects', 'sources']
     const sections = {}
     const usedPaths = new Set()
 
-    for (const sectionConfig of validSections) {
-      const { key, label, icon: iconName } = sectionConfig
-      const path = apiConfig[key]
-
-      if (!path) {
-        // Section key doesn't exist in kurt config, skip silently
-        // (This is not necessarily an error - the project may not have this section)
-        continue
+    for (const key of sectionOrder) {
+      const path = kurtConfig[key]
+      if (path) {
+        sections[key] = {
+          path,
+          label: formatSectionLabel(path),
+          icon: SECTION_ICONS[key] || Folder,
+          entries: [],
+        }
+        usedPaths.add(path)
       }
-
-      // Get the icon component, falling back to Folder if not found
-      const iconComponent = getLucideIcon(iconName) || Folder
-
-      sections[key] = {
-        path,
-        label,
-        icon: iconComponent,
-        entries: [],
-      }
-      usedPaths.add(path)
     }
 
     // Categorize entries
     const otherEntries = []
-    const configFiles = []
-    const sectionKeys = validSections.map((s) => s.key)
+    let configFile = null
 
     for (const entry of entries) {
-      // Check if it matches any configured config file pattern
-      if (!entry.is_dir && matchesAnyPattern(entry.name, configFilePatterns)) {
-        configFiles.push(entry)
+      // Check if it's the kurt.config file
+      if (entry.name === 'kurt.config' && !entry.is_dir) {
+        configFile = entry
         continue
       }
 
       let matched = false
-      for (const key of sectionKeys) {
-        const sectionPath = apiConfig[key]
+      for (const key of sectionOrder) {
+        const sectionPath = kurtConfig[key]
         if (sectionPath && entry.path === sectionPath) {
-          if (sections[key]) {
-            sections[key].entries.push(entry)
-          }
+          sections[key].entries.push(entry)
           matched = true
           break
         }
@@ -749,7 +673,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
       }
     }
 
-    return { sections, configFiles }
+    return { sections, configFile }
   }
 
   const renderSection = (sectionKey, section) => {
@@ -812,7 +736,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
   const organized = organizeEntriesIntoSections()
   const sections = organized?.sections
-  const configFiles = organized?.configFiles || []
+  const configFile = organized?.configFile
 
   return (
     <div className="file-tree" onContextMenu={handleRootContextMenu}>
@@ -863,10 +787,9 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         <div className="file-tree-sections">
           {/* New file input at root level */}
           {renderNewFileInput(0, '')}
-          {/* Config files at top */}
-          {configFiles.map((configFile) => (
+          {/* Config file at top */}
+          {configFile && (
             <div
-              key={configFile.path}
               className={`file-item config-file-item ${activeFile === configFile.path ? 'file-item-active' : ''}`}
               onClick={() => onOpen(configFile.path)}
               onContextMenu={(event) => handleContextMenu(event, configFile)}
@@ -875,9 +798,9 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
               <span className="file-item-name">{configFile.name}</span>
               {renderStatusBadge(getFileStatus(configFile.path))}
             </div>
-          ))}
-          {/* Main sections based on configured order - always show if path exists */}
-          {validSections.map(({ key }) =>
+          )}
+          {/* Main sections: projects, sources - always show if path exists */}
+          {['projects', 'sources'].map((key) =>
             sections[key] && sections[key].path
               ? renderSection(key, sections[key])
               : null

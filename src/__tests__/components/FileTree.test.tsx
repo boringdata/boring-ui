@@ -9,13 +9,12 @@
  * - Context menu operations
  * - Drag and drop
  * - File creation/rename/delete
- * - Configurable sections via useConfig()
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import FileTree from '../../components/FileTree'
 import { fileTree, gitStatus, searchResults } from '../fixtures'
-import { setupApiMocks, flushPromises, simulateContextMenu, simulateDragDrop, renderWithConfig, defaultTestConfig } from '../utils'
+import { setupApiMocks, flushPromises, simulateContextMenu, simulateDragDrop } from '../utils'
 
 describe('FileTree', () => {
   const defaultProps = {
@@ -45,7 +44,7 @@ describe('FileTree', () => {
 
   describe('Rendering', () => {
     it('renders file tree with root entries', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -58,13 +57,13 @@ describe('FileTree', () => {
     })
 
     it('shows search input', () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       expect(screen.getByPlaceholderText('Search files...')).toBeInTheDocument()
     })
 
     it('shows project title', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -79,7 +78,7 @@ describe('FileTree', () => {
 
       vi.stubGlobal('fetch', fetchMock)
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       // Wait for retries
       await new Promise(r => setTimeout(r, 10))
@@ -104,7 +103,7 @@ describe('FileTree', () => {
         '/api/git/status': { available: true, files: {} },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await waitFor(() => {
         expect(screen.getByText('src')).toBeInTheDocument()
@@ -130,7 +129,7 @@ describe('FileTree', () => {
         '/api/git/status': { available: true, files: {} },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await waitFor(() => {
         expect(screen.getByText('src')).toBeInTheDocument()
@@ -152,7 +151,7 @@ describe('FileTree', () => {
     })
 
     it('shows folder icon for collapsed directories', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await waitFor(() => {
         // Should have at least one collapsed folder icon (src and docs dirs)
@@ -173,7 +172,7 @@ describe('FileTree', () => {
         '/api/git/status': { available: true, files: {} },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await waitFor(() => {
         expect(screen.getByText('src')).toBeInTheDocument()
@@ -190,7 +189,7 @@ describe('FileTree', () => {
 
   describe('File Selection', () => {
     it('calls onOpen when file is clicked', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -200,7 +199,7 @@ describe('FileTree', () => {
     })
 
     it('highlights active file', async () => {
-      renderWithConfig(<FileTree {...defaultProps} activeFile="README.md" />)
+      render(<FileTree {...defaultProps} activeFile="README.md" />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -209,7 +208,7 @@ describe('FileTree', () => {
     })
 
     it('does not call onOpen when directory is clicked', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -227,7 +226,7 @@ describe('FileTree', () => {
         '/api/search': searchResults.basic,
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       const searchInput = screen.getByPlaceholderText('Search files...')
       fireEvent.change(searchInput, { target: { value: 'App' } })
@@ -240,7 +239,7 @@ describe('FileTree', () => {
     })
 
     it('shows "Searching..." while searching', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       const searchInput = screen.getByPlaceholderText('Search files...')
       fireEvent.change(searchInput, { target: { value: 'test' } })
@@ -255,7 +254,7 @@ describe('FileTree', () => {
         '/api/search': { results: [] },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       const searchInput = screen.getByPlaceholderText('Search files...')
       fireEvent.change(searchInput, { target: { value: 'nonexistent' } })
@@ -274,7 +273,7 @@ describe('FileTree', () => {
         '/api/search': searchResults.basic,
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       const searchInput = screen.getByPlaceholderText('Search files...')
       fireEvent.change(searchInput, { target: { value: 'App' } })
@@ -287,7 +286,7 @@ describe('FileTree', () => {
     })
 
     it('clears search when clear button is clicked', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       const searchInput = screen.getByPlaceholderText('Search files...')
       fireEvent.change(searchInput, { target: { value: 'test' } })
@@ -305,7 +304,7 @@ describe('FileTree', () => {
         '/api/search': searchResults.basic,
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       const searchInput = screen.getByPlaceholderText('Search files...')
       fireEvent.change(searchInput, { target: { value: 'App' } })
@@ -330,7 +329,7 @@ describe('FileTree', () => {
         '/api/git/status': { available: true, files: { 'README.md': 'M' } },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -345,7 +344,7 @@ describe('FileTree', () => {
         '/api/git/status': { available: true, files: { 'README.md': 'U' } },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -360,7 +359,7 @@ describe('FileTree', () => {
         '/api/git/status': { available: true, files: { 'src/App.jsx': 'M' } },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -373,7 +372,7 @@ describe('FileTree', () => {
     it('sets up polling interval for git status', async () => {
       const setIntervalSpy = vi.spyOn(global, 'setInterval')
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await waitFor(() => {
         expect(screen.getByText('README.md')).toBeInTheDocument()
@@ -388,7 +387,7 @@ describe('FileTree', () => {
 
   describe('Context Menu', () => {
     it('shows context menu on right-click', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -402,7 +401,7 @@ describe('FileTree', () => {
     })
 
     it('shows "Open to the Side" for files', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -415,7 +414,7 @@ describe('FileTree', () => {
     })
 
     it('does not show "Open to the Side" for directories', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -428,7 +427,7 @@ describe('FileTree', () => {
     })
 
     it('shows "New File" option in context menu', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -441,7 +440,7 @@ describe('FileTree', () => {
     })
 
     it('shows copy path options', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -455,7 +454,7 @@ describe('FileTree', () => {
     })
 
     it('closes context menu on outside click', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -476,7 +475,7 @@ describe('FileTree', () => {
 
   describe('Rename', () => {
     it('shows rename input when rename is selected', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -499,7 +498,7 @@ describe('FileTree', () => {
         '/api/file/rename': { ok: true },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -522,7 +521,7 @@ describe('FileTree', () => {
     })
 
     it('cancels rename on Escape', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -549,7 +548,7 @@ describe('FileTree', () => {
     it('confirms before deleting', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -574,7 +573,7 @@ describe('FileTree', () => {
         // The delete endpoint should be handled
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -593,7 +592,7 @@ describe('FileTree', () => {
 
   describe('New File', () => {
     it('shows new file input when creatingFile prop is true', async () => {
-      renderWithConfig(<FileTree {...defaultProps} creatingFile={true} />)
+      render(<FileTree {...defaultProps} creatingFile={true} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -609,7 +608,7 @@ describe('FileTree', () => {
         '/api/file': {},
       })
 
-      renderWithConfig(<FileTree {...defaultProps} creatingFile={true} />)
+      render(<FileTree {...defaultProps} creatingFile={true} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -625,7 +624,7 @@ describe('FileTree', () => {
     })
 
     it('calls onCancelCreate on Escape', async () => {
-      renderWithConfig(<FileTree {...defaultProps} creatingFile={true} />)
+      render(<FileTree {...defaultProps} creatingFile={true} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -640,7 +639,7 @@ describe('FileTree', () => {
 
   describe('Drag and Drop', () => {
     it('sets draggable on file items', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -649,7 +648,7 @@ describe('FileTree', () => {
     })
 
     it('shows drag-over state on directory', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -669,7 +668,7 @@ describe('FileTree', () => {
     })
 
     it('removes drag-over state on drag leave', async () => {
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
@@ -690,7 +689,7 @@ describe('FileTree', () => {
     it('sets up polling interval for file tree', async () => {
       const setIntervalSpy = vi.spyOn(global, 'setInterval')
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       await waitFor(() => {
         expect(screen.getByText('README.md')).toBeInTheDocument()
@@ -705,7 +704,7 @@ describe('FileTree', () => {
     it('cleans up polling intervals on unmount', async () => {
       const clearIntervalSpy = vi.spyOn(global, 'clearInterval')
 
-      const { unmount } = renderWithConfig(<FileTree {...defaultProps} />)
+      const { unmount } = render(<FileTree {...defaultProps} />)
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText('Search files...')).toBeInTheDocument()
@@ -751,7 +750,7 @@ describe('FileTree', () => {
         '/api/config': { available: false },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       // Wait for initial render - in flat mode, files appear at root
       await waitFor(() => {
@@ -827,7 +826,7 @@ describe('FileTree', () => {
         '/api/config': { available: false },
       })
 
-      renderWithConfig(<FileTree {...defaultProps} />)
+      render(<FileTree {...defaultProps} />)
 
       // Wait for initial render
       await waitFor(() => {
@@ -857,211 +856,6 @@ describe('FileTree', () => {
         },
         { timeout: 5000 }
       )
-    })
-  })
-
-  describe('Configurable Sections', () => {
-    it('renders sections based on fileTree.sections config', async () => {
-      const customConfig = {
-        fileTree: {
-          sections: [
-            { key: 'dashboards', label: 'Dashboards', icon: 'LayoutDashboard' },
-            { key: 'models', label: 'Models', icon: 'Database' },
-          ],
-          configFiles: [],
-          gitPollInterval: 5000,
-          treePollInterval: 3000,
-        },
-      }
-
-      setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/config': {
-          paths: {
-            dashboards: 'dashboards',
-            models: 'models',
-          },
-        },
-      })
-
-      renderWithConfig(<FileTree {...defaultProps} />, customConfig)
-
-      await waitFor(() => {
-        // Should show configured section labels
-        expect(screen.getByText('Dashboards')).toBeInTheDocument()
-        expect(screen.getByText('Models')).toBeInTheDocument()
-      })
-    })
-
-    it('warns and skips sections with missing key', async () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-      const customConfig = {
-        fileTree: {
-          sections: [
-            { label: 'Invalid', icon: 'Folder' }, // Missing key
-            { key: 'valid', label: 'Valid', icon: 'Folder' },
-          ],
-          configFiles: [],
-          gitPollInterval: 5000,
-          treePollInterval: 3000,
-        },
-      }
-
-      setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/config': { paths: { valid: 'valid-path' } },
-      })
-
-      renderWithConfig(<FileTree {...defaultProps} />, customConfig)
-
-      await new Promise(r => setTimeout(r, 50))
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[FileTree] Invalid section'),
-        expect.anything()
-      )
-
-      consoleWarnSpy.mockRestore()
-    })
-
-    it('warns and skips sections with missing label', async () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-      const customConfig = {
-        fileTree: {
-          sections: [
-            { key: 'nolabel', icon: 'Folder' }, // Missing label
-          ],
-          configFiles: [],
-          gitPollInterval: 5000,
-          treePollInterval: 3000,
-        },
-      }
-
-      setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/config': { paths: {} },
-      })
-
-      renderWithConfig(<FileTree {...defaultProps} />, customConfig)
-
-      await new Promise(r => setTimeout(r, 50))
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[FileTree] Invalid section "nolabel"')
-      )
-
-      consoleWarnSpy.mockRestore()
-    })
-
-    it('warns for unknown Lucide icon but still renders with fallback', async () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-      const customConfig = {
-        fileTree: {
-          sections: [
-            { key: 'test', label: 'Test Section', icon: 'NonExistentIcon' },
-          ],
-          configFiles: [],
-          gitPollInterval: 5000,
-          treePollInterval: 3000,
-        },
-      }
-
-      setupApiMocks({
-        '/api/tree': { entries: [{ name: 'test', path: 'test', is_dir: true }] },
-        '/api/git/status': { available: true, files: {} },
-        '/api/config': { paths: { test: 'test' } },
-      })
-
-      renderWithConfig(<FileTree {...defaultProps} />, customConfig)
-
-      await new Promise(r => setTimeout(r, 50))
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('unknown Lucide icon "NonExistentIcon"')
-      )
-
-      // Section should still render with label (uses Folder fallback icon)
-      await waitFor(() => {
-        expect(screen.getByText('Test Section')).toBeInTheDocument()
-      })
-
-      consoleWarnSpy.mockRestore()
-    })
-
-    it('renders flat view when no sections configured', async () => {
-      const emptyConfig = {
-        fileTree: {
-          sections: [],
-          configFiles: [],
-          gitPollInterval: 5000,
-          treePollInterval: 3000,
-        },
-      }
-
-      setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/config': { paths: {} },
-      })
-
-      renderWithConfig(<FileTree {...defaultProps} />, emptyConfig)
-
-      await waitFor(() => {
-        // Should show "Project" title (flat view)
-        expect(screen.getByText('Project')).toBeInTheDocument()
-        // Should show files directly
-        expect(screen.getByText('README.md')).toBeInTheDocument()
-      })
-    })
-
-    it('respects section order from config', async () => {
-      const customConfig = {
-        fileTree: {
-          sections: [
-            { key: 'second', label: 'Second Section', icon: 'FileText' },
-            { key: 'first', label: 'First Section', icon: 'Folder' },
-          ],
-          configFiles: [],
-          gitPollInterval: 5000,
-          treePollInterval: 3000,
-        },
-      }
-
-      setupApiMocks({
-        '/api/tree': {
-          entries: [
-            { name: 'first', path: 'first', is_dir: true },
-            { name: 'second', path: 'second', is_dir: true },
-          ],
-        },
-        '/api/git/status': { available: true, files: {} },
-        '/api/config': {
-          paths: {
-            first: 'first',
-            second: 'second',
-          },
-        },
-      })
-
-      renderWithConfig(<FileTree {...defaultProps} />, customConfig)
-
-      await waitFor(() => {
-        expect(screen.getByText('Second Section')).toBeInTheDocument()
-        expect(screen.getByText('First Section')).toBeInTheDocument()
-      })
-
-      // Check order - Second Section should appear before First Section in DOM
-      const sections = document.querySelectorAll('.file-tree-section-header')
-      const labels = Array.from(sections).map(s => s.textContent)
-      const secondIdx = labels.findIndex(l => l?.includes('Second Section'))
-      const firstIdx = labels.findIndex(l => l?.includes('First Section'))
-      expect(secondIdx).toBeLessThan(firstIdx)
     })
   })
 })

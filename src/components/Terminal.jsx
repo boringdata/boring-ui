@@ -3,10 +3,10 @@ import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import { useTheme } from '../hooks/useTheme'
-import { getStorageKey, STORAGE_KEYS } from '../utils/storage'
+import { getWsBase } from '../utils/apiBase'
 
 // Terminal color schemes for light/dark mode
-export const TERMINAL_THEMES = {
+const TERMINAL_THEMES = {
   light: {
     background: '#f8fafc',
     foreground: '#111827',
@@ -37,19 +37,16 @@ export const TERMINAL_THEMES = {
   },
 }
 
+const HISTORY_STORAGE_PREFIX = 'kurt-web-pty-history'
 const HISTORY_LIMIT_BYTES = 200000
 
-const getHistoryKey = (sessionId, historyPrefix) => {
+const getHistoryKey = (sessionId) => {
   if (!sessionId) return null
-  // Use custom prefix if provided, otherwise use storage utility with PTY_HISTORY key
-  if (historyPrefix) {
-    return `${historyPrefix}-${sessionId}`
-  }
-  return getStorageKey(`${STORAGE_KEYS.PTY_HISTORY}-${sessionId}`)
+  return `${HISTORY_STORAGE_PREFIX}-${sessionId}`
 }
 
-const loadStoredHistory = (sessionId, historyPrefix) => {
-  const key = getHistoryKey(sessionId, historyPrefix)
+const loadStoredHistory = (sessionId) => {
+  const key = getHistoryKey(sessionId)
   if (!key) return ''
   try {
     const raw = localStorage.getItem(key)
@@ -59,8 +56,8 @@ const loadStoredHistory = (sessionId, historyPrefix) => {
   }
 }
 
-const saveStoredHistory = (sessionId, text, historyPrefix) => {
-  const key = getHistoryKey(sessionId, historyPrefix)
+const saveStoredHistory = (sessionId, text) => {
+  const key = getHistoryKey(sessionId)
   if (!key) return
   const normalized = text.length > HISTORY_LIMIT_BYTES
     ? text.slice(-HISTORY_LIMIT_BYTES)
@@ -72,36 +69,8 @@ const saveStoredHistory = (sessionId, text, historyPrefix) => {
   }
 }
 
-/**
- * Build a WebSocket URL with optional parameters.
- * This helper is exported for consumers who need to construct URLs dynamically.
- *
- * @param {Object} options - URL building options
- * @param {string} [options.baseUrl] - Base WebSocket URL (e.g., 'wss://example.com')
- * @param {string} [options.path='/ws/pty'] - WebSocket path
- * @param {string} [options.sessionId] - Session identifier
- * @param {boolean} [options.resume] - Whether to resume existing session
- * @param {boolean} [options.forceNew] - Force new session creation
- * @param {string} [options.provider] - Provider name (e.g., 'claude', 'shell')
- * @param {string} [options.sessionName] - Human-readable session name
- * @returns {string} Complete WebSocket URL
- */
-export const buildWsUrl = ({
-  baseUrl,
-  path = '/ws/pty',
-  sessionId,
-  resume,
-  forceNew,
-  provider,
-  sessionName,
-} = {}) => {
-  let wsBase = baseUrl
-  if (!wsBase) {
-    // Default: derive from current page location
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    wsBase = `${protocol}://${window.location.host}`
-  }
-
+const buildSocketUrl = (sessionId, resume, forceNew, provider, sessionName) => {
+  const wsBase = getWsBase()
   const params = new URLSearchParams()
   if (sessionId) {
     params.set('session_id', sessionId)
@@ -119,58 +88,10 @@ export const buildWsUrl = ({
     params.set('session_name', sessionName)
   }
   const query = params.toString()
-  return `${wsBase}${path}${query ? `?${query}` : ''}`
+  return `${wsBase}/ws/pty${query ? `?${query}` : ''}`
 }
 
-// Legacy helper for backwards compatibility with existing app code
-const buildSocketUrl = (sessionId, resume, forceNew, provider, sessionName) => {
-  const apiBase = import.meta.env.VITE_API_URL || ''
-  let wsBase
-  if (apiBase) {
-    wsBase = apiBase.replace(/^http/, 'ws')
-  } else {
-    wsBase = undefined // Will use default from buildWsUrl
-  }
-  return buildWsUrl({
-    baseUrl: wsBase,
-    sessionId,
-    resume,
-    forceNew,
-    provider,
-    sessionName,
-  })
-}
-
-/**
- * Reusable Terminal component with xterm.js integration.
- *
- * @param {Object} props - Component props
- * @param {string} [props.wsUrl] - WebSocket URL (if provided, overrides legacy URL building)
- * @param {string} [props.sessionId] - Session identifier for history persistence
- * @param {function} [props.onSessionChange] - Callback when session ID changes: (newId: string) => void
- * @param {function} [props.onData] - Callback for terminal data output: (data: string) => void
- * @param {string} [props.className] - Additional CSS class names
- * @param {boolean} [props.isActive=true] - Whether the terminal is active/visible
- * @param {function} [props.onFirstPrompt] - Legacy: Callback for first user prompt
- * @param {string} [props.provider='claude'] - Legacy: Provider name for URL building
- * @param {string} [props.sessionName] - Legacy: Human-readable session name
- * @param {boolean} [props.resume] - Legacy: Whether to resume existing session
- * @param {function} [props.onSessionStarted] - Legacy: Callback when session connects
- * @param {function} [props.onResumeMissing] - Legacy: Callback when resume session not found
- * @param {string} [props.bannerMessage] - Message to display in terminal
- * @param {function} [props.onBannerShown] - Callback after banner message is shown
- * @param {string} [props.historyPrefix] - Custom prefix for localStorage history keys
- * @param {Object} [props.theme] - Custom terminal theme (overrides auto light/dark)
- */
 export default function Terminal({
-  // New standalone props
-  wsUrl,
-  onSessionChange,
-  onData,
-  className,
-  historyPrefix,
-  theme: customTheme,
-  // Legacy props for backwards compatibility
   isActive = true,
   onFirstPrompt,
   provider = 'claude',
@@ -192,8 +113,6 @@ export default function Terminal({
   const onSessionStartedRef = useRef(onSessionStarted)
   const onResumeMissingRef = useRef(onResumeMissing)
   const onBannerShownRef = useRef(onBannerShown)
-  const onSessionChangeRef = useRef(onSessionChange)
-  const onDataRef = useRef(onData)
   const inputBufferRef = useRef('')
   const firstPromptSentRef = useRef(false)
   const sessionStartedRef = useRef(false)
@@ -207,9 +126,9 @@ export default function Terminal({
   const historyBufferRef = useRef('')
   const historyFallbackTimerRef = useRef(null)
   const historySourceRef = useRef(null)
-  // Use provider from props, default to 'claude'
-  const providerKey = provider || 'claude'
-  const providerLabel = providerKey === 'shell' ? 'Shell' : 'Claude'
+  // Always use Claude as provider
+  const providerKey = 'claude'
+  const providerLabel = 'Claude'
 
   useEffect(() => {
     isActiveRef.current = isActive
@@ -239,16 +158,14 @@ export default function Terminal({
     onSessionStartedRef.current = onSessionStarted
     onResumeMissingRef.current = onResumeMissing
     onBannerShownRef.current = onBannerShown
-    onSessionChangeRef.current = onSessionChange
-    onDataRef.current = onData
-  }, [onFirstPrompt, onSessionStarted, onResumeMissing, onBannerShown, onSessionChange, onData])
+  }, [onFirstPrompt, onSessionStarted, onResumeMissing, onBannerShown])
 
-  // Update terminal theme when app theme changes (unless custom theme is provided)
+  // Update terminal theme when app theme changes
   useEffect(() => {
-    if (termRef.current && !customTheme) {
+    if (termRef.current) {
       termRef.current.options.theme = TERMINAL_THEMES[appTheme] || TERMINAL_THEMES.light
     }
-  }, [appTheme, customTheme])
+  }, [appTheme])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -261,14 +178,12 @@ export default function Terminal({
     historyBufferRef.current = ''
     historySourceRef.current = null
 
-    // Use custom theme if provided, otherwise use app theme
-    const termTheme = customTheme || TERMINAL_THEMES[appTheme] || TERMINAL_THEMES.light
     const term = new XTerm({
       cursorBlink: true,
       convertEol: false,
       fontFamily: '"IBM Plex Mono", "SFMono-Regular", Menlo, monospace',
       fontSize: 13,
-      theme: termTheme,
+      theme: TERMINAL_THEMES[appTheme] || TERMINAL_THEMES.light,
     })
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
@@ -282,7 +197,7 @@ export default function Terminal({
     let disposed = false
     const MAX_RETRIES = 10
     const INITIAL_RETRY_DELAY = 500
-    const storedHistory = loadStoredHistory(sessionId, historyPrefix)
+    const storedHistory = loadStoredHistory(sessionId)
     historyBufferRef.current = storedHistory
 
     const sendResize = () => {
@@ -312,9 +227,9 @@ export default function Terminal({
       if (connectionStarted) return
       connectionStarted = true
       historyAppliedRef.current = false
-      // Use wsUrl prop if provided, otherwise fall back to legacy URL building
-      const socketUrl = wsUrl || buildSocketUrl(sessionId, resume, false, providerKey, sessionName)
-      const socket = new WebSocket(socketUrl)
+      const socket = new WebSocket(
+        buildSocketUrl(sessionId, resume, false, providerKey, sessionName),
+      )
       socketRef.current = socket
       let resumeMissingNotified = false
 
@@ -331,7 +246,7 @@ export default function Terminal({
           historyBufferRef.current = historyBufferRef.current.slice(-HISTORY_LIMIT_BYTES)
         }
         term.write(chunk)
-        saveStoredHistory(sessionId, historyBufferRef.current, historyPrefix)
+        saveStoredHistory(sessionId, historyBufferRef.current)
       }
 
       const appendOutput = (chunk) => {
@@ -341,9 +256,7 @@ export default function Terminal({
           historyBufferRef.current = historyBufferRef.current.slice(-HISTORY_LIMIT_BYTES)
         }
         term.write(chunk)
-        saveStoredHistory(sessionId, historyBufferRef.current, historyPrefix)
-        // Call onData callback if provided
-        onDataRef.current?.(chunk)
+        saveStoredHistory(sessionId, historyBufferRef.current)
       }
 
       const handlePayload = (payload) => {
@@ -355,12 +268,6 @@ export default function Terminal({
             )
             onResumeMissingRef.current?.()
           }
-          return
-        }
-
-        // Handle session_id from server (new session created)
-        if (payload.type === 'session_id' && typeof payload.session_id === 'string') {
-          onSessionChangeRef.current?.(payload.session_id)
           return
         }
 
@@ -654,11 +561,7 @@ export default function Terminal({
       }
       term.dispose()
     }
-  // Note: appTheme and providerLabel are intentionally excluded from dependencies
-  // to avoid reconnecting the terminal when theme changes. Theme updates are
-  // handled by a separate effect that updates the terminal theme without reconnecting.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerKey, sessionId, sessionName, resume, wsUrl, historyPrefix, customTheme])
+  }, [providerKey, sessionId, sessionName, resume])
 
   useEffect(() => {
     if (!bannerMessage) return
@@ -668,21 +571,17 @@ export default function Terminal({
     onBannerShownRef.current?.()
   }, [bannerMessage])
 
-  // Update terminal theme when app theme changes (unless custom theme is provided)
+  // Update terminal theme when app theme changes
   useEffect(() => {
     const term = termRef.current
     if (!term) return
-    // If custom theme is provided, use it; otherwise use app theme
-    const newTheme = customTheme || TERMINAL_THEMES[appTheme] || TERMINAL_THEMES.light
+    const newTheme = TERMINAL_THEMES[appTheme] || TERMINAL_THEMES.light
     term.options.theme = newTheme
-  }, [appTheme, customTheme])
-
-  // Build class name string
-  const classNames = ['terminal', className].filter(Boolean).join(' ')
+  }, [appTheme])
 
   return (
     <div
-      className={classNames}
+      className="terminal"
       ref={containerRef}
       tabIndex={0}
       onMouseDown={() => termRef.current?.focus()}
