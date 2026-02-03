@@ -73,16 +73,25 @@ def create_git_router(config: APIConfig) -> APIRouter:
         except HTTPException:
             return {'is_repo': False, 'files': []}
 
-        # Get status (porcelain format for stable parsing)
+        # Get status (porcelain v1 format for stable parsing)
+        # Standard format: XY PATH (XY = 2-char status, space, path)
+        # Some git versions use: X PATH for single-status changes
         status = run_git(['status', '--porcelain'])
         files = {}
         for line in status.strip().split('\n'):
-            if line:
-                # Porcelain format: XY PATH
-                # X = index status, Y = working tree status
-                status_code = line[:2].strip()
-                file_path = line[3:]
-                files[file_path] = status_code
+            if len(line) >= 3:
+                # Check if position 2 is a space (standard XY format)
+                # or position 1 is a space (condensed X format)
+                if len(line) > 3 and line[2] == ' ':
+                    # Standard: XY PATH - path starts at position 3
+                    status_code = line[:2].strip()
+                    file_path = line[3:]
+                else:
+                    # Condensed: X PATH - path starts at position 2
+                    status_code = line[0]
+                    file_path = line[2:] if line[1] == ' ' else line[3:]
+                if status_code and file_path:
+                    files[file_path] = status_code
 
         return {
             'is_repo': True,
