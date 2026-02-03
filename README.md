@@ -700,6 +700,15 @@ The `examples/` directory contains two complete app configurations:
 
 Use these as templates for your own apps.
 
+## Extensibility
+
+boring-ui is designed for extensibility. See the [Extension Guide](docs/EXTENSION_GUIDE.md) for:
+
+- **Pane Registry** - Register custom panel components
+- **Layout Manager** - Customize layout persistence
+- **App Config** - Configure branding and features
+- **Capabilities API** - Discover available features
+
 ## License
 
 MIT
