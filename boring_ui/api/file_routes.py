@@ -157,7 +157,7 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
         dest_rel = validate_and_relativize(body.dest_dir)
         try:
             new_path = storage.move(src_rel, dest_rel)
-            return {'success': True, 'old_path': body.src_path, 'new_path': str(new_path)}
+            return {'success': True, 'old_path': body.src_path, 'dest_path': str(new_path)}
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail=f'File not found: {body.src_path}')
         except NotADirectoryError:
@@ -195,7 +195,13 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
 
                     # Match against pattern
                     if fnmatch.fnmatch(name.lower(), q.lower()):
-                        matches.append(entry)
+                        # Add 'dir' field (parent directory) for frontend compatibility
+                        result = {
+                            'name': entry['name'],
+                            'path': entry['path'],
+                            'dir': str(entry_path.parent) if str(entry_path.parent) != '.' else '',
+                        }
+                        matches.append(result)
 
                     # Recurse into directories
                     if entry['is_dir']:
@@ -204,6 +210,6 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
                 pass
 
         search_recursive(rel_path)
-        return {'matches': matches, 'pattern': q, 'path': path}
+        return {'results': matches, 'pattern': q, 'path': path}
 
     return router
