@@ -1,6 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { ConfigProvider } from './config'
 import './styles.css'
 
 // Suppress known xterm.js renderer race condition errors during layout transitions
@@ -22,4 +23,8 @@ window.addEventListener('error', (event) => {
   }
 })
 
-createRoot(document.getElementById('root')).render(<App />)
+createRoot(document.getElementById('root')).render(
+  <ConfigProvider>
+    <App />
+  </ConfigProvider>
+)

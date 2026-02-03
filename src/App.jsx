@@ -4,6 +4,7 @@ import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 import { ThemeProvider } from './hooks/useTheme'
+import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import ThemeToggle from './components/ThemeToggle'
 import FileTreePanel from './panels/FileTreePanel'
@@ -133,12 +134,13 @@ const hashProjectRoot = (root) => {
 }
 
 // Storage key generators (project-specific)
-const getStorageKey = (projectRoot, suffix) => `kurt-web-${hashProjectRoot(projectRoot)}-${suffix}`
+// prefix defaults to 'kurt-web' for backwards compatibility
+const getStorageKey = (prefix, projectRoot, suffix) => `${prefix}-${hashProjectRoot(projectRoot)}-${suffix}`
 
 // Load saved tabs from localStorage
-const loadSavedTabs = (projectRoot) => {
+const loadSavedTabs = (prefix, projectRoot) => {
   try {
-    const saved = localStorage.getItem(getStorageKey(projectRoot, 'tabs'))
+    const saved = localStorage.getItem(getStorageKey(prefix, projectRoot, 'tabs'))
     if (saved) {
       return JSON.parse(saved)
     }
@@ -149,24 +151,24 @@ const loadSavedTabs = (projectRoot) => {
 }
 
 // Save open tabs to localStorage
-const saveTabs = (projectRoot, paths) => {
+const saveTabs = (prefix, projectRoot, paths) => {
   try {
-    localStorage.setItem(getStorageKey(projectRoot, 'tabs'), JSON.stringify(paths))
+    localStorage.setItem(getStorageKey(prefix, projectRoot, 'tabs'), JSON.stringify(paths))
   } catch {
     // Ignore storage errors
   }
 }
 
-const loadLayout = (projectRoot) => {
+const loadLayout = (prefix, projectRoot) => {
   try {
-    const raw = localStorage.getItem(getStorageKey(projectRoot, 'layout'))
+    const raw = localStorage.getItem(getStorageKey(prefix, projectRoot, 'layout'))
     if (!raw) return null
     const parsed = JSON.parse(raw)
 
     // Check layout version - force reset if outdated
     if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
       console.info('[Layout] Version outdated, resetting layout')
-      localStorage.removeItem(getStorageKey(projectRoot, 'layout'))
+      localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
       return null
     }
 
@@ -179,7 +181,7 @@ const loadLayout = (projectRoot) => {
       )
       if (hasUnknown) {
         console.info('[Layout] Unknown components found, resetting layout')
-        localStorage.removeItem(getStorageKey(projectRoot, 'layout'))
+        localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
         return null
       }
     }
@@ -187,7 +189,7 @@ const loadLayout = (projectRoot) => {
     // Validate layout structure to detect drift
     if (!validateLayoutStructure(parsed)) {
       console.info('[Layout] Structure drift detected, resetting layout')
-      localStorage.removeItem(getStorageKey(projectRoot, 'layout'))
+      localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
       return null
     }
 
@@ -221,68 +223,76 @@ const pruneEmptyGroups = (api) => {
   return removed
 }
 
-const saveLayout = (projectRoot, layout) => {
+const saveLayout = (prefix, projectRoot, layout) => {
   try {
     const layoutWithVersion = { ...layout, version: LAYOUT_VERSION }
-    localStorage.setItem(getStorageKey(projectRoot, 'layout'), JSON.stringify(layoutWithVersion))
+    localStorage.setItem(getStorageKey(prefix, projectRoot, 'layout'), JSON.stringify(layoutWithVersion))
   } catch {
     // Ignore storage errors
   }
 }
 
 // Collapsed state and panel sizes are shared across projects (UI preference)
-const SIDEBAR_COLLAPSED_KEY = 'kurt-web-sidebar-collapsed'
-const PANEL_SIZES_KEY = 'kurt-web-panel-sizes'
+const getCollapsedKey = (prefix) => `${prefix}-sidebar-collapsed`
+const getPanelSizesKey = (prefix) => `${prefix}-panel-sizes`
 
-const loadCollapsedState = () => {
+const loadCollapsedState = (prefix, defaults) => {
   try {
-    const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+    const saved = localStorage.getItem(getCollapsedKey(prefix))
     if (saved) {
       return JSON.parse(saved)
     }
   } catch {
     // Ignore parse errors
   }
-  return { filetree: false, terminal: false }
+  return defaults || { filetree: false, terminal: false }
 }
 
-const saveCollapsedState = (state) => {
+const saveCollapsedState = (prefix, state) => {
   try {
-    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, JSON.stringify(state))
+    localStorage.setItem(getCollapsedKey(prefix), JSON.stringify(state))
   } catch {
     // Ignore storage errors
   }
 }
 
-const loadPanelSizes = () => {
+const loadPanelSizes = (prefix, defaults) => {
   try {
-    const saved = localStorage.getItem(PANEL_SIZES_KEY)
+    const saved = localStorage.getItem(getPanelSizesKey(prefix))
     if (saved) {
       return JSON.parse(saved)
     }
   } catch {
     // Ignore parse errors
   }
-  return { filetree: 280, terminal: 400, shell: 250 }
+  return defaults || { filetree: 280, terminal: 400, shell: 250 }
 }
 
-const savePanelSizes = (sizes) => {
+const savePanelSizes = (prefix, sizes) => {
   try {
-    localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(sizes))
+    localStorage.setItem(getPanelSizesKey(prefix), JSON.stringify(sizes))
   } catch {
     // Ignore storage errors
   }
 }
 
 export default function App() {
+  // Get config (defaults are used until async load completes)
+  const config = useConfig()
+  const storagePrefix = config.storage?.prefix || 'kurt-web'
+
   const [dockApi, setDockApi] = useState(null)
   const [tabs, setTabs] = useState({}) // path -> { content, isDirty }
   const [approvals, setApprovals] = useState([])
   const [approvalsLoaded, setApprovalsLoaded] = useState(false)
   const [activeFile, setActiveFile] = useState(null)
   const [activeDiffFile, setActiveDiffFile] = useState(null)
-  const [collapsed, setCollapsed] = useState(loadCollapsedState)
-  const panelSizesRef = useRef(loadPanelSizes())
+  const [collapsed, setCollapsed] = useState(() =>
+    loadCollapsedState(storagePrefix, { filetree: false, terminal: false })
+  )
+  const panelSizesRef = useRef(
+    loadPanelSizes(storagePrefix, config.panels?.defaults || { filetree: 280, terminal: 400, shell: 250 })
+  )
   const collapsedEffectRan = useRef(false)
   const dismissedApprovalsRef = useRef(new Set())
   const centerGroupRef = useRef(null)
@@ -291,6 +301,8 @@ export default function App() {
   const ensureCorePanelsRef = useRef(null)
   const [projectRoot, setProjectRoot] = useState(null) // null = not loaded yet, '' = loaded but empty
   const projectRootRef = useRef(null) // Stable ref for callbacks
+  const storagePrefixRef = useRef(storagePrefix) // Stable ref for callbacks
+  storagePrefixRef.current = storagePrefix
 
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
@@ -302,13 +314,13 @@ export default function App() {
         const currentWidth = filetreeGroup.api.width
         if (currentWidth > 48) {
           panelSizesRef.current = { ...panelSizesRef.current, filetree: currentWidth }
-          savePanelSizes(panelSizesRef.current)
+          savePanelSizes(storagePrefixRef.current, panelSizesRef.current)
         }
       }
     }
     setCollapsed((prev) => {
       const next = { ...prev, filetree: !prev.filetree }
-      saveCollapsedState(next)
+      saveCollapsedState(storagePrefixRef.current, next)
       return next
     })
   }, [collapsed.filetree, dockApi])
@@ -322,13 +334,13 @@ export default function App() {
         const currentWidth = terminalGroup.api.width
         if (currentWidth > 48) {
           panelSizesRef.current = { ...panelSizesRef.current, terminal: currentWidth }
-          savePanelSizes(panelSizesRef.current)
+          savePanelSizes(storagePrefixRef.current, panelSizesRef.current)
         }
       }
     }
     setCollapsed((prev) => {
       const next = { ...prev, terminal: !prev.terminal }
-      saveCollapsedState(next)
+      saveCollapsedState(storagePrefixRef.current, next)
       return next
     })
   }, [collapsed.terminal, dockApi])
@@ -342,13 +354,13 @@ export default function App() {
         const currentHeight = shellGroup.api.height
         if (currentHeight > 36) {
           panelSizesRef.current = { ...panelSizesRef.current, shell: currentHeight }
-          savePanelSizes(panelSizesRef.current)
+          savePanelSizes(storagePrefixRef.current, panelSizesRef.current)
         }
       }
     }
     setCollapsed((prev) => {
       const next = { ...prev, shell: !prev.shell }
-      saveCollapsedState(next)
+      saveCollapsedState(storagePrefixRef.current, next)
       return next
     })
   }, [collapsed.shell, dockApi])
@@ -1107,8 +1119,8 @@ export default function App() {
 
     const saveLayoutNow = () => {
       if (typeof api.toJSON !== 'function') return
-      // Use ref for stable access to projectRoot in event handlers
-      saveLayout(projectRootRef.current, api.toJSON())
+      // Use refs for stable access in event handlers
+      saveLayout(storagePrefixRef.current, projectRootRef.current, api.toJSON())
     }
 
     // Save panel sizes when layout changes (user resizes via drag)
@@ -1146,7 +1158,7 @@ export default function App() {
 
       if (changed) {
         panelSizesRef.current = newSizes
-        savePanelSizes(newSizes)
+        savePanelSizes(storagePrefixRef.current, newSizes)
       }
     }
 
@@ -1181,15 +1193,19 @@ export default function App() {
     fetchProjectRoot()
   }, [])
 
-  // Set browser tab title to folder name
+  // Set browser tab title using config titleFormat
   useEffect(() => {
-    if (projectRoot) {
-      const folderName = projectRoot.split('/').filter(Boolean).pop() || 'Kurt'
-      document.title = `${folderName} - Kurt`
+    const folderName = projectRoot ? projectRoot.split('/').filter(Boolean).pop() : null
+    const titleFormat = config.branding?.titleFormat
+    if (typeof titleFormat === 'function') {
+      document.title = titleFormat({ folder: folderName, workspace: folderName })
     } else {
-      document.title = 'Kurt'
+      // Fallback if titleFormat is not a function
+      document.title = folderName
+        ? `${folderName} - ${config.branding?.name || 'Boring UI'}`
+        : config.branding?.name || 'Boring UI'
     }
-  }, [projectRoot])
+  }, [projectRoot, config.branding])
 
   // Restore layout once projectRoot is loaded and dockApi is available
   const layoutRestorationRan = useRef(false)
@@ -1199,7 +1215,7 @@ export default function App() {
     if (!dockApi || projectRoot === null || layoutRestorationRan.current) return
     layoutRestorationRan.current = true
 
-    const savedLayout = loadLayout(projectRoot)
+    const savedLayout = loadLayout(storagePrefix, projectRoot)
     if (!savedLayout) {
       if (ensureCorePanelsRef.current) {
         ensureCorePanelsRef.current()
@@ -1320,7 +1336,7 @@ export default function App() {
         // Prune empty groups
         const pruned = pruneEmptyGroups(dockApi)
         if (pruned && typeof dockApi.toJSON === 'function') {
-          saveLayout(projectRoot, dockApi.toJSON())
+          saveLayout(storagePrefix, projectRoot, dockApi.toJSON())
         }
 
         // Apply saved panel sizes, respecting collapsed state
@@ -1375,7 +1391,7 @@ export default function App() {
         layoutRestored.current = false
       }
     }
-  }, [dockApi, projectRoot])
+  }, [dockApi, projectRoot, storagePrefix, collapsed.filetree, collapsed.terminal, collapsed.shell])
 
   // Track active panel to highlight in file tree and sync URL
   useEffect(() => {
@@ -1472,7 +1488,7 @@ export default function App() {
       return
     }
 
-    const savedPaths = loadSavedTabs(projectRoot)
+    const savedPaths = loadSavedTabs(storagePrefix, projectRoot)
     if (savedPaths.length > 0) {
       // Small delay to ensure layout is ready
       setTimeout(() => {
@@ -1481,15 +1497,15 @@ export default function App() {
         })
       }, 50)
     }
-  }, [dockApi, projectRoot, openFile])
+  }, [dockApi, projectRoot, openFile, storagePrefix])
 
   // Save open tabs to localStorage whenever tabs change (but not on initial empty state)
   useEffect(() => {
     // Wait for projectRoot to be loaded
     if (!isInitialized.current || projectRoot === null) return
     const paths = Object.keys(tabs)
-    saveTabs(projectRoot, paths)
-  }, [tabs, projectRoot])
+    saveTabs(storagePrefix, projectRoot, paths)
+  }, [tabs, projectRoot, storagePrefix])
 
   // Restore document from URL query param on load
   const hasRestoredFromUrl = useRef(false)
@@ -1572,10 +1588,10 @@ export default function App() {
         <header className="app-header">
           <div className="app-header-brand">
             <div className="app-header-logo" aria-hidden="true">
-              K
+              {config.branding?.logo || 'B'}
             </div>
             <div className="app-header-title">
-              {projectRoot?.split('/').pop() || 'Workspace'}
+              {projectRoot?.split('/').pop() || config.branding?.name || 'Workspace'}
             </div>
           </div>
           <div className="app-header-controls">
