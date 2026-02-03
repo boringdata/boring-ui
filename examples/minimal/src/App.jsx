@@ -4,14 +4,14 @@
  * This demonstrates how to compose boring-ui panels
  * into a custom layout using DockLayout.
  */
-import { DockLayout, FileTreePanel, EditorPanel, TerminalPanel } from 'boring-ui'
+import { DockLayout, FileTreePanel, EditorPanel, ShellTerminalPanel } from 'boring-ui'
 import 'boring-ui/style.css'
 
 // Define which components are available for panels
 const components = {
   filetree: FileTreePanel,
   editor: EditorPanel,
-  terminal: TerminalPanel,
+  terminal: ShellTerminalPanel,
 }
 
 // Define the initial panel layout
