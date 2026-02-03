@@ -328,7 +328,7 @@ export default function TerminalPanel({ params }) {
               const isActive = session.id === activeId
               const className = `terminal-instance${isActive ? ' active' : ''}`
 
-              // CLI: Show PTY terminal stream
+              // CLI: Show PTY terminal stream (render all but only active connects)
               if (chatInterface === 'cli') {
                 return (
                   <div key={session.id} className={className}>
@@ -354,7 +354,11 @@ export default function TerminalPanel({ params }) {
                 )
               }
 
-              // WEB: Show ClaudeStreamChat
+              // WEB: Only render the active session to avoid multiple WebSocket connections
+              if (!isActive) {
+                return <div key={session.id} className={className} />
+              }
+
               return (
                 <div key={session.id} className={className}>
                   <ClaudeStreamChat
