@@ -141,14 +141,14 @@ export { useToast } from './hooks/useToast'
 // Context Providers
 // ============================================================================
 
-export { ToastProvider, useToastContext } from './context/ToastContext'
+export { ToastProvider, ToastContext } from './context/ToastContext'
 
 // ============================================================================
 // Styles (for advanced customization)
 // ============================================================================
 
 export { default as StyleProvider } from './styles/StyleProvider'
-export { lightTokens, darkTokens } from './styles/defaults'
+export { defaultTokens } from './styles/defaults'
 
 // ============================================================================
 // Utilities

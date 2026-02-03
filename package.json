@@ -5,12 +5,10 @@
   "type": "module",
   "main": "./dist/boring-ui.cjs",
   "module": "./dist/boring-ui.js",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/boring-ui.js",
-      "require": "./dist/boring-ui.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/boring-ui.cjs"
     },
     "./style.css": "./dist/style.css"
   },
