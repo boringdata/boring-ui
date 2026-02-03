@@ -16,6 +16,24 @@ def create_git_router(config: APIConfig) -> APIRouter:
     """
     router = APIRouter(tags=['git'])
 
+    def validate_and_relativize(path_str: str) -> Path:
+        """Validate path and return relative path.
+
+        Args:
+            path_str: Path to validate
+
+        Returns:
+            Path relative to workspace root
+
+        Raises:
+            HTTPException: If path is invalid or outside workspace
+        """
+        try:
+            validated = config.validate_path(Path(path_str))
+            return validated.relative_to(config.workspace_root)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     def run_git(args: list[str]) -> str:
         """Run git command in workspace.
 
@@ -82,8 +100,7 @@ def create_git_router(config: APIConfig) -> APIRouter:
         Returns:
             dict with diff content and path
         """
-        validated = config.validate_path(Path(path))
-        rel_path = validated.relative_to(config.workspace_root)
+        rel_path = validate_and_relativize(path)
 
         try:
             diff = run_git(['diff', 'HEAD', '--', str(rel_path)])
@@ -102,8 +119,7 @@ def create_git_router(config: APIConfig) -> APIRouter:
         Returns:
             dict with content at HEAD (or null if not tracked)
         """
-        validated = config.validate_path(Path(path))
-        rel_path = validated.relative_to(config.workspace_root)
+        rel_path = validate_and_relativize(path)
 
         try:
             content = run_git(['show', f'HEAD:{rel_path}'])
