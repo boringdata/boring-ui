@@ -1,11 +1,41 @@
 {
-  "name": "kurt-web",
+  "name": "boring-ui",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
+  "main": "./dist/boring-ui.cjs",
+  "module": "./dist/boring-ui.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/boring-ui.js",
+      "require": "./dist/boring-ui.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "react",
+    "ui",
+    "framework",
+    "web-ide",
+    "file-tree",
+    "editor",
+    "terminal"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dicklesworthstone/boring-ui.git"
+  },
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:lib": "vite build --mode lib",
     "preview": "vite preview --port 5173",
     "lint": "eslint src/",
     "test": "vitest",
@@ -63,6 +93,10 @@
     "xterm-addon-fit": "^0.8.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.10"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
