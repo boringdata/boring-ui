@@ -1,7 +1,18 @@
 """Unit tests for boring_ui.api.config module."""
+import os
+import sys
+
 import pytest
 from pathlib import Path
 from boring_ui.api.config import APIConfig
+
+
+# Check if symlinks are supported (Windows requires admin privileges)
+def _symlinks_supported():
+    """Check if the platform supports symlinks without special privileges."""
+    if sys.platform == 'win32':
+        return False
+    return True
 
 
 class TestAPIConfig:
@@ -86,6 +97,10 @@ class TestValidatePath:
         result = config.validate_path('.')
         assert result == tmp_path.resolve()
 
+    @pytest.mark.skipif(
+        not _symlinks_supported(),
+        reason='Symlinks require admin privileges on Windows'
+    )
     def test_validate_path_symlink_escape(self, tmp_path):
         """Test that symlinks escaping workspace are rejected."""
         # Create a symlink that points outside workspace
@@ -95,6 +110,10 @@ class TestValidatePath:
         symlink = tmp_path / 'escape_link'
         try:
             symlink.symlink_to(outside_dir)
+        except OSError:
+            pytest.skip('Symlink creation not supported on this system')
+
+        try:
             config = APIConfig(workspace_root=tmp_path)
             with pytest.raises(ValueError, match='traversal'):
                 config.validate_path('escape_link')
