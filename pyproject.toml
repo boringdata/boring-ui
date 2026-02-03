@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "boring-ui"
+version = "0.1.0"
+description = "A composition-based web IDE framework"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "ptyprocess>=0.7.0",
+    "websockets>=11.0",
+    "aiofiles>=23.0.0",
+]
+
+[project.optional-dependencies]
+s3 = ["boto3>=1.28.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "httpx>=0.24",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["boring_ui"]
