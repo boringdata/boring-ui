@@ -24,6 +24,11 @@ Example:
     app = FastAPI()
     app.include_router(create_file_router(config, storage), prefix='/api')
     app.include_router(create_git_router(config), prefix='/api/git')
+
+    # Using router registry for dynamic composition
+    from boring_ui.api import create_default_registry, RouterRegistry
+    registry = create_default_registry()
+    app = create_app(routers=['files', 'git', 'pty'])  # Selective routers
 """
 
 # Configuration
@@ -41,6 +46,14 @@ from .approval import (
     ApprovalStore,
     InMemoryApprovalStore,
     create_approval_router,
+)
+
+# Capabilities and registry
+from .capabilities import (
+    RouterRegistry,
+    RouterInfo,
+    create_default_registry,
+    create_capabilities_router,
 )
 
 # App factory
@@ -62,6 +75,11 @@ __all__ = [
     # Approval
     'ApprovalStore',
     'InMemoryApprovalStore',
+    # Capabilities and registry
+    'RouterRegistry',
+    'RouterInfo',
+    'create_default_registry',
+    'create_capabilities_router',
     # App factory
     'create_app',
 ]

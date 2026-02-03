@@ -10,6 +10,11 @@ from .git_routes import create_git_router
 from .pty_bridge import create_pty_router
 from .stream_bridge import create_stream_router
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
+from .capabilities import (
+    RouterRegistry,
+    create_default_registry,
+    create_capabilities_router,
+)
 
 
 def create_app(
@@ -19,6 +24,8 @@ def create_app(
     include_pty: bool = True,
     include_stream: bool = True,
     include_approval: bool = True,
+    routers: list[str] | None = None,
+    registry: RouterRegistry | None = None,
 ) -> FastAPI:
     """Create a pre-wired FastAPI application.
 
@@ -32,6 +39,9 @@ def create_app(
         include_pty: Include PTY WebSocket router (default: True)
         include_stream: Include Claude stream WebSocket router (default: True)
         include_approval: Include approval workflow router (default: True)
+        routers: List of router names to include. If None, uses include_* flags.
+            Valid names: 'files', 'git', 'pty', 'stream', 'approval'
+        registry: Custom router registry. Defaults to create_default_registry().
 
     Returns:
         Configured FastAPI application with all routes mounted.
@@ -53,11 +63,37 @@ def create_app(
 
         # Minimal app (no WebSockets)
         app = create_app(include_pty=False, include_stream=False)
+
+        # Using router list (alternative to include_* flags)
+        app = create_app(routers=['files', 'git'])  # Only file and git routes
     """
     # Apply defaults
     config = config or APIConfig(workspace_root=Path.cwd())
     storage = storage or LocalStorage(config.workspace_root)
     approval_store = approval_store or InMemoryApprovalStore()
+    registry = registry or create_default_registry()
+
+    # Determine which routers to include
+    # If routers list is provided, use it; otherwise use include_* flags
+    if routers is not None:
+        enabled_routers = set(routers)
+    else:
+        enabled_routers = {'files', 'git'}  # Core routers always included
+        if include_pty:
+            enabled_routers.add('pty')
+        if include_stream:
+            enabled_routers.add('stream')
+        if include_approval:
+            enabled_routers.add('approval')
+
+    # Build enabled features map for capabilities endpoint
+    enabled_features = {
+        'files': 'files' in enabled_routers,
+        'git': 'git' in enabled_routers,
+        'pty': 'pty' in enabled_routers,
+        'stream': 'stream' in enabled_routers,
+        'approval': 'approval' in enabled_routers,
+    }
 
     # Create app
     app = FastAPI(
@@ -75,19 +111,27 @@ def create_app(
         allow_headers=['*'],
     )
 
-    # Mount core routers
-    app.include_router(create_file_router(config, storage), prefix='/api')
-    app.include_router(create_git_router(config), prefix='/api/git')
+    # Mount routers from registry based on enabled set
+    router_args = {
+        'files': (config, storage),
+        'git': (config,),
+        'pty': (config,),
+        'stream': (config,),
+        'approval': (approval_store,),
+    }
 
-    # Optional routers
-    if include_pty:
-        app.include_router(create_pty_router(config), prefix='/ws')
+    for router_name in enabled_routers:
+        entry = registry.get(router_name)
+        if entry:
+            info, factory = entry
+            args = router_args.get(router_name, ())
+            app.include_router(factory(*args), prefix=info.prefix)
 
-    if include_stream:
-        app.include_router(create_stream_router(config), prefix='/ws')
-
-    if include_approval:
-        app.include_router(create_approval_router(approval_store), prefix='/api')
+    # Always include capabilities router
+    app.include_router(
+        create_capabilities_router(enabled_features, registry),
+        prefix='/api',
+    )
 
     # Health check
     @app.get('/health')
@@ -96,11 +140,7 @@ def create_app(
         return {
             'status': 'ok',
             'workspace': str(config.workspace_root),
-            'features': {
-                'pty': include_pty,
-                'stream': include_stream,
-                'approval': include_approval,
-            },
+            'features': enabled_features,
         }
 
     # API info
