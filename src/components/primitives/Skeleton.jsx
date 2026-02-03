@@ -1,6 +1,6 @@
 import React from 'react';
 import { clsx } from 'clsx';
-import '../../../styles/skeleton.css';
+import '../../styles/skeleton.css';
 
 /**
  * Skeleton Component
