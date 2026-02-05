@@ -1,7 +1,7 @@
 import type { Preview } from '@storybook/react';
 import { themes } from '@storybook/theming';
 import { INITIAL_VIEWPORTS } from '@storybook/addon-viewport';
-import '../src/styles/index.css';
+import '../src/front/styles.css';
 
 const preview: Preview = {
   parameters: {
