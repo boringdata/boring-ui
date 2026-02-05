@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import APIConfig
 from .storage import Storage, LocalStorage
 from .modules.files import create_file_router
-from .git_routes import create_git_router
+from .modules.git import create_git_router
 from .pty_bridge import create_pty_router
 from .stream_bridge import create_stream_router
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router

@@ -91,7 +91,7 @@ def create_default_registry() -> RouterRegistry:
     This represents the standard router set for a boring-ui application.
     """
     from .modules.files import create_file_router
-    from .git_routes import create_git_router
+    from .modules.git import create_git_router
     from .pty_bridge import create_pty_router
     from .stream_bridge import create_stream_router
     from .approval import create_approval_router
