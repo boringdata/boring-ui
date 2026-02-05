@@ -1,10 +1,10 @@
-"""Unit tests for boring_ui.api.file_routes module."""
+"""Unit tests for boring_ui.api.modules.files module."""
 import pytest
 from httpx import AsyncClient, ASGITransport
 from pathlib import Path
 from boring_ui.api.config import APIConfig
 from boring_ui.api.storage import LocalStorage
-from boring_ui.api.file_routes import create_file_router
+from boring_ui.api.modules.files import create_file_router
 from fastapi import FastAPI
 
 
