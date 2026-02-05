@@ -82,16 +82,24 @@ def create_app(
         if include_pty:
             enabled_routers.add('pty')
         if include_stream:
-            enabled_routers.add('stream')
+            # Use new canonical name, but 'stream' also works via registry alias
+            enabled_routers.add('chat_claude_code')
         if include_approval:
             enabled_routers.add('approval')
 
+    # Support 'stream' alias -> 'chat_claude_code' for backward compatibility
+    if 'stream' in enabled_routers:
+        enabled_routers.add('chat_claude_code')
+
     # Build enabled features map for capabilities endpoint
+    # Include both names for backward compatibility
+    chat_enabled = 'chat_claude_code' in enabled_routers or 'stream' in enabled_routers
     enabled_features = {
         'files': 'files' in enabled_routers,
         'git': 'git' in enabled_routers,
         'pty': 'pty' in enabled_routers,
-        'stream': 'stream' in enabled_routers,
+        'chat_claude_code': chat_enabled,
+        'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
     }
 
@@ -116,14 +124,24 @@ def create_app(
         'files': (config, storage),
         'git': (config,),
         'pty': (config,),
-        'stream': (config,),
+        'chat_claude_code': (config,),
+        'stream': (config,),  # Alias
         'approval': (approval_store,),
     }
+
+    # Track mounted factories to avoid double-mounting aliases
+    # (stream and chat_claude_code use the same factory, but pty uses a different one)
+    mounted_factories: set[int] = set()
 
     for router_name in enabled_routers:
         entry = registry.get(router_name)
         if entry:
             info, factory = entry
+            # Skip if this factory is already mounted (avoids duplicate alias mounts)
+            factory_id = id(factory)
+            if factory_id in mounted_factories:
+                continue
+            mounted_factories.add(factory_id)
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 

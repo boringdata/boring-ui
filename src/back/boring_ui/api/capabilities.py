@@ -123,10 +123,18 @@ def create_default_registry() -> RouterRegistry:
         tags=['websocket', 'terminal'],
     )
     registry.register(
-        'stream',
+        'chat_claude_code',
         '/ws',
         create_stream_router,
         description='Claude stream WebSocket for AI chat',
+        tags=['websocket', 'ai'],
+    )
+    # Backward compatibility alias: 'stream' -> 'chat_claude_code'
+    registry.register(
+        'stream',
+        '/ws',
+        create_stream_router,
+        description='Claude stream WebSocket for AI chat (alias for chat_claude_code)',
         tags=['websocket', 'ai'],
     )
     registry.register(
