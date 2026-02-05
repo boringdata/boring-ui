@@ -4,11 +4,11 @@ import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from ...config import APIConfig
-from .service import PTYService, SharedSession
+from .service import PTYService, SharedSession, _SERVICE
 
 
-# Global service instance
-_pty_service = PTYService()
+# Use the singleton service instance from service.py
+_pty_service = _SERVICE
 
 
 def create_pty_router(config: APIConfig) -> APIRouter:
