@@ -6,13 +6,13 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./src/__tests__/setup.ts'],
-    include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],
+    setupFiles: ['./src/front/__tests__/setup.ts'],
+    include: ['src/front/**/*.{test,spec}.{js,jsx,ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: ['src/components/**', 'src/panels/**'],
-      exclude: ['src/__tests__/**', 'src/**/*.d.ts'],
+      include: ['src/front/components/**', 'src/front/panels/**'],
+      exclude: ['src/front/__tests__/**', 'src/front/**/*.d.ts'],
     },
     css: true,
   },

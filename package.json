@@ -35,7 +35,7 @@
     "build": "vite build",
     "build:lib": "vite build --mode lib",
     "preview": "vite preview --port 5173",
-    "lint": "eslint src/",
+    "lint": "eslint src/front/",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

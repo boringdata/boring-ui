@@ -11,7 +11,7 @@ import { defineConfig, devices } from '@playwright/test'
  */
 
 export default defineConfig({
-  testDir: './src/__tests__/e2e',
+  testDir: './src/front/__tests__/e2e',
   testMatch: '**/*.spec.ts',
 
   // Timeout for each test
