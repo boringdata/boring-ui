@@ -13,7 +13,7 @@ boring-ui provides four main extension points:
 
 ## Pane Registry
 
-The pane registry (`src/registry/panes.js`) manages panel components for the Dockview layout.
+The pane registry (`src/front/registry/panes.js`) manages panel components for the Dockview layout.
 
 ### Using the Registry
 
@@ -75,7 +75,7 @@ registerPane({
 
 ## Layout Manager
 
-The layout manager (`src/layout/LayoutManager.js`) handles layout persistence.
+The layout manager (`src/front/layout/LayoutManager.js`) handles layout persistence.
 
 ### Storage Functions
 
@@ -293,5 +293,4 @@ async function checkCapabilities() {
 ## See Also
 
 - [README.md](../README.md) - Quick start guide
-- [EXTENSIBILITY_PLAN.md](../EXTENSIBILITY_PLAN.md) - Full extensibility roadmap
 - [tests/unit/test_capabilities.py](../tests/unit/test_capabilities.py) - API test examples
