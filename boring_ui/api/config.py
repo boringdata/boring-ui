@@ -1,6 +1,25 @@
 """Configuration for boring-ui API."""
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+def _default_cors_origins() -> list[str]:
+    """Get default CORS origins, supporting env override."""
+    env_origins = os.environ.get('CORS_ORIGINS', '')
+    if env_origins:
+        return [o.strip() for o in env_origins.split(',') if o.strip()]
+    # Default: allow common dev origins
+    return [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://localhost:5175',
+        'http://localhost:3000',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
+        'http://127.0.0.1:5175',
+        '*',  # Allow all origins in dev - restrict in production
+    ]
 
 
 @dataclass
@@ -11,7 +30,7 @@ class APIConfig:
     enabling dependency injection and avoiding global state.
     """
     workspace_root: Path
-    cors_origins: list[str] = field(default_factory=lambda: ['http://localhost:5173'])
+    cors_origins: list[str] = field(default_factory=_default_cors_origins)
 
     # PTY provider configuration: provider_name -> command list
     # e.g., 'shell' -> ['bash'], 'claude' -> ['claude', '--dangerously-skip-permissions']

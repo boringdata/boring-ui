@@ -1,7 +1,7 @@
 const normalizeBase = (value) => (value ? value.replace(/\/$/, '') : '')
 
 const isDevPort = (port) => {
-  const devPorts = new Set(['3000', '3001', '4173', '4174', '5173', '5174'])
+  const devPorts = new Set(['3000', '3001', '4173', '4174', '5173', '5174', '5175', '5176'])
   return devPorts.has(port)
 }
 
