@@ -7,7 +7,7 @@ from .config import APIConfig
 from .storage import Storage, LocalStorage
 from .modules.files import create_file_router
 from .modules.git import create_git_router
-from .pty_bridge import create_pty_router
+from .modules.pty import create_pty_router
 from .stream_bridge import create_stream_router
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
 from .capabilities import (
@@ -168,17 +168,30 @@ def create_app(
     async def list_sessions():
         """List active Claude stream sessions."""
         from .stream_bridge import _SESSION_REGISTRY
-        return {
-            'sessions': [
-                {
-                    'id': session_id,
-                    'alive': session.is_alive(),
-                    'clients': len(session.clients),
-                    'history_count': len(session.history),
-                }
-                for session_id, session in _SESSION_REGISTRY.items()
-            ],
-        }
+        from .modules.pty import get_session_registry as get_pty_registry
+
+        # Combine PTY and stream sessions
+        pty_sessions = [
+            {
+                'id': session_id,
+                'type': 'pty',
+                'alive': session.is_alive(),
+                'clients': len(session.clients),
+                'history_count': len(session.history),
+            }
+            for session_id, session in get_pty_registry().items()
+        ]
+        stream_sessions = [
+            {
+                'id': session_id,
+                'type': 'stream',
+                'alive': session.is_alive(),
+                'clients': len(session.clients),
+                'history_count': len(session.history),
+            }
+            for session_id, session in _SESSION_REGISTRY.items()
+        ]
+        return {'sessions': pty_sessions + stream_sessions}
 
     @app.post('/api/sessions')
     async def create_session():
