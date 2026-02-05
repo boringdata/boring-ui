@@ -41,7 +41,7 @@ from .storage import Storage, LocalStorage, S3Storage
 from .modules.files import create_file_router
 from .modules.git import create_git_router
 from .modules.pty import create_pty_router
-from .stream_bridge import create_stream_router
+from .modules.stream import create_stream_router
 from .approval import (
     ApprovalStore,
     InMemoryApprovalStore,
