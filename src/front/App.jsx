@@ -173,7 +173,9 @@ const loadLayout = (prefix, projectRoot, configLayoutVersion) => {
     }
 
     // Check config layout version - force reset if user bumped their layoutVersion
-    if (configLayoutVersion && parsed?.configVersion !== configLayoutVersion) {
+    // Treat missing configVersion as version 1 (default) for backwards compatibility
+    const savedConfigVersion = parsed?.configVersion ?? 1
+    if (configLayoutVersion && savedConfigVersion !== configLayoutVersion) {
       console.info('[Layout] Config version changed, resetting layout')
       localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
       return null
