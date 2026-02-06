@@ -319,7 +319,6 @@ The `/api/capabilities` endpoint reports available features.
 ```
 
 Note: `chat_claude_code` is the canonical name for Claude chat functionality. `stream` is provided as a backward-compatible alias.
-```
 
 ### Using Capabilities in Frontend
 
