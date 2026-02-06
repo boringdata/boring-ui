@@ -54,7 +54,11 @@ export const migrateLayout = (layout, oldVersion) => {
   if (layoutMigrations.has(directKey)) {
     console.info(`[Layout] Migrating from v${oldVersion} to v${LAYOUT_VERSION}`)
     try {
-      return layoutMigrations.get(directKey)(layout)
+      const migrated = layoutMigrations.get(directKey)(layout)
+      return {
+        ...migrated,
+        version: LAYOUT_VERSION,
+      }
     } catch (err) {
       console.error('[Layout] Migration failed:', err)
       return null

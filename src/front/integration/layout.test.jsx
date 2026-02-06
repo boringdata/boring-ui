@@ -51,6 +51,7 @@ vi.mock('../registry/panes', async () => {
 })
 
 // Helper to create a valid layout
+// Note: contentComponent should match the pane ID in the registry
 const createValidLayout = () => ({
   version: LAYOUT_VERSION,
   configVersion: 1,
@@ -79,10 +80,10 @@ const createValidLayout = () => ({
     },
   },
   panels: {
-    filetree: { contentComponent: 'FileTreePanel' },
-    terminal: { contentComponent: 'TerminalPanel' },
-    shell: { contentComponent: 'ShellTerminalPanel' },
-    'editor-1': { contentComponent: 'EditorPanel' },
+    filetree: { contentComponent: 'filetree' },
+    terminal: { contentComponent: 'terminal' },
+    shell: { contentComponent: 'shell' },
+    'editor-1': { contentComponent: 'editor' },
   },
 })
 
@@ -177,21 +178,24 @@ describe('Layout Integration', () => {
 
   describe('Collapsed State Persistence', () => {
     it('persists and restores collapsed state', () => {
-      saveCollapsedState(prefix, projectRoot, {
-        left: true,
-        right: false,
-      })
+      // Note: saveCollapsedState signature is (state, prefix)
+      saveCollapsedState(
+        { filetree: true, terminal: false, shell: false },
+        prefix,
+      )
 
-      const loaded = loadCollapsedState(prefix, projectRoot)
+      const loaded = loadCollapsedState(prefix)
       expect(loaded).toEqual({
-        left: true,
-        right: false,
+        filetree: true,
+        terminal: false,
+        shell: false,
       })
     })
 
-    it('returns empty object when no state saved', () => {
-      const loaded = loadCollapsedState(prefix, projectRoot)
-      expect(loaded).toEqual({})
+    it('returns default state when no state saved', () => {
+      // No state saved - returns default { filetree: false, terminal: false, shell: false }
+      const loaded = loadCollapsedState(prefix)
+      expect(loaded).toEqual({ filetree: false, terminal: false, shell: false })
     })
   })
 
