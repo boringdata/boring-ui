@@ -377,7 +377,7 @@
   width: 32px;
   height: 3px;
   background: var(--color-border);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   opacity: 0;
   transition: opacity 0.15s;
 }

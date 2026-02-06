@@ -39,6 +39,7 @@
 
   /* ---------- Border Radius ---------- */
   --radius-none: 0;
+  --radius-xs: 0.125rem;   /* 2px */
   --radius-sm: 0.375rem;   /* 6px */
   --radius-md: 0.5rem;     /* 8px */
   --radius-lg: 0.75rem;    /* 12px */
@@ -909,7 +910,7 @@ html {
 .search-result-name mark {
   background: var(--color-highlight);
   color: inherit;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .search-result-path {
@@ -943,7 +944,7 @@ html {
 
 .tab-bar::-webkit-scrollbar-thumb {
   background: var(--color-border-strong);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .tab {
@@ -1011,7 +1012,7 @@ html {
   font-size: 9px;
   font-weight: var(--font-semibold);
   padding: 1px 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
 }
 
@@ -1450,7 +1451,7 @@ html {
 .editor-content .tiptap mark {
   background: var(--color-highlight);
   padding: 1px 2px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .editor-content .tiptap a,
@@ -2323,14 +2324,14 @@ html {
 .diff-word-removed {
   background-color: rgba(248, 81, 73, 0.4);
   text-decoration: line-through;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   padding: 1px 2px;
 }
 
 /* Word-level highlight for added text */
 .diff-word-added {
   background-color: rgba(46, 160, 67, 0.4);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   padding: 1px 2px;
 }
 
