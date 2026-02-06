@@ -583,7 +583,7 @@ npm run test:coverage    # With coverage
 npm run test:ui          # UI mode
 ```
 
-Tests are located in `src/__tests__/`:
+Tests are located in `src/front/__tests__/`:
 - `components/` - Component unit tests
 - `utils/` - Utility function tests
 - `integration/` - Integration tests
@@ -599,7 +599,7 @@ npm run test:e2e:ui       # UI mode
 npm run test:e2e:debug    # Debug mode
 ```
 
-E2E tests are in `src/__tests__/e2e/` and cover:
+E2E tests are in `src/front/__tests__/e2e/` and cover:
 - Theme persistence
 - Storage integration
 - User interactions
@@ -612,15 +612,23 @@ E2E tests are in `src/__tests__/e2e/` and cover:
 ```
 boring-ui/
 ├── src/
-│   ├── components/       # React components
-│   ├── hooks/           # Custom hooks
-│   ├── config/          # Configuration system
-│   ├── utils/           # Utility functions
-│   ├── styles/          # CSS and design tokens
-│   ├── __tests__/       # Unit and E2E tests
-│   ├── main.jsx         # App entry point
-│   └── App.jsx          # Root component
+│   ├── front/           # Frontend React app
+│   │   ├── components/  # React components
+│   │   ├── panels/      # Dockview panel components
+│   │   ├── hooks/       # Custom hooks
+│   │   ├── config/      # Configuration system
+│   │   ├── registry/    # Pane registry
+│   │   ├── layout/      # Layout persistence
+│   │   ├── utils/       # Utility functions
+│   │   ├── __tests__/   # Unit and E2E tests
+│   │   ├── main.jsx     # App entry point
+│   │   ├── App.jsx      # Root component
+│   │   └── index.js     # Public API exports
+│   └── back/            # Backend Python API
+│       └── boring_ui/   # Python package
+│           └── api/     # FastAPI routers and modules
 ├── examples/            # Example app configurations
+├── docs/                # Documentation
 ├── app.config.js        # Your app configuration
 ├── package.json
 └── vite.config.ts       # Vite configuration
@@ -689,7 +697,7 @@ npm run lint
 **Solution:**
 1. Clear node_modules: `rm -rf node_modules && npm install`
 2. Run single test file: `npm test storage.test.ts`
-3. Check mock setup in `src/__tests__/setup.ts`
+3. Check mock setup in `src/front/__tests__/setup.ts`
 
 ## Examples
 
