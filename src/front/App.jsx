@@ -1062,6 +1062,12 @@ export default function App() {
         .then((r) => r.json())
         .then((data) => {
           const root = data.root || ''
+          // Don't update projectRoot after fallback to avoid overwriting project-scoped state
+          // (layout/tabs were restored from fallback key; updating root would save to wrong location)
+          if (fallbackApplied) {
+            console.info('[App] Backend available but fallback already applied, refresh to reload project state')
+            return
+          }
           projectRootRef.current = root
           setProjectRoot(root)
         })
@@ -1072,16 +1078,11 @@ export default function App() {
             setTimeout(fetchProjectRoot, 500)
           } else if (!fallbackApplied) {
             // After max retries, fall back to empty string to unblock layout restoration
-            console.warn('[App] Failed to fetch project root after retries, using fallback')
+            // We don't continue retrying - user should refresh once backend is available
+            console.warn('[App] Failed to fetch project root after retries, using fallback (refresh when backend is available)')
             projectRootRef.current = ''
             setProjectRoot('')
             fallbackApplied = true
-            // Continue retrying in background with slower intervals
-            setTimeout(fetchProjectRoot, 5000)
-          } else {
-            // Background retry after fallback - exponential backoff up to 30s
-            const delay = Math.min(5000 * Math.pow(1.5, retryCount - maxRetries), 30000)
-            setTimeout(fetchProjectRoot, delay)
           }
         })
     }
