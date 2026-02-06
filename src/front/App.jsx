@@ -314,7 +314,10 @@ export default function App() {
         })
         // Only set size on subsequent runs (user toggled), not on initial load
         if (!isFirstRun) {
-          shellGroup.api.setSize({ height: panelSizesRef.current.shell })
+          // Ensure saved size respects minimum constraint
+          const savedHeight = panelSizesRef.current.shell
+          const minHeight = panelMinRef.current.shell
+          shellGroup.api.setSize({ height: Math.max(savedHeight, minHeight) })
         }
       }
     }
@@ -890,7 +893,9 @@ export default function App() {
         api.getGroup(terminalGroup.id)?.api.setSize({ width: panelSizesRef.current.terminal })
       }
       if (shellGroup) {
-        api.getGroup(shellGroup.id)?.api.setSize({ height: panelSizesRef.current.shell })
+        // Ensure shell height respects minimum constraint
+        const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
+        api.getGroup(shellGroup.id)?.api.setSize({ height: shellHeight })
       }
     })
 
@@ -1153,7 +1158,9 @@ export default function App() {
                 sApi.setSize({ height: panelCollapsedRef.current.shell })
               } else {
                 sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
-                sApi.setSize({ height: panelSizesRef.current.shell })
+                // Ensure shell height respects minimum constraint
+                const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
+                sApi.setSize({ height: shellHeight })
               }
             }
           }
@@ -1211,6 +1218,14 @@ export default function App() {
             minimumHeight: panelMinRef.current.shell,
             maximumHeight: Infinity,
           })
+          // Enforce minimum height if saved layout has invalid dimensions
+          // (between collapsed 36px and minimum 100px)
+          const currentHeight = shellGroup.api.height
+          const minHeight = panelMinRef.current.shell
+          const collapsedHeight = panelCollapsedRef.current.shell
+          if (currentHeight < minHeight && currentHeight > collapsedHeight) {
+            shellGroup.api.setSize({ height: minHeight })
+          }
         }
 
         // If layout has editor panels, set constraints and close empty-center
@@ -1320,7 +1335,9 @@ export default function App() {
                 sApi.setSize({ height: panelCollapsedRef.current.shell })
               } else {
                 sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
-                sApi.setSize({ height: panelSizesRef.current.shell })
+                // Ensure shell height respects minimum constraint
+                const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
+                sApi.setSize({ height: shellHeight })
               }
             }
           }
