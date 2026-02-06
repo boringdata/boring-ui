@@ -1564,6 +1564,7 @@ export default function App() {
         )}
         <CapabilitiesContext.Provider value={capabilities}>
           <DockviewReact
+            data-testid="dockview"
             className={dockviewClassName}
             components={components}
             tabComponents={tabComponents}
