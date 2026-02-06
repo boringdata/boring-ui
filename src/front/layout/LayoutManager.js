@@ -255,6 +255,37 @@ export const saveTabs = (prefix, projectRoot, paths) => {
 }
 
 /**
+ * Load lastKnownGoodLayout from localStorage for recovery.
+ * Returns null if no valid backup exists.
+ *
+ * @param {string} prefix - Storage key prefix (from config)
+ * @param {string} projectRoot - Project root path
+ * @returns {Object|null} Layout object or null
+ */
+export const loadLastKnownGoodLayout = (prefix, projectRoot) => {
+  try {
+    const raw = localStorage.getItem(getStorageKey(prefix, projectRoot, 'lastKnownGoodLayout'))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+
+    // Validate the backup layout
+    if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
+      console.info('[Layout] lastKnownGoodLayout has outdated version, skipping')
+      return null
+    }
+    if (!validateLayoutStructure(parsed)) {
+      console.warn('[Layout] lastKnownGoodLayout failed validation, skipping')
+      return null
+    }
+
+    return parsed
+  } catch (err) {
+    console.error('[Layout] Error loading lastKnownGoodLayout:', err.message)
+    return null
+  }
+}
+
+/**
  * Load layout from localStorage.
  * Returns null if layout is invalid, outdated, or missing.
  *
@@ -383,37 +414,6 @@ export const saveLayout = (prefix, projectRoot, layout, configLayoutVersion) => 
     }
   } catch (err) {
     console.error('[Layout] Error saving layout:', err.message)
-  }
-}
-
-/**
- * Load lastKnownGoodLayout from localStorage for recovery.
- * Returns null if no valid backup exists.
- *
- * @param {string} prefix - Storage key prefix (from config)
- * @param {string} projectRoot - Project root path
- * @returns {Object|null} Layout object or null
- */
-export const loadLastKnownGoodLayout = (prefix, projectRoot) => {
-  try {
-    const raw = localStorage.getItem(getStorageKey(prefix, projectRoot, 'lastKnownGoodLayout'))
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-
-    // Validate the backup layout
-    if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
-      console.info('[Layout] lastKnownGoodLayout has outdated version, skipping')
-      return null
-    }
-    if (!validateLayoutStructure(parsed)) {
-      console.warn('[Layout] lastKnownGoodLayout failed validation, skipping')
-      return null
-    }
-
-    return parsed
-  } catch (err) {
-    console.error('[Layout] Error loading lastKnownGoodLayout:', err.message)
-    return null
   }
 }
 
