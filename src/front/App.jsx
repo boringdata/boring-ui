@@ -953,6 +953,21 @@ export default function App() {
       saveLayout(storagePrefixRef.current, projectRootRef.current, api.toJSON(), layoutVersionRef.current)
     }
 
+    // Enforce minimum constraints on panels (workaround for dockview not enforcing during drag)
+    const enforceMinimumConstraints = () => {
+      const shellPanel = api.getPanel('shell')
+      const shellGroup = shellPanel?.group
+      if (shellGroup) {
+        const height = shellGroup.api.height
+        const minHeight = panelMinRef.current.shell
+        const collapsedHeight = panelCollapsedRef.current.shell
+        // If height is below minimum but not collapsed, enforce minimum
+        if (height < minHeight && height > collapsedHeight) {
+          shellGroup.api.setSize({ height: minHeight })
+        }
+      }
+    }
+
     // Save panel sizes when layout changes (user resizes via drag)
     const savePanelSizesNow = () => {
       const filetreePanel = api.getPanel('filetree')
@@ -980,8 +995,10 @@ export default function App() {
         }
       }
       if (shellGroup && shellGroup.api.height > panelCollapsedRef.current.shell) {
-        if (newSizes.shell !== shellGroup.api.height) {
-          newSizes.shell = shellGroup.api.height
+        // Enforce minimum height before saving
+        const height = Math.max(shellGroup.api.height, panelMinRef.current.shell)
+        if (newSizes.shell !== height) {
+          newSizes.shell = height
           changed = true
         }
       }
@@ -998,6 +1015,8 @@ export default function App() {
 
     if (typeof api.onDidLayoutChange === 'function') {
       api.onDidLayoutChange(() => {
+        // Enforce minimum constraints after resize (workaround for dockview)
+        enforceMinimumConstraints()
         debouncedSaveLayout()
         debouncedSavePanelSizes()
       })
