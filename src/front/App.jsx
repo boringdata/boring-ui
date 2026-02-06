@@ -7,13 +7,12 @@ import { ThemeProvider } from './hooks/useTheme'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import ThemeToggle from './components/ThemeToggle'
-import FileTreePanel from './panels/FileTreePanel'
-import EditorPanel from './panels/EditorPanel'
-import TerminalPanel from './panels/TerminalPanel'
-import ShellTerminalPanel from './panels/ShellTerminalPanel'
-import EmptyPanel from './panels/EmptyPanel'
-import ReviewPanel from './panels/ReviewPanel'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
+import {
+  getComponents,
+  getKnownComponents,
+  essentialPanes,
+} from './registry/panes'
 
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
 const POC_MODE = new URLSearchParams(window.location.search).get('poc')
@@ -45,19 +44,12 @@ const debounce = (fn, wait) => {
   return debounced
 }
 
-const components = {
-  filetree: FileTreePanel,
-  editor: EditorPanel,
-  terminal: TerminalPanel,
-  shell: ShellTerminalPanel,
-  empty: EmptyPanel,
-  review: ReviewPanel,
-}
+// Get components and known component IDs from pane registry
+const components = getComponents()
+const KNOWN_COMPONENTS = getKnownComponents()
 
-const KNOWN_COMPONENTS = new Set(Object.keys(components))
-
-// Essential panels that must exist in layout
-const ESSENTIAL_PANELS = ['filetree', 'terminal', 'shell']
+// Get essential panel IDs from pane registry
+const ESSENTIAL_PANELS = essentialPanes()
 
 // Validate layout structure to detect drift
 // Returns true if layout is valid, false if it has drifted
