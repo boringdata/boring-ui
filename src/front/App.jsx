@@ -198,16 +198,10 @@ export default function App() {
     }
   }, [dockApi])
 
-  // Toggle theme handler (direct DOM manipulation since App is outside ThemeProvider context)
+  // Toggle theme handler (dispatches event for ThemeProvider to handle)
   const toggleTheme = useCallback(() => {
-    const current = document.documentElement.getAttribute('data-theme') || 'light'
-    const next = current === 'dark' ? 'light' : 'dark'
-    document.documentElement.setAttribute('data-theme', next)
-    try {
-      localStorage.setItem('kurt-web-theme', next)
-    } catch {
-      // Ignore localStorage errors
-    }
+    // Dispatch custom event that ThemeProvider listens to
+    window.dispatchEvent(new CustomEvent('theme-toggle-request'))
   }, [])
 
   // Keyboard shortcuts
@@ -836,9 +830,11 @@ export default function App() {
     let hasSavedLayout = false
     let invalidLayoutFound = false
     try {
+      // Use storagePrefix from config (available via closure from outer scope)
+      const layoutKeyPrefix = `${storagePrefix}-`
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
-        if (key && key.startsWith('kurt-web-') && key.endsWith('-layout')) {
+        if (key && key.startsWith(layoutKeyPrefix) && key.endsWith('-layout')) {
           const raw = localStorage.getItem(key)
           if (raw) {
             const parsed = JSON.parse(raw)
@@ -859,9 +855,9 @@ export default function App() {
               // Clear related session storage
               const keyPrefix = key.replace('-layout', '')
               localStorage.removeItem(`${keyPrefix}-tabs`)
-              localStorage.removeItem('kurt-web-terminal-sessions')
-              localStorage.removeItem('kurt-web-terminal-active')
-              localStorage.removeItem('kurt-web-terminal-chat-interface')
+              localStorage.removeItem(`${storagePrefix}-terminal-sessions`)
+              localStorage.removeItem(`${storagePrefix}-terminal-active`)
+              localStorage.removeItem(`${storagePrefix}-terminal-chat-interface`)
               invalidLayoutFound = true
             }
           }
@@ -1058,6 +1054,8 @@ export default function App() {
 
   // Fetch project root for copy path feature and project-specific storage
   useEffect(() => {
+    let retryCount = 0
+    const maxRetries = 6 // ~3 seconds total before fallback
     const fetchProjectRoot = () => {
       fetch(buildApiUrl('/api/project'))
         .then((r) => r.json())
@@ -1067,8 +1065,16 @@ export default function App() {
           setProjectRoot(root)
         })
         .catch(() => {
-          // Retry on failure - server might not be ready yet
-          setTimeout(fetchProjectRoot, 500)
+          retryCount++
+          if (retryCount < maxRetries) {
+            // Retry on failure - server might not be ready yet
+            setTimeout(fetchProjectRoot, 500)
+          } else {
+            // After max retries, fall back to empty string to unblock layout restoration
+            console.warn('[App] Failed to fetch project root after retries, using fallback')
+            projectRootRef.current = ''
+            setProjectRoot('')
+          }
         })
     }
     fetchProjectRoot()

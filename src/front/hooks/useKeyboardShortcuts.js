@@ -132,8 +132,10 @@ export function useKeyboardShortcuts(handlers, options = {}) {
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
       ) {
-        // Allow some shortcuts even in inputs (like Cmd+S for save)
-        const isEditorShortcut = matchesShortcut(event, shortcuts.saveFile)
+        // Allow some shortcuts even in inputs (like Cmd+S for save, Cmd+W for close tab)
+        const isEditorShortcut =
+          matchesShortcut(event, shortcuts.saveFile) ||
+          matchesShortcut(event, shortcuts.closeTab)
         if (!isEditorShortcut) {
           return
         }

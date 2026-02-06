@@ -92,6 +92,13 @@ export function ThemeProvider({ children }) {
     })
   }, [])
 
+  // Listen for keyboard shortcut toggle requests from App.jsx
+  useEffect(() => {
+    const handleToggleRequest = () => toggleTheme()
+    window.addEventListener('theme-toggle-request', handleToggleRequest)
+    return () => window.removeEventListener('theme-toggle-request', handleToggleRequest)
+  }, [toggleTheme])
+
   const setThemeExplicit = useCallback((newTheme) => {
     if (newTheme === 'dark' || newTheme === 'light') {
       setTheme(newTheme)
