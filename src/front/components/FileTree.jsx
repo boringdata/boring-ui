@@ -410,9 +410,11 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
     const statusConfig = {
       M: { label: 'M', className: 'git-status-modified', title: 'Modified' },
-      U: { label: 'N', className: 'git-status-new', title: 'New' },
+      '??': { label: 'U', className: 'git-status-untracked', title: 'Untracked' },
+      '?': { label: 'U', className: 'git-status-untracked', title: 'Untracked' },
       A: { label: 'A', className: 'git-status-added', title: 'Added' },
       D: { label: 'D', className: 'git-status-deleted', title: 'Deleted' },
+      U: { label: 'C', className: 'git-status-conflict', title: 'Conflict' },
     }
 
     const config = statusConfig[status]
