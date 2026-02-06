@@ -1219,9 +1219,9 @@ export default function App() {
           : typeof dockApi.getPanels === 'function'
             ? dockApi.getPanels()
             : []
-        const hasEditors = panels.some((p) => p.id.startsWith('editor-'))
+        const editorPanels = panels.filter((p) => p.id.startsWith('editor-'))
         const hasReviews = panels.some((p) => p.id.startsWith('review-'))
-        if (hasEditors || hasReviews) {
+        if (editorPanels.length > 0 || hasReviews) {
           // Apply minimum height constraint to editor group (prevents shell from taking all space)
           // This must happen regardless of whether empty-center exists, since saved layouts
           // with open editors won't have the empty-center panel
@@ -1239,6 +1239,29 @@ export default function App() {
             emptyPanel.api.close()
           }
         }
+
+        // Update editor panels with callbacks (callbacks can't be serialized in layout JSON)
+        editorPanels.forEach((panel) => {
+          const path = panel.id.replace('editor-', '')
+          panel.api.updateParameters({
+            onContentChange: (p, newContent) => {
+              setTabs((prev) => ({
+                ...prev,
+                [p]: { ...prev[p], content: newContent },
+              }))
+            },
+            onDirtyChange: (p, dirty) => {
+              setTabs((prev) => ({
+                ...prev,
+                [p]: { ...prev[p], isDirty: dirty },
+              }))
+              const editorPanel = dockApi.getPanel(`editor-${p}`)
+              if (editorPanel) {
+                editorPanel.api.setTitle(getFileName(p) + (dirty ? ' *' : ''))
+              }
+            },
+          })
+        })
 
         // Update centerGroupRef if there's an empty-center panel
         const emptyPanel = dockApi.getPanel('empty-center')

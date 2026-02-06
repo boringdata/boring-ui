@@ -189,6 +189,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       .then((data) => {
         setContent(data.content || '')
         setIsDirty(false)
+        onDirtyChange?.(path, false)
         setExternalChange(false)
         setContentVersion((v) => v + 1)
       })
