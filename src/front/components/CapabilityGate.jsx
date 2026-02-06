@@ -67,4 +67,5 @@ export function createCapabilityGatedPane(paneId, Component) {
   return CapabilityGatedPane
 }
 
-export default CapabilityGate
+// Default export is the createCapabilityGatedPane function
+export default createCapabilityGatedPane

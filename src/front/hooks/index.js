@@ -6,7 +6,6 @@
 export {
   ThemeProvider,
   useTheme,
-  getEffectiveTheme,
 } from './useTheme'
 
 export {
