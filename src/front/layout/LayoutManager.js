@@ -16,6 +16,89 @@ export const LAYOUT_VERSION = 22
 const DEFAULT_STORAGE_PREFIX = 'boring-ui'
 
 /**
+ * Layout migration registry.
+ * Maps [fromVersion, toVersion] -> migration function.
+ *
+ * Migration functions receive the old layout and return the migrated layout.
+ * If no migration exists for a version jump, the layout resets to defaults.
+ *
+ * @type {Map<string, function(Object): Object>}
+ */
+const layoutMigrations = new Map()
+
+/**
+ * Register a layout migration.
+ * @param {number} fromVersion - Source version
+ * @param {number} toVersion - Target version
+ * @param {function(Object): Object} migrator - Migration function
+ */
+export const registerLayoutMigration = (fromVersion, toVersion, migrator) => {
+  layoutMigrations.set(`${fromVersion}->${toVersion}`, migrator)
+}
+
+/**
+ * Attempt to migrate a layout from oldVersion to LAYOUT_VERSION.
+ * Returns migrated layout if migration path exists, null otherwise.
+ *
+ * @param {Object} layout - Old layout object
+ * @param {number} oldVersion - Old layout version
+ * @returns {Object|null} Migrated layout or null if no migration path
+ */
+export const migrateLayout = (layout, oldVersion) => {
+  if (oldVersion >= LAYOUT_VERSION) {
+    return layout // No migration needed
+  }
+
+  // Try direct migration first
+  const directKey = `${oldVersion}->${LAYOUT_VERSION}`
+  if (layoutMigrations.has(directKey)) {
+    console.info(`[Layout] Migrating from v${oldVersion} to v${LAYOUT_VERSION}`)
+    try {
+      return layoutMigrations.get(directKey)(layout)
+    } catch (err) {
+      console.error('[Layout] Migration failed:', err)
+      return null
+    }
+  }
+
+  // Try step-by-step migration
+  let currentLayout = layout
+  let currentVersion = oldVersion
+
+  while (currentVersion < LAYOUT_VERSION) {
+    // Find next migration step
+    let foundStep = false
+    for (let nextVersion = currentVersion + 1; nextVersion <= LAYOUT_VERSION; nextVersion++) {
+      const stepKey = `${currentVersion}->${nextVersion}`
+      if (layoutMigrations.has(stepKey)) {
+        console.info(`[Layout] Migrating from v${currentVersion} to v${nextVersion}`)
+        try {
+          currentLayout = layoutMigrations.get(stepKey)(currentLayout)
+          currentVersion = nextVersion
+          foundStep = true
+          break
+        } catch (err) {
+          console.error('[Layout] Migration step failed:', err)
+          return null
+        }
+      }
+    }
+
+    if (!foundStep) {
+      // No migration path available - fall back to reset
+      console.info(`[Layout] No migration path from v${currentVersion} to v${LAYOUT_VERSION}`)
+      return null
+    }
+  }
+
+  // Update version in migrated layout
+  return {
+    ...currentLayout,
+    version: LAYOUT_VERSION,
+  }
+}
+
+/**
  * Generate a short hash from the project root path for localStorage keys.
  * @param {string} root - Project root path
  * @returns {string} Short hash string
@@ -174,17 +257,25 @@ export const saveTabs = (prefix, projectRoot, paths) => {
  * @param {string} prefix - Storage key prefix (from config)
  * @param {string} projectRoot - Project root path
  * @param {Set<string>} [knownComponents] - Optional set of known component names
+ * @param {number} [configLayoutVersion] - Optional layout version from config (for user-controlled resets)
  * @returns {Object|null} Layout object or null
  */
-export const loadLayout = (prefix, projectRoot, knownComponents) => {
+export const loadLayout = (prefix, projectRoot, knownComponents, configLayoutVersion) => {
   try {
     const raw = localStorage.getItem(getStorageKey(prefix, projectRoot, 'layout'))
     if (!raw) return null
     const parsed = JSON.parse(raw)
 
-    // Check layout version - force reset if outdated
+    // Check internal format version - force reset if outdated
     if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
-      console.info('[Layout] Version outdated, resetting layout')
+      console.info('[Layout] Format version outdated, resetting layout')
+      localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
+      return null
+    }
+
+    // Check config layout version - force reset if user bumped their layoutVersion
+    if (configLayoutVersion && parsed?.configVersion !== configLayoutVersion) {
+      console.info('[Layout] Config version changed, resetting layout')
       localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
       return null
     }
@@ -219,14 +310,73 @@ export const loadLayout = (prefix, projectRoot, knownComponents) => {
 
 /**
  * Save layout to localStorage.
+ * Also saves as lastKnownGoodLayout if the layout is valid.
+ *
  * @param {string} prefix - Storage key prefix (from config)
  * @param {string} projectRoot - Project root path
  * @param {Object} layout - Layout object from Dockview toJSON()
+ * @param {number} [configLayoutVersion] - Optional layout version from config
  */
-export const saveLayout = (prefix, projectRoot, layout) => {
+export const saveLayout = (prefix, projectRoot, layout, configLayoutVersion) => {
   try {
-    const layoutWithVersion = { ...layout, version: LAYOUT_VERSION }
+    const layoutWithVersion = {
+      ...layout,
+      version: LAYOUT_VERSION,
+      configVersion: configLayoutVersion || 1,
+      savedAt: Date.now(),
+    }
     localStorage.setItem(getStorageKey(prefix, projectRoot, 'layout'), JSON.stringify(layoutWithVersion))
+
+    // If layout is valid, also save as lastKnownGoodLayout for recovery
+    if (validateLayoutStructure(layout)) {
+      localStorage.setItem(
+        getStorageKey(prefix, projectRoot, 'lastKnownGoodLayout'),
+        JSON.stringify(layoutWithVersion)
+      )
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Load lastKnownGoodLayout from localStorage for recovery.
+ * Returns null if no valid backup exists.
+ *
+ * @param {string} prefix - Storage key prefix (from config)
+ * @param {string} projectRoot - Project root path
+ * @returns {Object|null} Layout object or null
+ */
+export const loadLastKnownGoodLayout = (prefix, projectRoot) => {
+  try {
+    const raw = localStorage.getItem(getStorageKey(prefix, projectRoot, 'lastKnownGoodLayout'))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+
+    // Validate the backup layout
+    if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
+      return null
+    }
+    if (!validateLayoutStructure(parsed)) {
+      return null
+    }
+
+    console.info('[Layout] Recovering from lastKnownGoodLayout')
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Clear the lastKnownGoodLayout (for testing or manual reset).
+ *
+ * @param {string} prefix - Storage key prefix (from config)
+ * @param {string} projectRoot - Project root path
+ */
+export const clearLastKnownGoodLayout = (prefix, projectRoot) => {
+  try {
+    localStorage.removeItem(getStorageKey(prefix, projectRoot, 'lastKnownGoodLayout'))
   } catch {
     // Ignore storage errors
   }

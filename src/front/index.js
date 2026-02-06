@@ -51,6 +51,8 @@ export {
   saveTabs,
   loadLayout,
   saveLayout,
+  loadLastKnownGoodLayout,
+  clearLastKnownGoodLayout,
   loadCollapsedState,
   saveCollapsedState,
   loadPanelSizes,
