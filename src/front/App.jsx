@@ -1055,7 +1055,8 @@ export default function App() {
   // Fetch project root for copy path feature and project-specific storage
   useEffect(() => {
     let retryCount = 0
-    const maxRetries = 6 // ~3 seconds total before fallback
+    let fallbackApplied = false
+    const maxRetries = 6 // ~3 seconds total before initial fallback
     const fetchProjectRoot = () => {
       fetch(buildApiUrl('/api/project'))
         .then((r) => r.json())
@@ -1069,11 +1070,18 @@ export default function App() {
           if (retryCount < maxRetries) {
             // Retry on failure - server might not be ready yet
             setTimeout(fetchProjectRoot, 500)
-          } else {
+          } else if (!fallbackApplied) {
             // After max retries, fall back to empty string to unblock layout restoration
             console.warn('[App] Failed to fetch project root after retries, using fallback')
             projectRootRef.current = ''
             setProjectRoot('')
+            fallbackApplied = true
+            // Continue retrying in background with slower intervals
+            setTimeout(fetchProjectRoot, 5000)
+          } else {
+            // Background retry after fallback - exponential backoff up to 30s
+            const delay = Math.min(5000 * Math.pow(1.5, retryCount - maxRetries), 30000)
+            setTimeout(fetchProjectRoot, delay)
           }
         })
     }
