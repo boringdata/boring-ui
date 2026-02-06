@@ -11,13 +11,6 @@ const MessageList = forwardRef(({ children, className = '', ...props }, ref) => 
     <ThreadPrimitive.Viewport
       ref={ref}
       className={`message-list ${className}`}
-      style={{
-        flex: 1,
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        padding: 'var(--chat-spacing-lg, 16px)',
-        scrollBehavior: 'smooth',
-      }}
       autoScroll={true}
       {...props}
     >
@@ -33,29 +26,12 @@ MessageList.displayName = 'MessageList'
  */
 export const EmptyState = ({ children }) => {
   return (
-    <ThreadPrimitive.Empty
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        color: 'var(--chat-text-muted)',
-        padding: 'var(--chat-spacing-xl, 24px)',
-        textAlign: 'center',
-      }}
-    >
+    <ThreadPrimitive.Empty className="message-list-empty">
       {children || (
         <>
-          <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.5 }}>
-            ✨
-          </div>
-          <div style={{ fontSize: '16px', fontWeight: 500, marginBottom: '8px' }}>
-            Start a conversation
-          </div>
-          <div style={{ fontSize: 'var(--text-sm)', opacity: 0.7 }}>
-            Type a message to begin
-          </div>
+          <div className="message-list-empty-icon">✨</div>
+          <div className="message-list-empty-title">Start a conversation</div>
+          <div className="message-list-empty-subtitle">Type a message to begin</div>
         </>
       )}
     </ThreadPrimitive.Empty>
@@ -70,11 +46,7 @@ export const Messages = ({ components }) => {
   return (
     <ThreadPrimitive.Messages
       components={components}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--chat-spacing-md, 12px)',
-      }}
+      className="message-list-messages"
     />
   )
 }
@@ -84,26 +56,7 @@ export const Messages = ({ components }) => {
  */
 export const ScrollToBottom = ({ children }) => {
   return (
-    <ThreadPrimitive.ScrollToBottom
-      style={{
-        position: 'absolute',
-        bottom: '100px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        backgroundColor: 'var(--chat-panel-bg)',
-        border: '1px solid var(--chat-border)',
-        borderRadius: '20px',
-        padding: '8px 16px',
-        cursor: 'pointer',
-        fontSize: '12px',
-        color: 'var(--chat-text)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        boxShadow: 'var(--shadow-md)',
-        transition: 'opacity 0.2s ease',
-      }}
-    >
+    <ThreadPrimitive.ScrollToBottom className="scroll-to-bottom">
       {children || (
         <>
           <span>↓</span>

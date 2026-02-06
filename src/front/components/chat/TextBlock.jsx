@@ -95,12 +95,6 @@ const TextBlock = ({ text, className = '' }) => {
     return (
       <div
         className={`text-block markdown-content ${className}`}
-        style={{
-          color: 'var(--chat-text)',
-          fontSize: '14px',
-          lineHeight: '1.6',
-          wordBreak: 'break-word',
-        }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
     )
@@ -109,15 +103,7 @@ const TextBlock = ({ text, className = '' }) => {
   // Render with thinking blocks
   let thinkingIndex = 0
   return (
-    <div
-      className={`text-block ${className}`}
-      style={{
-        color: 'var(--chat-text)',
-        fontSize: '14px',
-        lineHeight: '1.6',
-        wordBreak: 'break-word',
-      }}
-    >
+    <div className={`text-block ${className}`}>
       {parts.map((part, i) => {
         if (part.type === 'thinking') {
           const idx = thinkingIndex++

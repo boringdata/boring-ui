@@ -18,18 +18,6 @@ const ChatPanel = forwardRef(({ children, className = '', ...props }, ref) => {
     <ThreadPrimitive.Root
       ref={ref}
       className={`chat-panel ${className}`}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100%',
-        height: '100%',
-        backgroundColor: 'var(--chat-bg)',
-        color: 'var(--chat-text)',
-        fontFamily: 'var(--font-family)',
-        fontSize: 'var(--text-sm)',
-        lineHeight: '1.5',
-        overflow: 'hidden',
-      }}
       {...props}
     >
       {children}
