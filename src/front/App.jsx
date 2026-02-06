@@ -18,6 +18,33 @@ import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
 const POC_MODE = new URLSearchParams(window.location.search).get('poc')
 
+// Debounce helper - delays function execution until after wait ms of inactivity
+const debounce = (fn, wait) => {
+  let timeoutId = null
+  const debounced = (...args) => {
+    if (timeoutId) clearTimeout(timeoutId)
+    timeoutId = setTimeout(() => {
+      timeoutId = null
+      fn(...args)
+    }, wait)
+  }
+  // Allow immediate flush (for beforeunload)
+  debounced.flush = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+      fn()
+    }
+  }
+  debounced.cancel = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+  }
+  return debounced
+}
+
 const components = {
   filetree: FileTreePanel,
   editor: EditorPanel,
@@ -1178,14 +1205,22 @@ export default function App() {
       }
     }
 
+    // Debounce layout saves to avoid excessive writes during drag operations
+    const debouncedSaveLayout = debounce(saveLayoutNow, 300)
+    const debouncedSavePanelSizes = debounce(savePanelSizesNow, 300)
+
     if (typeof api.onDidLayoutChange === 'function') {
       api.onDidLayoutChange(() => {
-        saveLayoutNow()
-        savePanelSizesNow()
+        debouncedSaveLayout()
+        debouncedSavePanelSizes()
       })
     }
 
-    window.addEventListener('beforeunload', saveLayoutNow)
+    // Flush pending saves before page unload to avoid data loss
+    window.addEventListener('beforeunload', () => {
+      debouncedSaveLayout.flush()
+      debouncedSavePanelSizes.flush()
+    })
 
     // Mark as initialized immediately - tabs will be restored via useEffect
     isInitialized.current = true
