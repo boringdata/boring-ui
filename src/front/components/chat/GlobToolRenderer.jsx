@@ -1,5 +1,5 @@
-import { FileText, FileCode, FileJson, FileType } from 'lucide-react'
 import ToolUseBlock, { ToolError, InlineCode } from './ToolUseBlock'
+import { getFileIcon } from '../../utils/fileIcons'
 
 /**
  * GlobToolRenderer - Displays file glob/search operations
@@ -9,28 +9,6 @@ import ToolUseBlock, { ToolError, InlineCode } from './ToolUseBlock'
  * - Result: "No files found" or list of matching files
  * - Collapsible file list for many results
  */
-
-/**
- * Get icon component based on file extension
- */
-const FILE_ICONS = {
-  js: FileCode,
-  jsx: FileCode,
-  ts: FileCode,
-  tsx: FileCode,
-  py: FileCode,
-  md: FileType,
-  json: FileJson,
-  css: FileCode,
-  html: FileCode,
-  default: FileText,
-}
-
-const getFileIcon = (filename) => {
-  const ext = filename.split('.').pop()?.toLowerCase()
-  const IconComponent = FILE_ICONS[ext] || FILE_ICONS.default
-  return <IconComponent size={14} />
-}
 
 const GlobToolRenderer = ({
   pattern,
@@ -108,7 +86,7 @@ const FileList = ({ files }) => (
         }}
       >
         <span style={{ color: 'var(--chat-text-muted)', fontSize: '12px' }}>
-          {getFileIcon(file)}
+          {getFileIcon(file, 12)}
         </span>
         <span>{file}</span>
       </div>
