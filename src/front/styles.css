@@ -1709,6 +1709,11 @@ html {
   color: var(--color-git-deleted);
 }
 
+.git-status-conflict {
+  background: var(--color-git-deleted-bg);
+  color: var(--color-git-deleted);
+}
+
 .dir-changes-dot {
   width: 6px;
   height: 6px;

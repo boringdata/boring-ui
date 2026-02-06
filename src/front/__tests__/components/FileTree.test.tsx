@@ -341,7 +341,7 @@ describe('FileTree', () => {
     it('shows new badge for untracked files', async () => {
       setupApiMocks({
         '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: { 'README.md': 'U' } },
+        '/api/git/status': { available: true, files: { 'README.md': '??' } },
       })
 
       render(<FileTree {...defaultProps} />)
@@ -349,7 +349,7 @@ describe('FileTree', () => {
       await new Promise(r => setTimeout(r, 10))
 
       await waitFor(() => {
-        expect(screen.getByText('N')).toBeInTheDocument()
+        expect(screen.getByText('U')).toBeInTheDocument()
       })
     })
 
