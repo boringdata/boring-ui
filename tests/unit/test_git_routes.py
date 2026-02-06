@@ -142,8 +142,8 @@ class TestStatusEndpoint:
             assert r.status_code == 200
             data = r.json()
             assert 'untracked.txt' in data['files']
-            # ?? for untracked
-            assert data['files']['untracked.txt'] == '??'
+            # U for untracked (normalized from '??')
+            assert data['files']['untracked.txt'] == 'U'
 
 
 class TestDiffEndpoint:
