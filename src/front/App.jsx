@@ -8,8 +8,9 @@ import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import ThemeToggle from './components/ThemeToggle'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
+import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
 import {
-  getComponents,
+  getGatedComponents,
   getKnownComponents,
   essentialPanes,
   checkRequirements,
@@ -46,8 +47,9 @@ const debounce = (fn, wait) => {
   return debounced
 }
 
-// Get components and known component IDs from pane registry
-const components = getComponents()
+// Get capability-gated components from pane registry
+// Components with requiresFeatures/requiresRouters will show error states when unavailable
+const components = getGatedComponents(createCapabilityGatedPane)
 const KNOWN_COMPONENTS = getKnownComponents()
 
 // Get essential panel IDs from pane registry
@@ -316,6 +318,11 @@ export default function App() {
   const storagePrefix = config.storage?.prefix || 'kurt-web'
   const layoutVersion = config.storage?.layoutVersion || 1
 
+  // Panel sizing configuration from config
+  const panelDefaults = config.panels?.defaults || { filetree: 280, terminal: 400, shell: 250 }
+  const panelMin = config.panels?.min || { filetree: 180, terminal: 250, shell: 100 }
+  const panelCollapsed = config.panels?.collapsed || { filetree: 48, terminal: 48, shell: 36 }
+
   // Fetch backend capabilities for feature gating
   const { capabilities, loading: capabilitiesLoading } = useCapabilities()
 
@@ -334,7 +341,7 @@ export default function App() {
     loadCollapsedState(storagePrefix, { filetree: false, terminal: false })
   )
   const panelSizesRef = useRef(
-    loadPanelSizes(storagePrefix, config.panels?.defaults || { filetree: 280, terminal: 400, shell: 250 })
+    loadPanelSizes(storagePrefix, panelDefaults)
   )
   const collapsedEffectRan = useRef(false)
   const dismissedApprovalsRef = useRef(new Set())
@@ -349,6 +356,12 @@ export default function App() {
   const layoutVersionRef = useRef(layoutVersion) // Stable ref for callbacks
   layoutVersionRef.current = layoutVersion
 
+  // Refs for panel config (used in callbacks)
+  const panelCollapsedRef = useRef(panelCollapsed)
+  panelCollapsedRef.current = panelCollapsed
+  const panelMinRef = useRef(panelMin)
+  panelMinRef.current = panelMin
+
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
     if (!collapsed.filetree && dockApi) {
@@ -357,7 +370,7 @@ export default function App() {
       const filetreeGroup = filetreePanel?.group
       if (filetreeGroup) {
         const currentWidth = filetreeGroup.api.width
-        if (currentWidth > 48) {
+        if (currentWidth > panelCollapsedRef.current.filetree) {
           panelSizesRef.current = { ...panelSizesRef.current, filetree: currentWidth }
           savePanelSizes(storagePrefixRef.current, panelSizesRef.current)
         }
@@ -377,7 +390,7 @@ export default function App() {
       const terminalGroup = terminalPanel?.group
       if (terminalGroup) {
         const currentWidth = terminalGroup.api.width
-        if (currentWidth > 48) {
+        if (currentWidth > panelCollapsedRef.current.terminal) {
           panelSizesRef.current = { ...panelSizesRef.current, terminal: currentWidth }
           savePanelSizes(storagePrefixRef.current, panelSizesRef.current)
         }
@@ -397,7 +410,7 @@ export default function App() {
       const shellGroup = shellPanel?.group
       if (shellGroup) {
         const currentHeight = shellGroup.api.height
-        if (currentHeight > 36) {
+        if (currentHeight > panelCollapsedRef.current.shell) {
           panelSizesRef.current = { ...panelSizesRef.current, shell: currentHeight }
           savePanelSizes(storagePrefixRef.current, panelSizesRef.current)
         }
@@ -455,14 +468,14 @@ export default function App() {
     if (filetreeGroup) {
       if (collapsed.filetree) {
         filetreeGroup.api.setConstraints({
-          minimumWidth: 48,
-          maximumWidth: 48,
+          minimumWidth: panelCollapsedRef.current.filetree,
+          maximumWidth: panelCollapsedRef.current.filetree,
         })
-        filetreeGroup.api.setSize({ width: 48 })
+        filetreeGroup.api.setSize({ width: panelCollapsedRef.current.filetree })
       } else {
         // Use Infinity to explicitly clear max constraint and allow resizing
         filetreeGroup.api.setConstraints({
-          minimumWidth: 180,
+          minimumWidth: panelMinRef.current.filetree,
           maximumWidth: Infinity,
         })
         // Only set size on subsequent runs (user toggled), not on initial load
@@ -476,14 +489,14 @@ export default function App() {
     if (terminalGroup) {
       if (collapsed.terminal) {
         terminalGroup.api.setConstraints({
-          minimumWidth: 48,
-          maximumWidth: 48,
+          minimumWidth: panelCollapsedRef.current.terminal,
+          maximumWidth: panelCollapsedRef.current.terminal,
         })
-        terminalGroup.api.setSize({ width: 48 })
+        terminalGroup.api.setSize({ width: panelCollapsedRef.current.terminal })
       } else {
         // Use Infinity to explicitly clear max constraint and allow resizing
         terminalGroup.api.setConstraints({
-          minimumWidth: 250,
+          minimumWidth: panelMinRef.current.terminal,
           maximumWidth: Infinity,
         })
         if (!isFirstRun) {
@@ -499,14 +512,14 @@ export default function App() {
     if (shellGroup) {
       if (collapsed.shell) {
         shellGroup.api.setConstraints({
-          minimumHeight: 36,
-          maximumHeight: 36,
+          minimumHeight: panelCollapsedRef.current.shell,
+          maximumHeight: panelCollapsedRef.current.shell,
         })
-        shellGroup.api.setSize({ height: 36 })
+        shellGroup.api.setSize({ height: panelCollapsedRef.current.shell })
       } else {
         // Clear height constraints to allow resizing (use Infinity to explicitly remove max)
         shellGroup.api.setConstraints({
-          minimumHeight: 100,
+          minimumHeight: panelMinRef.current.shell,
           maximumHeight: Infinity,
         })
         // Only set size on subsequent runs (user toggled), not on initial load
@@ -905,7 +918,7 @@ export default function App() {
         filetreeGroup.locked = true
         filetreeGroup.header.hidden = true
         filetreeGroup.api.setConstraints({
-          minimumWidth: 180,
+          minimumWidth: panelMinRef.current.filetree,
           maximumWidth: Infinity,
         })
       }
@@ -915,7 +928,7 @@ export default function App() {
         terminalGroup.locked = true
         terminalGroup.header.hidden = true
         terminalGroup.api.setConstraints({
-          minimumWidth: 250,
+          minimumWidth: panelMinRef.current.terminal,
           maximumWidth: Infinity,
         })
       }
@@ -925,7 +938,7 @@ export default function App() {
       if (shellGroup) {
         // Don't lock or hide header - shell has collapse button
         shellGroup.api.setConstraints({
-          minimumHeight: 100,
+          minimumHeight: panelMinRef.current.shell,
           maximumHeight: Infinity,
         })
       }
@@ -1181,20 +1194,20 @@ export default function App() {
       const newSizes = { ...panelSizesRef.current }
       let changed = false
 
-      // Only save if not collapsed (width > 48 for sidebars, height > 36 for shell)
-      if (filetreeGroup && filetreeGroup.api.width > 48) {
+      // Only save if not collapsed (width/height > collapsed size)
+      if (filetreeGroup && filetreeGroup.api.width > panelCollapsedRef.current.filetree) {
         if (newSizes.filetree !== filetreeGroup.api.width) {
           newSizes.filetree = filetreeGroup.api.width
           changed = true
         }
       }
-      if (terminalGroup && terminalGroup.api.width > 48) {
+      if (terminalGroup && terminalGroup.api.width > panelCollapsedRef.current.terminal) {
         if (newSizes.terminal !== terminalGroup.api.width) {
           newSizes.terminal = terminalGroup.api.width
           changed = true
         }
       }
-      if (shellGroup && shellGroup.api.height > 36) {
+      if (shellGroup && shellGroup.api.height > panelCollapsedRef.current.shell) {
         if (newSizes.shell !== shellGroup.api.height) {
           newSizes.shell = shellGroup.api.height
           changed = true
@@ -1282,10 +1295,10 @@ export default function App() {
             const ftApi = dockApi.getGroup(ftGroup.id)?.api
             if (ftApi) {
               if (collapsed.filetree) {
-                ftApi.setConstraints({ minimumWidth: 48, maximumWidth: 48 })
-                ftApi.setSize({ width: 48 })
+                ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
+                ftApi.setSize({ width: panelCollapsedRef.current.filetree })
               } else {
-                ftApi.setConstraints({ minimumWidth: 180, maximumWidth: Infinity })
+                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Infinity })
                 ftApi.setSize({ width: panelSizesRef.current.filetree })
               }
             }
@@ -1294,10 +1307,10 @@ export default function App() {
             const tApi = dockApi.getGroup(tGroup.id)?.api
             if (tApi) {
               if (collapsed.terminal) {
-                tApi.setConstraints({ minimumWidth: 48, maximumWidth: 48 })
-                tApi.setSize({ width: 48 })
+                tApi.setConstraints({ minimumWidth: panelCollapsedRef.current.terminal, maximumWidth: panelCollapsedRef.current.terminal })
+                tApi.setSize({ width: panelCollapsedRef.current.terminal })
               } else {
-                tApi.setConstraints({ minimumWidth: 250, maximumWidth: Infinity })
+                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Infinity })
                 tApi.setSize({ width: panelSizesRef.current.terminal })
               }
             }
@@ -1306,10 +1319,10 @@ export default function App() {
             const sApi = dockApi.getGroup(sGroup.id)?.api
             if (sApi) {
               if (collapsed.shell) {
-                sApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
-                sApi.setSize({ height: 36 })
+                sApi.setConstraints({ minimumHeight: panelCollapsedRef.current.shell, maximumHeight: panelCollapsedRef.current.shell })
+                sApi.setSize({ height: panelCollapsedRef.current.shell })
               } else {
-                sApi.setConstraints({ minimumHeight: 100, maximumHeight: Infinity })
+                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
                 sApi.setSize({ height: panelSizesRef.current.shell })
               }
             }
@@ -1351,7 +1364,7 @@ export default function App() {
           shellGroup.locked = true
           shellGroup.header.hidden = false
           shellGroup.api.setConstraints({
-            minimumHeight: 100,
+            minimumHeight: panelMinRef.current.shell,
             maximumHeight: Infinity,
           })
         }
@@ -1404,10 +1417,10 @@ export default function App() {
             const ftApi = dockApi.getGroup(ftGroup.id)?.api
             if (ftApi) {
               if (collapsed.filetree) {
-                ftApi.setConstraints({ minimumWidth: 48, maximumWidth: 48 })
-                ftApi.setSize({ width: 48 })
+                ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
+                ftApi.setSize({ width: panelCollapsedRef.current.filetree })
               } else {
-                ftApi.setConstraints({ minimumWidth: 180, maximumWidth: Infinity })
+                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Infinity })
                 ftApi.setSize({ width: panelSizesRef.current.filetree })
               }
             }
@@ -1416,10 +1429,10 @@ export default function App() {
             const tApi = dockApi.getGroup(tGroup.id)?.api
             if (tApi) {
               if (collapsed.terminal) {
-                tApi.setConstraints({ minimumWidth: 48, maximumWidth: 48 })
-                tApi.setSize({ width: 48 })
+                tApi.setConstraints({ minimumWidth: panelCollapsedRef.current.terminal, maximumWidth: panelCollapsedRef.current.terminal })
+                tApi.setSize({ width: panelCollapsedRef.current.terminal })
               } else {
-                tApi.setConstraints({ minimumWidth: 250, maximumWidth: Infinity })
+                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Infinity })
                 tApi.setSize({ width: panelSizesRef.current.terminal })
               }
             }
@@ -1428,10 +1441,10 @@ export default function App() {
             const sApi = dockApi.getGroup(sGroup.id)?.api
             if (sApi) {
               if (collapsed.shell) {
-                sApi.setConstraints({ minimumHeight: 36, maximumHeight: 36 })
-                sApi.setSize({ height: 36 })
+                sApi.setConstraints({ minimumHeight: panelCollapsedRef.current.shell, maximumHeight: panelCollapsedRef.current.shell })
+                sApi.setSize({ height: panelCollapsedRef.current.shell })
               } else {
-                sApi.setConstraints({ minimumHeight: 100, maximumHeight: Infinity })
+                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
                 sApi.setSize({ height: panelSizesRef.current.shell })
               }
             }
@@ -1657,15 +1670,17 @@ export default function App() {
             Missing capabilities for: {unavailableEssentials.map(p => p.title || p.id).join(', ')}.
           </div>
         )}
-        <DockviewReact
-          className={dockviewClassName}
-          components={components}
-          tabComponents={tabComponents}
-          rightHeaderActionsComponent={RightHeaderActions}
-          onReady={onReady}
-          showDndOverlay={showDndOverlay}
-          onDidDrop={onDidDrop}
-        />
+        <CapabilitiesContext.Provider value={capabilities}>
+          <DockviewReact
+            className={dockviewClassName}
+            components={components}
+            tabComponents={tabComponents}
+            rightHeaderActionsComponent={RightHeaderActions}
+            onReady={onReady}
+            showDndOverlay={showDndOverlay}
+            onDidDrop={onDidDrop}
+          />
+        </CapabilitiesContext.Provider>
       </div>
     </ThemeProvider>
   )
