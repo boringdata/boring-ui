@@ -1563,16 +1563,17 @@ export default function App() {
           </div>
         )}
         <CapabilitiesContext.Provider value={capabilities}>
-          <DockviewReact
-            data-testid="dockview"
-            className={dockviewClassName}
-            components={components}
-            tabComponents={tabComponents}
-            rightHeaderActionsComponent={RightHeaderActions}
-            onReady={onReady}
-            showDndOverlay={showDndOverlay}
-            onDidDrop={onDidDrop}
-          />
+          <div data-testid="dockview" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+            <DockviewReact
+              className={dockviewClassName}
+              components={components}
+              tabComponents={tabComponents}
+              rightHeaderActionsComponent={RightHeaderActions}
+              onReady={onReady}
+              showDndOverlay={showDndOverlay}
+              onDidDrop={onDidDrop}
+            />
+          </div>
         </CapabilitiesContext.Provider>
       </div>
     </ThemeProvider>
