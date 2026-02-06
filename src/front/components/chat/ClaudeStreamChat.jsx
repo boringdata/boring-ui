@@ -926,10 +926,10 @@ const useClaudeStreamRuntime = (
             message: { role: 'user', content: [{ type: 'text', text: '/clear' }] },
             mode: modeRef.current,
           }))
-          // Clear frontend state after a brief delay to let CLI process
-          setTimeout(() => {
-            clearHistoryRef?.current?.()
-          }, 100)
+          // Clear frontend state immediately
+          if (clearHistoryRef?.current) {
+            clearHistoryRef.current()
+          }
           return
         }
 
