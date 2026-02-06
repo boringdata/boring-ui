@@ -477,6 +477,7 @@ const useClaudeStreamRuntime = (
   const [sessionName, setSessionName] = useState('New conversation')
   const [isConnected, setIsConnected] = useState(false)
   const [restartCounter, setRestartCounter] = useState(0)
+  const [historyCleared, setHistoryCleared] = useState(false)
 
   useEffect(() => {
     return () => {
@@ -520,6 +521,9 @@ const useClaudeStreamRuntime = (
       const key = getHistoryKey(sessionKey)
       if (key) localStorage.removeItem(key)
     }
+    // Set historyCleared flag BEFORE incrementing counter to ensure
+    // the parent's historySeed useMemo sees it during the same render cycle
+    setHistoryCleared(true)
     setRestartCounter((c) => c + 1)
   }, [currentSessionId, sessionName])
 
@@ -1257,6 +1261,8 @@ const useClaudeStreamRuntime = (
     sendMessage,
     restartSession,
     restartCounter,
+    historyCleared,
+    setHistoryCleared,
     sendControlMessage,
   }
 }
@@ -2768,6 +2774,8 @@ export default function ClaudeStreamChat({
     sendMessage,
     restartSession,
     restartCounter,
+    historyCleared,
+    setHistoryCleared,
     sendControlMessage,
   } = useClaudeStreamRuntime(
     currentSessionId,
@@ -3011,14 +3019,27 @@ export default function ClaudeStreamChat({
   }, [currentSessionId, sessionName, sessions])
 
   const historySeed = useMemo(() => {
+    // If history was just cleared, return empty array to force clean slate
+    if (historyCleared) return []
     const sessionKey = currentSessionId || sessionName
     if (!sessionKey) return []
     return loadStoredHistory(sessionKey)
       .map(normalizeHistoryMessage)
       .filter(Boolean)
-  }, [currentSessionId, sessionName, restartCounter])
+  }, [currentSessionId, sessionName, restartCounter, historyCleared])
 
   const runtimeKey = `${currentSessionId || sessionName || 'new'}-${restartCounter}`
+
+  // Reset historyCleared flag after the runtime remounts with cleared state
+  useEffect(() => {
+    if (historyCleared) {
+      // Use requestAnimationFrame to ensure the RuntimeProvider has remounted
+      // with the cleared state before resetting the flag
+      requestAnimationFrame(() => {
+        setHistoryCleared(false)
+      })
+    }
+  }, [historyCleared, setHistoryCleared])
 
   // Determine if thinking mode is enabled based on maxThinkingTokens
   const isThinkingEnabled = Boolean(cliOptions.maxThinkingTokens && Number(cliOptions.maxThinkingTokens) > 0)
