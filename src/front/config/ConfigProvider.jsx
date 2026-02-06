@@ -52,24 +52,64 @@ export function ConfigProvider({ children, config: providedConfig }) {
 
   // Apply style tokens to CSS variables when config loads
   useEffect(() => {
-    if (!config.styles) return
-
     const root = document.documentElement
 
-    // Apply light theme styles
-    const lightStyles = config.styles.light || {}
-    for (const [key, value] of Object.entries(lightStyles)) {
-      const cssVar = `--config-${key}`
-      root.style.setProperty(cssVar, value)
+    // Map config token keys to CSS variable names
+    const tokenToVar = {
+      // Accent colors
+      accent: '--color-accent',
+      accentHover: '--color-accent-hover',
+      accentLight: '--color-accent-light',
+      // Typography
+      fontSans: '--font-sans',
+      fontMono: '--font-mono',
     }
 
-    // Dark theme styles are handled via data-theme attribute in CSS
-    // We'll set them as custom properties that can be used in [data-theme="dark"]
-    const darkStyles = config.styles.dark || {}
-    for (const [key, value] of Object.entries(darkStyles)) {
-      const cssVar = `--config-dark-${key}`
-      root.style.setProperty(cssVar, value)
+    // Apply light theme styles (directly to :root)
+    const lightStyles = config.styles?.light || {}
+    for (const [key, value] of Object.entries(lightStyles)) {
+      const cssVar = tokenToVar[key]
+      if (cssVar && value) {
+        root.style.setProperty(cssVar, value)
+      }
     }
+
+    // For dark theme, we need to apply styles conditionally
+    // Store dark values as data attributes for CSS to pick up
+    const darkStyles = config.styles?.dark || {}
+    for (const [key, value] of Object.entries(darkStyles)) {
+      const cssVar = tokenToVar[key]
+      if (cssVar && value) {
+        // Store dark mode value as a data attribute
+        root.dataset[`dark${key.charAt(0).toUpperCase() + key.slice(1)}`] = value
+      }
+    }
+
+    // Apply dark styles when theme changes
+    const applyDarkStyles = () => {
+      const isDark = root.getAttribute('data-theme') === 'dark'
+      for (const [key, value] of Object.entries(darkStyles)) {
+        const cssVar = tokenToVar[key]
+        if (cssVar && value && isDark) {
+          root.style.setProperty(cssVar, value)
+        } else if (cssVar && lightStyles[key]) {
+          root.style.setProperty(cssVar, lightStyles[key])
+        }
+      }
+    }
+
+    // Apply on initial load and observe theme changes
+    applyDarkStyles()
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === 'data-theme') {
+          applyDarkStyles()
+        }
+      }
+    })
+    observer.observe(root, { attributes: true })
+
+    return () => observer.disconnect()
   }, [config.styles])
 
   return (

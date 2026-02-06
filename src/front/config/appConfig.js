@@ -64,16 +64,22 @@ const DEFAULT_CONFIG = {
   },
 
   // Design token customization (CSS variables)
+  // These values override the CSS defaults in styles.css
   styles: {
     light: {
-      accent: '#3b82f6',
-      accentHover: '#2563eb',
-      accentLight: '#dbeafe',
+      // Accent colors (default: Claude orange from styles.css)
+      // accent: '#ea580c',
+      // accentHover: '#c2410c',
+      // accentLight: '#fff7ed',
+      // Typography (uses CSS defaults if not specified)
+      // fontSans: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      // fontMono: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
     },
     dark: {
-      accent: '#60a5fa',
-      accentHover: '#93c5fd',
-      accentLight: '#1e3a5f',
+      // Accent colors (default: vibrant orange for dark mode)
+      // accent: '#fb923c',
+      // accentHover: '#fdba74',
+      // accentLight: '#431407',
     },
   },
 }
@@ -151,7 +157,6 @@ export function getDefaultConfig() {
  */
 export function resetConfig() {
   _config = null
-  _configPromise = null
 }
 
 /**
