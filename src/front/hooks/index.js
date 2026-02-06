@@ -14,3 +14,9 @@ export {
   isFeatureEnabled,
   areAllFeaturesEnabled,
 } from './useCapabilities'
+
+export {
+  useKeyboardShortcuts,
+  formatShortcut,
+  DEFAULT_SHORTCUTS,
+} from './useKeyboardShortcuts'

@@ -3,7 +3,7 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities } from './hooks'
+import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import ThemeToggle from './components/ThemeToggle'
@@ -422,6 +422,13 @@ export default function App() {
       return next
     })
   }, [collapsed.shell, dockApi])
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    toggleFiletree,
+    toggleTerminal,
+    toggleShell,
+  })
 
   // Right header actions component - shows collapse button on shell group
   const RightHeaderActions = useCallback(
