@@ -67,7 +67,7 @@ async function runValidation() {
     test('React app root element exists', response.data.includes('id="root"'))
 
     // Test 4: Main entry point loaded
-    test('Main.jsx is loaded', response.data.includes('/src/main.jsx'))
+    test('Main.jsx is loaded', response.data.includes('/src/front/main.jsx'))
 
     // Test 5: Theme system
     test('Theme system initialized', response.data.includes('data-theme'))

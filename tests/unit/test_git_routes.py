@@ -1,10 +1,10 @@
-"""Unit tests for boring_ui.api.git_routes module."""
+"""Unit tests for boring_ui.api.modules.git module."""
 import subprocess
 import pytest
 from httpx import AsyncClient, ASGITransport
 from pathlib import Path
 from boring_ui.api.config import APIConfig
-from boring_ui.api.git_routes import create_git_router
+from boring_ui.api.modules.git import create_git_router
 from fastapi import FastAPI
 
 
@@ -142,8 +142,8 @@ class TestStatusEndpoint:
             assert r.status_code == 200
             data = r.json()
             assert 'untracked.txt' in data['files']
-            # ?? for untracked
-            assert data['files']['untracked.txt'] == '??'
+            # U for untracked (normalized from '??')
+            assert data['files']['untracked.txt'] == 'U'
 
 
 class TestDiffEndpoint:

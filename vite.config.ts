@@ -14,13 +14,14 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './src'),
+        '@': path.resolve(__dirname, './src/front'),
       },
     },
     test: {
       globals: true,
       environment: 'jsdom',
       css: true,
+      include: ['src/**/*.test.{js,jsx,ts,tsx}'],
     },
   }
 
@@ -30,7 +31,7 @@ export default defineConfig(({ mode }) => {
       ...baseConfig,
       build: {
         lib: {
-          entry: path.resolve(__dirname, 'src/index.js'),
+          entry: path.resolve(__dirname, 'src/front/index.js'),
           name: 'BoringUI',
           formats: ['es', 'cjs'],
           fileName: (format) => `boring-ui.${format === 'es' ? 'js' : 'cjs'}`,

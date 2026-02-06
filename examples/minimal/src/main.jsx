@@ -1,12 +1,14 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { ConfigProvider } from 'boring-ui'
+import { ConfigProvider, ThemeProvider } from 'boring-ui'
 import App from './App'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <ConfigProvider>
-      <App />
-    </ConfigProvider>
+    <ThemeProvider defaultTheme="dark">
+      <ConfigProvider>
+        <App />
+      </ConfigProvider>
+    </ThemeProvider>
   </React.StrictMode>
 )

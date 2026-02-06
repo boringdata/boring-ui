@@ -21,7 +21,11 @@ class TestAPIConfig:
     def test_default_values(self, tmp_path):
         """Test default configuration values."""
         config = APIConfig(workspace_root=tmp_path)
-        assert config.cors_origins == ['http://localhost:5173']
+        # Default includes multiple dev origins
+        assert 'http://localhost:5173' in config.cors_origins
+        assert 'http://localhost:5174' in config.cors_origins
+        assert 'http://localhost:3000' in config.cors_origins
+        assert '*' in config.cors_origins  # Allow all in dev
         assert 'shell' in config.pty_providers
         assert 'claude' in config.pty_providers
         assert config.pty_providers['shell'] == ['bash']

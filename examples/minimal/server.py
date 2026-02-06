@@ -14,6 +14,7 @@ The server will:
 - Enable PTY terminal WebSocket connections
 - Enable Claude chat WebSocket connections
 """
+import os
 from pathlib import Path
 
 from boring_ui.api import create_app, APIConfig
@@ -30,8 +31,9 @@ config = APIConfig(
 )
 
 # Create the FastAPI app
-# All routers are automatically included
-app = create_app(config)
+# Claude stream routes are opt-in to keep the minimal server lightweight.
+enable_claude_stream = os.getenv('BORING_UI_ENABLE_CLAUDE_STREAM', '').lower() in ('1', 'true', 'yes')
+app = create_app(config, include_stream=enable_claude_stream)
 
 
 if __name__ == '__main__':
