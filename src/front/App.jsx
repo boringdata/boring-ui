@@ -188,11 +188,35 @@ export default function App() {
     })
   }, [collapsed.shell, dockApi])
 
+  // Close active tab handler for keyboard shortcut
+  const closeTab = useCallback(() => {
+    if (!dockApi) return
+    const activePanel = dockApi.activePanel
+    // Only close editor tabs (not essential panels like filetree, terminal, shell)
+    if (activePanel && activePanel.id.startsWith('editor-')) {
+      activePanel.api.close()
+    }
+  }, [dockApi])
+
+  // Toggle theme handler (direct DOM manipulation since App is outside ThemeProvider context)
+  const toggleTheme = useCallback(() => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light'
+    const next = current === 'dark' ? 'light' : 'dark'
+    document.documentElement.setAttribute('data-theme', next)
+    try {
+      localStorage.setItem('kurt-web-theme', next)
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [])
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     toggleFiletree,
     toggleTerminal,
     toggleShell,
+    closeTab,
+    toggleTheme,
   })
 
   // Right header actions component - shows collapse button on shell group
