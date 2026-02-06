@@ -1155,6 +1155,11 @@ export default function App() {
             const editorPanel = panels.find((p) => p.id.startsWith('editor-') || p.id.startsWith('review-'))
             if (editorPanel?.group) {
               centerGroupRef.current = editorPanel.group
+              // Apply minimum height constraint to editor group (prevents shell from taking all space)
+              editorPanel.group.api.setConstraints({
+                minimumHeight: panelMinRef.current.center,
+                maximumHeight: Infinity,
+              })
             }
             emptyPanel.api.close()
           }
