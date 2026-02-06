@@ -1124,6 +1124,20 @@ export default function App() {
           filetreeGroup.header.hidden = true
         }
 
+        // Update filetree params with callbacks (callbacks can't be serialized in layout JSON)
+        if (filetreePanel) {
+          filetreePanel.api.updateParameters({
+            onOpenFile: openFile,
+            onOpenFileToSide: openFileToSide,
+            onOpenDiff: openDiff,
+            projectRoot,
+            activeFile,
+            activeDiffFile,
+            collapsed: collapsed.filetree,
+            onToggleCollapse: toggleFiletree,
+          })
+        }
+
         const terminalGroup = terminalPanel?.group
         if (terminalGroup) {
           terminalGroup.locked = true
@@ -1141,7 +1155,7 @@ export default function App() {
           })
         }
 
-        // If layout has editor panels, close empty-center
+        // If layout has editor panels, set constraints and close empty-center
         const panels = Array.isArray(dockApi.panels)
           ? dockApi.panels
           : typeof dockApi.getPanels === 'function'
@@ -1150,17 +1164,20 @@ export default function App() {
         const hasEditors = panels.some((p) => p.id.startsWith('editor-'))
         const hasReviews = panels.some((p) => p.id.startsWith('review-'))
         if (hasEditors || hasReviews) {
+          // Apply minimum height constraint to editor group (prevents shell from taking all space)
+          // This must happen regardless of whether empty-center exists, since saved layouts
+          // with open editors won't have the empty-center panel
+          const editorPanel = panels.find((p) => p.id.startsWith('editor-') || p.id.startsWith('review-'))
+          if (editorPanel?.group) {
+            centerGroupRef.current = editorPanel.group
+            editorPanel.group.api.setConstraints({
+              minimumHeight: panelMinRef.current.center,
+              maximumHeight: Infinity,
+            })
+          }
+          // Close empty-center if it exists
           const emptyPanel = dockApi.getPanel('empty-center')
           if (emptyPanel) {
-            const editorPanel = panels.find((p) => p.id.startsWith('editor-') || p.id.startsWith('review-'))
-            if (editorPanel?.group) {
-              centerGroupRef.current = editorPanel.group
-              // Apply minimum height constraint to editor group (prevents shell from taking all space)
-              editorPanel.group.api.setConstraints({
-                minimumHeight: panelMinRef.current.center,
-                maximumHeight: Infinity,
-              })
-            }
             emptyPanel.api.close()
           }
         }
@@ -1234,7 +1251,7 @@ export default function App() {
         layoutRestored.current = false
       }
     }
-  }, [dockApi, projectRoot, storagePrefix, collapsed.filetree, collapsed.terminal, collapsed.shell])
+  }, [dockApi, projectRoot, storagePrefix, collapsed.filetree, collapsed.terminal, collapsed.shell, openFile, openFileToSide, openDiff, activeFile, activeDiffFile, toggleFiletree])
 
   // Track active panel to highlight in file tree and sync URL
   useEffect(() => {
