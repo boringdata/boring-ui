@@ -570,6 +570,14 @@ export default function Editor({
   const currentFrontmatterRef = useRef(initialParsed.frontmatter)
   currentFrontmatterRef.current = currentFrontmatter
 
+  // Refs for callbacks to avoid stale closures in TipTap's onUpdate
+  // Without these, callbacks captured at editor creation time would be stale
+  // after layout restoration when params are updated with new callbacks
+  const onChangeRef = useRef(onChange)
+  const onAutoSaveRef = useRef(onAutoSave)
+  onChangeRef.current = onChange
+  onAutoSaveRef.current = onAutoSave
+
   // Re-parse content only when contentVersion changes (external file reload)
   // NOT when content changes from typing (that would cause loops)
   useEffect(() => {
@@ -655,24 +663,25 @@ export default function Editor({
   }, [])
 
   // Handle frontmatter changes
+  // Uses refs for callbacks to avoid stale closures after layout restore
   const handleFrontmatterChange = useCallback((newFrontmatter) => {
     setCurrentFrontmatter(newFrontmatter)
     const fullContent = reconstructContent(newFrontmatter, currentBody)
 
-    if (onChange) {
-      onChange(fullContent)
+    if (onChangeRef.current) {
+      onChangeRef.current(fullContent)
     }
 
-    if (onAutoSave) {
+    if (onAutoSaveRef.current) {
       if (autoSaveTimer.current) {
         clearTimeout(autoSaveTimer.current)
       }
       autoSaveTimer.current = setTimeout(() => {
         const latestFullContent = reconstructContent(newFrontmatter, currentBody)
-        onAutoSave(latestFullContent)
+        onAutoSaveRef.current?.(latestFullContent)
       }, autoSaveDelay)
     }
-  }, [currentBody, onChange, onAutoSave, autoSaveDelay])
+  }, [currentBody, autoSaveDelay])
 
   const editor = useEditor({
     extensions: [...baseExtensions, DiffExtension],
@@ -685,14 +694,14 @@ export default function Editor({
       // Use editor.getMarkdown() from @tiptap/markdown
       const bodyMarkdown = editorInstance.getMarkdown()
       setCurrentBody(bodyMarkdown)
-      // Use ref to get latest frontmatter (avoids stale closure)
+      // Use refs to get latest values (avoids stale closures after layout restore)
       const fullContent = reconstructContent(currentFrontmatterRef.current, bodyMarkdown)
 
-      if (onChange) {
-        onChange(fullContent)
+      if (onChangeRef.current) {
+        onChangeRef.current(fullContent)
       }
 
-      if (onAutoSave) {
+      if (onAutoSaveRef.current) {
         if (autoSaveTimer.current) {
           clearTimeout(autoSaveTimer.current)
         }
@@ -701,7 +710,7 @@ export default function Editor({
           // Get fresh markdown at save time, not when update was triggered
           const latestBodyMarkdown = editorInstance.getMarkdown()
           const latestFullContent = reconstructContent(currentFrontmatterRef.current, latestBodyMarkdown)
-          onAutoSave(latestFullContent)
+          onAutoSaveRef.current?.(latestFullContent)
         }, autoSaveDelay)
       }
     },
