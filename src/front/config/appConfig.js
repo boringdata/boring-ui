@@ -42,6 +42,7 @@ const DEFAULT_CONFIG = {
       filetree: 180,
       terminal: 250,
       shell: 100,
+      center: 200, // Minimum height for the center/main content area
     },
     collapsed: {
       filetree: 48,
