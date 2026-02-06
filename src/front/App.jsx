@@ -320,7 +320,7 @@ export default function App() {
 
   // Panel sizing configuration from config
   const panelDefaults = config.panels?.defaults || { filetree: 280, terminal: 400, shell: 250 }
-  const panelMin = config.panels?.min || { filetree: 180, terminal: 250, shell: 100 }
+  const panelMin = config.panels?.min || { filetree: 180, terminal: 250, shell: 100, center: 200 }
   const panelCollapsed = config.panels?.collapsed || { filetree: 48, terminal: 48, shell: 36 }
 
   // Fetch backend capabilities for feature gating
@@ -684,7 +684,7 @@ export default function App() {
           centerGroupRef.current = panel.group
           // Apply minimum height constraint to center group (use Infinity to allow resize)
           panel.group.api.setConstraints({
-            minimumHeight: 200,
+            minimumHeight: panelMinRef.current.center,
             maximumHeight: Infinity,
           })
         }
@@ -890,7 +890,7 @@ export default function App() {
         centerGroupRef.current = panel.group
         // Apply minimum height constraint to center group (use Infinity to allow resize)
         panel.group.api.setConstraints({
-          minimumHeight: 200,
+          minimumHeight: panelMinRef.current.center,
           maximumHeight: Infinity,
         })
       }
@@ -990,7 +990,7 @@ export default function App() {
         centerGroupRef.current = emptyPanel.group
         // Set minimum height for the center group (use Infinity to allow resize)
         emptyPanel.group.api.setConstraints({
-          minimumHeight: 200,
+          minimumHeight: panelMinRef.current.center,
           maximumHeight: Infinity,
         })
       }
@@ -1169,7 +1169,7 @@ export default function App() {
         centerGroupRef.current = emptyPanel.group
         emptyPanel.group.header.hidden = true
         emptyPanel.group.api.setConstraints({
-          minimumHeight: 200,
+          minimumHeight: panelMinRef.current.center,
           maximumHeight: Infinity,
         })
       }
@@ -1394,7 +1394,7 @@ export default function App() {
           centerGroupRef.current = emptyPanel.group
           // Set minimum height for the center group (use Infinity to allow resize)
           emptyPanel.group.api.setConstraints({
-            minimumHeight: 200,
+            minimumHeight: panelMinRef.current.center,
             maximumHeight: Infinity,
           })
         }
