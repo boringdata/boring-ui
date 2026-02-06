@@ -24,7 +24,7 @@ test.describe('Layout Persistence', () => {
 
     // Essential panels should be visible
     // Note: These selectors depend on the actual rendered components
-    await expect(page.locator('.dv-container')).toBeVisible()
+    await expect(page.locator('.dv-dockview')).toBeVisible()
   })
 
   test('layout persists after reload', async ({ page }) => {
