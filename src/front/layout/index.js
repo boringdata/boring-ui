@@ -26,4 +26,7 @@ export {
   getFileName,
   DEFAULT_CONSTRAINTS,
   getDefaultLayoutConfig,
+  // Migration support
+  registerLayoutMigration,
+  migrateLayout,
 } from './LayoutManager'
