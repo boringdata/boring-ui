@@ -49,6 +49,7 @@ export default function EditorPanel({ params: initialParams, api }) {
   const contentRef = useRef(content)
   const isDirtyRef = useRef(isDirty)
   const isSavingRef = useRef(isSaving)
+  const pollAbortRef = useRef(null) // AbortController for in-flight poll requests
 
   // Keep refs in sync with state
   useEffect(() => { contentRef.current = content }, [content])
@@ -123,7 +124,13 @@ export default function EditorPanel({ params: initialParams, api }) {
       // Don't poll while saving or if dirty - prevents race conditions
       if (!isActive || isSavingRef.current || isDirtyRef.current) return
 
-      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
+      // Create abort controller for this poll request (can be aborted by save())
+      const abortController = new AbortController()
+      pollAbortRef.current = abortController
+
+      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`), {
+        signal: abortController.signal,
+      })
         .then((r) => r.json())
         .then((data) => {
           if (!isActive || isSavingRef.current || isDirtyRef.current) return
@@ -138,17 +145,28 @@ export default function EditorPanel({ params: initialParams, api }) {
           // User can click "Reload" to accept the external changes
           setExternalChange(true)
         })
-        .catch(() => {})
+        .catch((err) => {
+          // Ignore abort errors (expected when save cancels in-flight poll)
+          if (err?.name !== 'AbortError') {
+            // Silently ignore other fetch errors
+          }
+        })
     }, 2000)
 
     return () => {
       isActive = false
       clearInterval(interval)
+      // Abort any in-flight poll when effect cleans up
+      pollAbortRef.current?.abort()
     }
   }, [path])
 
   const save = async (newContent) => {
     if (!path) return
+
+    // Abort any in-flight poll request to prevent stale responses from triggering
+    // false "file changed on disk" notifications after save completes
+    pollAbortRef.current?.abort()
 
     // Update content state BEFORE the API call to prevent race condition with polling
     // This ensures the poll comparison uses the new content
