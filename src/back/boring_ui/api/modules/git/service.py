@@ -78,31 +78,79 @@ class GitService:
     
     def get_status(self) -> dict:
         """Get git repository status.
-        
+
         Returns:
-            dict with is_repo (bool) and files (dict of path -> status)
+            dict with is_repo (bool) and files (dict of path -> normalized status)
         """
         if not self.is_git_repo():
             return {'is_repo': False, 'files': []}
-        
+
         # Get status (porcelain v1 format for stable parsing)
         status = self.run_git(['status', '--porcelain'])
         files = {}
+
+        # Priority for status codes (higher = more important, don't overwrite)
+        status_priority = {'C': 5, 'D': 4, 'A': 3, 'M': 2, 'U': 1}
+
+        def normalize_status(raw: str) -> str:
+            """Convert git XY status to single-char frontend status.
+
+            Returns: M (Modified), A (Added), D (Deleted), U (Untracked), C (Conflict)
+            """
+            raw = raw.strip()
+            # Untracked files (standard '??' or condensed '?' format)
+            if raw in ('??', '?'):
+                return 'U'
+            # Merge conflicts (unmerged states)
+            if raw in ('UU', 'AA', 'DD', 'DU', 'UD', 'AU', 'UA'):
+                return 'C'
+            # Deleted
+            if raw in ('D', 'D ', ' D'):
+                return 'D'
+            # Added
+            if raw in ('A', 'A ', ' A'):
+                return 'A'
+            # Modified (including MM - modified in both index and worktree)
+            if raw in ('M', 'M ', ' M', 'MM'):
+                return 'M'
+            # Renamed (show as modified for simplicity)
+            if raw.startswith('R'):
+                return 'M'
+            # Copied (show as added since it's a new file)
+            if raw.startswith('C'):
+                return 'A'
+            # Default: use first non-space character if recognized
+            for c in raw:
+                if c in 'MADU':
+                    return c
+                if c != ' ':
+                    break
+            return 'M'  # Fallback to modified for unknown
+
         for line in status.strip().split('\n'):
             if len(line) >= 3:
                 # Check if position 2 is a space (standard XY format)
-                # or position 1 is a space (condensed X format)
                 if len(line) > 3 and line[2] == ' ':
                     # Standard: XY PATH - path starts at position 3
-                    status_code = line[:2].strip()
+                    raw_status = line[:2]
                     file_path = line[3:]
                 else:
                     # Condensed: X PATH - path starts at position 2
-                    status_code = line[0]
+                    raw_status = line[0]
                     file_path = line[2:] if line[1] == ' ' else line[3:]
-                if status_code and file_path:
-                    files[file_path] = status_code
-        
+
+                # Handle rename/copy paths: "old -> new" format
+                # Only split for actual rename/copy statuses
+                if raw_status.startswith(('R', 'C')) and ' -> ' in file_path:
+                    file_path = file_path.split(' -> ')[-1]
+
+                if raw_status and file_path:
+                    status_code = normalize_status(raw_status)
+                    # Don't overwrite higher-priority status
+                    existing = files.get(file_path)
+                    if existing is None or status_priority.get(status_code, 0) > status_priority.get(existing, 0):
+                        files[file_path] = status_code
+
         return {
             'is_repo': True,
             'available': True,  # Compatibility with frontend
