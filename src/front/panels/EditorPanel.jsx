@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Editor from '../components/Editor'
 import CodeEditor from '../components/CodeEditor'
 import GitDiff from '../components/GitDiff'
@@ -44,6 +44,16 @@ export default function EditorPanel({ params: initialParams, api }) {
   const [diffError, setDiffError] = useState('')
   const [originalContent, setOriginalContent] = useState(null)
   const [initialModeApplied, setInitialModeApplied] = useState(false)
+
+  // Refs for polling to read current values without recreating interval
+  const contentRef = useRef(content)
+  const isDirtyRef = useRef(isDirty)
+  const isSavingRef = useRef(isSaving)
+
+  // Keep refs in sync with state
+  useEffect(() => { contentRef.current = content }, [content])
+  useEffect(() => { isDirtyRef.current = isDirty }, [isDirty])
+  useEffect(() => { isSavingRef.current = isSaving }, [isSaving])
 
   const loadDiff = useCallback(async () => {
     if (!path) return
@@ -104,20 +114,21 @@ export default function EditorPanel({ params: initialParams, api }) {
   }, [initialContent])
 
   // Poll for external changes
+  // Uses refs so interval isn't recreated on every keystroke (which would cancel in-flight fetches)
   useEffect(() => {
     if (!path) return
     let isActive = true
 
     const interval = setInterval(() => {
       // Don't poll while saving or if dirty - prevents race conditions
-      if (!isActive || isSaving || isDirty) return
+      if (!isActive || isSavingRef.current || isDirtyRef.current) return
 
       fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
         .then((r) => r.json())
         .then((data) => {
-          if (!isActive || isSaving || isDirty) return
+          if (!isActive || isSavingRef.current || isDirtyRef.current) return
           const nextContent = data.content || ''
-          if (nextContent === content) {
+          if (nextContent === contentRef.current) {
             // Content matches - clear any stale external change notification
             setExternalChange(false)
             return
@@ -134,7 +145,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       isActive = false
       clearInterval(interval)
     }
-  }, [path, content, isDirty, isSaving])
+  }, [path])
 
   const save = async (newContent) => {
     if (!path) return
