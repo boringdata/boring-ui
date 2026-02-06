@@ -434,6 +434,60 @@ html {
   font-weight: var(--font-semibold);
 }
 
+/* Pane Error State - shown when required capabilities are missing */
+.pane-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-8);
+  text-align: center;
+  background: var(--color-canvas-subtle);
+  color: var(--color-fg-muted);
+}
+
+.pane-error-icon {
+  color: var(--color-danger-fg, #d73a49);
+  margin-bottom: var(--space-4);
+}
+
+.pane-error-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--color-fg-default);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.pane-error-message {
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-4) 0;
+  max-width: 300px;
+}
+
+.pane-error-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+}
+
+.pane-error-list li {
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-danger-subtle, #ffeef0);
+  color: var(--color-danger-fg, #d73a49);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-1);
+}
+
+.pane-error-hint {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  margin: 0;
+  max-width: 280px;
+}
+
 /* Theme Toggle Button */
 .theme-toggle {
   display: flex;
@@ -904,8 +958,8 @@ html {
 
 .search-result-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: var(--space-2);
   padding: var(--space-2);
   cursor: pointer;
   border-radius: var(--radius-sm);
@@ -913,6 +967,20 @@ html {
 
 .search-result-item:hover {
   background: var(--color-bg-tertiary);
+}
+
+.search-result-icon {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  margin-top: 1px;
+}
+
+.search-result-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .search-result-name {
