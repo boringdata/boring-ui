@@ -17,13 +17,14 @@ import { getJSON, setJSON, getStorageKey } from '../utils/storage';
 
 /**
  * Default panel positions for common layouts
+ * Note: 'center' returns undefined to let dockview place the panel in the default location
  */
 const DEFAULT_POSITIONS = {
   left: { direction: 'left' },
   right: { direction: 'right' },
   top: { direction: 'above' },
   bottom: { direction: 'below' },
-  center: {}, // Default position (will be placed in center)
+  center: undefined, // No position config = placed in center/default location
 };
 
 /**
@@ -130,12 +131,13 @@ function createPanelsFromConfig(api, panels, components) {
     }
 
     // Check if position references another panel
+    // Note: 'center' position returns undefined, which means no position config needed
     const positionConfig = typeof position === 'string'
-      ? DEFAULT_POSITIONS[position] || {}
+      ? DEFAULT_POSITIONS[position]
       : position;
 
-    const referencesPanel = positionConfig.referencePanel && !createdPanels.has(positionConfig.referencePanel);
-    const referencesGroup = positionConfig.referenceGroup;
+    const referencesPanel = positionConfig?.referencePanel && !createdPanels.has(positionConfig.referencePanel);
+    const referencesGroup = positionConfig?.referenceGroup;
 
     if (referencesPanel || referencesGroup) {
       deferredPanels.push(panelConfig);
@@ -143,14 +145,18 @@ function createPanelsFromConfig(api, panels, components) {
     }
 
     // Create the panel
-    const panel = api.addPanel({
+    // Only include position if defined (center = undefined = default placement)
+    const panelOptions = {
       id,
       component,
       title: title || id,
-      position: positionConfig,
       params,
       tabComponent,
-    });
+    };
+    if (positionConfig) {
+      panelOptions.position = positionConfig;
+    }
+    const panel = api.addPanel(panelOptions);
 
     if (panel) {
       createdPanels.set(id, panel);
@@ -181,20 +187,20 @@ function createPanelsFromConfig(api, panels, components) {
     } = panelConfig;
 
     let positionConfig = typeof position === 'string'
-      ? DEFAULT_POSITIONS[position] || {}
-      : { ...position };
+      ? DEFAULT_POSITIONS[position]
+      : position ? { ...position } : undefined;
 
     // Resolve panel reference
-    if (positionConfig.referencePanel) {
+    if (positionConfig?.referencePanel) {
       const refPanel = createdPanels.get(positionConfig.referencePanel) || api.getPanel(positionConfig.referencePanel);
       if (!refPanel) {
         console.warn(`[DockLayout] Reference panel not found: ${positionConfig.referencePanel}`);
-        positionConfig = {};
+        positionConfig = undefined; // Fall back to default placement
       }
     }
 
     // Resolve group reference
-    if (positionConfig.referenceGroup && typeof positionConfig.referenceGroup === 'string') {
+    if (positionConfig?.referenceGroup && typeof positionConfig.referenceGroup === 'string') {
       const refPanel = createdPanels.get(positionConfig.referenceGroup) || api.getPanel(positionConfig.referenceGroup);
       if (refPanel?.group) {
         positionConfig.referenceGroup = refPanel.group;
@@ -204,14 +210,18 @@ function createPanelsFromConfig(api, panels, components) {
       }
     }
 
-    const panel = api.addPanel({
+    // Only include position if defined
+    const panelOptions = {
       id,
       component,
       title: title || id,
-      position: positionConfig,
       params,
       tabComponent,
-    });
+    };
+    if (positionConfig) {
+      panelOptions.position = positionConfig;
+    }
+    const panel = api.addPanel(panelOptions);
 
     if (panel) {
       createdPanels.set(id, panel);
@@ -327,17 +337,22 @@ const DockLayout = forwardRef(function DockLayout(
         } = panelConfig;
 
         const positionConfig = typeof position === 'string'
-          ? DEFAULT_POSITIONS[position] || {}
+          ? DEFAULT_POSITIONS[position]
           : position;
 
-        return api.addPanel({
+        // Only include position if it's defined (center position = undefined = default placement)
+        const panelOptions = {
           id,
           component,
           title: title || id,
-          position: positionConfig,
           params,
           tabComponent,
-        });
+        };
+        if (positionConfig) {
+          panelOptions.position = positionConfig;
+        }
+
+        return api.addPanel(panelOptions);
       },
 
       /**
