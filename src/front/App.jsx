@@ -6,6 +6,21 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
+import {
+  LAYOUT_VERSION,
+  validateLayoutStructure,
+  loadSavedTabs,
+  saveTabs,
+  loadLayout,
+  saveLayout,
+  loadCollapsedState,
+  saveCollapsedState,
+  loadPanelSizes,
+  savePanelSizes,
+  pruneEmptyGroups,
+  checkForSavedLayout,
+  getFileName,
+} from './layout'
 import ThemeToggle from './components/ThemeToggle'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
@@ -55,261 +70,11 @@ const KNOWN_COMPONENTS = getKnownComponents()
 // Get essential panel IDs from pane registry
 const ESSENTIAL_PANELS = essentialPanes()
 
-// Validate layout structure to detect drift
-// Returns true if layout is valid, false if it has drifted
-const validateLayoutStructure = (layout) => {
-  if (!layout?.grid || !layout?.panels) return false
-
-  const panels = layout.panels
-  const panelIds = Object.keys(panels)
-
-  // Check all essential panels exist
-  for (const essentialId of ESSENTIAL_PANELS) {
-    if (!panelIds.includes(essentialId)) {
-      console.warn(`[Layout drift] Missing essential panel: ${essentialId}`)
-      return false
-    }
-  }
-
-  // Extract groups and their panels from the grid structure
-  const groups = []
-  const extractGroups = (node) => {
-    if (!node) return
-    if (node.type === 'leaf' && node.data?.views) {
-      // This is a group - collect panel IDs
-      const groupPanels = node.data.views.map((v) => v.id).filter(Boolean)
-      groups.push(groupPanels)
-    }
-    // Recurse into branches
-    if (node.data && Array.isArray(node.data)) {
-      node.data.forEach(extractGroups)
-    }
-  }
-  extractGroups(layout.grid.root)
-
-  // Find which group each essential panel is in
-  const panelToGroup = {}
-  groups.forEach((groupPanels, groupIndex) => {
-    groupPanels.forEach((panelId) => {
-      panelToGroup[panelId] = groupIndex
-    })
-  })
-
-  // Validate filetree is alone in its group
-  const filetreeGroup = groups[panelToGroup['filetree']]
-  if (filetreeGroup) {
-    const otherInGroup = filetreeGroup.filter((p) => p !== 'filetree')
-    const invalidInGroup = otherInGroup.some((p) => ESSENTIAL_PANELS.includes(p))
-    if (invalidInGroup) {
-      console.warn('[Layout drift] filetree group has invalid panels:', otherInGroup)
-      return false
-    }
-  }
-
-  // Validate terminal is alone in its group
-  const terminalGroup = groups[panelToGroup['terminal']]
-  if (terminalGroup) {
-    const otherInGroup = terminalGroup.filter((p) => p !== 'terminal')
-    const invalidInGroup = otherInGroup.some((p) => ESSENTIAL_PANELS.includes(p))
-    if (invalidInGroup) {
-      console.warn('[Layout drift] terminal group has invalid panels:', otherInGroup)
-      return false
-    }
-  }
-
-  // Validate shell is not mixed with filetree or terminal
-  const shellGroupIdx = panelToGroup['shell']
-  if (shellGroupIdx !== undefined) {
-    const shellGroup = groups[shellGroupIdx]
-    if (shellGroup.includes('filetree') || shellGroup.includes('terminal')) {
-      console.warn('[Layout drift] shell is in wrong group with filetree/terminal')
-      return false
-    }
-  }
-
-  return true
-}
-
 // Custom tab component that hides close button (for shell tabs)
 const TabWithoutClose = (props) => <DockviewDefaultTab {...props} hideClose />
 
 const tabComponents = {
   noClose: TabWithoutClose,
-}
-
-const getFileName = (path) => {
-  const parts = path.split('/')
-  return parts[parts.length - 1]
-}
-
-const LAYOUT_VERSION = 22 // Increment to force layout reset after removing workflows
-
-// Generate a short hash from the project root path for localStorage keys
-const hashProjectRoot = (root) => {
-  if (!root) return 'default'
-  let hash = 0
-  for (let i = 0; i < root.length; i++) {
-    const char = root.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(36)
-}
-
-// Storage key generators (project-specific)
-// prefix defaults to 'kurt-web' for backwards compatibility
-const getStorageKey = (prefix, projectRoot, suffix) => `${prefix}-${hashProjectRoot(projectRoot)}-${suffix}`
-
-// Load saved tabs from localStorage
-const loadSavedTabs = (prefix, projectRoot) => {
-  try {
-    const saved = localStorage.getItem(getStorageKey(prefix, projectRoot, 'tabs'))
-    if (saved) {
-      return JSON.parse(saved)
-    }
-  } catch {
-    // Ignore parse errors
-  }
-  return []
-}
-
-// Save open tabs to localStorage
-const saveTabs = (prefix, projectRoot, paths) => {
-  try {
-    localStorage.setItem(getStorageKey(prefix, projectRoot, 'tabs'), JSON.stringify(paths))
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-const loadLayout = (prefix, projectRoot, configLayoutVersion) => {
-  try {
-    const raw = localStorage.getItem(getStorageKey(prefix, projectRoot, 'layout'))
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-
-    // Check internal format version - force reset if outdated
-    if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
-      console.info('[Layout] Format version outdated, resetting layout')
-      localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
-      return null
-    }
-
-    // Check config layout version - force reset if user bumped their layoutVersion
-    // Treat missing configVersion as version 1 (default) for backwards compatibility
-    const savedConfigVersion = parsed?.configVersion ?? 1
-    if (configLayoutVersion && savedConfigVersion !== configLayoutVersion) {
-      console.info('[Layout] Config version changed, resetting layout')
-      localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
-      return null
-    }
-
-    if (parsed?.panels && typeof parsed.panels === 'object') {
-      const panels = Object.values(parsed.panels)
-      const hasUnknown = panels.some(
-        (panel) =>
-          panel?.contentComponent &&
-          !KNOWN_COMPONENTS.has(panel.contentComponent),
-      )
-      if (hasUnknown) {
-        console.info('[Layout] Unknown components found, resetting layout')
-        localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
-        return null
-      }
-    }
-
-    // Validate layout structure to detect drift
-    if (!validateLayoutStructure(parsed)) {
-      console.info('[Layout] Structure drift detected, resetting layout')
-      localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
-      return null
-    }
-
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-const pruneEmptyGroups = (api) => {
-  if (!api || !Array.isArray(api.groups)) return false
-  const groups = [...api.groups]
-  let removed = false
-
-  groups.forEach((group) => {
-    const panels = Array.isArray(group?.panels) ? group.panels : []
-    if (panels.length === 0) {
-      api.removeGroup(group)
-      removed = true
-      return
-    }
-    const hasKnownPanel = panels.some((panel) =>
-      KNOWN_COMPONENTS.has(panel?.api?.component),
-    )
-    if (!hasKnownPanel) {
-      api.removeGroup(group)
-      removed = true
-    }
-  })
-
-  return removed
-}
-
-const saveLayout = (prefix, projectRoot, layout, configLayoutVersion) => {
-  try {
-    const layoutWithVersion = {
-      ...layout,
-      version: LAYOUT_VERSION,
-      configVersion: configLayoutVersion || 1,
-    }
-    localStorage.setItem(getStorageKey(prefix, projectRoot, 'layout'), JSON.stringify(layoutWithVersion))
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-// Collapsed state and panel sizes are shared across projects (UI preference)
-const getCollapsedKey = (prefix) => `${prefix}-sidebar-collapsed`
-const getPanelSizesKey = (prefix) => `${prefix}-panel-sizes`
-
-const loadCollapsedState = (prefix, defaults) => {
-  try {
-    const saved = localStorage.getItem(getCollapsedKey(prefix))
-    if (saved) {
-      return JSON.parse(saved)
-    }
-  } catch {
-    // Ignore parse errors
-  }
-  return defaults || { filetree: false, terminal: false }
-}
-
-const saveCollapsedState = (prefix, state) => {
-  try {
-    localStorage.setItem(getCollapsedKey(prefix), JSON.stringify(state))
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-const loadPanelSizes = (prefix, defaults) => {
-  try {
-    const saved = localStorage.getItem(getPanelSizesKey(prefix))
-    if (saved) {
-      return JSON.parse(saved)
-    }
-  } catch {
-    // Ignore parse errors
-  }
-  return defaults || { filetree: 280, terminal: 400, shell: 250 }
-}
-
-const savePanelSizes = (prefix, sizes) => {
-  try {
-    localStorage.setItem(getPanelSizesKey(prefix), JSON.stringify(sizes))
-  } catch {
-    // Ignore storage errors
-  }
 }
 
 export default function App() {
@@ -338,10 +103,10 @@ export default function App() {
   const [activeFile, setActiveFile] = useState(null)
   const [activeDiffFile, setActiveDiffFile] = useState(null)
   const [collapsed, setCollapsed] = useState(() =>
-    loadCollapsedState(storagePrefix, { filetree: false, terminal: false })
+    loadCollapsedState(storagePrefix)
   )
   const panelSizesRef = useRef(
-    loadPanelSizes(storagePrefix, panelDefaults)
+    loadPanelSizes(storagePrefix) || panelDefaults
   )
   const collapsedEffectRan = useRef(false)
   const dismissedApprovalsRef = useRef(new Set())
@@ -372,13 +137,13 @@ export default function App() {
         const currentWidth = filetreeGroup.api.width
         if (currentWidth > panelCollapsedRef.current.filetree) {
           panelSizesRef.current = { ...panelSizesRef.current, filetree: currentWidth }
-          savePanelSizes(storagePrefixRef.current, panelSizesRef.current)
+          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
         }
       }
     }
     setCollapsed((prev) => {
       const next = { ...prev, filetree: !prev.filetree }
-      saveCollapsedState(storagePrefixRef.current, next)
+      saveCollapsedState(next, storagePrefixRef.current)
       return next
     })
   }, [collapsed.filetree, dockApi])
@@ -392,13 +157,13 @@ export default function App() {
         const currentWidth = terminalGroup.api.width
         if (currentWidth > panelCollapsedRef.current.terminal) {
           panelSizesRef.current = { ...panelSizesRef.current, terminal: currentWidth }
-          savePanelSizes(storagePrefixRef.current, panelSizesRef.current)
+          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
         }
       }
     }
     setCollapsed((prev) => {
       const next = { ...prev, terminal: !prev.terminal }
-      saveCollapsedState(storagePrefixRef.current, next)
+      saveCollapsedState(next, storagePrefixRef.current)
       return next
     })
   }, [collapsed.terminal, dockApi])
@@ -412,13 +177,13 @@ export default function App() {
         const currentHeight = shellGroup.api.height
         if (currentHeight > panelCollapsedRef.current.shell) {
           panelSizesRef.current = { ...panelSizesRef.current, shell: currentHeight }
-          savePanelSizes(storagePrefixRef.current, panelSizesRef.current)
+          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
         }
       }
     }
     setCollapsed((prev) => {
       const next = { ...prev, shell: !prev.shell }
-      saveCollapsedState(storagePrefixRef.current, next)
+      saveCollapsedState(next, storagePrefixRef.current)
       return next
     })
   }, [collapsed.shell, dockApi])
@@ -1288,7 +1053,7 @@ export default function App() {
     if (!dockApi || projectRoot === null || layoutRestorationRan.current) return
     layoutRestorationRan.current = true
 
-    const savedLayout = loadLayout(storagePrefix, projectRoot, layoutVersion)
+    const savedLayout = loadLayout(storagePrefix, projectRoot, KNOWN_COMPONENTS, layoutVersion)
     if (!savedLayout) {
       if (ensureCorePanelsRef.current) {
         ensureCorePanelsRef.current()
@@ -1407,7 +1172,7 @@ export default function App() {
         }
 
         // Prune empty groups
-        const pruned = pruneEmptyGroups(dockApi)
+        const pruned = pruneEmptyGroups(dockApi, KNOWN_COMPONENTS)
         if (pruned && typeof dockApi.toJSON === 'function') {
           saveLayout(storagePrefix, projectRoot, dockApi.toJSON(), layoutVersion)
         }
