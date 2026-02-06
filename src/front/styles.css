@@ -421,6 +421,19 @@ html {
   min-height: 0;
 }
 
+/* Capability Warning Banner */
+.capability-warning {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-warning-muted, #fff3cd);
+  color: var(--color-warning-fg, #856404);
+  border-bottom: 1px solid var(--color-warning-emphasis, #ffc107);
+  font-size: var(--text-sm);
+}
+
+.capability-warning strong {
+  font-weight: var(--font-semibold);
+}
+
 /* Theme Toggle Button */
 .theme-toggle {
   display: flex;

@@ -3,7 +3,7 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider } from './hooks/useTheme'
+import { ThemeProvider, useCapabilities } from './hooks'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import ThemeToggle from './components/ThemeToggle'
@@ -12,6 +12,8 @@ import {
   getComponents,
   getKnownComponents,
   essentialPanes,
+  checkRequirements,
+  getUnavailableEssentialPanes,
 } from './registry/panes'
 
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
@@ -313,6 +315,14 @@ export default function App() {
   const config = useConfig()
   const storagePrefix = config.storage?.prefix || 'kurt-web'
   const layoutVersion = config.storage?.layoutVersion || 1
+
+  // Fetch backend capabilities for feature gating
+  const { capabilities, loading: capabilitiesLoading } = useCapabilities()
+
+  // Check for unavailable essential panes
+  const unavailableEssentials = capabilities
+    ? getUnavailableEssentialPanes(capabilities)
+    : []
 
   const [dockApi, setDockApi] = useState(null)
   const [tabs, setTabs] = useState({}) // path -> { content, isDirty }
@@ -1641,6 +1651,12 @@ export default function App() {
             <ThemeToggle />
           </div>
         </header>
+        {unavailableEssentials.length > 0 && (
+          <div className="capability-warning">
+            <strong>Warning:</strong> Some features are unavailable.
+            Missing capabilities for: {unavailableEssentials.map(p => p.title || p.id).join(', ')}.
+          </div>
+        )}
         <DockviewReact
           className={dockviewClassName}
           components={components}
