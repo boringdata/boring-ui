@@ -988,7 +988,7 @@ export default function App() {
 
       if (changed) {
         panelSizesRef.current = newSizes
-        savePanelSizes(storagePrefixRef.current, newSizes)
+        savePanelSizes(newSizes, storagePrefixRef.current)
       }
     }
 
