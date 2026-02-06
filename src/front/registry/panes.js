@@ -25,6 +25,8 @@ import ReviewPanel from '../panels/ReviewPanel'
  * @property {boolean} [locked] - If true, pane group is locked (no close button)
  * @property {boolean} [hideHeader] - If true, group header is hidden
  * @property {Object} [constraints] - Size constraints { min, max } for width/height
+ * @property {string[]} [requiresFeatures] - Backend features this pane requires (e.g., ['files', 'git'])
+ * @property {string[]} [requiresRouters] - Backend routers this pane requires (e.g., ['pty', 'stream'])
  */
 
 /**
@@ -122,6 +124,73 @@ class PaneRegistry {
   getKnownComponents() {
     return new Set(this._panes.keys())
   }
+
+  /**
+   * Get required features for a pane.
+   * @param {string} id - Pane identifier
+   * @returns {string[]}
+   */
+  getRequiredFeatures(id) {
+    const pane = this._panes.get(id)
+    return pane?.requiresFeatures || []
+  }
+
+  /**
+   * Get required routers for a pane.
+   * @param {string} id - Pane identifier
+   * @returns {string[]}
+   */
+  getRequiredRouters(id) {
+    const pane = this._panes.get(id)
+    return pane?.requiresRouters || []
+  }
+
+  /**
+   * Check if a pane's requirements are satisfied.
+   * @param {string} id - Pane identifier
+   * @param {Object} capabilities - Capabilities from /api/capabilities endpoint
+   * @returns {boolean}
+   */
+  checkRequirements(id, capabilities) {
+    const pane = this._panes.get(id)
+    if (!pane) return false
+
+    const features = capabilities?.features || {}
+
+    // Check required features
+    const requiredFeatures = pane.requiresFeatures || []
+    for (const feature of requiredFeatures) {
+      if (!features[feature]) return false
+    }
+
+    // Check required routers (routers are also exposed as features)
+    const requiredRouters = pane.requiresRouters || []
+    for (const router of requiredRouters) {
+      if (!features[router]) return false
+    }
+
+    return true
+  }
+
+  /**
+   * Get panes filtered by capability satisfaction.
+   * @param {Object} capabilities - Capabilities from /api/capabilities endpoint
+   * @returns {PaneConfig[]}
+   */
+  getAvailablePanes(capabilities) {
+    return this.list().filter((pane) => this.checkRequirements(pane.id, capabilities))
+  }
+
+  /**
+   * Get essential panes that have unmet requirements.
+   * @param {Object} capabilities - Capabilities from /api/capabilities endpoint
+   * @returns {PaneConfig[]}
+   */
+  getUnavailableEssentialPanes(capabilities) {
+    return this.list().filter(
+      (pane) => pane.essential && !this.checkRequirements(pane.id, capabilities),
+    )
+  }
 }
 
 // Create default registry with standard panels
@@ -141,6 +210,7 @@ const createDefaultRegistry = () => {
       minWidth: 180,
       collapsedWidth: 48,
     },
+    requiresFeatures: ['files'],
   })
 
   // Editor - center
@@ -150,6 +220,7 @@ const createDefaultRegistry = () => {
     title: 'Editor',
     placement: 'center',
     essential: false,
+    requiresFeatures: ['files'],
   })
 
   // Terminal (Claude sessions) - right sidebar
@@ -165,6 +236,7 @@ const createDefaultRegistry = () => {
       minWidth: 250,
       collapsedWidth: 48,
     },
+    requiresRouters: ['chat_claude_code'],
   })
 
   // Shell - bottom of center column
@@ -180,6 +252,7 @@ const createDefaultRegistry = () => {
       minHeight: 100,
       collapsedHeight: 36,
     },
+    requiresRouters: ['pty'],
   })
 
   // Empty placeholder - shown when no editors open
@@ -198,6 +271,7 @@ const createDefaultRegistry = () => {
     title: 'Review',
     placement: 'center',
     essential: false,
+    requiresRouters: ['approval'],
   })
 
   return registry
@@ -222,3 +296,11 @@ export const isEssential = (id) => defaultRegistry.isEssential(id)
 export const hasPane = (id) => defaultRegistry.has(id)
 export const getComponents = () => defaultRegistry.getComponents()
 export const getKnownComponents = () => defaultRegistry.getKnownComponents()
+export const getRequiredFeatures = (id) => defaultRegistry.getRequiredFeatures(id)
+export const getRequiredRouters = (id) => defaultRegistry.getRequiredRouters(id)
+export const checkRequirements = (id, capabilities) =>
+  defaultRegistry.checkRequirements(id, capabilities)
+export const getAvailablePanes = (capabilities) =>
+  defaultRegistry.getAvailablePanes(capabilities)
+export const getUnavailableEssentialPanes = (capabilities) =>
+  defaultRegistry.getUnavailableEssentialPanes(capabilities)
