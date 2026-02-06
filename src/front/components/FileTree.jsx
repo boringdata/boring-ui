@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X, Folder, FolderOpen, File, FolderInput, ChevronRight, ChevronDown, MoreHorizontal, Settings } from 'lucide-react'
 import { buildApiUrl } from '../utils/apiBase'
+import { getFileIcon } from '../utils/fileIcons'
 
 const configPath = import.meta.env.VITE_CONFIG_PATH || ''
 
@@ -509,7 +510,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         className="file-item file-item-new"
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
-        <span className="file-item-icon"><File size={14} /></span>
+        <span className="file-item-icon">{getFileIcon(newFileInput.name || 'file')}</span>
         <input
           ref={newFileInputRef}
           type="text"
@@ -547,7 +548,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
             onDrop={(event) => handleDrop(event, e)}
           >
             <span className="file-item-icon">
-              {e.is_dir ? (expandedDirs[e.path] ? <FolderOpen size={14} /> : <Folder size={14} />) : <File size={14} />}
+              {e.is_dir ? (expandedDirs[e.path] ? <FolderOpen size={14} /> : <Folder size={14} />) : getFileIcon(e.name)}
             </span>
             {isRenaming ? (
               <input
@@ -773,11 +774,14 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
                 className="search-result-item"
                 onClick={() => handleSearchResultClick(result)}
               >
-                <span className="search-result-name">
-                  {highlightMatch(result.name, searchQuery)}
-                  {renderStatusBadge(getFileStatus(result.path))}
-                </span>
-                <span className="search-result-path">{result.dir}</span>
+                <span className="search-result-icon">{getFileIcon(result.name)}</span>
+                <div className="search-result-content">
+                  <span className="search-result-name">
+                    {highlightMatch(result.name, searchQuery)}
+                    {renderStatusBadge(getFileStatus(result.path))}
+                  </span>
+                  <span className="search-result-path">{result.dir}</span>
+                </div>
               </div>
             ))
           )}
