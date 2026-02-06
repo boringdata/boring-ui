@@ -49,14 +49,16 @@ registerPane({
   id: 'my-custom',
   component: MyCustomPanel,
   title: 'My Panel',
-  placement: 'center',  // 'left' | 'center' | 'right' | 'bottom'
-  essential: false,     // If true, must exist in layout
-  locked: false,        // If true, group is locked (no close button)
-  hideHeader: false,    // If true, group header is hidden
+  placement: 'center',      // 'left' | 'center' | 'right' | 'bottom'
+  essential: false,         // If true, must exist in layout
+  locked: false,            // If true, group is locked (no close button)
+  hideHeader: false,        // If true, group header is hidden
   constraints: {
-    minWidth: 200,      // Minimum width in pixels
-    minHeight: 150,     // Minimum height in pixels
+    minWidth: 200,          // Minimum width in pixels
+    minHeight: 150,         // Minimum height in pixels
   },
+  requiresFeatures: ['files'],  // Required backend features
+  requiresRouters: ['my-api'],  // Required backend routers
 })
 ```
 
@@ -72,6 +74,28 @@ registerPane({
 | `locked` | boolean | If true, prevents closing tabs in group |
 | `hideHeader` | boolean | If true, hides the group header |
 | `constraints` | object | Size constraints: `minWidth`, `minHeight`, etc. |
+| `requiresFeatures` | string[] | Backend features this pane requires (e.g., `['files']`) |
+| `requiresRouters` | string[] | Backend routers this pane requires (e.g., `['pty']`) |
+
+### Capability-Gated Panes
+
+When a pane specifies `requiresFeatures` or `requiresRouters`, it will show an error state if those capabilities are unavailable:
+
+```javascript
+// Panes with requirements show clear error messages when unavailable
+registerPane({
+  id: 'code-sessions',
+  component: CodeSessionsPanel,
+  title: 'Code Sessions',
+  requiresRouters: ['chat_claude_code'],  // Requires the Claude chat router
+})
+```
+
+Built-in pane requirements:
+- `filetree`, `editor`: requires `files` feature
+- `terminal`: requires `chat_claude_code` router
+- `shell`: requires `pty` router
+- `review`: requires `approval` router
 
 ## Layout Manager
 
@@ -236,6 +260,28 @@ app = create_app(routers=['files', 'git', 'my-feature'])
 app = create_app(include_pty=False, include_stream=False)
 ```
 
+### Built-in Modules
+
+boring-ui's backend API is organized into modules under `boring_ui/api/modules/`:
+
+```
+boring_ui/api/modules/
+├── files/          # File operations (read, write, rename, delete)
+│   ├── router.py
+│   └── service.py
+├── git/            # Git operations (status, diff, show)
+│   ├── router.py
+│   └── service.py
+├── pty/            # PTY WebSocket for shell terminals
+│   ├── router.py
+│   └── service.py
+└── stream/         # Claude stream WebSocket (chat_claude_code)
+    ├── router.py
+    └── service.py
+```
+
+Each module follows the router/service pattern for clean separation of concerns.
+
 ## Capabilities API
 
 The `/api/capabilities` endpoint reports available features.
@@ -249,6 +295,7 @@ The `/api/capabilities` endpoint reports available features.
     "files": true,
     "git": true,
     "pty": true,
+    "chat_claude_code": true,
     "stream": true,
     "approval": true
   },
@@ -259,12 +306,46 @@ The `/api/capabilities` endpoint reports available features.
       "description": "File system operations",
       "tags": ["files"],
       "enabled": true
+    },
+    {
+      "name": "chat_claude_code",
+      "prefix": "/ws",
+      "description": "Claude stream WebSocket for AI chat",
+      "tags": ["websocket", "ai"],
+      "enabled": true
     }
   ]
 }
 ```
 
+Note: `chat_claude_code` is the canonical name for Claude chat functionality. `stream` is provided as a backward-compatible alias.
+```
+
 ### Using Capabilities in Frontend
+
+Use the `useCapabilities` hook to fetch and check capabilities:
+
+```javascript
+import { useCapabilities, isFeatureEnabled } from './hooks'
+
+function MyComponent() {
+  const { capabilities, loading, error } = useCapabilities()
+
+  if (loading) return <div>Loading...</div>
+
+  if (isFeatureEnabled(capabilities, 'pty')) {
+    // PTY features available
+  }
+
+  if (isFeatureEnabled(capabilities, 'chat_claude_code')) {
+    // Claude chat available
+  }
+
+  return <div>...</div>
+}
+```
+
+For raw fetch access:
 
 ```javascript
 async function checkCapabilities() {
@@ -275,8 +356,8 @@ async function checkCapabilities() {
     // Enable terminal features
   }
 
-  if (features.approval) {
-    // Enable approval workflow
+  if (features.chat_claude_code) {
+    // Enable Claude chat features
   }
 }
 ```

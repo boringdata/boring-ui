@@ -282,6 +282,8 @@ export const loadLayout = (prefix, projectRoot, knownComponents, configLayoutVer
         localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
         const recovered = loadLastKnownGoodLayout(prefix, projectRoot)
         if (recovered) {
+          // Persist recovered layout so it's not lost on next load
+          localStorage.setItem(getStorageKey(prefix, projectRoot, 'layout'), JSON.stringify(recovered))
           console.info('[Layout] Recovered from lastKnownGoodLayout after migration failure')
           return recovered
         }
@@ -321,6 +323,8 @@ export const loadLayout = (prefix, projectRoot, knownComponents, configLayoutVer
       // Try lastKnownGoodLayout before giving up
       const recovered = loadLastKnownGoodLayout(prefix, projectRoot)
       if (recovered) {
+        // Persist recovered layout so it's not lost on next load
+        localStorage.setItem(getStorageKey(prefix, projectRoot, 'layout'), JSON.stringify(recovered))
         console.info('[Layout] Successfully recovered from lastKnownGoodLayout')
         return recovered
       }
@@ -334,6 +338,12 @@ export const loadLayout = (prefix, projectRoot, knownComponents, configLayoutVer
     // Try lastKnownGoodLayout as fallback
     const recovered = loadLastKnownGoodLayout(prefix, projectRoot)
     if (recovered) {
+      // Persist recovered layout so it's not lost on next load
+      try {
+        localStorage.setItem(getStorageKey(prefix, projectRoot, 'layout'), JSON.stringify(recovered))
+      } catch {
+        // Ignore save errors during error recovery
+      }
       console.info('[Layout] Recovered from lastKnownGoodLayout after error')
       return recovered
     }
