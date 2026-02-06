@@ -159,15 +159,22 @@ const saveTabs = (prefix, projectRoot, paths) => {
   }
 }
 
-const loadLayout = (prefix, projectRoot) => {
+const loadLayout = (prefix, projectRoot, configLayoutVersion) => {
   try {
     const raw = localStorage.getItem(getStorageKey(prefix, projectRoot, 'layout'))
     if (!raw) return null
     const parsed = JSON.parse(raw)
 
-    // Check layout version - force reset if outdated
+    // Check internal format version - force reset if outdated
     if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
-      console.info('[Layout] Version outdated, resetting layout')
+      console.info('[Layout] Format version outdated, resetting layout')
+      localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
+      return null
+    }
+
+    // Check config layout version - force reset if user bumped their layoutVersion
+    if (configLayoutVersion && parsed?.configVersion !== configLayoutVersion) {
+      console.info('[Layout] Config version changed, resetting layout')
       localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
       return null
     }
@@ -223,9 +230,13 @@ const pruneEmptyGroups = (api) => {
   return removed
 }
 
-const saveLayout = (prefix, projectRoot, layout) => {
+const saveLayout = (prefix, projectRoot, layout, configLayoutVersion) => {
   try {
-    const layoutWithVersion = { ...layout, version: LAYOUT_VERSION }
+    const layoutWithVersion = {
+      ...layout,
+      version: LAYOUT_VERSION,
+      configVersion: configLayoutVersion || 1,
+    }
     localStorage.setItem(getStorageKey(prefix, projectRoot, 'layout'), JSON.stringify(layoutWithVersion))
   } catch {
     // Ignore storage errors
@@ -280,6 +291,7 @@ export default function App() {
   // Get config (defaults are used until async load completes)
   const config = useConfig()
   const storagePrefix = config.storage?.prefix || 'kurt-web'
+  const layoutVersion = config.storage?.layoutVersion || 1
 
   const [dockApi, setDockApi] = useState(null)
   const [tabs, setTabs] = useState({}) // path -> { content, isDirty }
@@ -303,6 +315,8 @@ export default function App() {
   const projectRootRef = useRef(null) // Stable ref for callbacks
   const storagePrefixRef = useRef(storagePrefix) // Stable ref for callbacks
   storagePrefixRef.current = storagePrefix
+  const layoutVersionRef = useRef(layoutVersion) // Stable ref for callbacks
+  layoutVersionRef.current = layoutVersion
 
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
@@ -1120,7 +1134,7 @@ export default function App() {
     const saveLayoutNow = () => {
       if (typeof api.toJSON !== 'function') return
       // Use refs for stable access in event handlers
-      saveLayout(storagePrefixRef.current, projectRootRef.current, api.toJSON())
+      saveLayout(storagePrefixRef.current, projectRootRef.current, api.toJSON(), layoutVersionRef.current)
     }
 
     // Save panel sizes when layout changes (user resizes via drag)
@@ -1215,7 +1229,7 @@ export default function App() {
     if (!dockApi || projectRoot === null || layoutRestorationRan.current) return
     layoutRestorationRan.current = true
 
-    const savedLayout = loadLayout(storagePrefix, projectRoot)
+    const savedLayout = loadLayout(storagePrefix, projectRoot, layoutVersion)
     if (!savedLayout) {
       if (ensureCorePanelsRef.current) {
         ensureCorePanelsRef.current()
@@ -1336,7 +1350,7 @@ export default function App() {
         // Prune empty groups
         const pruned = pruneEmptyGroups(dockApi)
         if (pruned && typeof dockApi.toJSON === 'function') {
-          saveLayout(storagePrefix, projectRoot, dockApi.toJSON())
+          saveLayout(storagePrefix, projectRoot, dockApi.toJSON(), layoutVersion)
         }
 
         // Apply saved panel sizes, respecting collapsed state

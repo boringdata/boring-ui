@@ -264,13 +264,24 @@ export const loadLayout = (prefix, projectRoot, knownComponents, configLayoutVer
   try {
     const raw = localStorage.getItem(getStorageKey(prefix, projectRoot, 'layout'))
     if (!raw) return null
-    const parsed = JSON.parse(raw)
+    let parsed = JSON.parse(raw)
 
-    // Check internal format version - force reset if outdated
+    // Check internal format version - attempt migration if outdated
     if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
-      console.info('[Layout] Format version outdated, resetting layout')
-      localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
-      return null
+      const oldVersion = parsed?.version || 0
+      const migrated = migrateLayout(parsed, oldVersion)
+
+      if (migrated) {
+        // Migration successful - save and use migrated layout
+        console.info(`[Layout] Successfully migrated from v${oldVersion} to v${LAYOUT_VERSION}`)
+        localStorage.setItem(getStorageKey(prefix, projectRoot, 'layout'), JSON.stringify(migrated))
+        parsed = migrated
+      } else {
+        // No migration path - reset to defaults
+        console.info('[Layout] Format version outdated with no migration path, resetting layout')
+        localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
+        return null
+      }
     }
 
     // Check config layout version - force reset if user bumped their layoutVersion
