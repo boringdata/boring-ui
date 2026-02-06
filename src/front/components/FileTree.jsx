@@ -145,8 +145,13 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Clear search results immediately when query is cleared (before any async operation)
+  // This ensures the tree renders correctly without any stale search results
+  const trimmedQuery = searchQuery.trim()
+
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    // Immediately clear results if query is empty
+    if (!trimmedQuery) {
       setSearchResults([])
       setIsSearching(false)
       return
@@ -154,9 +159,10 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
     setIsSearching(true)
     const timeoutId = setTimeout(() => {
-      fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(searchQuery)}`))
+      fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(trimmedQuery)}`))
         .then((r) => r.json())
         .then((data) => {
+          // Only update if query hasn't changed (prevent stale results)
           setSearchResults(data.results || [])
           setIsSearching(false)
         })
@@ -167,7 +173,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     }, 200)
 
     return () => clearTimeout(timeoutId)
-  }, [searchQuery])
+  }, [trimmedQuery])
 
   useEffect(() => {
     if (renaming && renameInputRef.current) {
@@ -761,7 +767,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         )}
       </div>
 
-      {searchQuery.trim() ? (
+      {trimmedQuery ? (
         <div className="search-results">
           {isSearching ? (
             <div className="search-status">Searching...</div>
@@ -777,7 +783,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
                 <span className="search-result-icon">{getFileIcon(result.name)}</span>
                 <div className="search-result-content">
                   <span className="search-result-name">
-                    {highlightMatch(result.name, searchQuery)}
+                    {highlightMatch(result.name, trimmedQuery)}
                     {renderStatusBadge(getFileStatus(result.path))}
                   </span>
                   <span className="search-result-path">{result.dir}</span>
