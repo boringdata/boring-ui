@@ -226,6 +226,13 @@ export default function EditorPanel({ params: initialParams, api }) {
         onDirtyChange?.(path, false)
         setExternalChange(false)
         setContentVersion((v) => v + 1)
+
+        // Reload diff data if in diff mode (same as save())
+        if (editorMode === 'git-diff') {
+          loadDiff()
+        } else if (editorMode === 'diff') {
+          loadOriginalContent()
+        }
       })
       .catch(() => {})
   }
