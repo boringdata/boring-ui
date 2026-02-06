@@ -4,6 +4,45 @@
  * This module provides a centralized registry for all panel components,
  * allowing new panels to be added without touching core app code.
  *
+ * ## Capability Gating
+ *
+ * Panes can declare backend dependencies via `requiresFeatures` and `requiresRouters`.
+ * These are checked against the `/api/capabilities` endpoint response:
+ *
+ * ```json
+ * {
+ *   "features": {
+ *     "files": true,      // File system operations available
+ *     "git": true,        // Git operations available
+ *     "pty": true,        // PTY/shell WebSocket available
+ *     "chat_claude_code": true,  // Claude chat WebSocket available
+ *     "approval": true    // Approval request router available
+ *   }
+ * }
+ * ```
+ *
+ * ### Available Capabilities
+ *
+ * | Capability | Type | Description |
+ * |------------|------|-------------|
+ * | `files` | feature | File read/write/rename/delete operations |
+ * | `git` | feature | Git status, diff, show operations |
+ * | `pty` | router | PTY WebSocket for shell terminals |
+ * | `chat_claude_code` | router | Claude stream WebSocket for AI chat |
+ * | `approval` | router | Approval request handling |
+ *
+ * ### Default Pane Requirements
+ *
+ * - `filetree`: requires `files` feature
+ * - `editor`: requires `files` feature
+ * - `terminal`: requires `chat_claude_code` router
+ * - `shell`: requires `pty` router
+ * - `review`: requires `approval` router
+ * - `empty`: no requirements (always available)
+ *
+ * When requirements are unmet, the pane renders an error state explaining
+ * which capabilities are missing rather than crashing.
+ *
  * @module registry/panes
  */
 
@@ -16,17 +55,21 @@ import ReviewPanel from '../panels/ReviewPanel'
 
 /**
  * @typedef {Object} PaneConfig
- * @property {string} id - Unique identifier for the pane
+ * @property {string} id - Unique identifier for the pane (lowercase, hyphenated)
  * @property {React.ComponentType} component - The React component to render
  * @property {string} title - Default title for the pane
  * @property {string} [icon] - Optional icon name
  * @property {string} [placement] - Default placement ('left', 'center', 'right', 'bottom')
- * @property {boolean} [essential] - If true, pane must exist in layout
- * @property {boolean} [locked] - If true, pane group is locked (no close button)
- * @property {boolean} [hideHeader] - If true, group header is hidden
- * @property {Object} [constraints] - Size constraints { min, max } for width/height
- * @property {string[]} [requiresFeatures] - Backend features this pane requires (e.g., ['files', 'git'])
- * @property {string[]} [requiresRouters] - Backend routers this pane requires (e.g., ['pty', 'stream'])
+ * @property {boolean} [essential] - If true, pane must exist in layout (default: false)
+ * @property {boolean} [locked] - If true, pane group is locked (no close button) (default: false)
+ * @property {boolean} [hideHeader] - If true, group header is hidden (default: false)
+ * @property {Object} [constraints] - Size constraints { minWidth, minHeight, collapsedWidth, collapsedHeight }
+ * @property {string[]} [requiresFeatures] - Backend features this pane requires.
+ *   Checked against capabilities.features from /api/capabilities.
+ *   Common values: 'files', 'git'. Default: [] (no feature requirements)
+ * @property {string[]} [requiresRouters] - Backend routers this pane requires.
+ *   Checked against capabilities.features (routers are exposed as features).
+ *   Common values: 'pty', 'chat_claude_code', 'approval'. Default: [] (no router requirements)
  */
 
 /**
@@ -118,6 +161,25 @@ class PaneRegistry {
   }
 
   /**
+   * Get capability-gated components for Dockview.
+   * Wraps each component with capability checking.
+   * @param {function(string, React.ComponentType): React.ComponentType} gateFactory - Factory function to create gated components
+   * @returns {Object<string, React.ComponentType>}
+   */
+  getGatedComponents(gateFactory) {
+    const components = {}
+    for (const [id, config] of this._panes) {
+      // Only gate components that have requirements
+      const hasRequirements =
+        (config.requiresFeatures?.length > 0) || (config.requiresRouters?.length > 0)
+      components[id] = hasRequirements
+        ? gateFactory(id, config.component)
+        : config.component
+    }
+    return components
+  }
+
+  /**
    * Get set of known component names for validation.
    * @returns {Set<string>}
    */
@@ -193,7 +255,21 @@ class PaneRegistry {
   }
 }
 
-// Create default registry with standard panels
+/**
+ * Create the default pane registry with all standard panels.
+ *
+ * Default panes and their capability requirements:
+ * | Pane ID   | Essential | Placement | Requirements          |
+ * |-----------|-----------|-----------|------------------------|
+ * | filetree  | yes       | left      | files feature          |
+ * | editor    | no        | center    | files feature          |
+ * | terminal  | yes       | right     | chat_claude_code router|
+ * | shell     | yes       | bottom    | pty router             |
+ * | empty     | no        | center    | none                   |
+ * | review    | no        | center    | approval router        |
+ *
+ * @returns {PaneRegistry} Configured registry instance
+ */
 const createDefaultRegistry = () => {
   const registry = new PaneRegistry()
 
@@ -295,6 +371,7 @@ export const essentialPanes = () => defaultRegistry.essentials()
 export const isEssential = (id) => defaultRegistry.isEssential(id)
 export const hasPane = (id) => defaultRegistry.has(id)
 export const getComponents = () => defaultRegistry.getComponents()
+export const getGatedComponents = (gateFactory) => defaultRegistry.getGatedComponents(gateFactory)
 export const getKnownComponents = () => defaultRegistry.getKnownComponents()
 export const getRequiredFeatures = (id) => defaultRegistry.getRequiredFeatures(id)
 export const getRequiredRouters = (id) => defaultRegistry.getRequiredRouters(id)

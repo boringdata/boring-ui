@@ -11,10 +11,21 @@ import { useState, useEffect, useCallback } from 'react'
 import { buildApiUrl } from '../utils/apiBase'
 
 /**
+ * Capabilities response from /api/capabilities endpoint.
+ *
+ * Standard features (all exposed via features object):
+ * - `files`: File system operations (read, write, rename, delete)
+ * - `git`: Git operations (status, diff, show)
+ * - `pty`: PTY WebSocket for shell terminals
+ * - `chat_claude_code`: Claude stream WebSocket for AI chat
+ * - `approval`: Approval request handling
+ *
+ * Note: Router capabilities are also exposed as features for simple checking.
+ *
  * @typedef {Object} Capabilities
- * @property {string} version - API version
- * @property {Object<string, boolean>} features - Feature flags
- * @property {Array<{name: string, prefix: string, enabled: boolean}>} routers - Router info
+ * @property {string} version - API version (e.g., "0.1.0")
+ * @property {Object<string, boolean>} features - Feature flags including router availability
+ * @property {Array<{name: string, prefix: string, description: string, enabled: boolean}>} routers - Detailed router info
  */
 
 /**
