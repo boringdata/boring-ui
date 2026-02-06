@@ -230,8 +230,8 @@ export const loadSavedTabs = (prefix, projectRoot) => {
     if (saved) {
       return JSON.parse(saved)
     }
-  } catch {
-    // Ignore parse errors
+  } catch (err) {
+    console.warn('[Layout] Error loading saved tabs:', err.message)
   }
   return []
 }
@@ -245,8 +245,8 @@ export const loadSavedTabs = (prefix, projectRoot) => {
 export const saveTabs = (prefix, projectRoot, paths) => {
   try {
     localStorage.setItem(getStorageKey(prefix, projectRoot, 'tabs'), JSON.stringify(paths))
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn('[Layout] Error saving tabs:', err.message)
   }
 }
 
@@ -277,9 +277,15 @@ export const loadLayout = (prefix, projectRoot, knownComponents, configLayoutVer
         localStorage.setItem(getStorageKey(prefix, projectRoot, 'layout'), JSON.stringify(migrated))
         parsed = migrated
       } else {
-        // No migration path - reset to defaults
-        console.info('[Layout] Format version outdated with no migration path, resetting layout')
+        // No migration path - try lastKnownGoodLayout before falling back to defaults
+        console.info('[Layout] Format version outdated with no migration path, attempting recovery')
         localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
+        const recovered = loadLastKnownGoodLayout(prefix, projectRoot)
+        if (recovered) {
+          console.info('[Layout] Recovered from lastKnownGoodLayout after migration failure')
+          return recovered
+        }
+        console.info('[Layout] No valid backup found, falling back to defaults')
         return null
       }
     }
@@ -310,13 +316,27 @@ export const loadLayout = (prefix, projectRoot, knownComponents, configLayoutVer
 
     // Validate layout structure to detect drift
     if (!validateLayoutStructure(parsed)) {
-      console.info('[Layout] Structure drift detected, resetting layout')
+      console.info('[Layout] Structure drift detected, attempting recovery')
       localStorage.removeItem(getStorageKey(prefix, projectRoot, 'layout'))
+      // Try lastKnownGoodLayout before giving up
+      const recovered = loadLastKnownGoodLayout(prefix, projectRoot)
+      if (recovered) {
+        console.info('[Layout] Successfully recovered from lastKnownGoodLayout')
+        return recovered
+      }
+      console.info('[Layout] No valid backup found, falling back to defaults')
       return null
     }
 
     return parsed
-  } catch {
+  } catch (err) {
+    console.error('[Layout] Error loading layout:', err)
+    // Try lastKnownGoodLayout as fallback
+    const recovered = loadLastKnownGoodLayout(prefix, projectRoot)
+    if (recovered) {
+      console.info('[Layout] Recovered from lastKnownGoodLayout after error')
+      return recovered
+    }
     return null
   }
 }
@@ -347,8 +367,8 @@ export const saveLayout = (prefix, projectRoot, layout, configLayoutVersion) => 
         JSON.stringify(layoutWithVersion)
       )
     }
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.error('[Layout] Error saving layout:', err.message)
   }
 }
 
@@ -368,15 +388,17 @@ export const loadLastKnownGoodLayout = (prefix, projectRoot) => {
 
     // Validate the backup layout
     if (!parsed?.version || parsed.version < LAYOUT_VERSION) {
+      console.info('[Layout] lastKnownGoodLayout has outdated version, skipping')
       return null
     }
     if (!validateLayoutStructure(parsed)) {
+      console.warn('[Layout] lastKnownGoodLayout failed validation, skipping')
       return null
     }
 
-    console.info('[Layout] Recovering from lastKnownGoodLayout')
     return parsed
-  } catch {
+  } catch (err) {
+    console.error('[Layout] Error loading lastKnownGoodLayout:', err.message)
     return null
   }
 }
@@ -390,8 +412,8 @@ export const loadLastKnownGoodLayout = (prefix, projectRoot) => {
 export const clearLastKnownGoodLayout = (prefix, projectRoot) => {
   try {
     localStorage.removeItem(getStorageKey(prefix, projectRoot, 'lastKnownGoodLayout'))
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn('[Layout] Error clearing lastKnownGoodLayout:', err.message)
   }
 }
 
@@ -409,8 +431,8 @@ export const loadCollapsedState = (prefix) => {
     if (saved) {
       return JSON.parse(saved)
     }
-  } catch {
-    // Ignore parse errors
+  } catch (err) {
+    console.warn('[Layout] Error loading collapsed state:', err.message)
   }
   return { filetree: false, terminal: false, shell: false }
 }
@@ -426,8 +448,8 @@ export const saveCollapsedState = (state, prefix) => {
     : SIDEBAR_COLLAPSED_KEY
   try {
     localStorage.setItem(key, JSON.stringify(state))
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn('[Layout] Error saving collapsed state:', err.message)
   }
 }
 
@@ -445,8 +467,8 @@ export const loadPanelSizes = (prefix) => {
     if (saved) {
       return JSON.parse(saved)
     }
-  } catch {
-    // Ignore parse errors
+  } catch (err) {
+    console.warn('[Layout] Error loading panel sizes:', err.message)
   }
   return { filetree: 280, terminal: 400, shell: 250 }
 }
@@ -462,8 +484,8 @@ export const savePanelSizes = (sizes, prefix) => {
     : PANEL_SIZES_KEY
   try {
     localStorage.setItem(key, JSON.stringify(sizes))
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn('[Layout] Error saving panel sizes:', err.message)
   }
 }
 
@@ -541,8 +563,8 @@ export const checkForSavedLayout = (prefix) => {
         }
       }
     }
-  } catch {
-    // Ignore errors checking localStorage
+  } catch (err) {
+    console.warn('[Layout] Error checking for saved layouts:', err.message)
   }
 
   return { hasSaved: hasSavedLayout, invalidFound: invalidLayoutFound }
