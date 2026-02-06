@@ -7,6 +7,7 @@ const STATUS_CONFIG = {
   U: { label: 'Untracked', className: 'git-status-new', icon: 'U' },
   A: { label: 'Added', className: 'git-status-added', icon: 'A' },
   D: { label: 'Deleted', className: 'git-status-deleted', icon: 'D' },
+  C: { label: 'Conflict', className: 'git-status-conflict', icon: 'C' },
 }
 
 export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
@@ -63,8 +64,8 @@ export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
     return acc
   }, {})
 
-  // Order: Modified, Added, Untracked, Deleted
-  const statusOrder = ['M', 'A', 'U', 'D']
+  // Order: Conflict (first, most urgent), Modified, Added, Untracked, Deleted
+  const statusOrder = ['C', 'M', 'A', 'U', 'D']
 
   if (loading) {
     return (

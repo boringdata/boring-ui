@@ -75,23 +75,79 @@ def create_git_router(config: APIConfig) -> APIRouter:
 
         # Get status (porcelain v1 format for stable parsing)
         # Standard format: XY PATH (XY = 2-char status, space, path)
-        # Some git versions use: X PATH for single-status changes
+        # X = index status, Y = worktree status
         status = run_git(['status', '--porcelain'])
         files = {}
+
+        # Priority for status codes (higher = more important, don't overwrite)
+        # Staged statuses (D, A, M in index) take precedence over untracked
+        status_priority = {'C': 5, 'D': 4, 'A': 3, 'M': 2, 'U': 1}
+
+        def normalize_status(raw: str) -> str:
+            """Convert git XY status to single-char frontend status.
+
+            Returns: M (Modified), A (Added), D (Deleted), U (Untracked), C (Conflict)
+            """
+            raw = raw.strip()
+            # Untracked files (standard '??' or condensed '?' format)
+            if raw in ('??', '?'):
+                return 'U'
+            # Merge conflicts (unmerged states)
+            # UU=both modified, AA=both added, DD=both deleted
+            # DU/UD/AU/UA = various conflict combinations
+            if raw in ('UU', 'AA', 'DD', 'DU', 'UD', 'AU', 'UA'):
+                return 'C'
+            # Deleted
+            if raw in ('D', 'D ', ' D'):
+                return 'D'
+            # Added
+            if raw in ('A', 'A ', ' A'):
+                return 'A'
+            # Modified (including MM - modified in both index and worktree)
+            if raw in ('M', 'M ', ' M', 'MM'):
+                return 'M'
+            # Renamed (show as modified for simplicity)
+            if raw.startswith('R'):
+                return 'M'
+            # Copied (show as added since it's a new file)
+            if raw.startswith('C'):
+                return 'A'
+            # Default: use first non-space character if recognized
+            # Note: Don't match 'C' here as it's git's copy status, not conflict
+            for c in raw:
+                if c in 'MADU':
+                    return c
+                if c != ' ':
+                    break
+            return 'M'  # Fallback to modified for unknown
+
         for line in status.strip().split('\n'):
             if len(line) >= 3:
                 # Check if position 2 is a space (standard XY format)
-                # or position 1 is a space (condensed X format)
                 if len(line) > 3 and line[2] == ' ':
                     # Standard: XY PATH - path starts at position 3
-                    status_code = line[:2].strip()
+                    raw_status = line[:2]
                     file_path = line[3:]
                 else:
                     # Condensed: X PATH - path starts at position 2
-                    status_code = line[0]
+                    raw_status = line[0]
                     file_path = line[2:] if line[1] == ' ' else line[3:]
-                if status_code and file_path:
-                    files[file_path] = status_code
+
+                # Handle rename/copy paths: "old -> new" format
+                # Git porcelain shows these as "R  old -> new" or "C  old -> new"
+                # We want the new (destination) path for display
+                # Only split for actual rename/copy statuses to avoid breaking
+                # filenames that legitimately contain " -> "
+                if raw_status.startswith(('R', 'C')) and ' -> ' in file_path:
+                    file_path = file_path.split(' -> ')[-1]
+
+                if raw_status and file_path:
+                    status_code = normalize_status(raw_status)
+                    # Don't overwrite higher-priority status
+                    # (e.g., D should not be overwritten by U from ?? line)
+                    existing = files.get(file_path)
+                    if existing is None or status_priority.get(status_code, 0) > status_priority.get(existing, 0):
+                        files[file_path] = status_code
 
         return {
             'is_repo': True,
