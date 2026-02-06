@@ -117,11 +117,15 @@ export default function EditorPanel({ params: initialParams, api }) {
         .then((data) => {
           if (!isActive || isSaving || isDirty) return
           const nextContent = data.content || ''
-          if (nextContent === content) return
+          if (nextContent === content) {
+            // Content matches - clear any stale external change notification
+            setExternalChange(false)
+            return
+          }
 
-          setContent(nextContent)
-          setContentVersion((v) => v + 1)
-          setExternalChange(false)
+          // Don't auto-update content - show notification instead
+          // User can click "Reload" to accept the external changes
+          setExternalChange(true)
         })
         .catch(() => {})
     }, 2000)
@@ -147,6 +151,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       })
 
       setIsDirty(false)
+      setExternalChange(false) // Clear notification since we just wrote to disk
       onContentChange?.(path, newContent)
       onDirtyChange?.(path, false)
 
