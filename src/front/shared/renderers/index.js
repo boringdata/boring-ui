@@ -37,3 +37,12 @@ export {
   default as DiffView,
   SimpleDiff,
 } from './DiffView'
+
+// Tool-specific renderers
+export { default as BashRenderer } from './BashRenderer'
+export { default as ReadRenderer } from './ReadRenderer'
+export { default as WriteRenderer } from './WriteRenderer'
+export { default as EditRenderer } from './EditRenderer'
+export { default as GrepRenderer } from './GrepRenderer'
+export { default as GlobRenderer } from './GlobRenderer'
+export { default as GenericRenderer } from './GenericRenderer'
