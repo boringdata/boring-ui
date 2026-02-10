@@ -3,7 +3,7 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useKeyboardShortcuts, useBrowserTitle, useApprovals, useApprovalPanels, useAppState, usePanelToggle } from './hooks'
+import { ThemeProvider, useKeyboardShortcuts, useBrowserTitle, useApprovals, useApprovalPanels, useAppState, usePanelToggle, usePanelParams, useCollapsedState } from './hooks'
 import { buildApiUrl } from './utils/apiBase'
 import {
   normalizeApprovalPath as _normalizeApprovalPath,
@@ -163,24 +163,9 @@ export default function App() {
   )
 
   // Apply collapsed state to dockview groups
-  useEffect(() => {
-    if (!dockApi) return
-
-    // On first run, only apply constraints and collapsed sizes, not expanded sizes
-    // (layout restore already set the correct expanded sizes)
-    const isFirstRun = !collapsedEffectRan.current
-    if (isFirstRun) {
-      collapsedEffectRan.current = true
-    }
-
-    applyPanelSizes(dockApi, {
-      collapsed,
-      panelSizes: panelSizesRef.current,
-      panelMin: panelMinRef.current,
-      panelCollapsed: panelCollapsedRef.current,
-      setExpandedSizes: !isFirstRun,
-    })
-  }, [dockApi, collapsed])
+  useCollapsedState({
+    dockApi, collapsed, panelSizesRef, panelMinRef, panelCollapsedRef, collapsedEffectRan,
+  })
 
   // Git status polling removed - not currently used in UI
 
@@ -710,64 +695,23 @@ export default function App() {
     return () => disposable.dispose()
   }, [dockApi])
 
-  // Update filetree panel params when openFile changes
-  useEffect(() => {
-    if (!dockApi) return
-    const filetreePanel = dockApi.getPanel('filetree')
-    if (filetreePanel) {
-      filetreePanel.api.updateParameters({
-        onOpenFile: openFile,
-        onOpenFileToSide: openFileToSide,
-        onOpenDiff: openDiff,
-        projectRoot,
-        activeFile,
-        activeDiffFile,
-        collapsed: collapsed.filetree,
-        onToggleCollapse: toggleFiletree,
-      })
-    }
-  }, [dockApi, openFile, openFileToSide, openDiff, projectRoot, activeFile, activeDiffFile, collapsed.filetree, toggleFiletree])
-
-  // Helper to focus a review panel
-  const focusReviewPanel = useCallback(
-    (requestId) => {
-      if (!dockApi) return
-      const panel = dockApi.getPanel(`review-${requestId}`)
-      if (panel) {
-        panel.api.setActive()
-      }
-    },
-    [dockApi]
-  )
-
-  // Update terminal panel params
-  useEffect(() => {
-    if (!dockApi) return
-    const terminalPanel = dockApi.getPanel('terminal')
-    if (terminalPanel) {
-      terminalPanel.api.updateParameters({
-        collapsed: collapsed.terminal,
-        onToggleCollapse: toggleTerminal,
-        approvals,
-        onFocusReview: focusReviewPanel,
-        onDecision: handleDecision,
-        normalizeApprovalPath,
-      })
-    }
-  }, [dockApi, collapsed.terminal, toggleTerminal, approvals, focusReviewPanel, handleDecision, normalizeApprovalPath])
-
-  // Update shell panel params
-  // projectRoot dependency ensures this runs after layout restoration
-  useEffect(() => {
-    if (!dockApi) return
-    const shellPanel = dockApi.getPanel('shell')
-    if (shellPanel) {
-      shellPanel.api.updateParameters({
-        collapsed: collapsed.shell,
-        onToggleCollapse: toggleShell,
-      })
-    }
-  }, [dockApi, collapsed.shell, toggleShell, projectRoot])
+  // Keep panel params in sync with current callbacks and state
+  const { focusReviewPanel } = usePanelParams({
+    dockApi,
+    collapsed,
+    toggleFiletree,
+    toggleTerminal,
+    toggleShell,
+    openFile,
+    openFileToSide,
+    openDiff,
+    projectRoot,
+    activeFile,
+    activeDiffFile,
+    approvals,
+    handleDecision,
+    normalizeApprovalPath,
+  })
 
   // Restore saved tabs when dockApi and projectRoot become available
   const hasRestoredTabs = useRef(false)
