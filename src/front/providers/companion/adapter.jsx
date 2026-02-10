@@ -10,6 +10,7 @@ import { ChevronRight } from 'lucide-react'
 import CompanionApp from './upstream/App'
 import { useServiceConnection } from '../../hooks/useServiceConnection'
 import { setCompanionConfig } from './config'
+import { ToolRendererProvider } from '../../shared/renderers'
 import './upstream.css'
 import './theme-bridge.css'
 
@@ -63,7 +64,9 @@ export default function CompanionAdapter({ onToggleCollapse }) {
       <div className="terminal-body">
         <div className="terminal-instance active">
           <div className="provider-companion">
-            <CompanionApp />
+            <ToolRendererProvider>
+              <CompanionApp />
+            </ToolRendererProvider>
           </div>
         </div>
       </div>
