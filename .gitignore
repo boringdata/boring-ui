@@ -39,6 +39,9 @@ __pycache__/
 # POC / reference repos
 poc/
 
+# Vendor (cloned repos, not tracked)
+vendor/
+
 # Temp / scratch
 tt
 tt.txt
