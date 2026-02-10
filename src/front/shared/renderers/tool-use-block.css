@@ -1,0 +1,142 @@
+/**
+ * Shared ToolUseBlock styles.
+ *
+ * Extracted from src/front/components/chat/styles.css for independent use.
+ * Uses boring-ui root CSS custom properties (--color-*, --space-*, etc.)
+ * which are defined at the :root level and available everywhere.
+ *
+ * Providers that already import chat/styles.css get these for free.
+ * Providers that DON'T (e.g. Companion, Inspector) import this file
+ * to get consistent tool block styling.
+ */
+
+.tool-use-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin-bottom: var(--space-2, 8px);
+}
+
+.tool-use-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 8px);
+}
+
+.tool-use-header.clickable {
+  cursor: pointer;
+}
+
+.tool-use-bullet {
+  font-size: 7px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 5px;
+  margin-left: -8px;
+  width: 8px;
+  height: 8px;
+  background: var(--color-bg-secondary, #2a2a3e);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+
+.tool-use-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.tool-use-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.tool-use-name {
+  font-weight: var(--font-semibold, 600);
+  color: var(--color-text-primary, #e0e0e0);
+  font-size: var(--text-sm, 13px);
+}
+
+.tool-use-description {
+  color: var(--color-text-secondary, #999);
+  font-size: var(--text-sm, 13px);
+  font-family: var(--font-mono, monospace);
+}
+
+.tool-use-collapse-icon {
+  color: var(--color-text-secondary, #999);
+  font-size: var(--text-xs, 11px);
+  margin-left: auto;
+}
+
+.tool-use-subtitle {
+  color: var(--color-text-secondary, #999);
+  font-size: var(--text-sm, 13px);
+  margin-top: 2px;
+}
+
+.tool-use-content {
+  margin-left: 16px;
+  padding-left: var(--space-2, 8px);
+}
+
+.tool-output {
+  background: var(--color-tool-bg, var(--color-bg-tertiary, #1a1a2e));
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  font-size: var(--text-sm, 13px);
+  font-family: var(--font-mono, monospace);
+  color: var(--color-text-primary, #e0e0e0);
+  overflow: auto;
+  max-height: 300px;
+  border: 1px solid var(--color-border, #333);
+}
+
+.tool-command {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  margin-bottom: var(--space-1, 4px);
+}
+
+.tool-command-language {
+  color: var(--color-text-secondary, #999);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.tool-command-code {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-sm, 13px);
+  color: var(--color-text-primary, #e0e0e0);
+  background: var(--color-command-bg, var(--color-bg-tertiary, #1a1a2e));
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border, #333);
+}
+
+.tool-error {
+  color: var(--color-error, #f44);
+  font-size: var(--text-sm, 13px);
+  font-family: var(--font-mono, monospace);
+  padding: var(--space-2, 8px);
+  background: var(--color-error-light, rgba(255, 68, 68, 0.1));
+  border-radius: var(--radius-sm, 4px);
+  border-left: 3px solid var(--color-error, #f44);
+}
+
+.inline-code {
+  background: var(--color-code-bg, var(--color-bg-tertiary, #1a1a2e));
+  color: var(--color-accent, #7c8cf5);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.875em;
+  border: 1px solid var(--color-border, #333);
+}

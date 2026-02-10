@@ -22,3 +22,12 @@ export {
   ToolResultView,
   default as ToolRendererContext,
 } from './ToolRendererContext'
+
+// Shared base components
+export {
+  default as ToolUseBlock,
+  ToolOutput,
+  ToolCommand,
+  ToolError,
+  InlineCode,
+} from './ToolUseBlock'
