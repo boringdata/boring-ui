@@ -1,16 +1,17 @@
-"""API router for sandbox operations.
+"""API router for sandbox lifecycle operations.
 
 Provides:
 - Status endpoint for sandbox state
+- Start/stop/health endpoints
 - Log endpoints (fetch and stream)
-- Proxy for all sandbox-agent API calls
+
+Service API calls (agents, sessions, messages) go directly from the
+browser to sandbox-agent via Direct Connect (token auth + CORS).
 """
 import json
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-import httpx
 
 from .manager import SandboxManager
 
@@ -96,121 +97,5 @@ def create_sandbox_router(manager: SandboxManager) -> APIRouter:
                 "Connection": "keep-alive",
             },
         )
-
-    # Proxy endpoints for sandbox-agent API
-    @router.api_route(
-        "/sandbox/{path:path}",
-        methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    )
-    async def proxy_to_sandbox(request: Request, path: str):
-        """Proxy requests to sandbox-agent.
-
-        Forwards all requests under /api/sandbox/* to the running
-        sandbox-agent, preserving method, headers, and body.
-        """
-        # Skip our own endpoints
-        if path in ("status", "start", "stop", "health", "logs", "logs/stream"):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Use /api/sandbox/{path} directly",
-            )
-
-        try:
-            base_url = await manager.get_base_url()
-        except Exception as e:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Sandbox not available: {e}",
-            )
-
-        # Build target URL
-        target_url = f"{base_url}/{path}"
-        if request.url.query:
-            target_url = f"{target_url}?{request.url.query}"
-
-        # Forward request
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                # Filter headers (remove hop-by-hop headers)
-                forward_headers = {
-                    k: v
-                    for k, v in request.headers.items()
-                    if k.lower()
-                    not in (
-                        "host",
-                        "connection",
-                        "keep-alive",
-                        "transfer-encoding",
-                        "te",
-                        "trailer",
-                        "upgrade",
-                    )
-                }
-
-                # Inject service token for sandbox-agent auth
-                if manager.service_token:
-                    forward_headers["authorization"] = (
-                        f"Bearer {manager.service_token}"
-                    )
-
-                body = await request.body()
-                resp = await client.request(
-                    method=request.method,
-                    url=target_url,
-                    headers=forward_headers,
-                    content=body,
-                )
-
-                # Check if this is a streaming response
-                content_type = resp.headers.get("content-type", "")
-                if "text/event-stream" in content_type:
-                    # Stream SSE responses
-                    async def stream_response():
-                        async with httpx.AsyncClient(timeout=None) as stream_client:
-                            async with stream_client.stream(
-                                method=request.method,
-                                url=target_url,
-                                headers=forward_headers,
-                                content=body,
-                            ) as stream_resp:
-                                async for chunk in stream_resp.aiter_bytes():
-                                    yield chunk
-
-                    return StreamingResponse(
-                        stream_response(),
-                        status_code=resp.status_code,
-                        media_type=content_type,
-                    )
-
-                # Filter response headers
-                response_headers = {
-                    k: v
-                    for k, v in resp.headers.items()
-                    if k.lower()
-                    not in (
-                        "content-encoding",
-                        "content-length",
-                        "transfer-encoding",
-                        "connection",
-                    )
-                }
-
-                return Response(
-                    content=resp.content,
-                    status_code=resp.status_code,
-                    headers=response_headers,
-                    media_type=resp.headers.get("content-type"),
-                )
-
-            except httpx.ConnectError:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Cannot connect to sandbox-agent",
-                )
-            except httpx.TimeoutException:
-                raise HTTPException(
-                    status_code=504,
-                    detail="Sandbox-agent request timed out",
-                )
 
     return router
