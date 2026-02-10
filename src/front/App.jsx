@@ -36,7 +36,6 @@ import { CapabilitiesContext, createCapabilityGatedPane } from './components/Cap
 import {
   getGatedComponents,
   getKnownComponents,
-  essentialPanes,
 } from './registry/panes'
 
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
@@ -74,9 +73,6 @@ const debounce = (fn, wait) => {
 const components = getGatedComponents(createCapabilityGatedPane)
 const KNOWN_COMPONENTS = getKnownComponents()
 
-// Get essential panel IDs from pane registry
-const ESSENTIAL_PANELS = essentialPanes()
-
 // Custom tab component that hides close button (for shell tabs)
 const TabWithoutClose = (props) => <DockviewDefaultTab {...props} hideClose />
 
@@ -88,8 +84,8 @@ export default function App() {
   // Core state from useAppState (config, capabilities, UI state, refs)
   const {
     config, storagePrefix, layoutVersion,
-    panelDefaults, panelMin, panelCollapsed,
-    capabilities, capabilitiesLoading, unavailableEssentials,
+    panelMin, panelCollapsed,
+    capabilities, unavailableEssentials,
     dockApi, setDockApi,
     tabs, setTabs,
     activeFile, setActiveFile,
@@ -545,7 +541,7 @@ export default function App() {
   useActivePanel({ dockApi, setActiveFile, setActiveDiffFile })
 
   // Keep panel params in sync with current callbacks and state
-  const { focusReviewPanel } = usePanelParams({
+  usePanelParams({
     dockApi,
     collapsed,
     toggleFiletree,
