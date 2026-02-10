@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import AsyncIterator
 
 from ..errors import SandboxExistsError, SandboxProvisionError
+from ..metrics import gauge_dec, gauge_inc, record, timed
 from ..provider import (
     CheckpointInfo,
     CheckpointResult,
@@ -69,7 +70,11 @@ class SpritesProvider(SandboxProvider):
 
         logger.info(
             "SpritesProvider initialized",
-            extra={"default_agent": self._default_agent, "port": self._port},
+            extra={
+                "operation": "init",
+                "default_agent": self._default_agent,
+                "port": self._port,
+            },
         )
 
     # ------ helpers ------
@@ -129,98 +134,147 @@ class SpritesProvider(SandboxProvider):
         Raises SandboxExistsError if sprite exists for a different repo.
         """
         cfg = SandboxCreateConfig(**config) if isinstance(config, dict) else config
+        tags = {"sandbox_id": sandbox_id}
+
+        with timed("sprite_create_duration_seconds", tags=tags) as t:
+            logger.info(
+                "Creating sandbox",
+                extra={
+                    "sandbox_id": sandbox_id,
+                    "operation": "create",
+                    "agent": cfg.agent or self._default_agent,
+                },
+            )
+
+            # Create sprite (idempotent on Sprites.dev side)
+            try:
+                sprite = await self._client.create_sprite(sandbox_id)
+            except SpritesAPIError as e:
+                record("sprite_create_errors_total", tags=tags)
+                raise SandboxProvisionError(
+                    f"Failed to create sprite: {e}",
+                    sandbox_id=sandbox_id,
+                    provider="sprites",
+                    operation="create_sprite",
+                ) from e
+
+            # Write credentials to .auth directory
+            if cfg.anthropic_api_key or cfg.oauth_token:
+                env_content = self._build_env_exports(
+                    cfg.anthropic_api_key, cfg.oauth_token,
+                )
+                try:
+                    await self._client.exec(
+                        sandbox_id,
+                        "mkdir -p /home/sprite/.auth && "
+                        f"printf '%s' {shlex.quote(env_content)} > /home/sprite/.auth/credentials.env && "
+                        "chmod 600 /home/sprite/.auth/credentials.env",
+                        timeout=self._setup_timeout,
+                    )
+                except (SpritesExecError, SpritesAPIError) as e:
+                    logger.error(
+                        "Failed to write credentials",
+                        extra={
+                            "sandbox_id": sandbox_id,
+                            "operation": "write_credentials",
+                            "error": str(e)[:200],
+                        },
+                    )
+
+            # Write direct-connect auth if provided
+            if cfg.service_auth_secret:
+                try:
+                    await self._client.exec(
+                        sandbox_id,
+                        "mkdir -p /home/sprite/.auth && "
+                        f"printf '%s' {shlex.quote(cfg.service_auth_secret)} > /home/sprite/.auth/secret && "
+                        "chmod 600 /home/sprite/.auth/secret",
+                        timeout=30.0,
+                    )
+                except (SpritesExecError, SpritesAPIError) as e:
+                    logger.error(
+                        "Failed to write service auth secret",
+                        extra={
+                            "sandbox_id": sandbox_id,
+                            "operation": "write_service_secret",
+                            "error": str(e)[:200],
+                        },
+                    )
+
+            if cfg.cors_origin:
+                try:
+                    await self._client.exec(
+                        sandbox_id,
+                        "mkdir -p /home/sprite/.auth && "
+                        f"printf '%s' {shlex.quote(cfg.cors_origin)} > /home/sprite/.auth/cors_origin && "
+                        "chmod 600 /home/sprite/.auth/cors_origin",
+                        timeout=30.0,
+                    )
+                except (SpritesExecError, SpritesAPIError) as e:
+                    logger.error(
+                        "Failed to write CORS origin",
+                        extra={
+                            "sandbox_id": sandbox_id,
+                            "operation": "write_cors_origin",
+                            "error": str(e)[:200],
+                        },
+                    )
+
+            # Clone repo if specified
+            if cfg.repo_url:
+                try:
+                    await self._client.exec(
+                        sandbox_id,
+                        f"cd /home/sprite/workspace && "
+                        f"git clone --branch {shlex.quote(cfg.branch)} "
+                        f"{shlex.quote(cfg.repo_url)} . 2>/dev/null || "
+                        f"git fetch origin {shlex.quote(cfg.branch)} && "
+                        f"git checkout {shlex.quote(cfg.branch)}",
+                        timeout=self._setup_timeout,
+                    )
+                except SpritesExecError:
+                    logger.warning(
+                        "Repo clone/checkout may have partially failed",
+                        extra={
+                            "sandbox_id": sandbox_id,
+                            "operation": "clone_repo",
+                        },
+                    )
+
+            gauge_inc("sprites_active_total")
 
         logger.info(
-            "Creating sandbox",
-            extra={"sandbox_id": sandbox_id, "agent": cfg.agent or self._default_agent},
+            "Sandbox created",
+            extra={
+                "sandbox_id": sandbox_id,
+                "operation": "create",
+                "result": "ok",
+                "duration_ms": t["duration_ms"],
+            },
         )
-
-        # Create sprite (idempotent on Sprites.dev side)
-        try:
-            sprite = await self._client.create_sprite(sandbox_id)
-        except SpritesAPIError as e:
-            raise SandboxProvisionError(
-                f"Failed to create sprite: {e}",
-                sandbox_id=sandbox_id,
-                provider="sprites",
-                operation="create_sprite",
-            ) from e
-
-        # Write credentials to .auth directory
-        if cfg.anthropic_api_key or cfg.oauth_token:
-            env_content = self._build_env_exports(
-                cfg.anthropic_api_key, cfg.oauth_token,
-            )
-            try:
-                await self._client.exec(
-                    sandbox_id,
-                    "mkdir -p /home/sprite/.auth && "
-                    f"printf '%s' {shlex.quote(env_content)} > /home/sprite/.auth/credentials.env && "
-                    "chmod 600 /home/sprite/.auth/credentials.env",
-                    timeout=self._setup_timeout,
-                )
-            except (SpritesExecError, SpritesAPIError) as e:
-                logger.error(
-                    "Failed to write credentials",
-                    extra={"sandbox_id": sandbox_id, "error": str(e)[:200]},
-                )
-
-        # Write direct-connect auth if provided
-        if cfg.service_auth_secret:
-            try:
-                await self._client.exec(
-                    sandbox_id,
-                    "mkdir -p /home/sprite/.auth && "
-                    f"printf '%s' {shlex.quote(cfg.service_auth_secret)} > /home/sprite/.auth/secret && "
-                    "chmod 600 /home/sprite/.auth/secret",
-                    timeout=30.0,
-                )
-            except (SpritesExecError, SpritesAPIError) as e:
-                logger.error(
-                    "Failed to write service auth secret",
-                    extra={"sandbox_id": sandbox_id, "error": str(e)[:200]},
-                )
-
-        if cfg.cors_origin:
-            try:
-                await self._client.exec(
-                    sandbox_id,
-                    "mkdir -p /home/sprite/.auth && "
-                    f"printf '%s' {shlex.quote(cfg.cors_origin)} > /home/sprite/.auth/cors_origin && "
-                    "chmod 600 /home/sprite/.auth/cors_origin",
-                    timeout=30.0,
-                )
-            except (SpritesExecError, SpritesAPIError) as e:
-                logger.error(
-                    "Failed to write CORS origin",
-                    extra={"sandbox_id": sandbox_id, "error": str(e)[:200]},
-                )
-
-        # Clone repo if specified
-        if cfg.repo_url:
-            try:
-                await self._client.exec(
-                    sandbox_id,
-                    f"cd /home/sprite/workspace && "
-                    f"git clone --branch {shlex.quote(cfg.branch)} "
-                    f"{shlex.quote(cfg.repo_url)} . 2>/dev/null || "
-                    f"git fetch origin {shlex.quote(cfg.branch)} && "
-                    f"git checkout {shlex.quote(cfg.branch)}",
-                    timeout=self._setup_timeout,
-                )
-            except SpritesExecError:
-                logger.warning(
-                    "Repo clone/checkout may have partially failed",
-                    extra={"sandbox_id": sandbox_id},
-                )
 
         return self._make_info(sandbox_id, sprite)
 
     async def destroy(self, sandbox_id: str) -> None:
         """Permanently delete sandbox and sprite."""
-        logger.warning("Destroying sandbox", extra={"sandbox_id": sandbox_id})
-        await self._client.delete_sprite(sandbox_id)
-        logger.info("Sandbox destroyed", extra={"sandbox_id": sandbox_id})
+        tags = {"sandbox_id": sandbox_id}
+        with timed("sprite_destroy_duration_seconds", tags=tags) as t:
+            logger.warning(
+                "Destroying sandbox",
+                extra={"sandbox_id": sandbox_id, "operation": "destroy"},
+            )
+            await self._client.delete_sprite(sandbox_id)
+            gauge_dec("sprites_active_total")
+
+        logger.info(
+            "Sandbox destroyed",
+            extra={
+                "sandbox_id": sandbox_id,
+                "operation": "destroy",
+                "result": "ok",
+                "duration_ms": t["duration_ms"],
+            },
+        )
 
     async def get_info(self, sandbox_id: str) -> SandboxInfo | None:
         """Get sandbox status and URL."""
@@ -263,15 +317,41 @@ class SpritesProvider(SandboxProvider):
 
     async def health_check(self, sandbox_id: str) -> bool:
         """Check if sandbox-agent is responding."""
-        try:
-            rc, stdout, _ = await self._client.exec(
-                sandbox_id,
-                f"curl -sf http://localhost:{self._port}/v1/health",
-                timeout=self._health_check_timeout,
+        tags = {"sandbox_id": sandbox_id}
+        with timed("sprite_health_check_duration_seconds", tags=tags) as t:
+            try:
+                rc, stdout, _ = await self._client.exec(
+                    sandbox_id,
+                    f"curl -sf http://localhost:{self._port}/v1/health",
+                    timeout=self._health_check_timeout,
+                )
+                healthy = "ok" in stdout.lower()
+            except Exception:
+                healthy = False
+
+        if not healthy:
+            record("sprite_health_check_failures_total", tags=tags)
+            logger.warning(
+                "Health check failed",
+                extra={
+                    "sandbox_id": sandbox_id,
+                    "operation": "health_check",
+                    "result": "error",
+                    "duration_ms": t["duration_ms"],
+                },
             )
-            return "ok" in stdout.lower()
-        except Exception:
-            return False
+        else:
+            logger.debug(
+                "Health check passed",
+                extra={
+                    "sandbox_id": sandbox_id,
+                    "operation": "health_check",
+                    "result": "ok",
+                    "duration_ms": t["duration_ms"],
+                },
+            )
+
+        return healthy
 
     # ------ Checkpoints ------
 
@@ -281,52 +361,98 @@ class SpritesProvider(SandboxProvider):
     async def create_checkpoint(
         self, sandbox_id: str, label: str = "",
     ) -> CheckpointResult[CheckpointInfo]:
-        try:
-            data = await self._client.create_checkpoint(sandbox_id, label=label)
-            info = CheckpointInfo(
-                id=data.get("id", ""),
-                label=data.get("label", label),
-                created_at=datetime.now(timezone.utc),
-                size_bytes=data.get("size_bytes"),
-            )
-            logger.info(
-                "Checkpoint created",
-                extra={"sandbox_id": sandbox_id, "checkpoint_id": info.id},
-            )
-            return CheckpointResult(success=True, data=info)
-        except SpritesAPIError as e:
-            return CheckpointResult(success=False, error=str(e))
+        tags = {"sandbox_id": sandbox_id, "operation": "create"}
+        with timed("sprite_checkpoint_duration_seconds", tags=tags) as t:
+            try:
+                data = await self._client.create_checkpoint(sandbox_id, label=label)
+                info = CheckpointInfo(
+                    id=data.get("id", ""),
+                    label=data.get("label", label),
+                    created_at=datetime.now(timezone.utc),
+                    size_bytes=data.get("size_bytes"),
+                )
+                result = CheckpointResult(success=True, data=info)
+            except SpritesAPIError as e:
+                record(
+                    "sprite_checkpoint_errors_total",
+                    tags={"sandbox_id": sandbox_id, "operation": "create"},
+                )
+                result = CheckpointResult(success=False, error=str(e))
+
+        logger.info(
+            "Checkpoint create completed",
+            extra={
+                "sandbox_id": sandbox_id,
+                "operation": "checkpoint_create",
+                "result": "ok" if result.success else "error",
+                "checkpoint_id": getattr(result.data, "id", None) if result.success else None,
+                "duration_ms": t["duration_ms"],
+            },
+        )
+        return result
 
     async def restore_checkpoint(
         self, sandbox_id: str, checkpoint_id: str,
     ) -> CheckpointResult[None]:
-        try:
-            await self._client.restore_checkpoint(sandbox_id, checkpoint_id)
-            logger.info(
-                "Checkpoint restored",
-                extra={"sandbox_id": sandbox_id, "checkpoint_id": checkpoint_id},
-            )
-            return CheckpointResult(success=True)
-        except SpritesAPIError as e:
-            return CheckpointResult(success=False, error=str(e))
+        tags = {"sandbox_id": sandbox_id, "operation": "restore"}
+        with timed("sprite_checkpoint_duration_seconds", tags=tags) as t:
+            try:
+                await self._client.restore_checkpoint(sandbox_id, checkpoint_id)
+                result = CheckpointResult(success=True)
+            except SpritesAPIError as e:
+                record(
+                    "sprite_checkpoint_errors_total",
+                    tags={"sandbox_id": sandbox_id, "operation": "restore"},
+                )
+                result = CheckpointResult(success=False, error=str(e))
+
+        logger.info(
+            "Checkpoint restore completed",
+            extra={
+                "sandbox_id": sandbox_id,
+                "operation": "checkpoint_restore",
+                "checkpoint_id": checkpoint_id,
+                "result": "ok" if result.success else "error",
+                "duration_ms": t["duration_ms"],
+            },
+        )
+        return result
 
     async def list_checkpoints(
         self, sandbox_id: str,
     ) -> CheckpointResult[list[CheckpointInfo]]:
-        try:
-            data = await self._client.list_checkpoints(sandbox_id)
-            infos = [
-                CheckpointInfo(
-                    id=cp.get("id", ""),
-                    label=cp.get("label", ""),
-                    created_at=None,
-                    size_bytes=cp.get("size_bytes"),
+        tags = {"sandbox_id": sandbox_id, "operation": "list"}
+        with timed("sprite_checkpoint_duration_seconds", tags=tags) as t:
+            try:
+                data = await self._client.list_checkpoints(sandbox_id)
+                infos = [
+                    CheckpointInfo(
+                        id=cp.get("id", ""),
+                        label=cp.get("label", ""),
+                        created_at=None,
+                        size_bytes=cp.get("size_bytes"),
+                    )
+                    for cp in data
+                ]
+                result = CheckpointResult(success=True, data=infos)
+            except SpritesAPIError as e:
+                record(
+                    "sprite_checkpoint_errors_total",
+                    tags={"sandbox_id": sandbox_id, "operation": "list"},
                 )
-                for cp in data
-            ]
-            return CheckpointResult(success=True, data=infos)
-        except SpritesAPIError as e:
-            return CheckpointResult(success=False, error=str(e))
+                result = CheckpointResult(success=False, error=str(e))
+
+        logger.info(
+            "Checkpoint list completed",
+            extra={
+                "sandbox_id": sandbox_id,
+                "operation": "checkpoint_list",
+                "result": "ok" if result.success else "error",
+                "count": len(result.data) if result.success and result.data else 0,
+                "duration_ms": t["duration_ms"],
+            },
+        )
+        return result
 
     # ------ Credential update ------
 
@@ -346,23 +472,40 @@ class SpritesProvider(SandboxProvider):
         if not anthropic_api_key and not oauth_token:
             return False
 
+        tags = {"sandbox_id": sandbox_id}
         env_content = self._build_env_exports(anthropic_api_key, oauth_token)
-        try:
-            await self._client.exec(
-                sandbox_id,
-                "mkdir -p /home/sprite/.auth && "
-                f"printf '%s' {shlex.quote(env_content)} > /home/sprite/.auth/credentials.env && "
-                "chmod 600 /home/sprite/.auth/credentials.env",
-                timeout=30.0,
-            )
+        with timed("sprite_update_credentials_duration_seconds", tags=tags) as t:
+            try:
+                await self._client.exec(
+                    sandbox_id,
+                    "mkdir -p /home/sprite/.auth && "
+                    f"printf '%s' {shlex.quote(env_content)} > /home/sprite/.auth/credentials.env && "
+                    "chmod 600 /home/sprite/.auth/credentials.env",
+                    timeout=30.0,
+                )
+                success = True
+            except (SpritesExecError, SpritesAPIError) as e:
+                logger.error(
+                    "Failed to update credentials",
+                    extra={
+                        "sandbox_id": sandbox_id,
+                        "operation": "update_credentials",
+                        "result": "error",
+                        "error": str(e)[:200],
+                        "duration_ms": t.get("duration_ms"),
+                    },
+                )
+                success = False
+
+        if success:
             logger.info(
                 "Credentials updated",
-                extra={"sandbox_id": sandbox_id},
+                extra={
+                    "sandbox_id": sandbox_id,
+                    "operation": "update_credentials",
+                    "result": "ok",
+                    "duration_ms": t["duration_ms"],
+                },
             )
-            return True
-        except (SpritesExecError, SpritesAPIError) as e:
-            logger.error(
-                "Failed to update credentials",
-                extra={"sandbox_id": sandbox_id, "error": str(e)[:200]},
-            )
-            return False
+
+        return success

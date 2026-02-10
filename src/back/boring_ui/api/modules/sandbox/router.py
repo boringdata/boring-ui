@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from .manager import SandboxManager
+from .metrics import get_snapshot as get_metrics_snapshot
 
 
 def create_sandbox_router(manager: SandboxManager) -> APIRouter:
@@ -97,5 +98,10 @@ def create_sandbox_router(manager: SandboxManager) -> APIRouter:
                 "Connection": "keep-alive",
             },
         )
+
+    @router.get("/sandbox/metrics")
+    async def get_metrics():
+        """Get SpritesProvider metrics snapshot (counters, gauges, histograms)."""
+        return get_metrics_snapshot()
 
     return router
