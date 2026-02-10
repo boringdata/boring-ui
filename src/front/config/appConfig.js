@@ -56,6 +56,12 @@ const DEFAULT_CONFIG = {
     baseUrl: '',
   },
 
+  // Chat configuration (set at config time, not runtime)
+  chat: {
+    provider: 'claude',   // 'claude' | 'sandbox' | 'inspector'
+    interface: 'web',     // 'cli' | 'web'
+  },
+
   // Feature flags
   features: {
     gitStatus: true,

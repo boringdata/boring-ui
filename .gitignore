@@ -25,8 +25,20 @@ Thumbs.db
 
 # Test
 coverage/
+test-results/
 
-# bv (beads viewer) local config and caches
+# Beads local state
 .bv/
+.beads/
+.beads.old/
+
+# Python
 *.pyc
 __pycache__/
+
+# POC / reference repos
+poc/
+
+# Temp / scratch
+tt
+tt.txt

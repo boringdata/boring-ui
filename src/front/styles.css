@@ -488,7 +488,8 @@ html {
   max-width: 280px;
 }
 
-/* Theme Toggle Button */
+/* Header Buttons (Theme Toggle, Sandbox, etc.) */
+.header-btn,
 .theme-toggle {
   display: flex;
   align-items: center;
@@ -509,6 +510,7 @@ html {
     transform var(--transition-fast);
 }
 
+.header-btn:hover,
 .theme-toggle:hover {
   background-color: var(--color-bg-hover);
   border-color: var(--color-border);
@@ -516,16 +518,19 @@ html {
   box-shadow: var(--shadow-button);
 }
 
+.header-btn:active,
 .theme-toggle:active {
   background-color: var(--color-bg-active);
   transform: scale(0.95);
 }
 
+.header-btn:focus-visible,
 .theme-toggle:focus-visible {
   box-shadow: var(--shadow-focus);
   border-color: var(--color-accent);
 }
 
+.header-btn svg,
 .theme-toggle svg {
   flex-shrink: 0;
 }

@@ -1,4 +1,6 @@
 """Application factory for boring-ui API."""
+import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +11,7 @@ from .modules.files import create_file_router
 from .modules.git import create_git_router
 from .modules.pty import create_pty_router
 from .modules.stream import create_stream_router
+from .modules.sandbox import SandboxManager, create_provider
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
 from .capabilities import (
     RouterRegistry,
@@ -16,14 +19,19 @@ from .capabilities import (
     create_capabilities_router,
 )
 
+# Global sandbox manager (for lifespan management)
+_sandbox_manager: SandboxManager | None = None
+
 
 def create_app(
     config: APIConfig | None = None,
     storage: Storage | None = None,
     approval_store: ApprovalStore | None = None,
+    sandbox_manager: SandboxManager | None = None,
     include_pty: bool = True,
     include_stream: bool = True,
     include_approval: bool = True,
+    include_sandbox: bool = False,
     routers: list[str] | None = None,
     registry: RouterRegistry | None = None,
 ) -> FastAPI:
@@ -39,8 +47,9 @@ def create_app(
         include_pty: Include PTY WebSocket router (default: True)
         include_stream: Include Claude stream WebSocket router (default: True)
         include_approval: Include approval workflow router (default: True)
+        include_sandbox: Include sandbox-agent router (default: False)
         routers: List of router names to include. If None, uses include_* flags.
-            Valid names: 'files', 'git', 'pty', 'stream', 'approval'
+            Valid names: 'files', 'git', 'pty', 'stream', 'approval', 'sandbox'
         registry: Custom router registry. Defaults to create_default_registry().
 
     Returns:
@@ -67,11 +76,23 @@ def create_app(
         # Using router list (alternative to include_* flags)
         app = create_app(routers=['files', 'git'])  # Only file and git routes
     """
+    global _sandbox_manager
+
     # Apply defaults
     config = config or APIConfig(workspace_root=Path.cwd())
     storage = storage or LocalStorage(config.workspace_root)
     approval_store = approval_store or InMemoryApprovalStore()
     registry = registry or create_default_registry()
+
+    # Create sandbox manager if needed
+    if sandbox_manager is None and (include_sandbox or (routers and 'sandbox' in routers)):
+        sandbox_config = {
+            'SANDBOX_PROVIDER': os.environ.get('SANDBOX_PROVIDER', 'local'),
+            'SANDBOX_PORT': os.environ.get('SANDBOX_PORT', '2468'),
+            'SANDBOX_WORKSPACE': os.environ.get('SANDBOX_WORKSPACE', str(config.workspace_root)),
+        }
+        sandbox_manager = SandboxManager(create_provider(sandbox_config))
+        _sandbox_manager = sandbox_manager
 
     # Determine which routers to include
     # If routers list is provided, use it; otherwise use include_* flags
@@ -86,6 +107,8 @@ def create_app(
             enabled_routers.add('chat_claude_code')
         if include_approval:
             enabled_routers.add('approval')
+        if include_sandbox:
+            enabled_routers.add('sandbox')
 
     # Support 'stream' alias -> 'chat_claude_code' for backward compatibility
     if 'stream' in enabled_routers:
@@ -101,13 +124,27 @@ def create_app(
         'chat_claude_code': chat_enabled,
         'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
+        'sandbox': 'sandbox' in enabled_routers,
     }
+
+    # Lifespan handler for cleanup
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Startup
+        yield
+        # Shutdown - cleanup sandbox
+        if sandbox_manager:
+            try:
+                await sandbox_manager.shutdown()
+            except Exception:
+                pass  # Best effort cleanup
 
     # Create app
     app = FastAPI(
         title='Boring UI API',
         description='A composition-based web IDE backend',
         version='0.1.0',
+        lifespan=lifespan,
     )
 
     # CORS middleware
@@ -127,6 +164,7 @@ def create_app(
         'chat_claude_code': (config,),
         'stream': (config,),  # Alias
         'approval': (approval_store,),
+        'sandbox': (sandbox_manager,) if sandbox_manager else (),
     }
 
     # Track mounted factories to avoid double-mounting aliases

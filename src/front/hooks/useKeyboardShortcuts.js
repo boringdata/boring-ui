@@ -22,7 +22,6 @@ export const DEFAULT_SHORTCUTS = {
   toggleFiletree: { key: 'b', modifiers: ['cmd'] },
   toggleTerminal: { key: '`', modifiers: ['cmd'] },
   toggleShell: { key: 'j', modifiers: ['cmd'] },
-
   // Navigation
   searchFiles: { key: 'p', modifiers: ['cmd'] },
   closeTab: { key: 'w', modifiers: ['cmd'] },

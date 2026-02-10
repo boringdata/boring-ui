@@ -52,6 +52,7 @@ import TerminalPanel from '../panels/TerminalPanel'
 import ShellTerminalPanel from '../panels/ShellTerminalPanel'
 import EmptyPanel from '../panels/EmptyPanel'
 import ReviewPanel from '../panels/ReviewPanel'
+// SandboxPanel iframe removed - sandbox chat is now integrated natively in TerminalPanel
 
 /**
  * @typedef {Object} PaneConfig
@@ -349,6 +350,9 @@ const createDefaultRegistry = () => {
     essential: false,
     requiresRouters: ['approval'],
   })
+
+  // Sandbox chat is now integrated natively in TerminalPanel via provider toggle
+  // No separate panel registration needed
 
   return registry
 }
