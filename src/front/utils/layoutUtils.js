@@ -147,3 +147,124 @@ export function ensureCorePanels(api, panelMin) {
 export function validateCoreLayout(api) {
   return CORE_PANEL_IDS.every((id) => api.getPanel(id) != null)
 }
+
+/**
+ * Apply saved sizes to filetree, terminal, and shell panels,
+ * respecting collapsed state.
+ *
+ * For collapsed panels, locks dimension to the collapsed size.
+ * For expanded panels, restores saved size (respecting minimums).
+ *
+ * @param {Object} api - Dockview API
+ * @param {Object} options
+ * @param {Object} options.collapsed - { filetree, terminal, shell } booleans
+ * @param {Object} options.panelSizes - Saved sizes { filetree, terminal, shell }
+ * @param {Object} options.panelMin - Minimum sizes { filetree, terminal, shell }
+ * @param {Object} options.panelCollapsed - Collapsed sizes { filetree, terminal, shell }
+ * @param {boolean} [options.setExpandedSizes=true] - Whether to set sizes for expanded panels
+ */
+export function applyPanelSizes(api, { collapsed, panelSizes, panelMin, panelCollapsed, setExpandedSizes = true }) {
+  const ftGroup = api.getPanel('filetree')?.group
+  const tGroup = api.getPanel('terminal')?.group
+  const sGroup = api.getPanel('shell')?.group
+
+  if (ftGroup) {
+    const ftApi = api.getGroup(ftGroup.id)?.api
+    if (ftApi) {
+      if (collapsed.filetree) {
+        ftApi.setConstraints({ minimumWidth: panelCollapsed.filetree, maximumWidth: panelCollapsed.filetree })
+        ftApi.setSize({ width: panelCollapsed.filetree })
+      } else {
+        ftApi.setConstraints({ minimumWidth: panelMin.filetree, maximumWidth: Infinity })
+        if (setExpandedSizes) {
+          ftApi.setSize({ width: panelSizes.filetree })
+        }
+      }
+    }
+  }
+  if (tGroup) {
+    const tApi = api.getGroup(tGroup.id)?.api
+    if (tApi) {
+      if (collapsed.terminal) {
+        tApi.setConstraints({ minimumWidth: panelCollapsed.terminal, maximumWidth: panelCollapsed.terminal })
+        tApi.setSize({ width: panelCollapsed.terminal })
+      } else {
+        tApi.setConstraints({ minimumWidth: panelMin.terminal, maximumWidth: Infinity })
+        if (setExpandedSizes) {
+          tApi.setSize({ width: panelSizes.terminal })
+        }
+      }
+    }
+  }
+  if (sGroup) {
+    const sApi = api.getGroup(sGroup.id)?.api
+    if (sApi) {
+      if (collapsed.shell) {
+        sApi.setConstraints({ minimumHeight: panelCollapsed.shell, maximumHeight: panelCollapsed.shell })
+        sApi.setSize({ height: panelCollapsed.shell })
+      } else {
+        sApi.setConstraints({ minimumHeight: panelMin.shell, maximumHeight: Infinity })
+        if (setExpandedSizes) {
+          const shellHeight = Math.max(panelSizes.shell, panelMin.shell)
+          sApi.setSize({ height: shellHeight })
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Re-create the empty-center panel when all editors/reviews are closed.
+ *
+ * Finds the best position for the empty panel and updates the center group ref.
+ *
+ * @param {Object} api - Dockview API
+ * @param {Object} centerGroupRef - React ref to center group
+ * @param {Object} panelMin - Minimum sizes { center }
+ */
+export function restoreEmptyPanel(api, centerGroupRef, panelMin) {
+  const existingEmpty = api.getPanel('empty-center')
+  if (existingEmpty) return
+
+  const allPanels = Array.isArray(api.panels) ? api.panels : []
+  const hasEditors = allPanels.some((p) => p.id.startsWith('editor-'))
+  const hasReviews = allPanels.some((p) => p.id.startsWith('review-'))
+  if (hasEditors || hasReviews) return
+
+  let centerGroup = centerGroupRef.current
+  const groupStillExists = centerGroup && api.groups?.includes(centerGroup)
+  const shellPanel = api.getPanel('shell')
+
+  let emptyPanel
+  if (groupStillExists && centerGroup.panels?.length > 0) {
+    emptyPanel = api.addPanel({
+      id: 'empty-center',
+      component: 'empty',
+      title: '',
+      position: { referenceGroup: centerGroup },
+    })
+  } else if (shellPanel?.group) {
+    emptyPanel = api.addPanel({
+      id: 'empty-center',
+      component: 'empty',
+      title: '',
+      position: { direction: 'above', referenceGroup: shellPanel.group },
+    })
+  } else {
+    emptyPanel = api.addPanel({
+      id: 'empty-center',
+      component: 'empty',
+      title: '',
+      position: { direction: 'right', referencePanel: 'filetree' },
+    })
+  }
+
+  if (emptyPanel?.group) {
+    centerGroupRef.current = emptyPanel.group
+    emptyPanel.group.header.hidden = true
+    emptyPanel.group.api.setConstraints({
+      minimumHeight: panelMin.center,
+      maximumHeight: Infinity,
+    })
+  }
+}

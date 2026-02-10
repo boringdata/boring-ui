@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities, useKeyboardShortcuts, useProjectRoot, useBrowserTitle, useApprovals, useApprovalPanels } from './hooks'
-import { useConfig } from './config'
+import { ThemeProvider, useKeyboardShortcuts, useBrowserTitle, useApprovals, useApprovalPanels, useAppState } from './hooks'
 import { buildApiUrl } from './utils/apiBase'
 import { createPanelToggle } from './utils/panelToggleUtils'
 import {
@@ -12,7 +11,12 @@ import {
   getReviewTitle as _getReviewTitle,
 } from './utils/approvalUtils'
 import { findEditorPosition, findSidePosition, findDiffPosition } from './utils/filePositioning'
-import { applyLockedPanels as applyLockedPanelsUtil, ensureCorePanels as ensureCorePanelsUtil } from './utils/layoutUtils'
+import {
+  applyLockedPanels as applyLockedPanelsUtil,
+  ensureCorePanels as ensureCorePanelsUtil,
+  applyPanelSizes,
+  restoreEmptyPanel,
+} from './utils/layoutUtils'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -20,8 +24,6 @@ import {
   saveTabs,
   loadLayout,
   saveLayout,
-  loadCollapsedState,
-  loadPanelSizes,
   savePanelSizes,
   pruneEmptyGroups,
   checkForSavedLayout,
@@ -35,7 +37,6 @@ import {
   getKnownComponents,
   essentialPanes,
   checkRequirements,
-  getUnavailableEssentialPanes,
 } from './registry/panes'
 
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
@@ -84,50 +85,22 @@ const tabComponents = {
 }
 
 export default function App() {
-  // Get config (defaults are used until async load completes)
-  const config = useConfig()
-  const storagePrefix = config.storage?.prefix || 'kurt-web'
-  const layoutVersion = config.storage?.layoutVersion || 1
-
-  // Panel sizing configuration from config
-  const panelDefaults = config.panels?.defaults || { filetree: 280, terminal: 400, shell: 250 }
-  const panelMin = config.panels?.min || { filetree: 180, terminal: 250, shell: 100, center: 200 }
-  const panelCollapsed = config.panels?.collapsed || { filetree: 48, terminal: 48, shell: 36 }
-
-  // Fetch backend capabilities for feature gating
-  const { capabilities, loading: capabilitiesLoading } = useCapabilities()
-
-  // Check for unavailable essential panes
-  const unavailableEssentials = capabilities
-    ? getUnavailableEssentialPanes(capabilities)
-    : []
-
-  const [dockApi, setDockApi] = useState(null)
-  const [tabs, setTabs] = useState({}) // path -> { content, isDirty }
-  const [activeFile, setActiveFile] = useState(null)
-  const [activeDiffFile, setActiveDiffFile] = useState(null)
-  const [collapsed, setCollapsed] = useState(() =>
-    loadCollapsedState(storagePrefix)
-  )
-  const panelSizesRef = useRef(
-    loadPanelSizes(storagePrefix) || panelDefaults
-  )
-  const collapsedEffectRan = useRef(false)
-  const centerGroupRef = useRef(null)
-  const isInitialized = useRef(false)
-  const layoutRestored = useRef(false)
-  const ensureCorePanelsRef = useRef(null)
-  const { projectRoot, projectRootRef } = useProjectRoot()
-  const storagePrefixRef = useRef(storagePrefix) // Stable ref for callbacks
-  storagePrefixRef.current = storagePrefix
-  const layoutVersionRef = useRef(layoutVersion) // Stable ref for callbacks
-  layoutVersionRef.current = layoutVersion
-
-  // Refs for panel config (used in callbacks)
-  const panelCollapsedRef = useRef(panelCollapsed)
-  panelCollapsedRef.current = panelCollapsed
-  const panelMinRef = useRef(panelMin)
-  panelMinRef.current = panelMin
+  // Core state from useAppState (config, capabilities, UI state, refs)
+  const {
+    config, storagePrefix, layoutVersion,
+    panelDefaults, panelMin, panelCollapsed,
+    capabilities, capabilitiesLoading, unavailableEssentials,
+    dockApi, setDockApi,
+    tabs, setTabs,
+    activeFile, setActiveFile,
+    activeDiffFile, setActiveDiffFile,
+    collapsed, setCollapsed,
+    projectRoot, projectRootRef,
+    panelSizesRef, collapsedEffectRan, centerGroupRef,
+    isInitialized, layoutRestored, ensureCorePanelsRef,
+    storagePrefixRef, layoutVersionRef,
+    panelCollapsedRef, panelMinRef,
+  } = useAppState()
 
   // Approval polling and decision handling
   const { approvals, approvalsLoaded, handleDecision } = useApprovals({ dockApi })
@@ -226,10 +199,16 @@ export default function App() {
       collapsedEffectRan.current = true
     }
 
-    const filetreePanel = dockApi.getPanel('filetree')
-    const terminalPanel = dockApi.getPanel('terminal')
-
-    const filetreeGroup = filetreePanel?.group
+    applyPanelSizes(dockApi, {
+      collapsed,
+      panelSizes: panelSizesRef.current,
+      panelMin: panelMinRef.current,
+      panelCollapsed: panelCollapsedRef.current,
+      setExpandedSizes: !isFirstRun,
+    })
+  }, [dockApi, collapsed])
+/* MARKER_DELETE_START */
+    const filetreeGroup = 'DELETED'
     if (filetreeGroup) {
       if (collapsed.filetree) {
         filetreeGroup.api.setConstraints({
@@ -522,22 +501,13 @@ export default function App() {
     }
 
     // Apply initial panel sizes for fresh layout
-    // (Restored layouts will have sizes reapplied in the layout restoration effect)
     requestAnimationFrame(() => {
-      const filetreeGroup = api.getPanel('filetree')?.group
-      const terminalGroup = api.getPanel('terminal')?.group
-      const shellGroup = api.getPanel('shell')?.group
-      if (filetreeGroup) {
-        api.getGroup(filetreeGroup.id)?.api.setSize({ width: panelSizesRef.current.filetree })
-      }
-      if (terminalGroup) {
-        api.getGroup(terminalGroup.id)?.api.setSize({ width: panelSizesRef.current.terminal })
-      }
-      if (shellGroup) {
-        // Ensure shell height respects minimum constraint
-        const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
-        api.getGroup(shellGroup.id)?.api.setSize({ height: shellHeight })
-      }
+      applyPanelSizes(api, {
+        collapsed: { filetree: false, terminal: false, shell: false },
+        panelSizes: panelSizesRef.current,
+        panelMin: panelMinRef.current,
+        panelCollapsed: panelCollapsedRef.current,
+      })
     })
 
     // Handle panel close to clean up tabs state
@@ -554,64 +524,7 @@ export default function App() {
 
 
     // When all editors are closed, show the empty panel again
-    api.onDidRemovePanel(() => {
-      // Check if empty panel already exists
-      const existingEmpty = api.getPanel('empty-center')
-      if (existingEmpty) return
-
-      // Check if there are any editor or review panels left anywhere
-      const allPanels = Array.isArray(api.panels) ? api.panels : []
-      const hasEditors = allPanels.some(p => p.id.startsWith('editor-'))
-      const hasReviews = allPanels.some(p => p.id.startsWith('review-'))
-
-      // If there are still editors or reviews, don't add empty panel
-      if (hasEditors || hasReviews) return
-
-      // Need to add empty panel - find the right position
-      // Try to use centerGroupRef if it still exists and has panels
-      let centerGroup = centerGroupRef.current
-      const groupStillExists = centerGroup && api.groups?.includes(centerGroup)
-
-      // Get shell panel to position relative to it
-      const shellPanel = api.getPanel('shell')
-
-      let emptyPanel
-      if (groupStillExists && centerGroup.panels?.length > 0) {
-        // Group still exists with panels, add to it
-        emptyPanel = api.addPanel({
-          id: 'empty-center',
-          component: 'empty',
-          title: '',
-          position: { referenceGroup: centerGroup },
-        })
-      } else if (shellPanel?.group) {
-        // Center group is gone, add above shell panel
-        emptyPanel = api.addPanel({
-          id: 'empty-center',
-          component: 'empty',
-          title: '',
-          position: { direction: 'above', referenceGroup: shellPanel.group },
-        })
-      } else {
-        // Fallback: add to the right of filetree
-        emptyPanel = api.addPanel({
-          id: 'empty-center',
-          component: 'empty',
-          title: '',
-          position: { direction: 'right', referencePanel: 'filetree' },
-        })
-      }
-
-      // Update centerGroupRef and apply constraints
-      if (emptyPanel?.group) {
-        centerGroupRef.current = emptyPanel.group
-        emptyPanel.group.header.hidden = true
-        emptyPanel.group.api.setConstraints({
-          minimumHeight: panelMinRef.current.center,
-          maximumHeight: Infinity,
-        })
-      }
-    })
+    api.onDidRemovePanel(() => restoreEmptyPanel(api, centerGroupRef, panelMinRef.current))
 
     const saveLayoutNow = () => {
       if (typeof api.toJSON !== 'function') return
@@ -715,49 +628,12 @@ export default function App() {
         ensureCorePanelsRef.current()
         layoutRestored.current = true
         requestAnimationFrame(() => {
-          const ftGroup = dockApi.getPanel('filetree')?.group
-          const tGroup = dockApi.getPanel('terminal')?.group
-          const sGroup = dockApi.getPanel('shell')?.group
-
-          if (ftGroup) {
-            const ftApi = dockApi.getGroup(ftGroup.id)?.api
-            if (ftApi) {
-              if (collapsed.filetree) {
-                ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
-                ftApi.setSize({ width: panelCollapsedRef.current.filetree })
-              } else {
-                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Infinity })
-                ftApi.setSize({ width: panelSizesRef.current.filetree })
-              }
-            }
-          }
-          if (tGroup) {
-            const tApi = dockApi.getGroup(tGroup.id)?.api
-            if (tApi) {
-              if (collapsed.terminal) {
-                tApi.setConstraints({ minimumWidth: panelCollapsedRef.current.terminal, maximumWidth: panelCollapsedRef.current.terminal })
-                tApi.setSize({ width: panelCollapsedRef.current.terminal })
-              } else {
-                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Infinity })
-                tApi.setSize({ width: panelSizesRef.current.terminal })
-              }
-            }
-          }
-          if (sGroup) {
-            const sApi = dockApi.getGroup(sGroup.id)?.api
-            if (sApi) {
-              if (collapsed.shell) {
-                sApi.setConstraints({ minimumHeight: panelCollapsedRef.current.shell, maximumHeight: panelCollapsedRef.current.shell })
-                sApi.setSize({ height: panelCollapsedRef.current.shell })
-              } else {
-                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
-                // Ensure shell height respects minimum constraint
-                const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
-                sApi.setSize({ height: shellHeight })
-              }
-            }
-          }
-
+          applyPanelSizes(dockApi, {
+            collapsed,
+            panelSizes: panelSizesRef.current,
+            panelMin: panelMinRef.current,
+            panelCollapsed: panelCollapsedRef.current,
+          })
           collapsedEffectRan.current = true
         })
       }
@@ -889,53 +765,13 @@ export default function App() {
         }
 
         // Apply saved panel sizes, respecting collapsed state
-        // collapsed state is loaded from localStorage at init, so we can check it here
         requestAnimationFrame(() => {
-          const ftGroup = dockApi.getPanel('filetree')?.group
-          const tGroup = dockApi.getPanel('terminal')?.group
-          const sGroup = dockApi.getPanel('shell')?.group
-
-          // For collapsed panels, set collapsed size; for expanded, use saved size
-          if (ftGroup) {
-            const ftApi = dockApi.getGroup(ftGroup.id)?.api
-            if (ftApi) {
-              if (collapsed.filetree) {
-                ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
-                ftApi.setSize({ width: panelCollapsedRef.current.filetree })
-              } else {
-                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Infinity })
-                ftApi.setSize({ width: panelSizesRef.current.filetree })
-              }
-            }
-          }
-          if (tGroup) {
-            const tApi = dockApi.getGroup(tGroup.id)?.api
-            if (tApi) {
-              if (collapsed.terminal) {
-                tApi.setConstraints({ minimumWidth: panelCollapsedRef.current.terminal, maximumWidth: panelCollapsedRef.current.terminal })
-                tApi.setSize({ width: panelCollapsedRef.current.terminal })
-              } else {
-                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Infinity })
-                tApi.setSize({ width: panelSizesRef.current.terminal })
-              }
-            }
-          }
-          if (sGroup) {
-            const sApi = dockApi.getGroup(sGroup.id)?.api
-            if (sApi) {
-              if (collapsed.shell) {
-                sApi.setConstraints({ minimumHeight: panelCollapsedRef.current.shell, maximumHeight: panelCollapsedRef.current.shell })
-                sApi.setSize({ height: panelCollapsedRef.current.shell })
-              } else {
-                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
-                // Ensure shell height respects minimum constraint
-                const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
-                sApi.setSize({ height: shellHeight })
-              }
-            }
-          }
-
-          // Reset the collapsed effect flag so it doesn't override on first toggle
+          applyPanelSizes(dockApi, {
+            collapsed,
+            panelSizes: panelSizesRef.current,
+            panelMin: panelMinRef.current,
+            panelCollapsed: panelCollapsedRef.current,
+          })
           collapsedEffectRan.current = true
         })
       } catch {
