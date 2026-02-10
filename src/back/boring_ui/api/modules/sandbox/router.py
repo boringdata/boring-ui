@@ -147,6 +147,12 @@ def create_sandbox_router(manager: SandboxManager) -> APIRouter:
                     )
                 }
 
+                # Inject service token for sandbox-agent auth
+                if manager.service_token:
+                    forward_headers["authorization"] = (
+                        f"Bearer {manager.service_token}"
+                    )
+
                 body = await request.body()
                 resp = await client.request(
                     method=request.method,
