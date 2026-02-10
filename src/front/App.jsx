@@ -3,7 +3,7 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities, useKeyboardShortcuts, useProjectRoot, useBrowserTitle } from './hooks'
+import { ThemeProvider, useCapabilities, useKeyboardShortcuts, useProjectRoot, useBrowserTitle, useApprovals } from './hooks'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import { createPanelToggle } from './utils/panelToggleUtils'
@@ -12,6 +12,7 @@ import {
   getReviewTitle as _getReviewTitle,
 } from './utils/approvalUtils'
 import { findEditorPosition, findSidePosition, findDiffPosition } from './utils/filePositioning'
+import { applyLockedPanels as applyLockedPanelsUtil, ensureCorePanels as ensureCorePanelsUtil } from './utils/layoutUtils'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -103,8 +104,6 @@ export default function App() {
 
   const [dockApi, setDockApi] = useState(null)
   const [tabs, setTabs] = useState({}) // path -> { content, isDirty }
-  const [approvals, setApprovals] = useState([])
-  const [approvalsLoaded, setApprovalsLoaded] = useState(false)
   const [activeFile, setActiveFile] = useState(null)
   const [activeDiffFile, setActiveDiffFile] = useState(null)
   const [collapsed, setCollapsed] = useState(() =>
@@ -114,7 +113,6 @@ export default function App() {
     loadPanelSizes(storagePrefix) || panelDefaults
   )
   const collapsedEffectRan = useRef(false)
-  const dismissedApprovalsRef = useRef(new Set())
   const centerGroupRef = useRef(null)
   const isInitialized = useRef(false)
   const layoutRestored = useRef(false)
@@ -130,6 +128,9 @@ export default function App() {
   panelCollapsedRef.current = panelCollapsed
   const panelMinRef = useRef(panelMin)
   panelMinRef.current = panelMin
+
+  // Approval polling and decision handling
+  const { approvals, approvalsLoaded, handleDecision } = useApprovals({ dockApi })
 
   // Toggle sidebar/panel collapse - uses extracted utility
   const toggleFiletree = useCallback(
@@ -298,61 +299,6 @@ export default function App() {
   }, [dockApi, collapsed])
 
   // Git status polling removed - not currently used in UI
-
-  // Fetch approvals
-  useEffect(() => {
-    let isActive = true
-
-    const fetchApprovals = () => {
-      fetch(buildApiUrl('/api/approval/pending'))
-        .then((r) => r.json())
-        .then((data) => {
-          if (!isActive) return
-          const requests = Array.isArray(data.requests) ? data.requests : []
-          const filtered = requests.filter(
-            (req) => !dismissedApprovalsRef.current.has(req.id),
-          )
-          setApprovals(filtered)
-          setApprovalsLoaded(true)
-        })
-        .catch(() => {})
-    }
-
-    fetchApprovals()
-    const interval = setInterval(fetchApprovals, 1000)
-
-    return () => {
-      isActive = false
-      clearInterval(interval)
-    }
-  }, [])
-
-  const handleDecision = useCallback(
-    async (requestId, decision, reason) => {
-      if (requestId) {
-        dismissedApprovalsRef.current.add(requestId)
-        setApprovals((prev) => prev.filter((req) => req.id !== requestId))
-        if (dockApi) {
-          const panel = dockApi.getPanel(`review-${requestId}`)
-          if (panel) {
-            panel.api.close()
-          }
-        }
-      } else {
-        setApprovals([])
-      }
-      try {
-        await fetch(buildApiUrl('/api/approval/decision'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ request_id: requestId, decision, reason }),
-        })
-      } catch {
-        // Ignore decision errors; UI already dismissed.
-      }
-    },
-    [dockApi]
-  )
 
   const normalizeApprovalPath = useCallback(
     (approval) => _normalizeApprovalPath(approval, projectRoot),
@@ -594,128 +540,10 @@ export default function App() {
     const api = event.api
     setDockApi(api)
 
-    const applyLockedPanels = () => {
-      const filetreePanel = api.getPanel('filetree')
-      const terminalPanel = api.getPanel('terminal')
-
-      const filetreeGroup = filetreePanel?.group
-      if (filetreeGroup) {
-        filetreeGroup.locked = true
-        filetreeGroup.header.hidden = true
-        filetreeGroup.api.setConstraints({
-          minimumWidth: panelMinRef.current.filetree,
-          maximumWidth: Infinity,
-        })
-      }
-
-      const terminalGroup = terminalPanel?.group
-      if (terminalGroup) {
-        terminalGroup.locked = true
-        terminalGroup.header.hidden = true
-        terminalGroup.api.setConstraints({
-          minimumWidth: panelMinRef.current.terminal,
-          maximumWidth: Infinity,
-        })
-      }
-
-      const shellPanel = api.getPanel('shell')
-      const shellGroup = shellPanel?.group
-      if (shellGroup) {
-        // Don't lock or hide header - shell has collapse button
-        shellGroup.api.setConstraints({
-          minimumHeight: panelMinRef.current.shell,
-          maximumHeight: Infinity,
-        })
-      }
-    }
+    const applyLockedPanels = () => applyLockedPanelsUtil(api, panelMinRef.current)
 
     const ensureCorePanels = () => {
-      // Layout goal: [filetree | [editor / shell] | terminal]
-      //
-      // Strategy: Create in order that establishes correct hierarchy
-      // 1. filetree (left)
-      // 2. terminal (right) - agent sessions column
-      // 3. empty-center (left of terminal) - center column for editors
-      // 4. shell (below empty-center) - bottom of center
-
-      let filetreePanel = api.getPanel('filetree')
-      if (!filetreePanel) {
-        filetreePanel = api.addPanel({
-          id: 'filetree',
-          component: 'filetree',
-          title: 'Files',
-          params: { onOpenFile: () => {} },
-        })
-      }
-
-      // Add terminal (right of filetree) - establishes rightmost column
-      let terminalPanel = api.getPanel('terminal')
-      if (!terminalPanel) {
-        terminalPanel = api.addPanel({
-          id: 'terminal',
-          component: 'terminal',
-          title: 'Code Sessions',
-          position: { direction: 'right', referencePanel: 'filetree' },
-        })
-      }
-
-      // Add empty panel LEFT of terminal - creates center column
-      let emptyPanel = api.getPanel('empty-center')
-      if (!emptyPanel) {
-        emptyPanel = api.addPanel({
-          id: 'empty-center',
-          component: 'empty',
-          title: '',
-          position: { direction: 'left', referencePanel: 'terminal' },
-        })
-      }
-      // Always set centerGroupRef from empty panel if it exists
-      if (emptyPanel?.group) {
-        emptyPanel.group.header.hidden = true
-        centerGroupRef.current = emptyPanel.group
-        // Set minimum height for the center group (use Infinity to allow resize)
-        emptyPanel.group.api.setConstraints({
-          minimumHeight: panelMinRef.current.center,
-          maximumHeight: Infinity,
-        })
-      }
-
-      // Add shell panel BELOW the center group - splits only center column
-      let shellPanel = api.getPanel('shell')
-      if (!shellPanel && emptyPanel?.group) {
-        shellPanel = api.addPanel({
-          id: 'shell',
-          component: 'shell',
-          tabComponent: 'noClose',
-          title: 'Shell',
-          position: { direction: 'below', referenceGroup: emptyPanel.group },
-          params: {
-            collapsed: false,
-            onToggleCollapse: () => {},
-          },
-        })
-      }
-
-      // Show tabs for the shell group
-      if (shellPanel?.group) {
-        shellPanel.group.header.hidden = false
-        shellPanel.group.locked = true // Lock group to prevent closing tabs
-      }
-
-      // Set centerGroupRef from editor panels if any exist
-      const panels = Array.isArray(api.panels)
-        ? api.panels
-        : typeof api.getPanels === 'function'
-          ? api.getPanels()
-          : []
-      const editorPanels = panels.filter((panel) =>
-        panel.id.startsWith('editor-'),
-      )
-      if (editorPanels.length > 0) {
-        centerGroupRef.current = editorPanels[0].group
-      }
-      // centerGroupRef was already set above when creating empty-center if no editors
-
+      centerGroupRef.current = ensureCorePanelsUtil(api, panelMinRef.current)
       applyLockedPanels()
     }
 

@@ -31,3 +31,7 @@ export {
 export {
   useBrowserTitle,
 } from './useBrowserTitle'
+
+export {
+  useApprovals,
+} from './useApprovals'
