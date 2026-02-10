@@ -83,10 +83,11 @@ describe('ToolResultView', () => {
 
   it('renders with default renderer when no provider', () => {
     // ToolResultView uses useToolRenderer which falls back to default
-    const toolResult = createResult({ toolName: 'TestTool' })
+    // Default renderer dispatches to real renderers via RENDERER_MAP
+    const toolResult = createResult({ toolType: 'generic', toolName: 'TestTool' })
     render(<ToolResultView result={toolResult} />)
 
-    // Default renderer shows tool name
+    // GenericRenderer shows the tool name
     expect(screen.getByText('TestTool')).toBeTruthy()
   })
 })
@@ -94,13 +95,14 @@ describe('ToolResultView', () => {
 describe('default renderer', () => {
   it('shows tool name and description', () => {
     const result = createResult({
-      toolName: 'Read',
-      description: 'src/foo.js',
+      toolType: 'generic',
+      toolName: 'CustomTool',
+      description: 'doing stuff',
     })
     render(<ToolResultView result={result} />)
 
-    expect(screen.getByText('Read')).toBeTruthy()
-    expect(screen.getByText('src/foo.js')).toBeTruthy()
+    expect(screen.getByText('CustomTool')).toBeTruthy()
+    expect(screen.getByText('doing stuff')).toBeTruthy()
   })
 
   it('shows output content', () => {

@@ -72,9 +72,10 @@ describe('BashRenderer', () => {
       input: { command: 'echo hello' },
       output: { content: 'hello', exitCode: 0 },
     }
-    render(<BashRenderer result={result} compact={false} />)
-    expect(screen.getByText(/echo hello/)).toBeTruthy()
-    expect(screen.getByText('hello')).toBeTruthy()
+    const { container } = render(<BashRenderer result={result} compact={false} />)
+    // Command appears in code block, output in pre
+    expect(container.textContent).toContain('echo hello')
+    expect(container.textContent).toContain('hello')
   })
 
   it('truncates long description', () => {

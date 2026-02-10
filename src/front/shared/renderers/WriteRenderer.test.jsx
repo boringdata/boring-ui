@@ -22,7 +22,7 @@ describe('WriteRenderer', () => {
   })
 
   it('shows line count subtitle', () => {
-    render(<WriteRenderer filePath="f.js" content="a\nb\nc" />)
+    render(<WriteRenderer filePath="f.js" content={'a\nb\nc'} />)
     expect(screen.getByText('3 lines')).toBeTruthy()
   })
 
