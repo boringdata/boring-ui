@@ -230,14 +230,14 @@ def create_capabilities_router(
                     'url': svc_info.url,
                     'protocol': svc_info.protocol,
                 }
-                # Issue fresh tokens on each request if issuer available
-                if token_issuer:
+                if svc_info.token:
+                    # Service uses static auth token (e.g., sandbox-agent --token)
+                    svc_entry['token'] = svc_info.token
+                    svc_entry['qpToken'] = svc_info.qp_token or svc_info.token
+                elif token_issuer:
+                    # Issue fresh JWT per request (e.g., Companion with jose)
                     svc_entry['token'] = token_issuer.issue_token(svc_name)
                     svc_entry['qpToken'] = token_issuer.issue_query_param_token(svc_name)
-                elif svc_info.token:
-                    # Static token fallback (e.g., sandbox-agent built-in auth)
-                    svc_entry['token'] = svc_info.token
-                    svc_entry['qpToken'] = svc_info.qp_token
                 services[svc_name] = svc_entry
             capabilities['services'] = services
 

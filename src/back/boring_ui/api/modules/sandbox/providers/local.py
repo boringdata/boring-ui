@@ -40,15 +40,25 @@ class LocalProvider(SandboxProvider):
         # sandbox-agent now running at http://127.0.0.1:2468
     """
 
-    def __init__(self, port: int = 2468, workspace: Path | None = None):
+    def __init__(
+        self,
+        port: int = 2468,
+        workspace: Path | None = None,
+        token: str | None = None,
+        cors_origin: str | None = None,
+    ):
         """Initialize the local provider.
 
         Args:
             port: Port for sandbox-agent to listen on
             workspace: Working directory for sandbox-agent
+            token: Bearer token for sandbox-agent auth. If None, starts with --no-token.
+            cors_origin: CORS allowed origin for direct browser connections.
         """
         self.port = port
         self.workspace = workspace or Path.cwd()
+        self.token = token
+        self.cors_origin = cors_origin
         self.sandboxes: dict[str, LocalSandbox] = {}
 
     async def create(self, sandbox_id: str, config: dict) -> SandboxInfo:
@@ -77,17 +87,32 @@ class LocalProvider(SandboxProvider):
 
         # Start sandbox-agent process
         # Package: sandbox-agent from rivet-dev/sandbox-agent
+        cmd = [
+            "npx",
+            "sandbox-agent",
+            "server",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(self.port),
+        ]
+
+        # Auth: use --token if provided, otherwise --no-token
+        if self.token:
+            cmd.extend(["--token", self.token])
+        else:
+            cmd.append("--no-token")
+
+        # CORS: allow direct browser connections from boring-ui frontend
+        if self.cors_origin:
+            cmd.extend([
+                "--cors-allow-origin", self.cors_origin,
+                "--cors-allow-header", "Authorization,Content-Type",
+                "--cors-allow-method", "GET,POST,PUT,DELETE,OPTIONS",
+            ])
+
         process = subprocess.Popen(
-            [
-                "npx",
-                "sandbox-agent",
-                "server",
-                "--no-token",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(self.port),
-            ],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

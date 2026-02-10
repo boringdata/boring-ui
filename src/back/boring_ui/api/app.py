@@ -1,11 +1,12 @@
 """Application factory for boring-ui API."""
 import os
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import APIConfig
+from .config import APIConfig, get_cors_origin
 from .storage import Storage, LocalStorage
 from .modules.files import create_file_router
 from .modules.git import create_git_router
@@ -86,14 +87,23 @@ def create_app(
     approval_store = approval_store or InMemoryApprovalStore()
     registry = registry or create_default_registry()
 
+    # Generate per-session auth token for sandbox-agent Direct Connect
+    sandbox_auth_token = secrets.token_hex(16)
+    cors_origin = get_cors_origin()
+
     # Create sandbox manager if needed
     if sandbox_manager is None and (include_sandbox or (routers and 'sandbox' in routers)):
         sandbox_config = {
             'SANDBOX_PROVIDER': os.environ.get('SANDBOX_PROVIDER', 'local'),
             'SANDBOX_PORT': os.environ.get('SANDBOX_PORT', '2468'),
             'SANDBOX_WORKSPACE': os.environ.get('SANDBOX_WORKSPACE', str(config.workspace_root)),
+            'SANDBOX_TOKEN': sandbox_auth_token,
+            'SANDBOX_CORS_ORIGIN': cors_origin,
         }
-        sandbox_manager = SandboxManager(create_provider(sandbox_config))
+        sandbox_manager = SandboxManager(
+            create_provider(sandbox_config),
+            service_token=sandbox_auth_token,
+        )
         _sandbox_manager = sandbox_manager
 
     # Determine which routers to include
@@ -195,8 +205,8 @@ def create_app(
         service_registry['sandbox'] = ServiceConnectionInfo(
             name='sandbox',
             url=f'http://127.0.0.1:{sandbox_port}',
-            token='',  # Issued per-request by token_issuer
-            qp_token='',
+            token=sandbox_auth_token,  # Static token matching --token flag
+            qp_token=sandbox_auth_token,  # Same token for SSE/WS
             protocol='rest+sse',
         )
 

@@ -26,13 +26,16 @@ class SandboxManager:
         await manager.shutdown()  # Cleanup
     """
 
-    def __init__(self, provider: SandboxProvider):
+    def __init__(self, provider: SandboxProvider, service_token: str | None = None):
         """Initialize the manager.
 
         Args:
             provider: The sandbox provider to use
+            service_token: Bearer token the sandbox-agent was started with.
+                Used by proxy to authenticate forwarded requests.
         """
         self.provider = provider
+        self.service_token = service_token
         self.default_sandbox_id = "default"
 
     async def ensure_running(self) -> SandboxInfo:
@@ -109,6 +112,8 @@ def create_provider(config: dict) -> SandboxProvider:
             - SANDBOX_PROVIDER: "local" or "modal" (default: "local")
             - SANDBOX_PORT: Port for local provider (default: 2468)
             - SANDBOX_WORKSPACE: Workspace path (default: ".")
+            - SANDBOX_TOKEN: Bearer token for auth (optional)
+            - SANDBOX_CORS_ORIGIN: CORS allowed origin (optional)
 
     Returns:
         Configured SandboxProvider instance
@@ -122,6 +127,8 @@ def create_provider(config: dict) -> SandboxProvider:
         return LocalProvider(
             port=int(config.get("SANDBOX_PORT", 2468)),
             workspace=Path(config.get("SANDBOX_WORKSPACE", ".")),
+            token=config.get("SANDBOX_TOKEN"),
+            cors_origin=config.get("SANDBOX_CORS_ORIGIN"),
         )
     elif provider_type == "modal":
         from .providers.modal import ModalProvider
