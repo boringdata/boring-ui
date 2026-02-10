@@ -11,6 +11,7 @@ import {
   normalizeApprovalPath as _normalizeApprovalPath,
   getReviewTitle as _getReviewTitle,
 } from './utils/approvalUtils'
+import { findEditorPosition, findSidePosition, findDiffPosition } from './utils/filePositioning'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -459,31 +460,7 @@ export default function App() {
         return true
       }
 
-      // Priority: existing editor group > centerGroupRef > empty panel > shell > fallback
-      const emptyPanel = dockApi.getPanel('empty-center')
-      const shellPanel = dockApi.getPanel('shell')
-      const centerGroup = centerGroupRef.current
-
-      // Find existing editor panels to add as sibling tab
-      const allPanels = Array.isArray(dockApi.panels) ? dockApi.panels : []
-      const existingEditorPanel = allPanels.find(p => p.id.startsWith('editor-') || p.id.startsWith('review-'))
-
-      let position
-      if (existingEditorPanel?.group) {
-        // Add as tab next to existing editors/reviews
-        position = { referenceGroup: existingEditorPanel.group }
-      } else if (centerGroup) {
-        position = { referenceGroup: centerGroup }
-      } else if (emptyPanel?.group) {
-        position = { referenceGroup: emptyPanel.group }
-      } else if (shellPanel?.group) {
-        // Add above shell to maintain center column structure
-        position = { direction: 'above', referenceGroup: shellPanel.group }
-      } else {
-        position = { direction: 'right', referencePanel: 'filetree' }
-      }
-
-      openFileAtPosition(path, position)
+      openFileAtPosition(path, findEditorPosition(dockApi, centerGroupRef.current))
       return true
     },
     [dockApi, openFileAtPosition]
@@ -493,30 +470,13 @@ export default function App() {
     (path) => {
       if (!dockApi) return
 
-      const panelId = `editor-${path}`
-      const existingPanel = dockApi.getPanel(panelId)
-
+      const existingPanel = dockApi.getPanel(`editor-${path}`)
       if (existingPanel) {
         existingPanel.api.setActive()
         return
       }
 
-      // Find the active editor panel to split from (not terminal/filetree)
-      const activePanel = dockApi.activePanel
-      let position
-
-      if (activePanel && activePanel.id.startsWith('editor-')) {
-        // Split to the right of the current editor
-        position = { direction: 'right', referencePanel: activePanel.id }
-      } else if (centerGroupRef.current) {
-        // Use center group if no editor is active
-        position = { direction: 'right', referenceGroup: centerGroupRef.current }
-      } else {
-        // Fallback: to the right of filetree (but will be left of terminal)
-        position = { direction: 'right', referencePanel: 'filetree' }
-      }
-
-      openFileAtPosition(path, position)
+      openFileAtPosition(path, findSidePosition(dockApi, centerGroupRef.current))
     },
     [dockApi, openFileAtPosition]
   )
@@ -525,35 +485,15 @@ export default function App() {
     (path, _status) => {
       if (!dockApi) return
 
-      const panelId = `editor-${path}`
-      const existingPanel = dockApi.getPanel(panelId)
-
+      const existingPanel = dockApi.getPanel(`editor-${path}`)
       if (existingPanel) {
-        // Update to diff mode and activate
         existingPanel.api.updateParameters({ initialMode: 'git-diff' })
         existingPanel.api.setActive()
         setActiveDiffFile(path)
         return
       }
 
-      // Use empty panel's group first to maintain layout hierarchy
-      const emptyPanel = dockApi.getPanel('empty-center')
-      const shellPanel = dockApi.getPanel('shell')
-      const centerGroup = centerGroupRef.current
-
-      let position
-      if (emptyPanel?.group) {
-        position = { referenceGroup: emptyPanel.group }
-      } else if (centerGroup) {
-        position = { referenceGroup: centerGroup }
-      } else if (shellPanel?.group) {
-        position = { direction: 'above', referenceGroup: shellPanel.group }
-      } else {
-        position = { direction: 'right', referencePanel: 'filetree' }
-      }
-
-      // Open regular editor with diff mode enabled
-      openFileAtPosition(path, position, { initialMode: 'git-diff' })
+      openFileAtPosition(path, findDiffPosition(dockApi, centerGroupRef.current), { initialMode: 'git-diff' })
       setActiveDiffFile(path)
     },
     [dockApi, openFileAtPosition]
