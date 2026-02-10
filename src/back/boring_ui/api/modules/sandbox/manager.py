@@ -109,17 +109,20 @@ def create_provider(config: dict) -> SandboxProvider:
 
     Args:
         config: Configuration dict with:
-            - SANDBOX_PROVIDER: "local" or "modal" (default: "local")
-            - SANDBOX_PORT: Port for local provider (default: 2468)
-            - SANDBOX_WORKSPACE: Workspace path (default: ".")
-            - SANDBOX_TOKEN: Bearer token for auth (optional)
-            - SANDBOX_CORS_ORIGIN: CORS allowed origin (optional)
+            - SANDBOX_PROVIDER: "local", "sprites", or "modal" (default: "local")
+            - SANDBOX_PORT: Port for sandbox-agent (default: 2468)
+            - SANDBOX_WORKSPACE: Workspace path for local (default: ".")
+            - SANDBOX_TOKEN: Bearer token for auth (optional, local)
+            - SANDBOX_CORS_ORIGIN: CORS allowed origin (optional, local)
+            - SPRITES_TOKEN: Sprites.dev API token (required for sprites)
+            - SPRITES_ORG: Sprites.dev org slug (required for sprites)
+            - SPRITES_NAME_PREFIX: Sprite name prefix (optional, sprites)
 
     Returns:
         Configured SandboxProvider instance
 
     Raises:
-        ValueError: If unknown provider type
+        ValueError: If unknown provider type or missing required config
     """
     provider_type = config.get("SANDBOX_PROVIDER", "local")
 
@@ -129,6 +132,26 @@ def create_provider(config: dict) -> SandboxProvider:
             workspace=Path(config.get("SANDBOX_WORKSPACE", ".")),
             token=config.get("SANDBOX_TOKEN"),
             cors_origin=config.get("SANDBOX_CORS_ORIGIN"),
+        )
+    elif provider_type == "sprites":
+        from .providers.sprites import SpritesProvider
+
+        token = config.get("SPRITES_TOKEN", "")
+        if not token:
+            raise ValueError(
+                "SPRITES_TOKEN is required when SANDBOX_PROVIDER=sprites. "
+                "Set it in your environment or config."
+            )
+        org = config.get("SPRITES_ORG", "")
+        if not org:
+            raise ValueError(
+                "SPRITES_ORG is required when SANDBOX_PROVIDER=sprites."
+            )
+        return SpritesProvider(
+            token=token,
+            org=org,
+            name_prefix=config.get("SPRITES_NAME_PREFIX", ""),
+            sandbox_agent_port=int(config.get("SANDBOX_PORT", 2468)),
         )
     elif provider_type == "modal":
         from .providers.modal import ModalProvider
