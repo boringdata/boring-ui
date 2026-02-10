@@ -43,3 +43,7 @@ export {
 export {
   useAppState,
 } from './useAppState'
+
+export {
+  usePanelToggle,
+} from './usePanelToggle'

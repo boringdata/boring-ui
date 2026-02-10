@@ -3,9 +3,8 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useKeyboardShortcuts, useBrowserTitle, useApprovals, useApprovalPanels, useAppState } from './hooks'
+import { ThemeProvider, useKeyboardShortcuts, useBrowserTitle, useApprovals, useApprovalPanels, useAppState, usePanelToggle } from './hooks'
 import { buildApiUrl } from './utils/apiBase'
-import { createPanelToggle } from './utils/panelToggleUtils'
 import {
   normalizeApprovalPath as _normalizeApprovalPath,
   getReviewTitle as _getReviewTitle,
@@ -105,36 +104,11 @@ export default function App() {
   // Approval polling and decision handling
   const { approvals, approvalsLoaded, handleDecision } = useApprovals({ dockApi })
 
-  // Toggle sidebar/panel collapse - uses extracted utility
-  const toggleFiletree = useCallback(
-    () => createPanelToggle({
-      panelId: 'filetree', panelKey: 'filetree', dimension: 'width',
-      dockApi, isCollapsed: collapsed.filetree, setCollapsed,
-      panelSizesRef, collapsedThreshold: panelCollapsedRef.current.filetree,
-      storagePrefix: storagePrefixRef.current,
-    })(),
-    [collapsed.filetree, dockApi],
-  )
-
-  const toggleTerminal = useCallback(
-    () => createPanelToggle({
-      panelId: 'terminal', panelKey: 'terminal', dimension: 'width',
-      dockApi, isCollapsed: collapsed.terminal, setCollapsed,
-      panelSizesRef, collapsedThreshold: panelCollapsedRef.current.terminal,
-      storagePrefix: storagePrefixRef.current,
-    })(),
-    [collapsed.terminal, dockApi],
-  )
-
-  const toggleShell = useCallback(
-    () => createPanelToggle({
-      panelId: 'shell', panelKey: 'shell', dimension: 'height',
-      dockApi, isCollapsed: collapsed.shell, setCollapsed,
-      panelSizesRef, collapsedThreshold: panelCollapsedRef.current.shell,
-      storagePrefix: storagePrefixRef.current,
-    })(),
-    [collapsed.shell, dockApi],
-  )
+  // Panel collapse/expand toggles
+  const { toggleFiletree, toggleTerminal, toggleShell } = usePanelToggle({
+    dockApi, collapsed, setCollapsed,
+    panelSizesRef, panelCollapsedRef, storagePrefixRef,
+  })
 
   // Close active tab handler for keyboard shortcut
   const closeTab = useCallback(() => {
@@ -206,75 +180,6 @@ export default function App() {
       panelCollapsed: panelCollapsedRef.current,
       setExpandedSizes: !isFirstRun,
     })
-  }, [dockApi, collapsed])
-/* MARKER_DELETE_START */
-    const filetreeGroup = 'DELETED'
-    if (filetreeGroup) {
-      if (collapsed.filetree) {
-        filetreeGroup.api.setConstraints({
-          minimumWidth: panelCollapsedRef.current.filetree,
-          maximumWidth: panelCollapsedRef.current.filetree,
-        })
-        filetreeGroup.api.setSize({ width: panelCollapsedRef.current.filetree })
-      } else {
-        // Use Infinity to explicitly clear max constraint and allow resizing
-        filetreeGroup.api.setConstraints({
-          minimumWidth: panelMinRef.current.filetree,
-          maximumWidth: Infinity,
-        })
-        // Only set size on subsequent runs (user toggled), not on initial load
-        if (!isFirstRun) {
-          filetreeGroup.api.setSize({ width: panelSizesRef.current.filetree })
-        }
-      }
-    }
-
-    const terminalGroup = terminalPanel?.group
-    if (terminalGroup) {
-      if (collapsed.terminal) {
-        terminalGroup.api.setConstraints({
-          minimumWidth: panelCollapsedRef.current.terminal,
-          maximumWidth: panelCollapsedRef.current.terminal,
-        })
-        terminalGroup.api.setSize({ width: panelCollapsedRef.current.terminal })
-      } else {
-        // Use Infinity to explicitly clear max constraint and allow resizing
-        terminalGroup.api.setConstraints({
-          minimumWidth: panelMinRef.current.terminal,
-          maximumWidth: Infinity,
-        })
-        if (!isFirstRun) {
-          terminalGroup.api.setSize({ width: panelSizesRef.current.terminal })
-        }
-      }
-    }
-
-    const shellPanel = dockApi.getPanel('shell')
-    const shellGroup = shellPanel?.group
-
-    // Apply constraints to shell group
-    if (shellGroup) {
-      if (collapsed.shell) {
-        shellGroup.api.setConstraints({
-          minimumHeight: panelCollapsedRef.current.shell,
-          maximumHeight: panelCollapsedRef.current.shell,
-        })
-        shellGroup.api.setSize({ height: panelCollapsedRef.current.shell })
-      } else {
-        // Clear height constraints to allow resizing (use Infinity to explicitly remove max)
-        shellGroup.api.setConstraints({
-          minimumHeight: panelMinRef.current.shell,
-          maximumHeight: Infinity,
-        })
-        // Only set size on subsequent runs (user toggled), not on initial load
-        if (!isFirstRun) {
-          // Ensure saved size respects minimum constraint
-          const savedHeight = panelSizesRef.current.shell
-          const minHeight = panelMinRef.current.shell
-          shellGroup.api.setSize({ height: Math.max(savedHeight, minHeight) })
-        }
-      }
-    }
   }, [dockApi, collapsed])
 
   // Git status polling removed - not currently used in UI
