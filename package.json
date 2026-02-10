@@ -92,6 +92,7 @@
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0",
     "zod": "^4.3.6",
+    "jose": "^5.9.6",
     "zustand": "^5.0.10"
   },
   "peerDependencies": {
