@@ -3,14 +3,22 @@
  *
  * Uses useServiceConnection to get direct-connect URL + token,
  * falling back to the boring-ui proxy when not available.
+ * Passes fetchWithRetry for transparent 401 auto-retry.
  */
+import { useCallback } from 'react'
 import { ChevronRight } from 'lucide-react'
 import SandboxChat from '../../components/chat/SandboxChat'
 import { useServiceConnection } from '../../hooks/useServiceConnection'
 
 export default function SandboxAdapter({ onToggleCollapse }) {
-  const { services } = useServiceConnection()
+  const { services, fetchWithRetry } = useServiceConnection()
   const sandbox = services?.sandbox
+
+  // Bind fetchWithRetry to the sandbox service for SandboxChat
+  const sandboxFetch = useCallback(
+    (url, init) => fetchWithRetry('sandbox', url, init),
+    [fetchWithRetry],
+  )
 
   return (
     <>
@@ -32,6 +40,7 @@ export default function SandboxAdapter({ onToggleCollapse }) {
           <SandboxChat
             baseUrl={sandbox?.url}
             authToken={sandbox?.token}
+            authFetch={sandboxFetch}
           />
         </div>
       </div>

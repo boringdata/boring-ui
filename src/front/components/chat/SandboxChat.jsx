@@ -104,7 +104,7 @@ const agentLabels = {
   mock: 'Mock',
 }
 
-export default function SandboxChat({ baseUrl, authToken }) {
+export default function SandboxChat({ baseUrl, authToken, authFetch }) {
   // Resolve service base URL: direct connect URL or proxy fallback
   const serviceBase = baseUrl || buildApiUrl('/api/sandbox')
 
@@ -118,6 +118,15 @@ export default function SandboxChat({ baseUrl, authToken }) {
       return headers
     },
     [authToken],
+  )
+
+  // Use authFetch (with 401 auto-retry) when available, else plain fetch
+  const doFetch = useCallback(
+    (url, init = {}) => {
+      if (authFetch) return authFetch(url, init)
+      return fetch(url, { ...init, headers: authHeaders(init.headers || {}) })
+    },
+    [authFetch, authHeaders],
   )
   // Sandbox lifecycle
   const [sandboxStatus, setSandboxStatus] = useState(null) // null | 'starting' | 'running' | 'error' | 'not_running'
@@ -246,9 +255,7 @@ export default function SandboxChat({ baseUrl, authToken }) {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const resp = await fetch(`${serviceBase}/v1/agents`, {
-        headers: authHeaders(),
-      })
+      const resp = await doFetch(`${serviceBase}/v1/agents`)
       if (!resp.ok) return
       const data = await resp.json()
       const agentList = data.agents || []
@@ -256,7 +263,7 @@ export default function SandboxChat({ baseUrl, authToken }) {
     } catch {
       // Agents not available yet
     }
-  }, [serviceBase, authHeaders])
+  }, [serviceBase, doFetch])
 
   // --- Session management ---
 
@@ -270,11 +277,11 @@ export default function SandboxChat({ baseUrl, authToken }) {
       offsetRef.current = 0
 
       try {
-        const resp = await fetch(
+        const resp = await doFetch(
           `${serviceBase}/v1/sessions/${id}`,
           {
             method: 'POST',
-            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ agent }),
           },
         )
@@ -288,7 +295,7 @@ export default function SandboxChat({ baseUrl, authToken }) {
         setSessionError(err.message)
       }
     },
-    [selectedAgent, serviceBase, authHeaders],
+    [selectedAgent, serviceBase, doFetch],
   )
 
   const endSession = useCallback(async () => {
@@ -303,9 +310,9 @@ export default function SandboxChat({ baseUrl, authToken }) {
       sseAbortRef.current = null
     }
     try {
-      await fetch(
+      await doFetch(
         `${serviceBase}/v1/sessions/${sessionId}/terminate`,
-        { method: 'POST', headers: authHeaders() },
+        { method: 'POST' },
       )
     } catch {
       // Ignore
@@ -315,7 +322,7 @@ export default function SandboxChat({ baseUrl, authToken }) {
     setDeltaBuffer({})
     setStreaming(false)
     offsetRef.current = 0
-  }, [sessionId, serviceBase, authHeaders])
+  }, [sessionId, serviceBase, doFetch])
 
   // --- Event processing ---
 
@@ -405,11 +412,11 @@ export default function SandboxChat({ baseUrl, authToken }) {
     abortRef.current = controller
 
     try {
-      const resp = await fetch(
+      const resp = await doFetch(
         `${serviceBase}/v1/sessions/${sessionId}/messages/stream`,
         {
           method: 'POST',
-          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: prompt }),
           signal: controller.signal,
         },
@@ -459,7 +466,7 @@ export default function SandboxChat({ baseUrl, authToken }) {
       setStreaming(false)
       abortRef.current = null
     }
-  }, [message, sessionId, streaming, processEvent, serviceBase, authHeaders])
+  }, [message, sessionId, streaming, processEvent, serviceBase, doFetch])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {
