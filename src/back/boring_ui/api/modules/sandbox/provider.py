@@ -107,6 +107,11 @@ class SandboxInfo:
     workspace_path: str  # Path to workspace inside sandbox
     provider: str  # "local" or "sprites"
 
+    # Extensions for Sprites + Direct Connect (all have defaults for compat)
+    protocol: str = "rest+sse"  # e.g. "rest+sse" for sandbox-agent
+    user_id: str = ""  # optional; may be empty in single-user
+    repo_url: str = ""  # optional; for idempotency checks / UI display
+
 
 # ---------------------------------------------------------------------------
 # Checkpoint types  (bd-1ni.2.2)
