@@ -105,8 +105,8 @@ const agentLabels = {
 }
 
 export default function SandboxChat({ baseUrl, authToken, authFetch }) {
-  // Resolve service base URL: direct connect URL or proxy fallback
-  const serviceBase = baseUrl || buildApiUrl('/api/sandbox')
+  // Direct connect URL (required for service API calls)
+  const serviceBase = baseUrl
 
   // Build headers with optional auth token
   const authHeaders = useCallback(
@@ -491,6 +491,15 @@ export default function SandboxChat({ baseUrl, authToken, authFetch }) {
   )
 
   // --- Render states ---
+
+  if (!serviceBase) {
+    return (
+      <div className="sandbox-chat sandbox-chat--loading">
+        <Loader2 size={20} className="sandbox-chat-spinner" />
+        <span>Connecting to sandbox service...</span>
+      </div>
+    )
+  }
 
   if (sandboxStatus === null || sandboxStatus === 'starting') {
     return (
