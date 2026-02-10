@@ -3,7 +3,7 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities, useKeyboardShortcuts, useProjectRoot, useBrowserTitle, useApprovals } from './hooks'
+import { ThemeProvider, useCapabilities, useKeyboardShortcuts, useProjectRoot, useBrowserTitle, useApprovals, useApprovalPanels } from './hooks'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import { createPanelToggle } from './utils/panelToggleUtils'
@@ -445,96 +445,17 @@ export default function App() {
     [dockApi, openFileAtPosition]
   )
 
-  useEffect(() => {
-    if (!dockApi || !approvalsLoaded) return
-    const pendingIds = new Set(approvals.map((req) => req.id))
-    const panels = Array.isArray(dockApi.panels)
-      ? dockApi.panels
-      : typeof dockApi.getPanels === 'function'
-        ? dockApi.getPanels()
-        : []
-
-    panels.forEach((panel) => {
-      if (!panel?.id?.startsWith('review-')) return
-      const requestId = panel.id.replace('review-', '')
-      if (!pendingIds.has(requestId)) {
-        panel.api.close()
-      }
-    })
-
-    approvals.forEach((approval) => {
-      const panelId = `review-${approval.id}`
-      const approvalPath = normalizeApprovalPath(approval)
-      const existingPanel = dockApi.getPanel(panelId)
-      const params = {
-        request: approval,
-        filePath: approvalPath,
-        onDecision: handleDecision,
-        onOpenFile: openFile,
-      }
-
-      if (existingPanel) {
-        existingPanel.api.updateParameters(params)
-        existingPanel.api.setTitle(getReviewTitle(approval))
-        return
-      }
-
-      // Get panel references for positioning
-      const emptyPanel = dockApi.getPanel('empty-center')
-      const shellPanel = dockApi.getPanel('shell')
-
-      // Find existing editor/review panels to add as sibling tab
-      const allPanels = Array.isArray(dockApi.panels) ? dockApi.panels : []
-      const existingEditorPanel = allPanels.find(p => p.id.startsWith('editor-') || p.id.startsWith('review-'))
-
-      // Priority: existing editor group > centerGroupRef > empty panel > shell > fallback
-      let position
-      if (existingEditorPanel?.group) {
-        // Add as tab next to existing editors/reviews
-        position = { referenceGroup: existingEditorPanel.group }
-      } else if (centerGroupRef.current) {
-        position = { referenceGroup: centerGroupRef.current }
-      } else if (emptyPanel?.group) {
-        position = { referenceGroup: emptyPanel.group }
-      } else if (shellPanel?.group) {
-        // Add above shell to maintain center column structure
-        position = { direction: 'above', referenceGroup: shellPanel.group }
-      } else {
-        position = { direction: 'right', referencePanel: 'filetree' }
-      }
-
-      const panel = dockApi.addPanel({
-        id: panelId,
-        component: 'review',
-        title: getReviewTitle(approval),
-        position,
-        params,
-      })
-
-      // Close empty panel AFTER adding review to its group
-      if (emptyPanel) {
-        emptyPanel.api.close()
-      }
-
-      if (panel?.group) {
-        panel.group.header.hidden = false
-        centerGroupRef.current = panel.group
-        // Apply minimum height constraint to center group (use Infinity to allow resize)
-        panel.group.api.setConstraints({
-          minimumHeight: panelMinRef.current.center,
-          maximumHeight: Infinity,
-        })
-      }
-    })
-  }, [
+  useApprovalPanels({
+    dockApi,
     approvals,
     approvalsLoaded,
-    dockApi,
+    normalizeApprovalPath,
     getReviewTitle,
     handleDecision,
-    normalizeApprovalPath,
     openFile,
-  ])
+    centerGroupRef,
+    panelMinRef,
+  })
 
   const onReady = (event) => {
     const api = event.api

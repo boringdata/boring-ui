@@ -35,3 +35,7 @@ export {
 export {
   useApprovals,
 } from './useApprovals'
+
+export {
+  useApprovalPanels,
+} from './useApprovalPanels'
