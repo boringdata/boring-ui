@@ -13,6 +13,7 @@ from .modules.git import create_git_router
 from .modules.pty import create_pty_router
 from .modules.stream import create_stream_router
 from .modules.sandbox import SandboxManager, create_provider
+from .modules.companion import CompanionManager, create_companion_provider
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
 from .auth import ServiceTokenIssuer
 from .capabilities import (
@@ -22,8 +23,9 @@ from .capabilities import (
     create_capabilities_router,
 )
 
-# Global sandbox manager (for lifespan management)
+# Global managers (for lifespan management)
 _sandbox_manager: SandboxManager | None = None
+_companion_manager: CompanionManager | None = None
 
 
 def create_app(
@@ -35,6 +37,7 @@ def create_app(
     include_stream: bool = True,
     include_approval: bool = True,
     include_sandbox: bool = False,
+    include_companion: bool = False,
     routers: list[str] | None = None,
     registry: RouterRegistry | None = None,
 ) -> FastAPI:
@@ -51,8 +54,9 @@ def create_app(
         include_stream: Include Claude stream WebSocket router (default: True)
         include_approval: Include approval workflow router (default: True)
         include_sandbox: Include sandbox-agent router (default: False)
+        include_companion: Include Companion server router (default: False)
         routers: List of router names to include. If None, uses include_* flags.
-            Valid names: 'files', 'git', 'pty', 'stream', 'approval', 'sandbox'
+            Valid names: 'files', 'git', 'pty', 'stream', 'approval', 'sandbox', 'companion'
         registry: Custom router registry. Defaults to create_default_registry().
 
     Returns:
@@ -79,7 +83,7 @@ def create_app(
         # Using router list (alternative to include_* flags)
         app = create_app(routers=['files', 'git'])  # Only file and git routes
     """
-    global _sandbox_manager
+    global _sandbox_manager, _companion_manager
 
     # Apply defaults
     config = config or APIConfig(workspace_root=Path.cwd())
@@ -87,7 +91,8 @@ def create_app(
     approval_store = approval_store or InMemoryApprovalStore()
     registry = registry or create_default_registry()
 
-    # Generate per-session auth token for sandbox-agent Direct Connect
+    # Auth infrastructure: token issuer (JWT) + static token for sandbox
+    token_issuer = ServiceTokenIssuer()
     sandbox_auth_token = secrets.token_hex(16)
     cors_origin = get_cors_origin()
 
@@ -106,6 +111,24 @@ def create_app(
         )
         _sandbox_manager = sandbox_manager
 
+    # Create companion manager if needed
+    companion_manager: CompanionManager | None = None
+    if include_companion or (routers and 'companion' in routers):
+        companion_config = {
+            'COMPANION_PORT': os.environ.get('COMPANION_PORT', '3456'),
+            'COMPANION_WORKSPACE': os.environ.get('COMPANION_WORKSPACE', str(config.workspace_root)),
+            'COMPANION_SIGNING_KEY': token_issuer.signing_key_hex,
+            'COMPANION_CORS_ORIGIN': cors_origin,
+        }
+        server_dir = os.environ.get('COMPANION_SERVER_DIR')
+        if server_dir:
+            companion_config['COMPANION_SERVER_DIR'] = server_dir
+        companion_manager = CompanionManager(
+            create_companion_provider(companion_config),
+            service_token=token_issuer.signing_key_hex,
+        )
+        _companion_manager = companion_manager
+
     # Determine which routers to include
     # If routers list is provided, use it; otherwise use include_* flags
     if routers is not None:
@@ -121,6 +144,8 @@ def create_app(
             enabled_routers.add('approval')
         if include_sandbox:
             enabled_routers.add('sandbox')
+        if include_companion:
+            enabled_routers.add('companion')
 
     # Support 'stream' alias -> 'chat_claude_code' for backward compatibility
     if 'stream' in enabled_routers:
@@ -137,6 +162,7 @@ def create_app(
         'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
         'sandbox': 'sandbox' in enabled_routers,
+        'companion': 'companion' in enabled_routers,
     }
 
     # Lifespan handler for cleanup
@@ -144,10 +170,15 @@ def create_app(
     async def lifespan(app: FastAPI):
         # Startup
         yield
-        # Shutdown - cleanup sandbox
+        # Shutdown - cleanup managed subprocesses
         if sandbox_manager:
             try:
                 await sandbox_manager.shutdown()
+            except Exception:
+                pass  # Best effort cleanup
+        if companion_manager:
+            try:
+                await companion_manager.shutdown()
             except Exception:
                 pass  # Best effort cleanup
 
@@ -177,6 +208,7 @@ def create_app(
         'stream': (config,),  # Alias
         'approval': (approval_store,),
         'sandbox': (sandbox_manager,) if sandbox_manager else (),
+        'companion': (companion_manager,) if companion_manager else (),
     }
 
     # Track mounted factories to avoid double-mounting aliases
@@ -196,7 +228,6 @@ def create_app(
             app.include_router(factory(*args), prefix=info.prefix)
 
     # Build service connection registry for Direct Connect
-    token_issuer = ServiceTokenIssuer()
     service_registry: dict[str, ServiceConnectionInfo] = {}
 
     if 'sandbox' in enabled_routers and sandbox_manager:
@@ -207,6 +238,16 @@ def create_app(
             url=f'http://127.0.0.1:{sandbox_port}',
             token=sandbox_auth_token,  # Static token matching --token flag
             qp_token=sandbox_auth_token,  # Same token for SSE/WS
+            protocol='rest+sse',
+        )
+
+    if 'companion' in enabled_routers and companion_manager:
+        companion_port = companion_manager.provider.port
+        service_registry['companion'] = ServiceConnectionInfo(
+            name='companion',
+            url=f'http://127.0.0.1:{companion_port}',
+            token='',  # JWT issued per-request by token_issuer
+            qp_token='',
             protocol='rest+sse',
         )
 

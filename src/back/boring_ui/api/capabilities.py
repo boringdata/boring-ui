@@ -97,6 +97,7 @@ def create_default_registry() -> RouterRegistry:
     from .modules.pty import create_pty_router
     from .modules.stream import create_stream_router
     from .modules.sandbox import create_sandbox_router
+    from .modules.companion import create_companion_router
     from .approval import create_approval_router
 
     registry = RouterRegistry()
@@ -153,6 +154,13 @@ def create_default_registry() -> RouterRegistry:
         create_sandbox_router,
         description='Sandbox-agent proxy and lifecycle management',
         tags=['sandbox'],
+    )
+    registry.register(
+        'companion',
+        '/api',
+        create_companion_router,
+        description='Companion server lifecycle management',
+        tags=['companion'],
     )
 
     return registry
