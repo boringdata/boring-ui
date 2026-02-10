@@ -7,20 +7,13 @@ import {
   ThemeProvider, useKeyboardShortcuts, useBrowserTitle,
   useApprovals, useApprovalPanels, useAppState, usePanelToggle,
   usePanelParams, useCollapsedState, useActivePanel, useDragDrop,
-  useUrlSync, useTabManager, useFileOperations, useLayoutInit,
+  useUrlSync, useTabManager, useFileOperations,
+  useLayoutInit, useLayoutRestore,
 } from './hooks'
 import {
   normalizeApprovalPath as _normalizeApprovalPath,
   getReviewTitle as _getReviewTitle,
 } from './utils/approvalUtils'
-import { applyPanelSizes } from './utils/layoutUtils'
-import {
-  LAYOUT_VERSION,
-  loadLayout,
-  saveLayout,
-  pruneEmptyGroups,
-  getFileName,
-} from './layout'
 import ThemeToggle from './components/ThemeToggle'
 import AppHeader from './components/AppHeader'
 import CapabilityWarning from './components/CapabilityWarning'
