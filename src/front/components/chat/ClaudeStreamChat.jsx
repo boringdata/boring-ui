@@ -14,13 +14,16 @@ import ChatPanel, { chatThemeVars } from './ChatPanel'
 import MessageList, { Messages, EmptyState } from './MessageList'
 import TextBlock from './TextBlock'
 import SessionHeader from './SessionHeader'
-import BashToolRenderer from './BashToolRenderer'
-import ReadToolRenderer from './ReadToolRenderer'
-import WriteToolRenderer from './WriteToolRenderer'
-import EditToolRenderer from './EditToolRenderer'
-import GlobToolRenderer from './GlobToolRenderer'
-import GrepToolRenderer from './GrepToolRenderer'
-import ToolUseBlock, { ToolOutput } from './ToolUseBlock'
+import {
+  BashRenderer as BashToolRenderer,
+  ReadRenderer as ReadToolRenderer,
+  WriteRenderer as WriteToolRenderer,
+  EditRenderer as EditToolRenderer,
+  GlobRenderer as GlobToolRenderer,
+  GrepRenderer as GrepToolRenderer,
+  ToolUseBlock,
+  ToolOutput,
+} from '../../shared/renderers'
 import PermissionPanel from './PermissionPanel'
 import './styles.css'
 import { buildApiUrl, getWsBase } from '../../utils/apiBase'
