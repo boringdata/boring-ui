@@ -15,9 +15,11 @@ Example::
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import random
 import shutil
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
 
@@ -167,3 +169,285 @@ class SpritesClient:
 
     async def __aexit__(self, *args: object) -> None:
         await self.close()
+
+    # ------ retry ------
+
+    _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+    async def _request_with_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        operation: str = "",
+        safe_to_retry: bool = True,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """Send an HTTP request with optional exponential-backoff retry.
+
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE).
+            path: URL path relative to base_url.
+            operation: Human-readable label for logging.
+            safe_to_retry: If False and strategy is "exponential",
+                retries are skipped (non-idempotent operations).
+            **kwargs: Forwarded to ``httpx.AsyncClient.request``.
+
+        Returns:
+            The successful httpx.Response.
+
+        Raises:
+            SpritesAPIError: On non-retryable HTTP errors or exhausted retries.
+        """
+        max_attempts = (
+            self._max_retries
+            if self._retry_strategy == "exponential" and safe_to_retry
+            else 1
+        )
+        last_exc: Exception | None = None
+        op_label = operation or f"{method} {path}"
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                resp = await self._http.request(method, path, **kwargs)
+
+                if resp.status_code < 400:
+                    return resp
+
+                if resp.status_code in self._RETRYABLE_STATUS and attempt < max_attempts:
+                    sleep_s = self._backoff_delay(attempt, resp)
+                    logger.warning(
+                        "Retryable error, backing off",
+                        extra={
+                            "operation": op_label,
+                            "attempt": attempt,
+                            "status_code": resp.status_code,
+                            "sleep_ms": int(sleep_s * 1000),
+                        },
+                    )
+                    await asyncio.sleep(sleep_s)
+                    continue
+
+                raise SpritesAPIError(resp.status_code, resp.text[:500])
+
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                last_exc = exc
+                if attempt < max_attempts:
+                    sleep_s = self._backoff_delay(attempt)
+                    logger.warning(
+                        "Connection error, backing off",
+                        extra={
+                            "operation": op_label,
+                            "attempt": attempt,
+                            "error": str(exc)[:200],
+                            "sleep_ms": int(sleep_s * 1000),
+                        },
+                    )
+                    await asyncio.sleep(sleep_s)
+                    continue
+                raise SpritesAPIError(0, f"Connection failed: {exc}") from exc
+
+        # Should not reach here, but guard
+        raise SpritesAPIError(0, f"Retry exhausted: {last_exc}")  # pragma: no cover
+
+    def _backoff_delay(
+        self, attempt: int, response: httpx.Response | None = None
+    ) -> float:
+        """Calculate delay with jitter, respecting Retry-After if present."""
+        if response is not None:
+            retry_after = response.headers.get("retry-after")
+            if retry_after:
+                try:
+                    return max(0.0, min(float(retry_after), 60.0))
+                except ValueError:
+                    pass
+        base = 2 ** (attempt - 1)
+        return base + random.uniform(0, base * 0.5)
+
+    # ------ sprite CRUD ------
+
+    async def create_sprite(self, name: str) -> dict:
+        """Create a new sprite or return existing (idempotent).
+
+        Args:
+            name: Sprite name (prefix applied automatically).
+
+        Returns:
+            Sprite metadata from the API.
+        """
+        prefixed = self._prefixed_name(name)
+        resp = await self._request_with_retry(
+            "POST",
+            f"/orgs/{self._org}/sprites",
+            operation="create_sprite",
+            json={"name": prefixed},
+        )
+        return resp.json()
+
+    async def get_sprite(self, name: str) -> dict:
+        """Get sprite metadata.
+
+        Args:
+            name: Sprite name (prefix applied automatically).
+
+        Returns:
+            Sprite metadata dict.
+
+        Raises:
+            SpritesAPIError: If sprite not found (404) or other error.
+        """
+        prefixed = self._prefixed_name(name)
+        resp = await self._request_with_retry(
+            "GET",
+            f"/orgs/{self._org}/sprites/{prefixed}",
+            operation="get_sprite",
+        )
+        return resp.json()
+
+    async def delete_sprite(self, name: str) -> None:
+        """Delete a sprite permanently.
+
+        Args:
+            name: Sprite name (prefix applied automatically).
+
+        Raises:
+            SpritesAPIError: On error (404 is treated as success).
+        """
+        prefixed = self._prefixed_name(name)
+        try:
+            await self._request_with_retry(
+                "DELETE",
+                f"/orgs/{self._org}/sprites/{prefixed}",
+                operation="delete_sprite",
+            )
+        except SpritesAPIError as e:
+            if e.status_code != 404:
+                raise
+
+    async def list_sprites(self) -> list[dict]:
+        """List all sprites in the org.
+
+        Returns:
+            List of sprite metadata dicts.
+        """
+        resp = await self._request_with_retry(
+            "GET",
+            f"/orgs/{self._org}/sprites",
+            operation="list_sprites",
+        )
+        return resp.json()
+
+    # ------ exec ------
+
+    async def exec(
+        self, name: str, command: str, *, timeout: float = 120.0
+    ) -> tuple[int, str, str]:
+        """Execute a shell command inside a sprite via the CLI.
+
+        Uses the ``sprite`` CLI because the Sprites.dev exec API
+        is WebSocket-only.
+
+        Args:
+            name: Sprite name (prefix applied automatically).
+            command: Shell command to execute.
+            timeout: Max seconds to wait for the command.
+
+        Returns:
+            Tuple of (return_code, stdout, stderr).
+
+        Raises:
+            SpritesExecError: If command exits non-zero.
+            asyncio.TimeoutError: If timeout exceeded.
+        """
+        prefixed = self._prefixed_name(name)
+        proc = await asyncio.create_subprocess_exec(
+            self._cli_path,
+            "exec",
+            "--org",
+            self._org,
+            prefixed,
+            "--",
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise
+
+        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+        rc = proc.returncode or 0
+
+        if rc != 0:
+            raise SpritesExecError(rc, stdout, stderr)
+
+        return rc, stdout, stderr
+
+    # ------ checkpoints ------
+
+    async def create_checkpoint(self, name: str, label: str = "") -> dict:
+        """Create a checkpoint of a sprite's state.
+
+        Args:
+            name: Sprite name (prefix applied automatically).
+            label: Optional human-readable label.
+
+        Returns:
+            Checkpoint metadata from the API.
+        """
+        prefixed = self._prefixed_name(name)
+        body: dict[str, str] = {}
+        if label:
+            body["label"] = label
+        resp = await self._request_with_retry(
+            "POST",
+            f"/orgs/{self._org}/sprites/{prefixed}/checkpoints",
+            operation="create_checkpoint",
+            safe_to_retry=False,
+            json=body,
+        )
+        return resp.json()
+
+    async def list_checkpoints(self, name: str) -> list[dict]:
+        """List checkpoints for a sprite.
+
+        Args:
+            name: Sprite name (prefix applied automatically).
+
+        Returns:
+            List of checkpoint metadata dicts.
+        """
+        prefixed = self._prefixed_name(name)
+        resp = await self._request_with_retry(
+            "GET",
+            f"/orgs/{self._org}/sprites/{prefixed}/checkpoints",
+            operation="list_checkpoints",
+        )
+        return resp.json()
+
+    async def restore_checkpoint(
+        self, name: str, checkpoint_id: str
+    ) -> dict:
+        """Restore a sprite to a previous checkpoint.
+
+        Args:
+            name: Sprite name (prefix applied automatically).
+            checkpoint_id: ID of the checkpoint to restore.
+
+        Returns:
+            Restore result from the API.
+        """
+        prefixed = self._prefixed_name(name)
+        resp = await self._request_with_retry(
+            "POST",
+            f"/orgs/{self._org}/sprites/{prefixed}/checkpoints/{checkpoint_id}/restore",
+            operation="restore_checkpoint",
+            safe_to_retry=False,
+        )
+        return resp.json()
