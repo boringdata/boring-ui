@@ -1,9 +1,11 @@
 """Service token issuance for Direct Connect architecture.
 
-Issues standard HS256 JWTs that chat services (sandbox-agent, Companion, etc.)
-validate to authorize direct browser connections. Signing key lives in memory
-only and regenerates on each boring-ui startup.
+Issues tokens for chat services to authorize direct browser connections.
+Two token types:
+  - JWT (HS256): For services that validate JWT claims (Companion/Hono)
+  - Plain bearer: For services with built-in --token flag (sandbox-agent/Rust)
 
+Signing key lives in memory only, regenerated each boring-ui startup.
 See .planning/DIRECT_CONNECT_ARCHITECTURE.md for design details.
 """
 
@@ -53,6 +55,15 @@ class ServiceTokenIssuer:
         Mitigates log-leak risk since query params may appear in server logs.
         """
         return self.issue_token(service, ttl_seconds=120)
+
+    def generate_service_token(self) -> str:
+        """Generate a plain random bearer token for services with built-in auth.
+
+        Used for sandbox-agent (compiled Rust binary) which accepts a fixed
+        bearer token via --token CLI flag and does simple string comparison.
+        Not a JWT — no claims, no expiry, valid until process restart.
+        """
+        return os.urandom(24).hex()
 
     @staticmethod
     def verify_token(

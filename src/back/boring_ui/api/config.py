@@ -22,6 +22,28 @@ def _default_cors_origins() -> list[str]:
     ]
 
 
+def get_cors_origin() -> str:
+    """Detect the CORS origin to pass to chat service subprocesses.
+
+    Services need to know which browser origin to accept requests from.
+    This is passed via CORS_ORIGIN env var to subprocesses.
+
+    Priority:
+      1. CORS_ORIGIN env var (explicit override)
+      2. VITE_DEV_ORIGIN env var (set by dev tooling)
+      3. Default dev origin (http://localhost:5173)
+    """
+    explicit = os.environ.get('CORS_ORIGIN', '').strip()
+    if explicit:
+        return explicit
+
+    vite_origin = os.environ.get('VITE_DEV_ORIGIN', '').strip()
+    if vite_origin:
+        return vite_origin
+
+    return 'http://localhost:5173'
+
+
 @dataclass
 class APIConfig:
     """Central configuration for all API routers.
