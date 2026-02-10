@@ -1,8 +1,14 @@
 /**
  * SandboxChat - Native chat component for sandbox-agent.
  *
- * Communicates directly with the sandbox-agent REST API via the
- * backend proxy at /api/sandbox/v1/*, replacing the iframe approach.
+ * Communicates with the sandbox-agent REST API. Service API calls
+ * (agents, sessions, messages) use configurable baseUrl + authToken
+ * props for direct connect support. Lifecycle calls (start/stop/status)
+ * always go through the boring-ui backend.
+ *
+ * Props:
+ *   baseUrl   - Base URL for sandbox-agent service API (default: proxy via backend)
+ *   authToken - Bearer token for service auth (optional, for direct connect)
  *
  * Supports:
  * - Sandbox lifecycle management (auto-start, status monitoring)
@@ -98,7 +104,21 @@ const agentLabels = {
   mock: 'Mock',
 }
 
-export default function SandboxChat() {
+export default function SandboxChat({ baseUrl, authToken }) {
+  // Resolve service base URL: direct connect URL or proxy fallback
+  const serviceBase = baseUrl || buildApiUrl('/api/sandbox')
+
+  // Build headers with optional auth token
+  const authHeaders = useCallback(
+    (extra = {}) => {
+      const headers = { ...extra }
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`
+      }
+      return headers
+    },
+    [authToken],
+  )
   // Sandbox lifecycle
   const [sandboxStatus, setSandboxStatus] = useState(null) // null | 'starting' | 'running' | 'error' | 'not_running'
   const [sandboxError, setSandboxError] = useState(null)
@@ -226,7 +246,9 @@ export default function SandboxChat() {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const resp = await fetch(buildApiUrl('/api/sandbox/v1/agents'))
+      const resp = await fetch(`${serviceBase}/v1/agents`, {
+        headers: authHeaders(),
+      })
       if (!resp.ok) return
       const data = await resp.json()
       const agentList = data.agents || []
@@ -234,7 +256,7 @@ export default function SandboxChat() {
     } catch {
       // Agents not available yet
     }
-  }, [])
+  }, [serviceBase, authHeaders])
 
   // --- Session management ---
 
@@ -249,10 +271,10 @@ export default function SandboxChat() {
 
       try {
         const resp = await fetch(
-          buildApiUrl(`/api/sandbox/v1/sessions/${id}`),
+          `${serviceBase}/v1/sessions/${id}`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ agent }),
           },
         )
@@ -266,7 +288,7 @@ export default function SandboxChat() {
         setSessionError(err.message)
       }
     },
-    [selectedAgent],
+    [selectedAgent, serviceBase, authHeaders],
   )
 
   const endSession = useCallback(async () => {
@@ -282,8 +304,8 @@ export default function SandboxChat() {
     }
     try {
       await fetch(
-        buildApiUrl(`/api/sandbox/v1/sessions/${sessionId}/terminate`),
-        { method: 'POST' },
+        `${serviceBase}/v1/sessions/${sessionId}/terminate`,
+        { method: 'POST', headers: authHeaders() },
       )
     } catch {
       // Ignore
@@ -293,7 +315,7 @@ export default function SandboxChat() {
     setDeltaBuffer({})
     setStreaming(false)
     offsetRef.current = 0
-  }, [sessionId])
+  }, [sessionId, serviceBase, authHeaders])
 
   // --- Event processing ---
 
@@ -384,10 +406,10 @@ export default function SandboxChat() {
 
     try {
       const resp = await fetch(
-        buildApiUrl(`/api/sandbox/v1/sessions/${sessionId}/messages/stream`),
+        `${serviceBase}/v1/sessions/${sessionId}/messages/stream`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ message: prompt }),
           signal: controller.signal,
         },
@@ -437,7 +459,7 @@ export default function SandboxChat() {
       setStreaming(false)
       abortRef.current = null
     }
-  }, [message, sessionId, streaming, processEvent])
+  }, [message, sessionId, streaming, processEvent, serviceBase, authHeaders])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {
