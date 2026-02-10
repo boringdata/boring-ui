@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
+import { createPanelToggle } from './utils/panelToggleUtils'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -14,7 +15,6 @@ import {
   loadLayout,
   saveLayout,
   loadCollapsedState,
-  saveCollapsedState,
   loadPanelSizes,
   savePanelSizes,
   pruneEmptyGroups,
@@ -127,66 +127,36 @@ export default function App() {
   const panelMinRef = useRef(panelMin)
   panelMinRef.current = panelMin
 
-  // Toggle sidebar collapse - capture size before collapsing
-  const toggleFiletree = useCallback(() => {
-    if (!collapsed.filetree && dockApi) {
-      // Capture current size before collapsing
-      const filetreePanel = dockApi.getPanel('filetree')
-      const filetreeGroup = filetreePanel?.group
-      if (filetreeGroup) {
-        const currentWidth = filetreeGroup.api.width
-        if (currentWidth > panelCollapsedRef.current.filetree) {
-          panelSizesRef.current = { ...panelSizesRef.current, filetree: currentWidth }
-          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
-        }
-      }
-    }
-    setCollapsed((prev) => {
-      const next = { ...prev, filetree: !prev.filetree }
-      saveCollapsedState(next, storagePrefixRef.current)
-      return next
-    })
-  }, [collapsed.filetree, dockApi])
+  // Toggle sidebar/panel collapse - uses extracted utility
+  const toggleFiletree = useCallback(
+    () => createPanelToggle({
+      panelId: 'filetree', panelKey: 'filetree', dimension: 'width',
+      dockApi, isCollapsed: collapsed.filetree, setCollapsed,
+      panelSizesRef, collapsedThreshold: panelCollapsedRef.current.filetree,
+      storagePrefix: storagePrefixRef.current,
+    })(),
+    [collapsed.filetree, dockApi],
+  )
 
-  const toggleTerminal = useCallback(() => {
-    if (!collapsed.terminal && dockApi) {
-      // Capture current size before collapsing
-      const terminalPanel = dockApi.getPanel('terminal')
-      const terminalGroup = terminalPanel?.group
-      if (terminalGroup) {
-        const currentWidth = terminalGroup.api.width
-        if (currentWidth > panelCollapsedRef.current.terminal) {
-          panelSizesRef.current = { ...panelSizesRef.current, terminal: currentWidth }
-          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
-        }
-      }
-    }
-    setCollapsed((prev) => {
-      const next = { ...prev, terminal: !prev.terminal }
-      saveCollapsedState(next, storagePrefixRef.current)
-      return next
-    })
-  }, [collapsed.terminal, dockApi])
+  const toggleTerminal = useCallback(
+    () => createPanelToggle({
+      panelId: 'terminal', panelKey: 'terminal', dimension: 'width',
+      dockApi, isCollapsed: collapsed.terminal, setCollapsed,
+      panelSizesRef, collapsedThreshold: panelCollapsedRef.current.terminal,
+      storagePrefix: storagePrefixRef.current,
+    })(),
+    [collapsed.terminal, dockApi],
+  )
 
-  const toggleShell = useCallback(() => {
-    if (!collapsed.shell && dockApi) {
-      // Capture current size before collapsing
-      const shellPanel = dockApi.getPanel('shell')
-      const shellGroup = shellPanel?.group
-      if (shellGroup) {
-        const currentHeight = shellGroup.api.height
-        if (currentHeight > panelCollapsedRef.current.shell) {
-          panelSizesRef.current = { ...panelSizesRef.current, shell: currentHeight }
-          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
-        }
-      }
-    }
-    setCollapsed((prev) => {
-      const next = { ...prev, shell: !prev.shell }
-      saveCollapsedState(next, storagePrefixRef.current)
-      return next
-    })
-  }, [collapsed.shell, dockApi])
+  const toggleShell = useCallback(
+    () => createPanelToggle({
+      panelId: 'shell', panelKey: 'shell', dimension: 'height',
+      dockApi, isCollapsed: collapsed.shell, setCollapsed,
+      panelSizesRef, collapsedThreshold: panelCollapsedRef.current.shell,
+      storagePrefix: storagePrefixRef.current,
+    })(),
+    [collapsed.shell, dockApi],
+  )
 
   // Close active tab handler for keyboard shortcut
   const closeTab = useCallback(() => {
