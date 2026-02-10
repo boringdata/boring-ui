@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
@@ -7,24 +7,17 @@ import {
   ThemeProvider, useKeyboardShortcuts, useBrowserTitle,
   useApprovals, useApprovalPanels, useAppState, usePanelToggle,
   usePanelParams, useCollapsedState, useActivePanel, useDragDrop,
-  useUrlSync, useTabManager, useFileOperations,
+  useUrlSync, useTabManager, useFileOperations, useLayoutInit,
 } from './hooks'
 import {
   normalizeApprovalPath as _normalizeApprovalPath,
   getReviewTitle as _getReviewTitle,
 } from './utils/approvalUtils'
-import {
-  applyLockedPanels as applyLockedPanelsUtil,
-  ensureCorePanels as ensureCorePanelsUtil,
-  applyPanelSizes,
-  restoreEmptyPanel,
-} from './utils/layoutUtils'
+import { applyPanelSizes } from './utils/layoutUtils'
 import {
   LAYOUT_VERSION,
-  validateLayoutStructure,
   loadLayout,
   saveLayout,
-  savePanelSizes,
   pruneEmptyGroups,
   getFileName,
 } from './layout'
@@ -35,43 +28,14 @@ import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
 import {
   getGatedComponents,
-  getKnownComponents,
 } from './registry/panes'
 
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
 const POC_MODE = new URLSearchParams(window.location.search).get('poc')
 
-// Debounce helper - delays function execution until after wait ms of inactivity
-const debounce = (fn, wait) => {
-  let timeoutId = null
-  const debounced = (...args) => {
-    if (timeoutId) clearTimeout(timeoutId)
-    timeoutId = setTimeout(() => {
-      timeoutId = null
-      fn(...args)
-    }, wait)
-  }
-  // Allow immediate flush (for beforeunload)
-  debounced.flush = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-      timeoutId = null
-      fn()
-    }
-  }
-  debounced.cancel = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-      timeoutId = null
-    }
-  }
-  return debounced
-}
-
 // Get capability-gated components from pane registry
 // Components with requiresFeatures/requiresRouters will show error states when unavailable
 const components = getGatedComponents(createCapabilityGatedPane)
-const KNOWN_COMPONENTS = getKnownComponents()
 
 // Custom tab component that hides close button (for shell tabs)
 const TabWithoutClose = (props) => <DockviewDefaultTab {...props} hideClose />
@@ -193,349 +157,26 @@ export default function App() {
     panelMinRef,
   })
 
-  const onReady = (event) => {
-    const api = event.api
-    setDockApi(api)
-
-    const applyLockedPanels = () => applyLockedPanelsUtil(api, panelMinRef.current)
-
-    const ensureCorePanels = () => {
-      centerGroupRef.current = ensureCorePanelsUtil(api, panelMinRef.current)
-      applyLockedPanels()
-    }
-
-    // Check if there's a saved layout - if so, DON'T create panels here
-    // Let the layout restoration effect handle it to avoid creating->destroying->recreating
-    // We check localStorage directly since projectRoot isn't available yet
-    let hasSavedLayout = false
-    let invalidLayoutFound = false
-    try {
-      // Use storagePrefix from config (available via closure from outer scope)
-      const layoutKeyPrefix = `${storagePrefix}-`
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
-        if (key && key.startsWith(layoutKeyPrefix) && key.endsWith('-layout')) {
-          const raw = localStorage.getItem(key)
-          if (raw) {
-            const parsed = JSON.parse(raw)
-            const hasValidVersion = parsed?.version >= LAYOUT_VERSION
-            const hasPanels = !!parsed?.panels
-            const hasValidStructure = validateLayoutStructure(parsed)
-
-            // Check if layout is valid
-            if (hasValidVersion && hasPanels && hasValidStructure) {
-              hasSavedLayout = true
-              break
-            }
-
-            // Invalid layout detected - clean up and reload
-            if (!hasValidStructure || !hasValidVersion || !hasPanels) {
-              console.warn('[Layout] Invalid layout detected in onReady, clearing and reloading:', key)
-              localStorage.removeItem(key)
-              // Clear related session storage
-              const keyPrefix = key.replace('-layout', '')
-              localStorage.removeItem(`${keyPrefix}-tabs`)
-              localStorage.removeItem(`${storagePrefix}-terminal-sessions`)
-              localStorage.removeItem(`${storagePrefix}-terminal-active`)
-              localStorage.removeItem(`${storagePrefix}-terminal-chat-interface`)
-              invalidLayoutFound = true
-            }
-          }
-        }
-      }
-    } catch {
-      // Ignore errors checking localStorage
-    }
-
-    // Only create fresh panels if no saved layout exists
-    // Otherwise, layout restoration will handle panel creation
-    if (!hasSavedLayout || invalidLayoutFound) {
-      ensureCorePanels()
-    }
-    ensureCorePanelsRef.current = () => {
-      ensureCorePanels()
-      applyLockedPanels()
-    }
-
-    // Apply initial panel sizes for fresh layout
-    requestAnimationFrame(() => {
-      applyPanelSizes(api, {
-        collapsed: { filetree: false, terminal: false, shell: false },
-        panelSizes: panelSizesRef.current,
-        panelMin: panelMinRef.current,
-        panelCollapsed: panelCollapsedRef.current,
-      })
-    })
-
-    // Handle panel close to clean up tabs state
-    api.onDidRemovePanel((e) => {
-      if (e.id.startsWith('editor-')) {
-        const path = e.id.replace('editor-', '')
-        setTabs((prev) => {
-          const next = { ...prev }
-          delete next[path]
-          return next
-        })
-      }
-    })
-
-
-    // When all editors are closed, show the empty panel again
-    api.onDidRemovePanel(() => restoreEmptyPanel(api, centerGroupRef, panelMinRef.current))
-
-    const saveLayoutNow = () => {
-      if (typeof api.toJSON !== 'function') return
-      // Use refs for stable access in event handlers
-      saveLayout(storagePrefixRef.current, projectRootRef.current, api.toJSON(), layoutVersionRef.current)
-    }
-
-    // Enforce minimum constraints on panels (workaround for dockview not enforcing during drag)
-    const enforceMinimumConstraints = () => {
-      const shellPanel = api.getPanel('shell')
-      const shellGroup = shellPanel?.group
-      if (shellGroup) {
-        const height = shellGroup.api.height
-        const minHeight = panelMinRef.current.shell
-        const collapsedHeight = panelCollapsedRef.current.shell
-        // If height is below minimum but not collapsed, enforce minimum
-        if (height < minHeight && height > collapsedHeight) {
-          shellGroup.api.setSize({ height: minHeight })
-        }
-      }
-    }
-
-    // Save panel sizes when layout changes (user resizes via drag)
-    const savePanelSizesNow = () => {
-      const filetreePanel = api.getPanel('filetree')
-      const terminalPanel = api.getPanel('terminal')
-      const shellPanel = api.getPanel('shell')
-
-      const filetreeGroup = filetreePanel?.group
-      const terminalGroup = terminalPanel?.group
-      const shellGroup = shellPanel?.group
-
-      const newSizes = { ...panelSizesRef.current }
-      let changed = false
-
-      // Only save if not collapsed (width/height > collapsed size)
-      if (filetreeGroup && filetreeGroup.api.width > panelCollapsedRef.current.filetree) {
-        if (newSizes.filetree !== filetreeGroup.api.width) {
-          newSizes.filetree = filetreeGroup.api.width
-          changed = true
-        }
-      }
-      if (terminalGroup && terminalGroup.api.width > panelCollapsedRef.current.terminal) {
-        if (newSizes.terminal !== terminalGroup.api.width) {
-          newSizes.terminal = terminalGroup.api.width
-          changed = true
-        }
-      }
-      if (shellGroup && shellGroup.api.height > panelCollapsedRef.current.shell) {
-        // Enforce minimum height before saving
-        const height = Math.max(shellGroup.api.height, panelMinRef.current.shell)
-        if (newSizes.shell !== height) {
-          newSizes.shell = height
-          changed = true
-        }
-      }
-
-      if (changed) {
-        panelSizesRef.current = newSizes
-        savePanelSizes(newSizes, storagePrefixRef.current)
-      }
-    }
-
-    // Debounce layout saves to avoid excessive writes during drag operations
-    const debouncedSaveLayout = debounce(saveLayoutNow, 300)
-    const debouncedSavePanelSizes = debounce(savePanelSizesNow, 300)
-
-    if (typeof api.onDidLayoutChange === 'function') {
-      api.onDidLayoutChange(() => {
-        // Enforce minimum constraints after resize (workaround for dockview)
-        enforceMinimumConstraints()
-        debouncedSaveLayout()
-        debouncedSavePanelSizes()
-      })
-    }
-
-    // Flush pending saves before page unload to avoid data loss
-    window.addEventListener('beforeunload', () => {
-      debouncedSaveLayout.flush()
-      debouncedSavePanelSizes.flush()
-    })
-
-    // Mark as initialized immediately - tabs will be restored via useEffect
-    isInitialized.current = true
-  }
+  // Dockview initialization handler (core panel creation, lifecycle, persistence)
+  const { onReady } = useLayoutInit({
+    setDockApi, setTabs, storagePrefix,
+    panelSizesRef, panelMinRef, panelCollapsedRef,
+    centerGroupRef, ensureCorePanelsRef,
+    storagePrefixRef, projectRootRef, layoutVersionRef,
+    isInitialized,
+  })
 
   // Browser tab title management (extracted hook)
   useBrowserTitle(projectRoot, config.branding)
 
-  // Restore layout once projectRoot is loaded and dockApi is available
-  const layoutRestorationRan = useRef(false)
-  useEffect(() => {
-    // Wait for both dockApi and projectRoot to be available
-    // projectRoot === null means not loaded yet
-    if (!dockApi || projectRoot === null || layoutRestorationRan.current) return
-    layoutRestorationRan.current = true
-
-    const savedLayout = loadLayout(storagePrefix, projectRoot, KNOWN_COMPONENTS, layoutVersion)
-    if (!savedLayout) {
-      if (ensureCorePanelsRef.current) {
-        ensureCorePanelsRef.current()
-        layoutRestored.current = true
-        requestAnimationFrame(() => {
-          applyPanelSizes(dockApi, {
-            collapsed,
-            panelSizes: panelSizesRef.current,
-            panelMin: panelMinRef.current,
-            panelCollapsed: panelCollapsedRef.current,
-          })
-          collapsedEffectRan.current = true
-        })
-      }
-      return
-    }
-    if (savedLayout && typeof dockApi.fromJSON === 'function') {
-      // Since onReady skips panel creation when a saved layout exists,
-      // we can directly call fromJSON without clearing first
-      // This avoids the create->destroy->recreate race condition
-      try {
-        dockApi.fromJSON(savedLayout)
-        layoutRestored.current = true
-
-        // After restoring, apply locked panels and cleanup
-        const filetreePanel = dockApi.getPanel('filetree')
-        const terminalPanel = dockApi.getPanel('terminal')
-        const shellPanel = dockApi.getPanel('shell')
-
-        const filetreeGroup = filetreePanel?.group
-        if (filetreeGroup) {
-          filetreeGroup.locked = true
-          filetreeGroup.header.hidden = true
-        }
-
-        // Update filetree params with callbacks (callbacks can't be serialized in layout JSON)
-        if (filetreePanel) {
-          filetreePanel.api.updateParameters({
-            onOpenFile: openFile,
-            onOpenFileToSide: openFileToSide,
-            onOpenDiff: openDiff,
-            projectRoot,
-            activeFile,
-            activeDiffFile,
-            collapsed: collapsed.filetree,
-            onToggleCollapse: toggleFiletree,
-          })
-        }
-
-        const terminalGroup = terminalPanel?.group
-        if (terminalGroup) {
-          terminalGroup.locked = true
-          terminalGroup.header.hidden = true
-        }
-
-        const shellGroup = shellPanel?.group
-        if (shellGroup) {
-          // Lock group to prevent closing tabs, but show header
-          shellGroup.locked = true
-          shellGroup.header.hidden = false
-          shellGroup.api.setConstraints({
-            minimumHeight: panelMinRef.current.shell,
-            maximumHeight: Infinity,
-          })
-          // Enforce minimum height if saved layout has invalid dimensions
-          // (between collapsed 36px and minimum 100px)
-          const currentHeight = shellGroup.api.height
-          const minHeight = panelMinRef.current.shell
-          const collapsedHeight = panelCollapsedRef.current.shell
-          if (currentHeight < minHeight && currentHeight > collapsedHeight) {
-            shellGroup.api.setSize({ height: minHeight })
-          }
-        }
-
-        // If layout has editor panels, set constraints and close empty-center
-        const panels = Array.isArray(dockApi.panels)
-          ? dockApi.panels
-          : typeof dockApi.getPanels === 'function'
-            ? dockApi.getPanels()
-            : []
-        const editorPanels = panels.filter((p) => p.id.startsWith('editor-'))
-        const hasReviews = panels.some((p) => p.id.startsWith('review-'))
-        if (editorPanels.length > 0 || hasReviews) {
-          // Apply minimum height constraint to editor group (prevents shell from taking all space)
-          // This must happen regardless of whether empty-center exists, since saved layouts
-          // with open editors won't have the empty-center panel
-          const editorPanel = panels.find((p) => p.id.startsWith('editor-') || p.id.startsWith('review-'))
-          if (editorPanel?.group) {
-            centerGroupRef.current = editorPanel.group
-            editorPanel.group.api.setConstraints({
-              minimumHeight: panelMinRef.current.center,
-              maximumHeight: Infinity,
-            })
-          }
-          // Close empty-center if it exists
-          const emptyPanel = dockApi.getPanel('empty-center')
-          if (emptyPanel) {
-            emptyPanel.api.close()
-          }
-        }
-
-        // Update editor panels with callbacks (callbacks can't be serialized in layout JSON)
-        editorPanels.forEach((panel) => {
-          const path = panel.id.replace('editor-', '')
-          panel.api.updateParameters({
-            onContentChange: (p, newContent) => {
-              setTabs((prev) => ({
-                ...prev,
-                [p]: { ...prev[p], content: newContent },
-              }))
-            },
-            onDirtyChange: (p, dirty) => {
-              setTabs((prev) => ({
-                ...prev,
-                [p]: { ...prev[p], isDirty: dirty },
-              }))
-              const editorPanel = dockApi.getPanel(`editor-${p}`)
-              if (editorPanel) {
-                editorPanel.api.setTitle(getFileName(p) + (dirty ? ' *' : ''))
-              }
-            },
-          })
-        })
-
-        // Update centerGroupRef if there's an empty-center panel
-        const emptyPanel = dockApi.getPanel('empty-center')
-        if (emptyPanel?.group) {
-          centerGroupRef.current = emptyPanel.group
-          // Set minimum height for the center group (use Infinity to allow resize)
-          emptyPanel.group.api.setConstraints({
-            minimumHeight: panelMinRef.current.center,
-            maximumHeight: Infinity,
-          })
-        }
-
-        // Prune empty groups
-        const pruned = pruneEmptyGroups(dockApi, KNOWN_COMPONENTS)
-        if (pruned && typeof dockApi.toJSON === 'function') {
-          saveLayout(storagePrefix, projectRoot, dockApi.toJSON(), layoutVersion)
-        }
-
-        // Apply saved panel sizes, respecting collapsed state
-        requestAnimationFrame(() => {
-          applyPanelSizes(dockApi, {
-            collapsed,
-            panelSizes: panelSizesRef.current,
-            panelMin: panelMinRef.current,
-            panelCollapsed: panelCollapsedRef.current,
-          })
-          collapsedEffectRan.current = true
-        })
-      } catch {
-        layoutRestored.current = false
-      }
-    }
-  }, [dockApi, projectRoot, storagePrefix, collapsed.filetree, collapsed.terminal, collapsed.shell, openFile, openFileToSide, openDiff, activeFile, activeDiffFile, toggleFiletree])
+  // Layout restoration from localStorage (extracted hook)
+  useLayoutRestore({
+    dockApi, projectRoot, storagePrefix, layoutVersion,
+    collapsed, openFile, openFileToSide, openDiff,
+    activeFile, activeDiffFile, toggleFiletree, setTabs,
+    centerGroupRef, panelSizesRef, panelMinRef, panelCollapsedRef,
+    collapsedEffectRan, layoutRestored, ensureCorePanelsRef,
+  })
 
   // Track active panel to highlight in file tree and sync URL
   useActivePanel({ dockApi, setActiveFile, setActiveDiffFile })
