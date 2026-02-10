@@ -3,7 +3,7 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
+import { ThemeProvider, useCapabilities, useKeyboardShortcuts, useProjectRoot, useBrowserTitle } from './hooks'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import { createPanelToggle } from './utils/panelToggleUtils'
@@ -114,8 +114,7 @@ export default function App() {
   const isInitialized = useRef(false)
   const layoutRestored = useRef(false)
   const ensureCorePanelsRef = useRef(null)
-  const [projectRoot, setProjectRoot] = useState(null) // null = not loaded yet, '' = loaded but empty
-  const projectRootRef = useRef(null) // Stable ref for callbacks
+  const { projectRoot, projectRootRef } = useProjectRoot()
   const storagePrefixRef = useRef(storagePrefix) // Stable ref for callbacks
   storagePrefixRef.current = storagePrefix
   const layoutVersionRef = useRef(layoutVersion) // Stable ref for callbacks
@@ -1027,56 +1026,8 @@ export default function App() {
     isInitialized.current = true
   }
 
-  // Fetch project root for copy path feature and project-specific storage
-  useEffect(() => {
-    let retryCount = 0
-    let fallbackApplied = false
-    const maxRetries = 6 // ~3 seconds total before initial fallback
-    const fetchProjectRoot = () => {
-      fetch(buildApiUrl('/api/project'))
-        .then((r) => r.json())
-        .then((data) => {
-          const root = data.root || ''
-          // Don't update projectRoot after fallback to avoid overwriting project-scoped state
-          // (layout/tabs were restored from fallback key; updating root would save to wrong location)
-          if (fallbackApplied) {
-            console.info('[App] Backend available but fallback already applied, refresh to reload project state')
-            return
-          }
-          projectRootRef.current = root
-          setProjectRoot(root)
-        })
-        .catch(() => {
-          retryCount++
-          if (retryCount < maxRetries) {
-            // Retry on failure - server might not be ready yet
-            setTimeout(fetchProjectRoot, 500)
-          } else if (!fallbackApplied) {
-            // After max retries, fall back to empty string to unblock layout restoration
-            // We don't continue retrying - user should refresh once backend is available
-            console.warn('[App] Failed to fetch project root after retries, using fallback (refresh when backend is available)')
-            projectRootRef.current = ''
-            setProjectRoot('')
-            fallbackApplied = true
-          }
-        })
-    }
-    fetchProjectRoot()
-  }, [])
-
-  // Set browser tab title using config titleFormat
-  useEffect(() => {
-    const folderName = projectRoot ? projectRoot.split('/').filter(Boolean).pop() : null
-    const titleFormat = config.branding?.titleFormat
-    if (typeof titleFormat === 'function') {
-      document.title = titleFormat({ folder: folderName, workspace: folderName })
-    } else {
-      // Fallback if titleFormat is not a function
-      document.title = folderName
-        ? `${folderName} - ${config.branding?.name || 'Boring UI'}`
-        : config.branding?.name || 'Boring UI'
-    }
-  }, [projectRoot, config.branding])
+  // Browser tab title management (extracted hook)
+  useBrowserTitle(projectRoot, config.branding)
 
   // Restore layout once projectRoot is loaded and dockApi is available
   const layoutRestorationRan = useRef(false)

@@ -23,3 +23,11 @@ export {
 export {
   useServiceConnection,
 } from './useServiceConnection'
+
+export {
+  useProjectRoot,
+} from './useProjectRoot'
+
+export {
+  useBrowserTitle,
+} from './useBrowserTitle'
