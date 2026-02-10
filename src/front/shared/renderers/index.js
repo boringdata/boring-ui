@@ -31,3 +31,9 @@ export {
   ToolError,
   InlineCode,
 } from './ToolUseBlock'
+
+// Diff rendering
+export {
+  default as DiffView,
+  SimpleDiff,
+} from './DiffView'
