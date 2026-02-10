@@ -55,7 +55,7 @@ console.log(`[server] Session persistence: ${sessionStore.directory}`);
 
 const app = new Hono();
 
-app.use("/api/*", authMiddleware);
+// CORS must run before auth so preflight OPTIONS succeeds without a token
 app.use(
   "/api/*",
   cors({
@@ -64,6 +64,7 @@ app.use(
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   }),
 );
+app.use("/api/*", authMiddleware);
 app.route("/api", createRoutes(launcher, wsBridge, sessionStore, worktreeTracker));
 
 // In production, serve built frontend using absolute path (works when installed as npm package)
