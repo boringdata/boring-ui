@@ -74,6 +74,7 @@
     "clsx": "^2.1.1",
     "diff": "^8.0.2",
     "dockview-react": "^4.13.1",
+    "jose": "^5.9.6",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.562.0",
     "markdown-it": "^14.0.0",
@@ -81,6 +82,7 @@
     "react": "^18.2.0",
     "react-diff-view": "^3.2.0",
     "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
     "react-simple-code-editor": "^0.14.1",
     "remark-gfm": "^4.0.1",
     "sandbox-agent": "^0.1.11",
@@ -92,7 +94,6 @@
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0",
     "zod": "^4.3.6",
-    "jose": "^5.9.6",
     "zustand": "^5.0.10"
   },
   "peerDependencies": {
