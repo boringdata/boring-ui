@@ -8,6 +8,10 @@ import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import { createPanelToggle } from './utils/panelToggleUtils'
 import {
+  normalizeApprovalPath as _normalizeApprovalPath,
+  getReviewTitle as _getReviewTitle,
+} from './utils/approvalUtils'
+import {
   LAYOUT_VERSION,
   validateLayoutStructure,
   loadSavedTabs,
@@ -350,34 +354,13 @@ export default function App() {
   )
 
   const normalizeApprovalPath = useCallback(
-    (approval) => {
-      if (!approval) return ''
-      if (approval.project_path) return approval.project_path
-      const filePath = approval.file_path || ''
-      if (!filePath) return ''
-      if (projectRoot) {
-        const root = projectRoot.endsWith('/') ? projectRoot : `${projectRoot}/`
-        if (filePath.startsWith(root)) {
-          return filePath.slice(root.length)
-        }
-      }
-      return filePath
-    },
+    (approval) => _normalizeApprovalPath(approval, projectRoot),
     [projectRoot],
   )
 
   const getReviewTitle = useCallback(
-    (approval) => {
-      const approvalPath = normalizeApprovalPath(approval)
-      if (approvalPath) {
-        return `Review: ${getFileName(approvalPath)}`
-      }
-      if (approval?.tool_name) {
-        return `Review: ${approval.tool_name}`
-      }
-      return 'Review'
-    },
-    [normalizeApprovalPath],
+    (approval) => _getReviewTitle(approval, projectRoot),
+    [projectRoot],
   )
 
   // Open file in a specific position (used for drag-drop)
