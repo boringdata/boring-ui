@@ -84,7 +84,7 @@ class LocalProvider(SandboxProvider):
                 "server",
                 "--no-token",
                 "--host",
-                "0.0.0.0",
+                "127.0.0.1",
                 "--port",
                 str(self.port),
             ],
