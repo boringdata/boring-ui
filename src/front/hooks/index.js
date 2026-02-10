@@ -55,3 +55,23 @@ export {
 export {
   useCollapsedState,
 } from './useCollapsedState'
+
+export {
+  useActivePanel,
+} from './useActivePanel'
+
+export {
+  useDragDrop,
+} from './useDragDrop'
+
+export {
+  useUrlSync,
+} from './useUrlSync'
+
+export {
+  useTabManager,
+} from './useTabManager'
+
+export {
+  useFileOperations,
+} from './useFileOperations'

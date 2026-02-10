@@ -3,13 +3,16 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useKeyboardShortcuts, useBrowserTitle, useApprovals, useApprovalPanels, useAppState, usePanelToggle, usePanelParams, useCollapsedState } from './hooks'
-import { buildApiUrl } from './utils/apiBase'
+import {
+  ThemeProvider, useKeyboardShortcuts, useBrowserTitle,
+  useApprovals, useApprovalPanels, useAppState, usePanelToggle,
+  usePanelParams, useCollapsedState, useActivePanel, useDragDrop,
+  useUrlSync, useTabManager, useFileOperations,
+} from './hooks'
 import {
   normalizeApprovalPath as _normalizeApprovalPath,
   getReviewTitle as _getReviewTitle,
 } from './utils/approvalUtils'
-import { findEditorPosition, findSidePosition, findDiffPosition } from './utils/filePositioning'
 import {
   applyLockedPanels as applyLockedPanelsUtil,
   ensureCorePanels as ensureCorePanelsUtil,
@@ -19,23 +22,21 @@ import {
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
-  loadSavedTabs,
-  saveTabs,
   loadLayout,
   saveLayout,
   savePanelSizes,
   pruneEmptyGroups,
-  checkForSavedLayout,
   getFileName,
 } from './layout'
 import ThemeToggle from './components/ThemeToggle'
+import AppHeader from './components/AppHeader'
+import CapabilityWarning from './components/CapabilityWarning'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
 import {
   getGatedComponents,
   getKnownComponents,
   essentialPanes,
-  checkRequirements,
 } from './registry/panes'
 
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
@@ -179,140 +180,10 @@ export default function App() {
     [projectRoot],
   )
 
-  // Open file in a specific position (used for drag-drop)
-  const openFileAtPosition = useCallback(
-    (path, position, extraParams = {}) => {
-      if (!dockApi) return
-
-      const panelId = `editor-${path}`
-      const existingPanel = dockApi.getPanel(panelId)
-
-      if (existingPanel) {
-        // If opening with initialMode, update the panel params
-        if (extraParams.initialMode) {
-          existingPanel.api.updateParameters({ initialMode: extraParams.initialMode })
-        }
-        existingPanel.api.setActive()
-        return
-      }
-
-      const emptyPanel = dockApi.getPanel('empty-center')
-      const centerGroup = centerGroupRef.current
-      if (centerGroup) {
-        centerGroup.header.hidden = false
-      }
-
-      const addEditorPanel = (content) => {
-        setTabs((prev) => ({
-          ...prev,
-          [path]: { content, isDirty: false },
-        }))
-
-        const panel = dockApi.addPanel({
-          id: panelId,
-          component: 'editor',
-          title: getFileName(path),
-          position,
-          params: {
-            path,
-            initialContent: content,
-            contentVersion: 1,
-            ...extraParams,
-            onContentChange: (p, newContent) => {
-              setTabs((prev) => ({
-                ...prev,
-                [p]: { ...prev[p], content: newContent },
-              }))
-            },
-            onDirtyChange: (p, dirty) => {
-              setTabs((prev) => ({
-                ...prev,
-                [p]: { ...prev[p], isDirty: dirty },
-              }))
-              const panel = dockApi.getPanel(`editor-${p}`)
-              if (panel) {
-                panel.api.setTitle(getFileName(p) + (dirty ? ' *' : ''))
-              }
-            },
-          },
-        })
-
-        if (emptyPanel) {
-          emptyPanel.api.close()
-        }
-        if (panel?.group) {
-          panel.group.header.hidden = false
-          centerGroupRef.current = panel.group
-          // Apply minimum height constraint to center group (use Infinity to allow resize)
-          panel.group.api.setConstraints({
-            minimumHeight: panelMinRef.current.center,
-            maximumHeight: Infinity,
-          })
-        }
-      }
-
-      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
-        .then((r) => r.json())
-        .then((data) => {
-          addEditorPanel(data.content || '')
-        })
-        .catch(() => {
-          addEditorPanel('')
-        })
-    },
-    [dockApi]
-  )
-
-  const openFile = useCallback(
-    (path) => {
-      if (!dockApi) return false
-
-      const panelId = `editor-${path}`
-      const existingPanel = dockApi.getPanel(panelId)
-
-      if (existingPanel) {
-        existingPanel.api.setActive()
-        return true
-      }
-
-      openFileAtPosition(path, findEditorPosition(dockApi, centerGroupRef.current))
-      return true
-    },
-    [dockApi, openFileAtPosition]
-  )
-
-  const openFileToSide = useCallback(
-    (path) => {
-      if (!dockApi) return
-
-      const existingPanel = dockApi.getPanel(`editor-${path}`)
-      if (existingPanel) {
-        existingPanel.api.setActive()
-        return
-      }
-
-      openFileAtPosition(path, findSidePosition(dockApi, centerGroupRef.current))
-    },
-    [dockApi, openFileAtPosition]
-  )
-
-  const openDiff = useCallback(
-    (path, _status) => {
-      if (!dockApi) return
-
-      const existingPanel = dockApi.getPanel(`editor-${path}`)
-      if (existingPanel) {
-        existingPanel.api.updateParameters({ initialMode: 'git-diff' })
-        existingPanel.api.setActive()
-        setActiveDiffFile(path)
-        return
-      }
-
-      openFileAtPosition(path, findDiffPosition(dockApi, centerGroupRef.current), { initialMode: 'git-diff' })
-      setActiveDiffFile(path)
-    },
-    [dockApi, openFileAtPosition]
-  )
+  // File opening operations (open, open-to-side, diff, drag-drop positioning)
+  const { openFileAtPosition, openFile, openFileToSide, openDiff } = useFileOperations({
+    dockApi, setTabs, setActiveDiffFile, centerGroupRef, panelMinRef,
+  })
 
   useApprovalPanels({
     dockApi,
@@ -671,29 +542,7 @@ export default function App() {
   }, [dockApi, projectRoot, storagePrefix, collapsed.filetree, collapsed.terminal, collapsed.shell, openFile, openFileToSide, openDiff, activeFile, activeDiffFile, toggleFiletree])
 
   // Track active panel to highlight in file tree and sync URL
-  useEffect(() => {
-    if (!dockApi) return
-    const disposable = dockApi.onDidActivePanelChange((panel) => {
-      if (panel && panel.id && panel.id.startsWith('editor-')) {
-        const path = panel.id.replace('editor-', '')
-        setActiveFile(path)
-        // Also set activeDiffFile if this file is in git changes
-        setActiveDiffFile(path)
-        // Sync URL for easy sharing/reload
-        const url = new URL(window.location.href)
-        url.searchParams.set('doc', path)
-        window.history.replaceState({}, '', url)
-      } else {
-        setActiveFile(null)
-        setActiveDiffFile(null)
-        // Clear doc param when not on an editor
-        const url = new URL(window.location.href)
-        url.searchParams.delete('doc')
-        window.history.replaceState({}, '', url)
-      }
-    })
-    return () => disposable.dispose()
-  }, [dockApi])
+  useActivePanel({ dockApi, setActiveFile, setActiveDiffFile })
 
   // Keep panel params in sync with current callbacks and state
   const { focusReviewPanel } = usePanelParams({
@@ -713,94 +562,17 @@ export default function App() {
     normalizeApprovalPath,
   })
 
-  // Restore saved tabs when dockApi and projectRoot become available
-  const hasRestoredTabs = useRef(false)
-  useEffect(() => {
-    // Wait for projectRoot to be loaded (null = not loaded yet)
-    if (!dockApi || projectRoot === null || hasRestoredTabs.current) return
-    hasRestoredTabs.current = true
-
-    if (layoutRestored.current) {
-      return
-    }
-
-    const savedPaths = loadSavedTabs(storagePrefix, projectRoot)
-    if (savedPaths.length > 0) {
-      // Small delay to ensure layout is ready
-      setTimeout(() => {
-        savedPaths.forEach((path) => {
-          openFile(path)
-        })
-      }, 50)
-    }
-  }, [dockApi, projectRoot, openFile, storagePrefix])
-
-  // Save open tabs to localStorage whenever tabs change (but not on initial empty state)
-  useEffect(() => {
-    // Wait for projectRoot to be loaded
-    if (!isInitialized.current || projectRoot === null) return
-    const paths = Object.keys(tabs)
-    saveTabs(storagePrefix, projectRoot, paths)
-  }, [tabs, projectRoot, storagePrefix])
+  // Tab save/restore (extracted hook)
+  useTabManager({
+    dockApi, projectRoot, storagePrefix, tabs, openFile,
+    isInitialized, layoutRestored,
+  })
 
   // Restore document from URL query param on load
-  const hasRestoredFromUrl = useRef(false)
-  useEffect(() => {
-    if (!dockApi || projectRoot === null || hasRestoredFromUrl.current) return
+  useUrlSync({ dockApi, projectRoot, openFile })
 
-    // Wait for core panels to exist before opening files
-    const filetreePanel = dockApi.getPanel('filetree')
-    if (!filetreePanel) return
-
-    hasRestoredFromUrl.current = true
-
-    const docPath = new URLSearchParams(window.location.search).get('doc')
-    if (docPath) {
-      // Small delay to ensure layout is fully ready
-      setTimeout(() => {
-        openFile(docPath)
-      }, 150)
-    }
-  }, [dockApi, projectRoot, openFile])
-
-  // Handle external drag events (files from FileTree)
-  const showDndOverlay = (event) => {
-    // Check if this is a file drag from our FileTree
-    const hasFileData = event.dataTransfer.types.includes('application/x-kurt-file')
-    return hasFileData
-  }
-
-  const onDidDrop = (event) => {
-    const { dataTransfer, position, group } = event
-    const fileDataStr = dataTransfer.getData('application/x-kurt-file')
-
-    if (!fileDataStr) return
-
-    try {
-      const fileData = JSON.parse(fileDataStr)
-      const path = fileData.path
-
-      // Determine position based on drop location
-      let dropPosition
-      if (group) {
-        // Dropped on a group - add to that group
-        dropPosition = { referenceGroup: group }
-      } else if (position) {
-        // Dropped to create a new split
-        dropPosition = position
-      } else {
-        // Fallback to center group
-        const centerGroup = centerGroupRef.current
-        dropPosition = centerGroup
-          ? { referenceGroup: centerGroup }
-          : { direction: 'right', referencePanel: 'filetree' }
-      }
-
-      openFileAtPosition(path, dropPosition)
-    } catch {
-      // Ignore parse errors
-    }
-  }
+  // Drag and drop file handling (extracted hook)
+  const { showDndOverlay, onDidDrop } = useDragDrop({ openFileAtPosition, centerGroupRef })
 
   if (POC_MODE === 'chat') {
     return (
@@ -821,25 +593,10 @@ export default function App() {
   return (
     <ThemeProvider>
       <div className="app-container">
-        <header className="app-header">
-          <div className="app-header-brand">
-            <div className="app-header-logo" aria-hidden="true">
-              {config.branding?.logo || 'B'}
-            </div>
-            <div className="app-header-title">
-              {projectRoot?.split('/').pop() || config.branding?.name || 'Workspace'}
-            </div>
-          </div>
-          <div className="app-header-controls">
-            <ThemeToggle />
-          </div>
-        </header>
-        {unavailableEssentials.length > 0 && (
-          <div className="capability-warning">
-            <strong>Warning:</strong> Some features are unavailable.
-            Missing capabilities for: {unavailableEssentials.map(p => p.title || p.id).join(', ')}.
-          </div>
-        )}
+        <AppHeader config={config} projectRoot={projectRoot}>
+          <ThemeToggle />
+        </AppHeader>
+        <CapabilityWarning unavailableEssentials={unavailableEssentials} />
         <CapabilitiesContext.Provider value={capabilities}>
           <div data-testid="dockview" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
             <DockviewReact
