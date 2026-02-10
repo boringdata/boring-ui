@@ -13,8 +13,10 @@ from .modules.pty import create_pty_router
 from .modules.stream import create_stream_router
 from .modules.sandbox import SandboxManager, create_provider
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
+from .auth import ServiceTokenIssuer
 from .capabilities import (
     RouterRegistry,
+    ServiceConnectionInfo,
     create_default_registry,
     create_capabilities_router,
 )
@@ -183,11 +185,34 @@ def create_app(
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 
+    # Build service connection registry for Direct Connect
+    token_issuer = ServiceTokenIssuer()
+    service_registry: dict[str, ServiceConnectionInfo] = {}
+
+    if 'sandbox' in enabled_routers and sandbox_manager:
+        # Derive URL from provider's configured port
+        sandbox_port = getattr(sandbox_manager.provider, 'port', 2468)
+        service_registry['sandbox'] = ServiceConnectionInfo(
+            name='sandbox',
+            url=f'http://127.0.0.1:{sandbox_port}',
+            token='',  # Issued per-request by token_issuer
+            qp_token='',
+            protocol='rest+sse',
+        )
+
     # Always include capabilities router
     app.include_router(
-        create_capabilities_router(enabled_features, registry),
+        create_capabilities_router(
+            enabled_features,
+            registry,
+            token_issuer=token_issuer if service_registry else None,
+            service_registry=service_registry or None,
+        ),
         prefix='/api',
     )
+
+    # Store token issuer on app state for use by other components
+    app.state.token_issuer = token_issuer
 
     # Health check
     @app.get('/health')

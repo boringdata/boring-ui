@@ -3,10 +3,12 @@
 This module provides:
 - A registry for tracking available routers/features
 - A capabilities endpoint for UI feature discovery
+- Service connection info for Direct Connect architecture
 """
 from dataclasses import dataclass, field
 from typing import Callable, Any
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 
 @dataclass
@@ -156,15 +158,33 @@ def create_default_registry() -> RouterRegistry:
     return registry
 
 
+@dataclass
+class ServiceConnectionInfo:
+    """Connection details for a chat service (Direct Connect).
+
+    Frontend adapters use this to connect directly to services,
+    bypassing the boring-ui proxy.
+    """
+    name: str
+    url: str
+    token: str  # Bearer token for REST API calls
+    qp_token: str  # Short-lived token for SSE/WS query params
+    protocol: str  # "rest+sse" | "rest+ws"
+
+
 def create_capabilities_router(
     enabled_features: dict[str, bool],
     registry: RouterRegistry | None = None,
+    token_issuer: Any | None = None,
+    service_registry: dict[str, ServiceConnectionInfo] | None = None,
 ) -> APIRouter:
     """Create a router for the capabilities endpoint.
 
     Args:
         enabled_features: Map of feature name -> enabled status
         registry: Optional router registry for detailed info
+        token_issuer: Optional ServiceTokenIssuer for generating fresh tokens
+        service_registry: Optional map of service name -> connection info
 
     Returns:
         Router with /capabilities endpoint
@@ -178,8 +198,13 @@ def create_capabilities_router(
         Returns a stable JSON structure describing what features
         are enabled in this API instance. The UI uses this to
         conditionally render components.
+
+        When services are configured, includes a ``services`` section
+        with direct-connect URLs and auth tokens.  Tokens are
+        security-sensitive -- the response includes Cache-Control
+        headers to prevent accidental caching.
         """
-        capabilities = {
+        capabilities: dict[str, Any] = {
             'version': '0.1.0',
             'features': enabled_features,
         }
@@ -197,6 +222,32 @@ def create_capabilities_router(
                 for info, _ in registry.all()
             ]
 
-        return capabilities
+        # Add service connection info for Direct Connect
+        if service_registry:
+            services: dict[str, dict] = {}
+            for svc_name, svc_info in service_registry.items():
+                svc_entry: dict[str, str] = {
+                    'url': svc_info.url,
+                    'protocol': svc_info.protocol,
+                }
+                # Issue fresh tokens on each request if issuer available
+                if token_issuer:
+                    svc_entry['token'] = token_issuer.issue_token(svc_name)
+                    svc_entry['qpToken'] = token_issuer.issue_query_param_token(svc_name)
+                elif svc_info.token:
+                    # Static token fallback (e.g., sandbox-agent built-in auth)
+                    svc_entry['token'] = svc_info.token
+                    svc_entry['qpToken'] = svc_info.qp_token
+                services[svc_name] = svc_entry
+            capabilities['services'] = services
+
+        # Always use JSONResponse for consistent return type.
+        # Add no-cache headers when tokens are present.
+        headers = {}
+        if service_registry:
+            headers['Cache-Control'] = 'no-store'
+            headers['Pragma'] = 'no-cache'
+
+        return JSONResponse(content=capabilities, headers=headers)
 
     return router
