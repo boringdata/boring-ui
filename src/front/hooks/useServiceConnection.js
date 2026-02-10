@@ -136,6 +136,32 @@ export function useServiceConnection() {
     [services],
   )
 
+  /**
+   * Fetch with automatic 401 retry. On 401, refreshes tokens and
+   * retries the request once with updated auth headers.
+   *
+   * @param {string} serviceName - Service to auth against
+   * @param {string} url         - Request URL
+   * @param {RequestInit} [init] - Fetch options (headers merged with auth)
+   * @returns {Promise<Response>}
+   */
+  const fetchWithRetry = useCallback(
+    async (serviceName, url, init = {}) => {
+      const doFetch = () => {
+        const headers = getAuthHeaders(serviceName, init.headers || {})
+        return fetch(url, { ...init, headers })
+      }
+
+      const response = await doFetch()
+      if (response.status === 401) {
+        await refreshTokens()
+        return doFetch()
+      }
+      return response
+    },
+    [getAuthHeaders, refreshTokens],
+  )
+
   return useMemo(
     () => ({
       services,
@@ -145,8 +171,9 @@ export function useServiceConnection() {
       getAuthHeaders,
       getQpToken,
       getServiceUrl,
+      fetchWithRetry,
     }),
-    [services, isLoading, error, refreshTokens, getAuthHeaders, getQpToken, getServiceUrl],
+    [services, isLoading, error, refreshTokens, getAuthHeaders, getQpToken, getServiceUrl, fetchWithRetry],
   )
 }
 

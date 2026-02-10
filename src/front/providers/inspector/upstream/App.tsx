@@ -78,11 +78,18 @@ const getInitialConnection = () => {
   };
 };
 
-export default function App() {
+interface AppProps {
+  /** Override endpoint (bypasses URL param / origin detection) */
+  initialEndpoint?: string;
+  /** Override token for bearer auth */
+  initialToken?: string;
+}
+
+export default function App({ initialEndpoint, initialToken }: AppProps = {}) {
   const issueTrackerUrl = "https://github.com/rivet-dev/sandbox-agent/issues/new";
   const initialConnectionRef = useRef(getInitialConnection());
-  const [endpoint, setEndpoint] = useState(initialConnectionRef.current.endpoint);
-  const [token, setToken] = useState(initialConnectionRef.current.token);
+  const [endpoint, setEndpoint] = useState(initialEndpoint || initialConnectionRef.current.endpoint);
+  const [token, setToken] = useState(initialToken || initialConnectionRef.current.token);
   const [extraHeaders] = useState(initialConnectionRef.current.headers);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -783,8 +790,8 @@ export default function App() {
     const attempt = async () => {
       const { hasUrlParam } = initialConnectionRef.current;
 
-      // If URL param was provided, just try that endpoint (don't fall back)
-      if (hasUrlParam) {
+      // If endpoint was injected via props or URL param, just try it
+      if (initialEndpoint || hasUrlParam) {
         try {
           await connectToDaemon(false);
         } catch {
