@@ -19,3 +19,7 @@ export {
   formatShortcut,
   DEFAULT_SHORTCUTS,
 } from './useKeyboardShortcuts'
+
+export {
+  useServiceConnection,
+} from './useServiceConnection'
