@@ -165,10 +165,18 @@ def create_app(
         'companion': 'companion' in enabled_routers,
     }
 
-    # Lifespan handler for cleanup
+    # Lifespan handler for startup/cleanup
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Startup
+        # Startup — launch managed subprocesses
+        if companion_manager:
+            try:
+                await companion_manager.ensure_running()
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    'Companion auto-start failed: %s', exc,
+                )
         yield
         # Shutdown - cleanup managed subprocesses
         if sandbox_manager:

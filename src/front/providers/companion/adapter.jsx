@@ -3,9 +3,9 @@
  *
  * Wraps the upstream Companion App component with CSS scoping,
  * theme bridge, and Direct Connect configuration.
- * Sets base URL + auth token before mounting the upstream App.
+ * Sets base URL + auth token synchronously before mounting the upstream App.
  */
-import { useEffect, useRef } from 'react'
+import { useMemo } from 'react'
 import { ChevronRight } from 'lucide-react'
 import CompanionApp from './upstream/App'
 import { useServiceConnection } from '../../hooks/useServiceConnection'
@@ -16,33 +16,38 @@ import './theme-bridge.css'
 export default function CompanionAdapter({ onToggleCollapse }) {
   const { services } = useServiceConnection()
   const companion = services?.companion
-  const configured = useRef(false)
 
-  // Configure upstream modules before first render
-  useEffect(() => {
+  // Configure upstream modules synchronously before CompanionApp renders.
+  // useMemo runs during render (before children mount), avoiding the race
+  // condition where useEffect would fire after the first child render.
+  const ready = useMemo(() => {
     if (companion?.url) {
       setCompanionConfig(companion.url, companion.token)
-      configured.current = true
+      return true
     }
+    return false
   }, [companion?.url, companion?.token])
 
-  // Don't render until we have connection info
-  if (!companion?.url) {
+  const header = (
+    <div className="terminal-header">
+      <button
+        type="button"
+        className="sidebar-toggle-btn"
+        onClick={onToggleCollapse}
+        title="Collapse agent panel"
+        aria-label="Collapse agent panel"
+      >
+        <ChevronRight size={16} />
+      </button>
+      <span className="terminal-title-text">Companion</span>
+      <div className="terminal-header-spacer" />
+    </div>
+  )
+
+  if (!ready) {
     return (
       <>
-        <div className="terminal-header">
-          <button
-            type="button"
-            className="sidebar-toggle-btn"
-            onClick={onToggleCollapse}
-            title="Collapse agent panel"
-            aria-label="Collapse agent panel"
-          >
-            <ChevronRight size={16} />
-          </button>
-          <span className="terminal-title-text">Companion</span>
-          <div className="terminal-header-spacer" />
-        </div>
+        {header}
         <div className="terminal-body">
           <div className="terminal-instance active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-tertiary)' }}>
             Connecting to Companion server...
@@ -54,19 +59,7 @@ export default function CompanionAdapter({ onToggleCollapse }) {
 
   return (
     <>
-      <div className="terminal-header">
-        <button
-          type="button"
-          className="sidebar-toggle-btn"
-          onClick={onToggleCollapse}
-          title="Collapse agent panel"
-          aria-label="Collapse agent panel"
-        >
-          <ChevronRight size={16} />
-        </button>
-        <span className="terminal-title-text">Companion</span>
-        <div className="terminal-header-spacer" />
-      </div>
+      {header}
       <div className="terminal-body">
         <div className="terminal-instance active">
           <div className="provider-companion">

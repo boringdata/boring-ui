@@ -187,7 +187,12 @@ class CompanionProvider:
     async def _wait_ready(
         self, instance: _CompanionProcess, timeout: int = 30
     ) -> None:
-        """Wait for Companion to respond to health check."""
+        """Wait for Companion to respond to any HTTP request.
+
+        The Companion server doesn't expose a /health endpoint, so we
+        probe /api/sessions and treat any HTTP response (including 401)
+        as proof the server is listening.
+        """
         for _ in range(timeout * 2):
             if instance.process and instance.process.poll() is not None:
                 logs = instance.logs[-10:] if instance.logs else []
@@ -198,10 +203,11 @@ class CompanionProvider:
             try:
                 async with httpx.AsyncClient() as client:
                     r = await client.get(
-                        f"http://127.0.0.1:{instance.port}/health",
+                        f"http://127.0.0.1:{instance.port}/api/sessions",
                         timeout=2.0,
                     )
-                    if r.status_code == 200:
+                    # Any HTTP response means the server is up
+                    if r.status_code < 500:
                         return
             except (httpx.ConnectError, httpx.TimeoutException):
                 pass
@@ -292,9 +298,9 @@ class CompanionProvider:
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(
-                    f"http://127.0.0.1:{instance.port}/health",
+                    f"http://127.0.0.1:{instance.port}/api/sessions",
                     timeout=5.0,
                 )
-                return r.status_code == 200
+                return r.status_code < 500
         except Exception:
             return False

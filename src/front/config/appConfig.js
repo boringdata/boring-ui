@@ -58,7 +58,7 @@ const DEFAULT_CONFIG = {
 
   // Chat configuration (set at config time, not runtime)
   chat: {
-    provider: 'claude',   // 'claude' | 'sandbox' | 'inspector'
+    provider: 'claude',   // 'claude' | 'sandbox' | 'inspector' | 'companion'
     interface: 'web',     // 'cli' | 'web'
   },
 

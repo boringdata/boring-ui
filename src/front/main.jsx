@@ -23,8 +23,12 @@ window.addEventListener('error', (event) => {
   }
 })
 
+// Support URL query param override: ?chat=companion
+const urlChatProvider = new URLSearchParams(window.location.search).get('chat')
+const overrideConfig = urlChatProvider ? { chat: { provider: urlChatProvider } } : undefined
+
 createRoot(document.getElementById('root')).render(
-  <ConfigProvider>
+  <ConfigProvider config={overrideConfig}>
     <App />
   </ConfigProvider>
 )
