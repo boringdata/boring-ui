@@ -12,6 +12,7 @@ Architecture:
 """
 
 import logging
+import functools
 from dataclasses import dataclass, field
 from typing import Callable, Any
 
@@ -103,6 +104,11 @@ def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> Non
         if request.url.path == "/health":
             return await call_next(request)
 
+        # Allow CORS preflight requests (OPTIONS) without authentication
+        # Browser preflight happens before actual request, need auth to be optional
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Extract Authorization header
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
@@ -148,8 +154,14 @@ def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> Non
         workspace_id = claims.get("workspace")
 
         # Extract permissions (could come from 'scope', 'permissions', or custom claim)
-        permissions_str = claims.get("permissions", "")
-        permissions = set(p.strip() for p in permissions_str.split() if p.strip())
+        # Handle both string (space-delimited) and list (array) formats from OIDC provider
+        permissions_claim = claims.get("permissions", "")
+        if isinstance(permissions_claim, list):
+            permissions = set(p.strip() for p in permissions_claim if isinstance(p, str) and p.strip())
+        elif isinstance(permissions_claim, str):
+            permissions = set(p.strip() for p in permissions_claim.split() if p.strip())
+        else:
+            permissions = set()
 
         # Create and inject AuthContext
         auth_context = AuthContext(
@@ -207,6 +219,7 @@ def require_permission(permission: str) -> Callable:
     """
 
     def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             auth_context = get_auth_context(request)
             if not auth_context.has_permission(permission):
