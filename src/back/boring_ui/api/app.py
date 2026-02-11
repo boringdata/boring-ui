@@ -31,7 +31,6 @@ from .modules.sandbox.hosted_client import HostedSandboxClient, SandboxClientCon
 from .modules.sandbox.hosted_proxy import create_hosted_sandbox_proxy_router
 from .modules.sandbox.hosted_compat import create_hosted_compat_router
 from .modules.metrics import create_metrics_router
-from .local_api import create_local_api_router
 
 # Global managers (for lifespan management)
 _sandbox_manager: SandboxManager | None = None
