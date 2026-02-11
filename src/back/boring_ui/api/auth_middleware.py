@@ -111,10 +111,25 @@ def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> Non
         if request.method == "OPTIONS":
             return await call_next(request)
 
+        # Extract request_id for correlation (bd-1pwb.9.1)
+        request_id = getattr(request.state, 'request_id', None)
+
         # Extract Authorization header
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            # No token provided
+            # No token provided - log with structured fields
+            log_record = logger.makeRecord(
+                name=logger.name,
+                level=logging.WARNING,
+                fn=__file__,
+                lno=0,
+                msg=f"Missing auth token for {request.method} {request.url.path}",
+                args=(),
+                exc_info=None,
+            )
+            if request_id:
+                log_record.request_id = request_id
+            logger.handle(log_record)
             return error_emitter.missing_token(request.url.path)
 
         token = auth_header[7:]  # Remove "Bearer " prefix
@@ -122,6 +137,19 @@ def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> Non
         # Validate JWT
         claims = verifier.verify_token(token)
         if claims is None:
+            # Invalid token - log with structured fields
+            log_record = logger.makeRecord(
+                name=logger.name,
+                level=logging.WARNING,
+                fn=__file__,
+                lno=0,
+                msg=f"Invalid auth token for {request.method} {request.url.path}",
+                args=(),
+                exc_info=None,
+            )
+            if request_id:
+                log_record.request_id = request_id
+            logger.handle(log_record)
             return error_emitter.invalid_token(request.url.path)
 
         # Extract user identity
@@ -151,7 +179,21 @@ def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> Non
         )
         request.state.auth_context = auth_context
 
-        logger.debug(f"Auth context injected: user={user_id}, workspace={workspace_id}")
+        # Log auth context with structured fields for trace correlation (bd-1pwb.9.1)
+        request_id = getattr(request.state, 'request_id', None)
+        log_record = logger.makeRecord(
+            name=logger.name,
+            level=logging.DEBUG,
+            fn=__file__,
+            lno=0,
+            msg=f"Auth context injected: workspace={workspace_id}",
+            args=(),
+            exc_info=None,
+        )
+        if request_id:
+            log_record.request_id = request_id
+        log_record.user_id = user_id
+        logger.handle(log_record)
 
         return await call_next(request)
 

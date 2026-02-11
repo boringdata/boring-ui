@@ -66,10 +66,17 @@ class AuditLogger:
         self.metrics = AuditMetrics()
 
     def log_auth_success(
-        self, user_id: str, workspace_id: Optional[str] = None, trace_id: Optional[str] = None
+        self, user_id: str, workspace_id: Optional[str] = None, trace_id: Optional[str] = None, request_id: Optional[str] = None
     ):
-        """Log successful authentication."""
-        trace_id = trace_id or str(uuid.uuid4())
+        """Log successful authentication.
+
+        Args:
+            user_id: Authenticated user ID
+            workspace_id: Optional workspace context
+            trace_id: Optional trace ID for correlation (deprecated - use request_id)
+            request_id: Request correlation ID from request.state.request_id (bd-1pwb.9.1)
+        """
+        trace_id = trace_id or request_id or str(uuid.uuid4())
         event = AuditEvent(
             event_type=AuditEventType.AUTH_SUCCESS,
             timestamp=datetime.now(timezone.utc),
@@ -77,13 +84,35 @@ class AuditLogger:
             user_id=user_id,
             workspace_id=workspace_id,
         )
-        self.logger.info(f"Auth success: {event.to_dict()}")
+
+        # Log with structured fields including request_id
+        log_record = self.logger.makeRecord(
+            name=self.logger.name,
+            level=logging.INFO,
+            fn=__file__,
+            lno=0,
+            msg=f"Auth success: {user_id}",
+            args=(),
+            exc_info=None,
+        )
+        log_record.request_id = trace_id
+        log_record.user_id = user_id
+        if workspace_id:
+            log_record.workspace_id = workspace_id
+        self.logger.handle(log_record)
+
         self.metrics.record_auth_success()
         return event
 
-    def log_auth_failure(self, reason: str, trace_id: Optional[str] = None):
-        """Log failed authentication attempt."""
-        trace_id = trace_id or str(uuid.uuid4())
+    def log_auth_failure(self, reason: str, trace_id: Optional[str] = None, request_id: Optional[str] = None):
+        """Log failed authentication attempt.
+
+        Args:
+            reason: Reason for failure
+            trace_id: Optional trace ID for correlation (deprecated - use request_id)
+            request_id: Request correlation ID from request.state.request_id (bd-1pwb.9.1)
+        """
+        trace_id = trace_id or request_id or str(uuid.uuid4())
         event = AuditEvent(
             event_type=AuditEventType.AUTH_FAILURE,
             timestamp=datetime.now(timezone.utc),
@@ -91,7 +120,20 @@ class AuditLogger:
             status="failure",
             details={"reason": reason},
         )
-        self.logger.warning(f"Auth failure: {event.to_dict()}")
+
+        # Log with structured fields including request_id
+        log_record = self.logger.makeRecord(
+            name=self.logger.name,
+            level=logging.WARNING,
+            fn=__file__,
+            lno=0,
+            msg=f"Auth failure: {reason}",
+            args=(),
+            exc_info=None,
+        )
+        log_record.request_id = trace_id
+        self.logger.handle(log_record)
+
         self.metrics.record_auth_failure()
         return event
 
@@ -102,9 +144,19 @@ class AuditLogger:
         path: str,
         workspace_id: Optional[str] = None,
         trace_id: Optional[str] = None,
+        request_id: Optional[str] = None,
     ):
-        """Log file read/write operations."""
-        trace_id = trace_id or str(uuid.uuid4())
+        """Log file read/write operations.
+
+        Args:
+            user_id: User performing operation
+            operation: 'read' or 'write'
+            path: File path
+            workspace_id: Optional workspace context
+            trace_id: Optional trace ID for correlation (deprecated - use request_id)
+            request_id: Request correlation ID from request.state.request_id (bd-1pwb.9.1)
+        """
+        trace_id = trace_id or request_id or str(uuid.uuid4())
 
         # Normalize and validate operation
         op_normalized = operation.lower().strip()
@@ -123,7 +175,23 @@ class AuditLogger:
             resource=path,
             action=op_normalized,
         )
-        self.logger.info(f"File operation: {event.to_dict()}")
+
+        # Log with structured fields
+        log_record = self.logger.makeRecord(
+            name=self.logger.name,
+            level=logging.INFO,
+            fn=__file__,
+            lno=0,
+            msg=f"File {op_normalized}: {path}",
+            args=(),
+            exc_info=None,
+        )
+        log_record.request_id = trace_id
+        log_record.user_id = user_id
+        if workspace_id:
+            log_record.workspace_id = workspace_id
+        self.logger.handle(log_record)
+
         self.metrics.record_file_operation(op_normalized)
         return event
 
@@ -134,9 +202,19 @@ class AuditLogger:
         workspace_id: Optional[str] = None,
         exit_code: Optional[int] = None,
         trace_id: Optional[str] = None,
+        request_id: Optional[str] = None,
     ):
-        """Log command execution."""
-        trace_id = trace_id or str(uuid.uuid4())
+        """Log command execution.
+
+        Args:
+            user_id: User executing command
+            command: Command executed
+            workspace_id: Optional workspace context
+            exit_code: Optional exit code
+            trace_id: Optional trace ID for correlation (deprecated - use request_id)
+            request_id: Request correlation ID from request.state.request_id (bd-1pwb.9.1)
+        """
+        trace_id = trace_id or request_id or str(uuid.uuid4())
         event = AuditEvent(
             event_type=AuditEventType.EXEC_RUN,
             timestamp=datetime.now(timezone.utc),
@@ -149,7 +227,23 @@ class AuditLogger:
                 "exit_code": exit_code,
             },
         )
-        self.logger.info(f"Exec operation: {event.to_dict()}")
+
+        # Log with structured fields
+        log_record = self.logger.makeRecord(
+            name=self.logger.name,
+            level=logging.INFO,
+            fn=__file__,
+            lno=0,
+            msg=f"Exec: {command[:50]}",
+            args=(),
+            exc_info=None,
+        )
+        log_record.request_id = trace_id
+        log_record.user_id = user_id
+        if workspace_id:
+            log_record.workspace_id = workspace_id
+        self.logger.handle(log_record)
+
         self.metrics.record_exec_operation()
         return event
 

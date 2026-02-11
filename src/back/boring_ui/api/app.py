@@ -22,6 +22,7 @@ from .capabilities import (
     create_default_registry,
     create_capabilities_router,
 )
+from .logging_middleware import add_logging_middleware, get_request_id
 
 # Global managers (for lifespan management)
 _sandbox_manager: SandboxManager | None = None
@@ -328,6 +329,10 @@ def create_app(
         allow_methods=['*'],
         allow_headers=['*'],
     )
+
+    # Structured logging and request correlation middleware (bd-1pwb.9.1)
+    # Must be added after CORS (middleware chain executes in reverse order)
+    add_logging_middleware(app)
 
     # Mount routers from registry based on enabled set
     router_args = {
