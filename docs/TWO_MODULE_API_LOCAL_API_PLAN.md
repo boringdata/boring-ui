@@ -56,13 +56,26 @@ Responsibilities:
 Key files (target ownership):
 
 - `app.py`
-- `auth.py`, `auth_middleware.py`, `service_auth.py`, `sandbox_auth.py`
+- `auth.py` (reuse: `ServiceTokenIssuer` and `OIDCVerifier` from REUSE_INVENTORY.md)
+- `auth_middleware.py` (reuse: `add_oidc_auth_middleware`, `AuthContext`, `require_permission` from REUSE_INVENTORY.md)
+- `service_auth.py`, `sandbox_auth.py`
+- `config.py` (reuse: `RunMode`, `APIConfig` from REUSE_INVENTORY.md)
 - `capabilities.py`, `capability_tokens.py`
+- `logging_middleware.py` (reuse: `add_logging_middleware`, `get_request_id`, `propagate_request_context` from REUSE_INVENTORY.md)
+- `audit.py`, `audit_models.py` (reuse: `AuditLogger`, `AuditStore` from REUSE_INVENTORY.md)
 - `request_context.py` (new)
 - `error_codes.py` (new)
 - `modules/sandbox/manager.py`, `provider.py`, `providers/*`
 - `modules/sandbox/hosted_client.py` (refactor to transport interface)
 - `modules/sandbox/hosted_proxy.py`, `hosted_compat.py`
+
+**Reuse Constraints** (see `.planning/bd-1adh/REUSE_INVENTORY.md`):
+- ✅ ServiceTokenIssuer: direct import, no modifications
+- ✅ OIDCVerifier: direct import for hosted JWT verification
+- ✅ AuthMiddleware: extend permissions if needed, preserve error semantics
+- ✅ RunMode/APIConfig: direct import, extend fields only if needed
+- ✅ LoggingMiddleware: import and use for trace propagation
+- ✅ AuditLogger: import global instance, call audit methods for all sensitive operations
 
 ## 3.2 `local-api` (Workspace Plane)
 
@@ -145,6 +158,12 @@ Keep stable:
 
 `local-api` is internal-only and not exposed to browser.
 
+**Authentication model** (reuse from REUSE_INVENTORY.md):
+- In LOCAL mode: no authentication (internal routers in-process)
+- In HOSTED mode: control-plane reaches local-api via private transport (Sprites proxy or internal URL), no browser auth needed
+- local-api does NOT implement end-user auth; trust boundary is deployment topology
+- Control-plane propagates `X-Request-ID` and internal metadata headers for trace correlation (use `propagate_request_context` helper)
+
 ## 5.3 Sprites Transport Contract (Precise)
 
 Reference:
@@ -193,11 +212,22 @@ The controlling parameter is runtime config loaded by `api`.
 
 ## 6.1 Canonical Config Object
 
-Add/standardize `BoringUIConfig` in `src/back/boring_ui/api/config.py` with explicit fields:
+Reuse existing `RunMode` and `APIConfig` from `src/back/boring_ui/api/config.py` (see REUSE_INVENTORY.md).
 
-- `run_mode`: `local | hosted`
-- `sandbox_provider`: `local | sprites | ...`
-- `workspace_root`: path (local mode) or logical value used by local-api in sprite
+**RunMode enum** (existing, MUST reuse):
+- `LOCAL`: Single backend with direct operations
+- `HOSTED`: Dual API model with control plane (public) and data plane (private)
+
+**APIConfig dataclass** (existing, MUST reuse):
+- `workspace_root`: Path to workspace filesystem
+- `run_mode`: RunMode.LOCAL or RunMode.HOSTED
+- `cors_origins`: CORS allow-list
+- `filesystem_source`: 'local', 'sandbox', or 'sprites'
+- `pty_providers`: Shell command config
+- `oidc_issuer`, `oidc_audience`, `oidc_cache_ttl_seconds`: OIDC JWT config
+
+**Extended config fields** (add to APIConfig if needed):
+- `sandbox_provider`: 'local' | 'sprites' | ...
 - `local_api_port`: default `8001`
 - `control_plane_port`: default `8000`
 - `sprites_token`: backend secret
@@ -207,6 +237,10 @@ Add/standardize `BoringUIConfig` in `src/back/boring_ui/api/config.py` with expl
 - `transport_timeout_sec`
 - `transport_max_retries`
 - `trace_id_header`: default `X-Trace-ID`
+
+**Validation** (use `APIConfig.validate_startup()`, existing):
+- Enforces required env vars per run mode
+- Raises ValueError with actionable error text on failure
 
 ## 6.2 Env Var Mapping (move-fast, explicit)
 
@@ -327,18 +361,27 @@ Standard error payload:
 
 ## 8.2 Request Context Propagation
 
-Add request context model and middleware:
+Reuse existing logging middleware from `src/back/boring_ui/api/logging_middleware.py` (see REUSE_INVENTORY.md).
 
-- `trace_id`
-- `user_id` (when authenticated)
-- `workspace_id` (hardcoded default for now, expandable later)
-- `session_id` (if available)
+**Request ID generation** (existing `RequestIDMiddleware`):
+- Generates unique UUID for each request
+- Attaches to `request.state.request_id`
+- Includes in response headers (`X-Request-ID`, `X-Process-Time`)
 
-Propagation rules:
+**Structured logging** (existing `StructuredLoggingMiddleware`):
+- JSON-formatted logs with structured fields
+- Captures: request_id, method, path, status, latency_ms, user_id
+- Skips health checks, logs errors at WARNING/ERROR level
 
-- Inbound: read or generate `X-Trace-ID`
-- Control plane -> local-api: include `X-Trace-ID` and internal workspace metadata headers
-- Include `trace_id` in all logs and error responses
+**Context propagation** (use `propagate_request_context()` helper):
+- Builds headers for outbound requests to maintain trace correlation
+- Propagates `X-Request-ID` and optional `X-User-ID`, `X-Workspace-ID`
+- Control plane -> local-api: include headers in all proxied requests
+
+**Audit logging** (use `AuditLogger` from `src/back/boring_ui/api/audit.py`):
+- Log all sensitive operations (auth success/failure, file ops, exec)
+- Use `request_id` from logging middleware for correlation
+- Persists events to audit trail for compliance/forensics
 
 ## 9. Workspace Isolation and Auth Scope
 
@@ -399,6 +442,7 @@ Parallelizable after WS-B starts:
 - Move `internal_files.py`, `internal_git.py`, `internal_exec.py` logic into `files.py`, `git.py`, `exec.py`
 - Add `router.py` composer and `app.py` factory
 - Keep internal endpoint paths unchanged
+- **Reuse**: Import `propagate_request_context` in `app.py` for trace correlation (see REUSE_INVENTORY.md)
 
 ## 12.2 WS-B (Control-plane rewiring)
 
@@ -408,6 +452,13 @@ Parallelizable after WS-B starts:
 - Remove `src/back/boring_ui/api/internal_app.py`
 - Remove `src/back/boring_ui/api/modules/sandbox/internal_api.py`
 - Ensure hosted capability payload never includes direct local-api/sprite endpoint URLs
+- **Execution checklist** (prevent rebuilding existing components):
+  - ✅ Import `ServiceTokenIssuer`, `OIDCVerifier` from `auth.py` (DO NOT create new token systems)
+  - ✅ Import `add_oidc_auth_middleware`, `AuthContext`, `require_permission` from `auth_middleware.py` (DO NOT bypass auth)
+  - ✅ Import `RunMode`, `APIConfig` from `config.py` (DO NOT create custom config loading)
+  - ✅ Import `add_logging_middleware`, `get_request_id`, `propagate_request_context` from `logging_middleware.py` (DO NOT skip trace correlation)
+  - ✅ Import `audit_logger` from `audit.py` (DO NOT rebuild audit trail)
+  - ✅ Verify no duplicate code for auth/config/logging/audit (see `.planning/bd-1adh/REUSE_INVENTORY.md` for full anti-patterns)
 
 ## 12.3 WS-C (Docs and deployment matrix)
 
@@ -549,9 +600,38 @@ Refactor is accepted when all are true:
 5. Live single-sprite validation passes for filesystem, git, and chat.
 6. Showboat/Rodney proof report is produced and committed.
 7. Browser network assertions pass with zero direct calls to Sprites API/domain/internal local-api paths.
+8. **Reuse verification** (bd-1adh.1.2): All auth/config/audit/logging components reused from existing modules (no duplicate implementations)
+   - ✅ ServiceTokenIssuer used from `auth.py`
+   - ✅ OIDCVerifier used from `auth.py`
+   - ✅ AuthMiddleware used from `auth_middleware.py`
+   - ✅ RunMode/APIConfig used from `config.py`
+   - ✅ LoggingMiddleware used from `logging_middleware.py`
+   - ✅ AuditLogger used from `audit.py`
+   - See `.planning/bd-1adh/REUSE_INVENTORY.md` for full component inventory and reuse constraints
 
-## 18. Source Links
+## 18. Component Reuse Reference
+
+**CRITICAL: Refer to `.planning/bd-1adh/REUSE_INVENTORY.md` before implementing any of the following:**
+- Authentication (ServiceTokenIssuer, OIDCVerifier, AuthMiddleware)
+- Configuration (RunMode, APIConfig)
+- Logging and tracing (LoggingMiddleware, get_request_id)
+- Audit and compliance (AuditLogger, AuditStore)
+
+The reuse inventory documents:
+- Module locations and import paths
+- Core responsibilities and capabilities
+- Integration patterns and usage examples
+- Reuse constraints (MUST vs MUST NOT)
+- Test coverage and existing tests
+- Anti-patterns to avoid
+
+**Purpose**: Prevent accidental reinvention and ensure consistent patterns across api and local-api modules.
+
+**Ownership**: When implementing WS-B (control-plane rewiring), reference REUSE_INVENTORY.md for each major concern to ensure reuse.
+
+## 19. Source Links
 
 - Sprites proxy endpoint docs: `https://sprites.dev/api/sprites/proxy`
 - Sprites API index: `https://sprites.dev/api`
 - Showboat/Rodney reference: `https://simonwillison.net/2026/Feb/10/showboat-and-rodney/`
+- Component Reuse Inventory: `.planning/bd-1adh/REUSE_INVENTORY.md`
