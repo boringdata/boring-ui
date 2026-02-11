@@ -6,9 +6,10 @@ with policy enforcement, permission checking, and error mapping.
 Routes exposed publicly but authenticated via capability tokens.
 """
 
-from fastapi import APIRouter, HTTPException, status, Request, Depends
-from typing import Any, Optional
-from .hosted_client import HostedSandboxClient, SandboxClientConfig
+from fastapi import APIRouter, HTTPException, status, Request
+from .hosted_client import HostedSandboxClient
+from ...auth_middleware import require_permission, get_auth_context
+from ...capability_tokens import CapabilityTokenIssuer
 
 import logging
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 def create_hosted_sandbox_proxy_router(
     client: HostedSandboxClient,
+    capability_issuer: CapabilityTokenIssuer,
 ) -> APIRouter:
     """Create proxy router that forwards requests to internal sandbox service.
     
@@ -25,12 +27,23 @@ def create_hosted_sandbox_proxy_router(
     """
     router = APIRouter(prefix="/sandbox/proxy", tags=["sandbox-proxy"])
 
+    def _issue_token(request: Request, operations: set[str]) -> str:
+        auth = get_auth_context(request)
+        workspace_id = auth.workspace_id or "default"
+        return capability_issuer.issue_token(
+            workspace_id=workspace_id,
+            operations=operations,
+            ttl_seconds=60,
+        )
+
     # File operations (bd-1pwb.5.2)
     @router.get("/files/list")
-    async def proxy_list_files(path: str = "."):
+    @require_permission("files:read")
+    async def proxy_list_files(request: Request, path: str = "."):
         """Proxy: List files in sandbox."""
         try:
-            return await client.list_files(path)
+            token = _issue_token(request, {"files:list"})
+            return await client.list_files(path, capability_token=token)
         except Exception as e:
             logger.error(f"Failed to list files: {e}")
             raise HTTPException(
@@ -39,10 +52,12 @@ def create_hosted_sandbox_proxy_router(
             )
 
     @router.get("/files/read")
-    async def proxy_read_file(path: str):
+    @require_permission("files:read")
+    async def proxy_read_file(request: Request, path: str):
         """Proxy: Read file from sandbox."""
         try:
-            return await client.read_file(path)
+            token = _issue_token(request, {"files:read"})
+            return await client.read_file(path, capability_token=token)
         except Exception as e:
             logger.error(f"Failed to read file: {e}")
             raise HTTPException(
@@ -51,10 +66,12 @@ def create_hosted_sandbox_proxy_router(
             )
 
     @router.post("/files/write")
-    async def proxy_write_file(path: str, content: str):
+    @require_permission("files:write")
+    async def proxy_write_file(request: Request, path: str, content: str):
         """Proxy: Write file to sandbox."""
         try:
-            return await client.write_file(path, content)
+            token = _issue_token(request, {"files:write"})
+            return await client.write_file(path, content, capability_token=token)
         except Exception as e:
             logger.error(f"Failed to write file: {e}")
             raise HTTPException(
@@ -64,10 +81,12 @@ def create_hosted_sandbox_proxy_router(
 
     # Git operations (bd-1pwb.5.2)
     @router.get("/git/status")
-    async def proxy_git_status():
+    @require_permission("git:read")
+    async def proxy_git_status(request: Request):
         """Proxy: Get git status from sandbox."""
         try:
-            return await client.git_status()
+            token = _issue_token(request, {"git:status"})
+            return await client.git_status(capability_token=token)
         except Exception as e:
             logger.error(f"Failed to get git status: {e}")
             raise HTTPException(
@@ -76,10 +95,12 @@ def create_hosted_sandbox_proxy_router(
             )
 
     @router.get("/git/diff")
-    async def proxy_git_diff(context: str = "working"):
+    @require_permission("git:read")
+    async def proxy_git_diff(request: Request, context: str = "working"):
         """Proxy: Get git diff from sandbox."""
         try:
-            return await client.git_diff(context)
+            token = _issue_token(request, {"git:diff"})
+            return await client.git_diff(context, capability_token=token)
         except Exception as e:
             logger.error(f"Failed to get git diff: {e}")
             raise HTTPException(
@@ -89,7 +110,8 @@ def create_hosted_sandbox_proxy_router(
 
     # Exec operations (bd-1pwb.5.3)
     @router.post("/exec/run")
-    async def proxy_exec_run(command: str, timeout_seconds: int = 30):
+    @require_permission("exec:run")
+    async def proxy_exec_run(request: Request, command: str, timeout_seconds: int = 30):
         """Proxy: Execute command in sandbox.
         
         Defensive guardrails:
@@ -104,7 +126,8 @@ def create_hosted_sandbox_proxy_router(
                 timeout = 30
 
             logger.info(f"Executing command in sandbox: {command[:50]}...")
-            return await client.exec_run(command, timeout)
+            token = _issue_token(request, {"exec:run"})
+            return await client.exec_run(command, timeout, capability_token=token)
         except Exception as e:
             logger.error(f"Failed to execute command: {e}")
             raise HTTPException(

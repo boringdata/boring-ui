@@ -71,6 +71,15 @@ def get_cors_origin() -> str:
     return 'http://localhost:5173'
 
 
+def is_dev_auth_bypass_enabled() -> bool:
+    """Return True when hosted auth bypass is explicitly enabled.
+
+    This is for local development only and must never be used in production.
+    """
+    raw = os.environ.get('DEV_AUTH_BYPASS', '').strip().lower()
+    return raw in {'1', 'true', 'yes', 'on'}
+
+
 @dataclass
 class APIConfig:
     """Central configuration for all API routers.
@@ -135,15 +144,21 @@ class APIConfig:
         Returns:
             dict mapping run mode to list of required env vars
         """
+        hosted_required = [
+            'WORKSPACE_ROOT',  # Required for all modes
+            'OIDC_ISSUER',  # JWT issuer for edge auth
+            'OIDC_AUDIENCE',  # JWT audience for edge auth
+        ]
+        if is_dev_auth_bypass_enabled():
+            hosted_required = [
+                'WORKSPACE_ROOT',
+            ]
+
         return {
             RunMode.LOCAL.value: [
                 'WORKSPACE_ROOT',  # Required for all modes
             ],
-            RunMode.HOSTED.value: [
-                'WORKSPACE_ROOT',  # Required for all modes
-                'ANTHROPIC_API_KEY',  # Hosted needs API key for auth
-                'HOSTED_API_TOKEN',  # Token for hosted API authn
-            ],
+            RunMode.HOSTED.value: hosted_required,
         }
 
     def validate_startup(self) -> None:

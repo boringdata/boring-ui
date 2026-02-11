@@ -130,12 +130,17 @@ def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> Non
             if request_id:
                 log_record.request_id = request_id
             logger.handle(log_record)
-            return error_emitter.missing_token(request.url.path)
+            return error_emitter.missing_token(request.url.path, request_id=request_id)
 
         token = auth_header[7:]  # Remove "Bearer " prefix
 
         # Validate JWT
-        claims = verifier.verify_token(token)
+        if hasattr(verifier, "verify_token"):
+            claims = verifier.verify_token(token)
+        elif hasattr(verifier, "validate_token"):
+            claims = verifier.validate_token(token)
+        else:
+            claims = None
         if claims is None:
             # Invalid token - log with structured fields
             log_record = logger.makeRecord(
@@ -150,12 +155,16 @@ def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> Non
             if request_id:
                 log_record.request_id = request_id
             logger.handle(log_record)
-            return error_emitter.invalid_token(request.url.path)
+            return error_emitter.invalid_token(request.url.path, request_id=request_id)
 
         # Extract user identity
         user_id = claims.get("sub")
         if not user_id:
-            return error_emitter.invalid_token(request.url.path, "Invalid token structure (missing 'sub')")
+            return error_emitter.invalid_token(
+                request.url.path,
+                "Invalid token structure (missing 'sub')",
+                request_id=request_id,
+            )
 
         # Extract workspace context
         workspace_id = claims.get("workspace")
@@ -250,6 +259,7 @@ def require_permission(permission: str) -> Callable:
                     auth_context.user_id,
                     permission,
                     auth_context.permissions,
+                    request_id=getattr(request.state, "request_id", None),
                 )
             return await func(request, *args, **kwargs)
 

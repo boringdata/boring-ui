@@ -41,25 +41,6 @@ class AuditLogger:
         self.store = store
 
     def _persist_event(self, event: AuditEvent) -> None:
-        """Persist audit event to configured store (bd-1pwb.9.2).
-
-        Non-blocking: uses asyncio.create_task for background persistence.
-        Failures are logged but don't crash the application.
-
-        Args:
-            event: AuditEvent to persist
-        """
-        if not self.store:
-            return
-
-        try:
-            import asyncio
-            asyncio.create_task(self.store.store(event))
-        except RuntimeError:
-            # Outside async context - log but don't crash
-            self.logger.debug("Could not persist event (outside async context)")
-
-    def _persist_event(self, event: AuditEvent) -> None:
         """Persist event to storage backend.
 
         Logs errors but doesn't raise - audit failure shouldn't break the app.
@@ -353,7 +334,7 @@ class AuditLogger:
         if not self.store:
             return []
 
-        return await self.store.query(
+        return self.store.query(
             event_type=event_type,
             user_id=user_id,
             workspace_id=workspace_id,

@@ -24,10 +24,10 @@ export default function FilesystemIndicator() {
 
         // For now, show the filesystem indicator based on environment hints
         // In the future, we could query an endpoint that returns the actual workspace path
-        const workspacePath = process.env.VITE_WORKSPACE_PATH || '/home/ubuntu/projects/boring-ui'
+        const workspacePath = import.meta.env.VITE_WORKSPACE_PATH || '/home/ubuntu/projects/boring-ui'
 
         // Detect filesystem source from path or env var
-        const fsSource = process.env.VITE_FILESYSTEM_SOURCE || 'local'
+        const fsSource = import.meta.env.VITE_FILESYSTEM_SOURCE || data.filesystem_source || 'local'
 
         if (fsSource === 'sprites' || workspacePath.includes('sprites')) {
           // Files are on Sprites.dev

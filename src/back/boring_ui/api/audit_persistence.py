@@ -34,6 +34,7 @@ class AuditStore(ABC):
         event_type: Optional[AuditEventType] = None,
         user_id: Optional[str] = None,
         workspace_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
         status: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
@@ -62,9 +63,10 @@ class InMemoryAuditStore(AuditStore):
     Suitable for testing and development only.
     """
 
-    def __init__(self):
+    def __init__(self, max_events: int = 10000):
         """Initialize in-memory store."""
         self.events: List[AuditEvent] = []
+        self.max_events = max_events
         self._lock = threading.Lock()
         self.logger = logging.getLogger(__name__)
 
@@ -76,12 +78,36 @@ class InMemoryAuditStore(AuditStore):
         """
         with self._lock:
             self.events.append(event)
+            # FIFO eviction to avoid unbounded memory growth
+            if len(self.events) > self.max_events:
+                del self.events[0:len(self.events) - self.max_events]
+
+    def count(
+        self,
+        event_type: Optional[AuditEventType] = None,
+        user_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> int:
+        """Count events matching optional filters."""
+        return len(
+            self.query(
+                event_type=event_type,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                trace_id=trace_id,
+                status=status,
+                limit=10**9,
+            )
+        )
 
     def query(
         self,
         event_type: Optional[AuditEventType] = None,
         user_id: Optional[str] = None,
         workspace_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
         status: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
@@ -111,6 +137,8 @@ class InMemoryAuditStore(AuditStore):
                     continue
                 if workspace_id and event.workspace_id != workspace_id:
                     continue
+                if trace_id and event.trace_id != trace_id:
+                    continue
                 if status and event.status != status:
                     continue
                 if start_time and event.timestamp < start_time:
@@ -136,15 +164,22 @@ class FileAuditStore(AuditStore):
     Thread-safe file operations for concurrent access.
     """
 
-    def __init__(self, logs_dir: Optional[Path] = None):
+    def __init__(self, path: Optional[Path] = None, logs_dir: Optional[Path] = None):
         """Initialize file-based audit store.
 
         Args:
-            logs_dir: Directory to store audit logs. Defaults to .logs/audit
+            path: Full JSONL file path (preferred when provided)
+            logs_dir: Directory to store audit logs if path not provided.
+                     Defaults to .audit
         """
-        self.logs_dir = logs_dir or Path.cwd() / ".logs" / "audit"
-        self.logs_dir.mkdir(parents=True, exist_ok=True)
-        self.audit_file = self.logs_dir / "events.jsonl"
+        if path is not None:
+            self.path = Path(path)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            base_dir = logs_dir or Path.cwd() / ".audit"
+            base_dir.mkdir(parents=True, exist_ok=True)
+            self.path = base_dir / "events.jsonl"
+
         self._lock = threading.Lock()
         self.logger = logging.getLogger(__name__)
 
@@ -158,7 +193,7 @@ class FileAuditStore(AuditStore):
         """
         try:
             with self._lock:
-                with open(self.audit_file, "a") as f:
+                with open(self.path, "a") as f:
                     json.dump(event.to_dict(), f)
                     f.write("\n")
         except Exception as e:
@@ -170,6 +205,7 @@ class FileAuditStore(AuditStore):
         event_type: Optional[AuditEventType] = None,
         user_id: Optional[str] = None,
         workspace_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
         status: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
@@ -191,13 +227,13 @@ class FileAuditStore(AuditStore):
         Returns:
             List of AuditEvent matching filters (limited to most recent)
         """
-        if not self.audit_file.exists():
+        if not self.path.exists():
             return []
 
         events = []
         try:
             with self._lock:
-                with open(self.audit_file, "r") as f:
+                with open(self.path, "r") as f:
                     for line in f:
                         try:
                             data = json.loads(line)
@@ -209,6 +245,8 @@ class FileAuditStore(AuditStore):
                             if user_id and event.user_id != user_id:
                                 continue
                             if workspace_id and event.workspace_id != workspace_id:
+                                continue
+                            if trace_id and event.trace_id != trace_id:
                                 continue
                             if status and event.status != status:
                                 continue
@@ -263,8 +301,8 @@ def create_audit_store(store_type: str = "file", **kwargs) -> AuditStore:
         Configured AuditStore instance
     """
     if store_type == "memory":
-        return InMemoryAuditStore()
+        return InMemoryAuditStore(max_events=kwargs.get("max_events", 10000))
     elif store_type == "file":
-        return FileAuditStore(logs_dir=kwargs.get("logs_dir"))
+        return FileAuditStore(path=kwargs.get("path"), logs_dir=kwargs.get("logs_dir"))
     else:
         raise ValueError(f"Unknown store type: {store_type}")

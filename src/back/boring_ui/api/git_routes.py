@@ -86,12 +86,12 @@ def create_git_router(config: APIConfig) -> APIRouter:
         def normalize_status(raw: str) -> str:
             """Convert git XY status to single-char frontend status.
 
-            Returns: M (Modified), A (Added), D (Deleted), U (Untracked), C (Conflict)
+            Returns: M (Modified), A (Added), D (Deleted), ?? (Untracked), C (Conflict)
             """
             raw = raw.strip()
             # Untracked files (standard '??' or condensed '?' format)
             if raw in ('??', '?'):
-                return 'U'
+                return '??'
             # Merge conflicts (unmerged states)
             # UU=both modified, AA=both added, DD=both deleted
             # DU/UD/AU/UA = various conflict combinations

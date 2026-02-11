@@ -39,7 +39,7 @@ def create_internal_sandbox_router(workspace_root: Path) -> APIRouter:
     Returns:
         APIRouter with all internal operation routes
     """
-    router = APIRouter(prefix="/sandbox", tags=["sandbox-internal"])
+    router = APIRouter(prefix="/internal", tags=["sandbox-internal"])
 
     @router.get("/health")
     async def health_check():

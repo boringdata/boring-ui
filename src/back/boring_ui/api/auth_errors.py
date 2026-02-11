@@ -32,10 +32,10 @@ class AuthErrorEmitter:
     def __init__(self):
         self.telemetry = AuthErrorTelemetry()
 
-    def missing_token(self, request_path: str) -> JSONResponse:
+    def missing_token(self, request_path: str, request_id: str | None = None) -> JSONResponse:
         """Emit 401 for missing/invalid authorization header."""
         self.telemetry.authn_missing += 1
-        request_id = str(uuid.uuid4())
+        request_id = request_id or str(uuid.uuid4())
         logger.debug(f"[{request_id}] Missing Bearer token: {request_path}")
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -47,10 +47,15 @@ class AuthErrorEmitter:
             headers={"WWW-Authenticate": 'Bearer realm="boring-ui"'},
         )
 
-    def invalid_token(self, request_path: str, reason: str = "Invalid or expired token") -> JSONResponse:
+    def invalid_token(
+        self,
+        request_path: str,
+        reason: str = "Invalid or expired token",
+        request_id: str | None = None,
+    ) -> JSONResponse:
         """Emit 401 for token validation failure."""
         self.telemetry.authn_invalid += 1
-        request_id = str(uuid.uuid4())
+        request_id = request_id or str(uuid.uuid4())
         logger.debug(f"[{request_id}] Invalid JWT: {request_path} ({reason})")
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -63,11 +68,16 @@ class AuthErrorEmitter:
         )
 
     def insufficient_permission(
-        self, request_path: str, user_id: str, required: str, have: set[str]
+        self,
+        request_path: str,
+        user_id: str,
+        required: str,
+        have: set[str],
+        request_id: str | None = None,
     ) -> JSONResponse:
         """Emit 403 for insufficient permissions."""
         self.telemetry.authz_insufficient += 1
-        request_id = str(uuid.uuid4())
+        request_id = request_id or str(uuid.uuid4())
         logger.warning(
             f"[{request_id}] Permission denied: user={user_id}, "
             f"required={required}, have={have}, path={request_path}"

@@ -42,6 +42,27 @@ class TestAPIConfig:
         config = APIConfig(workspace_root=tmp_path, pty_providers=providers)
         assert config.pty_providers == providers
 
+    def test_hosted_mode_requires_oidc_without_bypass(self, tmp_path, monkeypatch):
+        """Hosted mode should require OIDC vars when bypass is not enabled."""
+        monkeypatch.setenv('BORING_UI_RUN_MODE', 'hosted')
+        monkeypatch.delenv('OIDC_ISSUER', raising=False)
+        monkeypatch.delenv('OIDC_AUDIENCE', raising=False)
+        monkeypatch.delenv('DEV_AUTH_BYPASS', raising=False)
+
+        config = APIConfig(workspace_root=tmp_path)
+        with pytest.raises(ValueError, match='OIDC_ISSUER'):
+            config.validate_startup()
+
+    def test_hosted_mode_allows_missing_oidc_with_bypass(self, tmp_path, monkeypatch):
+        """Hosted mode should allow local dev startup when bypass is explicit."""
+        monkeypatch.setenv('BORING_UI_RUN_MODE', 'hosted')
+        monkeypatch.setenv('DEV_AUTH_BYPASS', '1')
+        monkeypatch.delenv('OIDC_ISSUER', raising=False)
+        monkeypatch.delenv('OIDC_AUDIENCE', raising=False)
+
+        config = APIConfig(workspace_root=tmp_path)
+        config.validate_startup()
+
 
 class TestValidatePath:
     """Tests for APIConfig.validate_path method."""

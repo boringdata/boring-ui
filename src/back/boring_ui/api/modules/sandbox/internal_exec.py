@@ -12,10 +12,10 @@ All routes require capability token authorization via bd-1pwb.3.2.
 
 from fastapi import APIRouter, HTTPException, status, Request
 from pathlib import Path
-from typing import Optional
 import subprocess
 import asyncio
 from ...sandbox_auth import require_capability
+from .policy import SandboxPolicies
 
 
 def create_internal_exec_router(workspace_root: Path) -> APIRouter:
@@ -26,6 +26,7 @@ def create_internal_exec_router(workspace_root: Path) -> APIRouter:
     Requires capability token authorization.
     """
     router = APIRouter(prefix="/exec", tags=["exec-internal"])
+    policies = SandboxPolicies()
 
     @router.post("/run")
     @require_capability("exec:run")
@@ -60,28 +61,45 @@ def create_internal_exec_router(workspace_root: Path) -> APIRouter:
                     detail=f"Invalid command syntax: {e}",
                 )
 
-            # Run with timeout
-            try:
-                result = await asyncio.wait_for(
-                    asyncio.create_subprocess_exec(
-                        *args,
-                        stdout=subprocess.PIPE if capture_output else None,
-                        stderr=subprocess.PIPE if capture_output else None,
-                        cwd=workspace_root,
-                    ).wait(),
-                    timeout=timeout,
+            if not args:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Command cannot be empty",
                 )
+
+            if not policies.allow_command(command):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Command blocked by execution policy",
+                )
+
+            # Run with timeout and capture output
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                        *args,
+                        stdout=asyncio.subprocess.PIPE if capture_output else None,
+                        stderr=asyncio.subprocess.PIPE if capture_output else None,
+                        cwd=workspace_root,
+                )
+                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
+                if 'proc' in locals() and proc.returncode is None:
+                    proc.kill()
+                    await proc.wait()
                 raise HTTPException(
                     status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                     detail=f"Command timed out after {timeout}s",
                 )
 
+            stdout = stdout_b.decode(errors="replace") if capture_output and stdout_b else None
+            stderr = stderr_b.decode(errors="replace") if capture_output and stderr_b else None
             return {
                 "command": command,
-                "exit_code": result,
+                "exit_code": proc.returncode,
                 "timeout_seconds": timeout,
                 "status": "completed",
+                "stdout": stdout,
+                "stderr": stderr,
             }
         except HTTPException:
             raise

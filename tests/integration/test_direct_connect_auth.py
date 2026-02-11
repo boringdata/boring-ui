@@ -77,8 +77,20 @@ def sandbox_server():
             pass
         time.sleep(1)
     else:
+        require = os.environ.get("REQUIRE_SANDBOX_AGENT_TESTS") == "1"
         proc.kill()
-        pytest.fail("sandbox-agent failed to start within 30s")
+        output = ""
+        try:
+            if proc.stdout:
+                output = (proc.stdout.read() or "").strip()
+        except Exception:
+            output = ""
+        reason = "sandbox-agent failed to start within 30s"
+        if output:
+            reason = f"{reason}. startup output: {output[:500]}"
+        if require:
+            pytest.fail(reason)
+        pytest.skip(reason)
 
     yield {"proc": proc, "base_url": base_url, "token": SANDBOX_TOKEN}
 

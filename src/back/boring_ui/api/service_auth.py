@@ -20,6 +20,8 @@ from typing import Any
 from datetime import datetime, timezone
 
 import jwt
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
@@ -378,3 +380,37 @@ class ServiceTokenValidator:
             return None
 
         return ServiceTokenValidator(key_versions, current_version, grace_period)
+
+
+def add_service_auth_middleware(
+    app: FastAPI,
+    validator: "ServiceTokenValidator | None",
+    required_prefix: str = "/internal/v1",
+    accepted_services: list[str] | None = None,
+) -> None:
+    """Add service-to-service auth middleware for protected internal routes."""
+    if validator is None:
+        logger.info("Service auth middleware disabled (validator not configured)")
+        return
+
+    @app.middleware("http")
+    async def service_auth(request: Request, call_next):
+        if not request.url.path.startswith(required_prefix):
+            return await call_next(request)
+
+        token = request.headers.get("X-Service-Token", "")
+        if not token:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Missing service token", "code": "SERVICE_AUTH_MISSING"},
+            )
+
+        claims = validator.validate_token(token, accepted_services=accepted_services)
+        if claims is None:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid service token", "code": "SERVICE_AUTH_INVALID"},
+            )
+
+        request.state.service_auth_claims = claims
+        return await call_next(request)

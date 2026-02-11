@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 from dataclasses import dataclass
 import httpx
 import uuid
+from ...service_auth import ServiceTokenSigner
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class SandboxClientConfig:
     timeout_seconds: int = 30
     max_retries: int = 3
     enable_observability: bool = True
+    service_signer: ServiceTokenSigner | None = None
 
 
 class HostedSandboxClient:
@@ -43,36 +45,38 @@ class HostedSandboxClient:
         self.base_url = config.internal_url
         self._request_count = 0
 
-    async def list_files(self, path: str = ".") -> Dict[str, Any]:
+    async def list_files(self, path: str = ".", capability_token: str = "") -> Dict[str, Any]:
         """List files in sandbox (privileged operation)."""
-        return await self._request("GET", "/internal/v1/files/list", params={"path": path})
+        return await self._request("GET", "/internal/v1/files/list", params={"path": path}, capability_token=capability_token)
 
-    async def read_file(self, path: str) -> Dict[str, Any]:
+    async def read_file(self, path: str, capability_token: str = "") -> Dict[str, Any]:
         """Read file from sandbox (privileged operation)."""
-        return await self._request("GET", "/internal/v1/files/read", params={"path": path})
+        return await self._request("GET", "/internal/v1/files/read", params={"path": path}, capability_token=capability_token)
 
-    async def write_file(self, path: str, content: str) -> Dict[str, Any]:
+    async def write_file(self, path: str, content: str, capability_token: str = "") -> Dict[str, Any]:
         """Write file to sandbox (privileged operation)."""
         return await self._request(
             "POST",
             "/internal/v1/files/write",
             params={"path": path, "content": content},
+            capability_token=capability_token,
         )
 
-    async def git_status(self) -> Dict[str, Any]:
+    async def git_status(self, capability_token: str = "") -> Dict[str, Any]:
         """Get git status from sandbox."""
-        return await self._request("GET", "/internal/v1/git/status")
+        return await self._request("GET", "/internal/v1/git/status", capability_token=capability_token)
 
-    async def git_diff(self, context: str = "working") -> Dict[str, Any]:
+    async def git_diff(self, context: str = "working", capability_token: str = "") -> Dict[str, Any]:
         """Get git diff from sandbox."""
-        return await self._request("GET", "/internal/v1/git/diff", params={"context": context})
+        return await self._request("GET", "/internal/v1/git/diff", params={"context": context}, capability_token=capability_token)
 
-    async def exec_run(self, command: str, timeout_seconds: int = 30) -> Dict[str, Any]:
+    async def exec_run(self, command: str, timeout_seconds: int = 30, capability_token: str = "") -> Dict[str, Any]:
         """Run command in sandbox."""
         return await self._request(
             "POST",
             "/internal/v1/exec/run",
             params={"command": command, "timeout_seconds": timeout_seconds},
+            capability_token=capability_token,
         )
 
     async def _request(
@@ -81,13 +85,19 @@ class HostedSandboxClient:
         path: str,
         params: Optional[Dict[str, Any]] = None,
         json_body: Optional[Dict[str, Any]] = None,
+        capability_token: str = "",
+        request_id: str = "",
     ) -> Dict[str, Any]:
         """Execute request with auth, tracing, and retry logic."""
         self._request_count += 1
         trace_id = str(uuid.uuid4())
         url = f"{self.base_url}{path}"
 
-        headers = self._build_headers(trace_id)
+        headers = self._build_headers(
+            trace_id=trace_id,
+            capability_token=capability_token,
+            request_id=request_id,
+        )
 
         try:
             async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
@@ -98,7 +108,12 @@ class HostedSandboxClient:
                     json=json_body,
                     headers=headers,
                 )
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    raise httpx.HTTPStatusError(
+                        f"{response.status_code} response from sandbox",
+                        request=response.request,
+                        response=response,
+                    )
                 return response.json()
         except httpx.HTTPError as e:
             logger.error(
@@ -106,15 +121,19 @@ class HostedSandboxClient:
             )
             raise
 
-    def _build_headers(self, trace_id: str) -> Dict[str, str]:
+    def _build_headers(self, trace_id: str, capability_token: str, request_id: str = "") -> Dict[str, str]:
         """Build request headers with auth and tracing."""
         headers = {
             "X-Trace-ID": trace_id,
-            "X-Request-ID": f"{self._request_count}",
+            "X-Request-ID": request_id or f"{self._request_count}",
         }
-        
-        if self.config.capability_token:
-            headers["Authorization"] = f"Bearer {self.config.capability_token}"
+
+        token = capability_token or self.config.capability_token
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        if self.config.service_signer:
+            headers["X-Service-Token"] = self.config.service_signer.sign_request(ttl_seconds=60)
 
         return headers
 

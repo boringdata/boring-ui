@@ -58,6 +58,7 @@ from .capabilities import (
 
 # App factory
 from .app import create_app
+from .internal_app import create_internal_app
 
 __all__ = [
     # Configuration
@@ -82,4 +83,5 @@ __all__ = [
     'create_capabilities_router',
     # App factory
     'create_app',
+    'create_internal_app',
 ]
