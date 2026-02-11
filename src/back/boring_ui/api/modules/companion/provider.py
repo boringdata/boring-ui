@@ -4,6 +4,7 @@ Runs The Vibe Companion as a local subprocess. Passes auth
 and CORS config via environment variables.
 """
 import asyncio
+import logging
 import os
 import shutil
 import subprocess
@@ -12,6 +13,8 @@ from pathlib import Path
 from typing import AsyncIterator
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -123,6 +126,21 @@ class CompanionProvider:
 
         bun = self._check_bun()
         env = self._build_env()
+
+        # Log binding diagnostics
+        bind_host = env["HOST"]
+        logger.info(
+            f"Companion startup diagnostics: "
+            f"run_mode={self.run_mode}, "
+            f"bind_host={bind_host}, "
+            f"advertised_host={self.external_host}, "
+            f"port={self.port}",
+            extra={
+                "topology": self.run_mode,
+                "binding": bind_host,
+                "external_host": self.external_host,
+            },
+        )
 
         # Determine server entry point
         server_dir = self.server_dir

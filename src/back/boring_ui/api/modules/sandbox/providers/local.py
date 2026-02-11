@@ -3,6 +3,7 @@
 Runs sandbox-agent as a local subprocess on the host machine.
 """
 import asyncio
+import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +12,8 @@ from typing import AsyncIterator
 import httpx
 
 from ..provider import SandboxInfo, SandboxProvider
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -96,6 +99,21 @@ class LocalProvider(SandboxProvider):
         # In hosted mode, bind to all interfaces (0.0.0.0) for external connectivity.
         # In local mode, bind to localhost only (127.0.0.1) for security.
         bind_host = "0.0.0.0" if self.run_mode == "hosted" else "127.0.0.1"
+
+        # Log binding diagnostics
+        logger.info(
+            f"Sandbox-agent startup diagnostics: "
+            f"run_mode={self.run_mode}, "
+            f"bind_host={bind_host}, "
+            f"advertised_host={self.external_host}, "
+            f"port={self.port}",
+            extra={
+                "topology": self.run_mode,
+                "binding": bind_host,
+                "external_host": self.external_host,
+            },
+        )
+
         cmd = [
             "npx",
             "@sandbox-agent/cli",
