@@ -122,6 +122,7 @@ class TestAuthMiddlewareIntegration:
         app = FastAPI()
 
         oidc_verifier = Mock(spec=OIDCVerifier)
+        oidc_verifier.issuer_url = "https://example.com"
         add_oidc_auth_middleware(app, oidc_verifier)
 
         @app.get("/api/protected")
@@ -140,8 +141,9 @@ class TestAuthMiddlewareIntegration:
         """Invalid token should return 401 with AUTH_INVALID code."""
         app = FastAPI()
 
-        oidc_verifier = Mock(spec=OIDCVerifier)
-        oidc_verifier.validate_token.return_value = None  # Validation fails
+        oidc_verifier = Mock()
+        oidc_verifier.issuer_url = "https://example.com"
+        oidc_verifier.validate_token = Mock(return_value=None)  # Validation fails
         add_oidc_auth_middleware(app, oidc_verifier)
 
         @app.get("/api/protected")
@@ -159,12 +161,13 @@ class TestAuthMiddlewareIntegration:
         """Insufficient permission should return 403 with permission code."""
         app = FastAPI()
 
-        oidc_verifier = Mock(spec=OIDCVerifier)
-        oidc_verifier.validate_token.return_value = {
+        oidc_verifier = Mock()
+        oidc_verifier.issuer_url = "https://example.com"
+        oidc_verifier.validate_token = Mock(return_value={
             "sub": "user123",
             "workspace_id": "ws1",
             "permissions": ["files:read"],  # Only read permission
-        }
+        })
         add_oidc_auth_middleware(app, oidc_verifier)
 
         @app.post("/api/protected")
@@ -185,12 +188,13 @@ class TestAuthMiddlewareIntegration:
         """Valid token should inject AuthContext into request."""
         app = FastAPI()
 
-        oidc_verifier = Mock(spec=OIDCVerifier)
-        oidc_verifier.validate_token.return_value = {
+        oidc_verifier = Mock()
+        oidc_verifier.issuer_url = "https://example.com"
+        oidc_verifier.validate_token = Mock(return_value={
             "sub": "user123",
             "workspace_id": "ws1",
             "permissions": ["files:*", "git:*"],
-        }
+        })
         add_oidc_auth_middleware(app, oidc_verifier)
 
         @app.get("/api/protected")
@@ -259,19 +263,27 @@ class TestCapabilityTokenFlow:
         token = capability_issuer.issue_token(
             workspace_id="ws1",
             operations={"files:read"},
-            ttl_seconds=1,  # Expire in 1 second
+            ttl_seconds=5,  # Expire in 5 seconds (minimum TTL)
         )
 
         # Token should be valid initially
         claims = capability_validator.validate_token(token)
         assert claims is not None
 
-        # Wait for expiry
-        time.sleep(1.1)
+        # Create a new token with 1 second TTL by patching time
+        with patch('boring_ui.api.capability_tokens.time.time') as mock_time:
+            # First call: current time
+            mock_time.return_value = 1000.0
+            token = capability_issuer.issue_token(
+                workspace_id="ws1",
+                operations={"files:read"},
+                ttl_seconds=5,
+            )
 
-        # Token should now be rejected
-        claims = capability_validator.validate_token(token)
-        assert claims is None
+            # Simulate time passing beyond expiry
+            mock_time.return_value = 1010.0
+            claims = capability_validator.validate_token(token)
+            assert claims is None  # Token should be expired
 
     def test_operation_scoping(self, capability_issuer, capability_validator):
         """Should enforce operation scoping."""
@@ -393,10 +405,11 @@ class TestSecurityDenyPaths:
             exec_policy=ExecPolicy.DENY_DANGEROUS,
         )
 
-        # Allowed file
+        # Regular paths are allowed in RESTRICTED mode (workspace boundary checked by caller)
         assert policies.allow_file_access("/home/user/workspace/src/main.py")
+        assert policies.allow_file_access("src/main.py")
 
-        # Blocked paths
+        # Blocked paths are always denied
         assert not policies.allow_file_access("/etc/passwd")
         assert not policies.allow_file_access("/root/.ssh")
 
@@ -420,12 +433,13 @@ class TestSecurityDenyPaths:
         """Should log permission denials for audit."""
         app = FastAPI()
 
-        oidc_verifier = Mock(spec=OIDCVerifier)
-        oidc_verifier.validate_token.return_value = {
+        oidc_verifier = Mock()
+        oidc_verifier.issuer_url = "https://example.com"
+        oidc_verifier.validate_token = Mock(return_value={
             "sub": "user123",
             "workspace_id": "ws1",
             "permissions": ["files:read"],  # Only read
-        }
+        })
         add_oidc_auth_middleware(app, oidc_verifier)
 
         @app.post("/api/write")
