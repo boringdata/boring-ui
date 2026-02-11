@@ -202,16 +202,12 @@ def require_permission(permission: str) -> Callable:
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             auth_context = get_auth_context(request)
             if not auth_context.has_permission(permission):
-                resp = error_emitter.insufficient_permission(
+                # Return JSONResponse directly to preserve error contract
+                return error_emitter.insufficient_permission(
                     request.url.path,
                     auth_context.user_id,
                     permission,
                     auth_context.permissions,
-                )
-                # Convert JSONResponse to HTTPException for FastAPI
-                raise HTTPException(
-                    status_code=resp.status_code,
-                    detail=resp.body.decode() if isinstance(resp.body, bytes) else resp.body,
                 )
             return await func(request, *args, **kwargs)
 
