@@ -311,11 +311,22 @@ class SpritesProxyTransport(WorkspaceTransport):
                 extra={"trace_id": trace_id},
             )
 
-            async with asyncio.timeout(self.connect_timeout_sec):
-                async with websockets.connect(
+            try:
+                ws_coro = websockets.connect(
                     ws_url,
                     extra_headers={"Authorization": auth_header},
-                ) as websocket:
+                )
+                websocket = await asyncio.wait_for(
+                    ws_coro, timeout=self.connect_timeout_sec
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"Sprites: Connection timeout",
+                    extra={"trace_id": trace_id},
+                )
+                raise
+
+            async with websocket:
                     logger.debug(
                         f"Sprites: Connected, sending handshake",
                         extra={"trace_id": trace_id},
@@ -328,8 +339,10 @@ class SpritesProxyTransport(WorkspaceTransport):
                     })
 
                     try:
-                        async with asyncio.timeout(self.handshake_timeout_sec):
-                            await websocket.send(handshake)
+                        await asyncio.wait_for(
+                            websocket.send(handshake),
+                            timeout=self.handshake_timeout_sec,
+                        )
                     except asyncio.TimeoutError:
                         logger.error(
                             f"Sprites: Handshake send timeout",
@@ -345,12 +358,14 @@ class SpritesProxyTransport(WorkspaceTransport):
 
                     # 3. Wait for handshake response
                     try:
-                        async with asyncio.timeout(self.handshake_timeout_sec):
-                            handshake_resp = await websocket.recv()
-                            logger.debug(
-                                f"Sprites: Handshake response: {handshake_resp}",
-                                extra={"trace_id": trace_id},
-                            )
+                        handshake_resp = await asyncio.wait_for(
+                            websocket.recv(),
+                            timeout=self.handshake_timeout_sec,
+                        )
+                        logger.debug(
+                            f"Sprites: Handshake response: {handshake_resp}",
+                            extra={"trace_id": trace_id},
+                        )
                     except asyncio.TimeoutError:
                         logger.error(
                             f"Sprites: Handshake response timeout",
@@ -381,8 +396,10 @@ class SpritesProxyTransport(WorkspaceTransport):
 
                     # 5. Send HTTP request
                     try:
-                        async with asyncio.timeout(timeout_sec):
-                            await websocket.send(http_request)
+                        await asyncio.wait_for(
+                            websocket.send(http_request),
+                            timeout=timeout_sec,
+                        )
                     except asyncio.TimeoutError:
                         logger.error(
                             f"Sprites: HTTP request send timeout",
@@ -401,25 +418,32 @@ class SpritesProxyTransport(WorkspaceTransport):
                     total_bytes = 0
 
                     try:
-                        async with asyncio.timeout(timeout_sec):
-                            while True:
-                                chunk = await websocket.recv()
-                                if isinstance(chunk, bytes):
-                                    response_chunks.append(chunk)
-                                    total_bytes += len(chunk)
+                        deadline = asyncio.get_event_loop().time() + timeout_sec
+                        while True:
+                            remaining = deadline - asyncio.get_event_loop().time()
+                            if remaining <= 0:
+                                raise asyncio.TimeoutError("Response receive timeout")
 
-                                    if total_bytes > self.max_response_bytes:
-                                        logger.error(
-                                            f"Sprites: Response exceeded {self.max_response_bytes} bytes",
-                                            extra={"trace_id": trace_id},
-                                        )
-                                        raise ValueError(
-                                            f"Response too large: {total_bytes} > {self.max_response_bytes}"
-                                        )
-                                elif isinstance(chunk, str):
-                                    # Text frame might indicate end
-                                    if chunk == "":
-                                        break
+                            chunk = await asyncio.wait_for(
+                                websocket.recv(),
+                                timeout=remaining,
+                            )
+                            if isinstance(chunk, bytes):
+                                response_chunks.append(chunk)
+                                total_bytes += len(chunk)
+
+                                if total_bytes > self.max_response_bytes:
+                                    logger.error(
+                                        f"Sprites: Response exceeded {self.max_response_bytes} bytes",
+                                        extra={"trace_id": trace_id},
+                                    )
+                                    raise ValueError(
+                                        f"Response too large: {total_bytes} > {self.max_response_bytes}"
+                                    )
+                            elif isinstance(chunk, str):
+                                # Text frame might indicate end
+                                if chunk == "":
+                                    break
                     except asyncio.TimeoutError:
                         logger.error(
                             f"Sprites: Response receive timeout",
