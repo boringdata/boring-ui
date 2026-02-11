@@ -5,11 +5,11 @@ import tempfile
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
-from src.back.boring_ui.api.audit import (
+from src.back.boring_ui.api.audit_models import (
     AuditEvent,
     AuditEventType,
-    AuditLogger,
 )
+from src.back.boring_ui.api.audit import AuditLogger
 from src.back.boring_ui.api.audit_persistence import (
     InMemoryAuditStore,
     FileAuditStore,
