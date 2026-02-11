@@ -281,6 +281,40 @@ Using installed CLI (`sprite`):
 3. Edit/save file and verify it exists in sprite workspace via `sprite exec`.
 4. Run git status from UI and from `sprite exec git status`; results must align.
 
+## 6.4 Single-Sprite Org Validation (required, move-fast phase)
+
+Run this end-to-end scenario against the only currently created sprite in the org.
+
+1. Select current sprite and confirm identity:
+- `sprite list`
+- `sprite use <existing-sprite>`
+- `sprite url`
+
+2. Start/control-plane against that sprite target:
+- Set hardcoded config values (`SPRITES_TARGET_SPRITE=<existing-sprite>`, `SPRITES_LOCAL_API_PORT=<port>`).
+- Start backend in hosted mode with `SANDBOX_PROVIDER=sprites`.
+
+3. Verify UI file source is sprite-backed, not local host:
+- Open app and inspect file tree root.
+- Compare UI tree entries with `sprite exec ls -la /home/sprite/workspace`.
+- Confirm local-only sentinel file on host (outside sprite workspace) does not appear in UI tree.
+
+4. Validate file operations both ways:
+- In UI: create/edit/rename/delete at least one file under workspace.
+- In sprite shell: verify changes with `sprite exec` (`cat`, `ls`, `test -f`).
+- In sprite shell: create or modify a file, then refresh UI and verify the same change appears.
+
+5. Validate agent chat path:
+- Send a user message in agent chat panel.
+- Confirm response arrives (streamed or full message) without transport errors.
+- Optional: include one file-aware prompt and verify response is consistent with current sprite file content.
+
+6. Pass/fail criteria for this scenario:
+- UI shows sprite workspace content and excludes local-host-only files.
+- File operations are consistent between UI and sprite shell in both directions.
+- Agent chat returns at least one successful response.
+- No direct browser call to sprite/local-api endpoints is required for the flow.
+
 
 ## 7. Rollout Strategy
 
