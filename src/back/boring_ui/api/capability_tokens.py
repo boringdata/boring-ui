@@ -309,6 +309,8 @@ class JTIReplayStore:
         # Check if JTI is in cache
         if jti in self._cache:
             self._hits += 1
+            # Move to end to preserve true LRU ordering (refresh recency)
+            self._cache.move_to_end(jti)
             logger.warning(f"JTI replay detected: {jti}")
             return True
 
