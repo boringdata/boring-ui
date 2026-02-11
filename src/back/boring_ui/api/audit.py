@@ -231,16 +231,35 @@ class AuditLogger:
     All sensitive operations are recorded for audit trail.
     """
 
-    def __init__(self, store=None):
+    def __init__(self, store: Optional[AuditStore] = None):
         """Initialize audit logger with optional persistence.
 
         Args:
-            store: Optional AuditStore for event persistence.
-                  If None, events are logged but not persisted.
+            store: Optional AuditStore for event persistence (bd-1pwb.9.2).
+                  If None, events are logged but not persisted to audit trail.
         """
         self.logger = logging.getLogger("boring_ui.audit")
         self.metrics = AuditMetrics()
         self.store = store
+
+    def _persist_event(self, event: AuditEvent) -> None:
+        """Persist audit event to configured store (bd-1pwb.9.2).
+
+        Non-blocking: uses asyncio.create_task for background persistence.
+        Failures are logged but don't crash the application.
+
+        Args:
+            event: AuditEvent to persist
+        """
+        if not self.store:
+            return
+
+        try:
+            import asyncio
+            asyncio.create_task(self.store.store(event))
+        except RuntimeError:
+            # Outside async context - log but don't crash
+            self.logger.debug("Could not persist event (outside async context)")
 
     def _persist_event(self, event: AuditEvent) -> None:
         """Persist event to storage backend.
@@ -328,7 +347,68 @@ class AuditLogger:
         log_record.request_id = trace_id
         self.logger.handle(log_record)
 
+        # Persist event for compliance audit trail (bd-1pwb.9.2)
+        self._persist_event(event)
+
         self.metrics.record_auth_failure()
+        return event
+
+    def log_authz_denied(
+        self,
+        user_id: str,
+        resource: str,
+        action: str,
+        workspace_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ):
+        """Log authorization denial (policy rejection).
+
+        Critical for security investigation - denials are as important as
+        successes for identifying abuse attempts and policy violations.
+
+        Args:
+            user_id: User whose request was denied
+            resource: Resource being accessed
+            action: Action attempted
+            workspace_id: Optional workspace context
+            reason: Reason for denial (e.g., "missing_permission", "quota_exceeded")
+            trace_id: Optional trace ID for correlation (deprecated - use request_id)
+            request_id: Request correlation ID from request.state.request_id (bd-1pwb.9.1)
+        """
+        trace_id = trace_id or request_id or str(uuid.uuid4())
+        event = AuditEvent(
+            event_type=AuditEventType.AUTHZ_DENIED,
+            timestamp=datetime.now(timezone.utc),
+            trace_id=trace_id,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            resource=resource,
+            action=action,
+            status="denied",
+            details={"reason": reason} if reason else {},
+        )
+
+        # Log with structured fields
+        log_record = self.logger.makeRecord(
+            name=self.logger.name,
+            level=logging.WARNING,
+            fn=__file__,
+            lno=0,
+            msg=f"Authz denied: {user_id} {action} {resource}",
+            args=(),
+            exc_info=None,
+        )
+        log_record.request_id = trace_id
+        log_record.user_id = user_id
+        if workspace_id:
+            log_record.workspace_id = workspace_id
+        self.logger.handle(log_record)
+
+        # Persist event for compliance audit trail (bd-1pwb.9.2)
+        self._persist_event(event)
+
         return event
 
     def log_file_operation(
@@ -386,6 +466,9 @@ class AuditLogger:
             log_record.workspace_id = workspace_id
         self.logger.handle(log_record)
 
+        # Persist event for compliance audit trail (bd-1pwb.9.2)
+        self._persist_event(event)
+
         self.metrics.record_file_operation(op_normalized)
         return event
 
@@ -438,8 +521,48 @@ class AuditLogger:
             log_record.workspace_id = workspace_id
         self.logger.handle(log_record)
 
+        # Persist event for compliance audit trail (bd-1pwb.9.2)
+        self._persist_event(event)
+
         self.metrics.record_exec_operation()
         return event
+
+    async def query_events(
+        self,
+        event_type: Optional[AuditEventType] = None,
+        user_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 100,
+    ) -> List[AuditEvent]:
+        """Query audit events for forensics and compliance review (bd-1pwb.9.2).
+
+        Supports filtering by event type, user, workspace, and time range.
+        Returns most recent events first.
+
+        Args:
+            event_type: Optional event type filter
+            user_id: Optional user ID filter
+            workspace_id: Optional workspace ID filter
+            start_time: Optional start time for range query
+            end_time: Optional end time for range query
+            limit: Maximum results to return
+
+        Returns:
+            List of AuditEvent matching filters
+        """
+        if not self.store:
+            return []
+
+        return await self.store.query(
+            event_type=event_type,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+        )
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get observability metrics."""
@@ -496,5 +619,6 @@ class AuditMetrics:
         }
 
 
-# Global audit logger instance
-audit_logger = AuditLogger()
+# Global audit logger instance with file-based persistence (bd-1pwb.9.2)
+_audit_store = FileAuditStore()
+audit_logger = AuditLogger(store=_audit_store)
