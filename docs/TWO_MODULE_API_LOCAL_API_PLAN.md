@@ -1,434 +1,495 @@
 # Two-Module Refactor Plan (`api` + `local-api`)
 
-## 1. Objective
+## 1. Goal
 
-Reorganize backend architecture into exactly two conceptual modules:
+Ship a clean two-module backend where filesystem location is a runtime parameter, not an architecture fork.
 
-1. `api` (control plane)
-- User auth + permission enforcement
-- Sandbox management (provider lifecycle)
-- Frontend-facing proxy routes
-- Capability/token issuance and service registry
+Final runtime invariant:
 
-2. `local-api` (workspace plane)
-- File/Git/Exec endpoints bound to one workspace
-- Deployed in local runs and in sprite sandbox runs
-- Private service, not browser-facing
+- Hosted/Sprites: `frontend -> api (control plane proxy) -> local-api in sprite`
+- Local: `frontend -> api`, with `local-api` mounted in-process (same Python process)
+- Browser never calls sprite endpoints directly
+- Browser never receives Sprites API token
+- `local-api` stays private and reachable only through control-plane routes
 
-The primary invariant is:
+This plan intentionally optimizes for fast delivery over backward compatibility.
 
-- Hosted/Sprites: `front -> api (proxy) -> local-api`
-- Local mode: `front -> api`, with `local-api` mounted in-process
-- Sprites transport for hosted mode uses Sprites Proxy WebSocket API directly from backend (no browser direct calls, no `sprite proxy` CLI dependency in runtime path)
+## 2. Non-Negotiable Design Decisions
 
+1. Exactly two backend modules:
+- `api`: control plane (user auth, sandbox management, proxy, policy, service orchestration)
+- `local-api`: workspace plane (file/git/exec on one workspace root)
 
-## 2. Current State Snapshot
+2. `local-api` auth model:
+- No end-user auth in `local-api`
+- Trust boundary is enforced by deployment topology: `local-api` is private
+- For Sprites, private reachability is through Sprites proxy transport, not browser traffic
 
-Snapshot commit: `7fa41f9`
+3. Transport model in Sprites mode:
+- Control plane connects directly to Sprites Proxy API from backend
+- No `sprite proxy` CLI tunnel in production runtime path
 
-Current implementation already contains most primitives:
+4. Fast-path scope:
+- Single hardcoded sprite target for now
+- DB-backed workspace->sprite mapping comes later
 
-- Control plane app: `src/back/boring_ui/api/app.py`
-- Private workspace API app: `src/back/boring_ui/api/internal_app.py`
-- Workspace endpoints: `src/back/boring_ui/api/modules/sandbox/internal_*.py`
-- Hosted proxy: `src/back/boring_ui/api/modules/sandbox/hosted_proxy.py` + `hosted_compat.py`
-- Sandbox provider management: `src/back/boring_ui/api/modules/sandbox/manager.py` + providers
+5. Hard cut:
+- Remove old `internal_app`/`internal_api` ownership paths after rewire
+- No compatibility wrappers
 
-Main gap is organization and explicit contracts, not fundamental capability.
+## 3. Target Module Ownership
 
+## 3.1 `api` (Control Plane)
 
-## 3. Target Module Layout
+Location: `src/back/boring_ui/api/`
 
-## 3.1 Control Plane (`api`)
+Responsibilities:
 
-Keep under `src/back/boring_ui/api/`:
+- User authentication and permission checks
+- Workspace/session authorization
+- Sandbox provider lifecycle management
+- Routing/proxy from frontend routes to workspace plane
+- Sprites transport client
+- Capability issuance and validation (control-plane side)
+- Request context, trace IDs, structured errors, logging
 
-- `app.py` (control plane app factory)
+Key files (target ownership):
+
+- `app.py`
 - `auth.py`, `auth_middleware.py`, `service_auth.py`, `sandbox_auth.py`
 - `capabilities.py`, `capability_tokens.py`
+- `request_context.py` (new)
+- `error_codes.py` (new)
 - `modules/sandbox/manager.py`, `provider.py`, `providers/*`
-- `modules/sandbox/hosted_client.py`
+- `modules/sandbox/hosted_client.py` (refactor to transport interface)
 - `modules/sandbox/hosted_proxy.py`, `hosted_compat.py`
-- `modules/sandbox/router.py` (lifecycle/status/log endpoints)
 
-Role: all frontend-facing control and orchestration.
+## 3.2 `local-api` (Workspace Plane)
 
-## 3.2 Workspace Plane (`local-api`)
+Location: `src/back/boring_ui/api/local_api/`
 
-Create package `src/back/boring_ui/api/local_api/`:
+Responsibilities:
 
-- `app.py` (`create_local_api_app`) to replace current `internal_app` role
-- `router.py` (`create_local_api_router`) as composed workspace API
-- `files.py` (from current `internal_files.py`)
-- `git.py` (from current `internal_git.py`)
-- `exec.py` (from current `internal_exec.py`)
-- No local policy module. Reuse shared policy from `src/back/boring_ui/api/modules/sandbox/policy.py`
-  so both proxy-side checks and local-api enforcement share one policy source.
+- Workspace-scoped file endpoints
+- Workspace-scoped git endpoints
+- Workspace-scoped exec endpoints
+- Internal health and info endpoints
 
-Runtime role:
+Key files:
 
-- One deployment unit that serves workspace endpoints to control plane only.
-- In hosted/sprites, control plane targets this private service URL.
-- In local mode, same handlers are mounted in-process behind control-plane routes.
-- `local-api` has no direct browser contract.
+- `app.py` (`create_local_api_app`)
+- `router.py` (`create_local_api_router`)
+- `files.py`
+- `git.py`
+- `exec.py`
 
+Policy:
 
-## 4. API/Interface Contracts
+- Reuse shared policy from `src/back/boring_ui/api/modules/sandbox/policy.py`
+- Do not create duplicate policy logic inside `local_api`
 
-## 4.1 Stable external HTTP surfaces (no breaking change)
+## 4. Runtime Modes and Network Topology
 
-Keep public paths unchanged:
+## 4.1 Local Mode
 
-- Frontend contract:
-  - `/api/tree`, `/api/file`, `/api/search`
-  - `/api/git/status`, `/api/git/diff`, `/api/git/show`
-- Hosted proxy paths:
-  - `/api/v1/sandbox/proxy/*`
+- Control plane and local-api run in-process
+- Frontend talks only to `api`
+- No network hop between control plane and local-api
+- Workspace root is host-local path
 
-## 4.2 Internal local-api contract
+## 4.2 Hosted + Sprites Mode
 
-Keep existing internal contract (current behavior) stable:
+- Control plane runs outside sprite
+- local-api runs inside sprite, bound to localhost in the sprite VM
+- Control plane reaches local-api via Sprites proxy WebSocket transport
+- Workspace root is sprite filesystem path
 
-- `/internal/health`, `/internal/info`
+Important clarification:
+
+- `INTERNAL_SANDBOX_URL` is only relevant for non-Sprites hosted providers
+- In Sprites mode, control plane does not use `INTERNAL_SANDBOX_URL`
+- In Sprites mode, target is `{sprite_name, local_api_port}` and connection is through Sprites proxy API
+
+## 5. Public and Internal API Contracts
+
+## 5.1 Browser-Facing (unchanged)
+
+Keep existing frontend contract stable:
+
+- `/api/tree`, `/api/file`, `/api/search`
+- `/api/git/status`, `/api/git/diff`, `/api/git/show`
+- `/api/v1/sandbox/proxy/*`
+
+## 5.2 Internal `local-api` Contract
+
+Keep stable:
+
+- `/internal/health`
+- `/internal/info`
 - `/internal/v1/files/*`
 - `/internal/v1/git/*`
 - `/internal/v1/exec/*`
 
-Service discovery for control plane -> local-api:
+`local-api` is internal-only and not exposed to browser.
 
-- Hosted non-sprites control plane discovers target local-api via `INTERNAL_SANDBOX_URL`.
-- Hosted sprites control plane resolves the target sprite and local-api port from hardcoded config for now.
-- In local mode (single process), no discovery call is required because local-api is mounted in-process.
-- Frontend never receives `INTERNAL_SANDBOX_URL` and never calls `local-api` directly.
+## 5.3 Sprites Transport Contract (Precise)
 
-Hardcoded now (move-fast phase):
+Reference:
 
-- `SPRITES_TARGET_SPRITE` (single sprite name used by hosted control plane).
-- `SPRITES_LOCAL_API_PORT` (port where local-api listens inside sprite).
-- Later replacement: DB-backed `user/workspace -> sprite` resolution.
+- `https://sprites.dev/api/sprites/proxy`
 
-## 4.3 Sprites transport contract (precise)
-
-For `SANDBOX_PROVIDER=sprites`, backend-to-sandbox transport is:
+Control-plane transport steps:
 
 1. Open WebSocket:
 - `wss://api.sprites.dev/v1/sprites/{sprite-name}/proxy`
-- Reference: https://sprites.dev/api/sprites/proxy
 
-2. Authenticate backend call:
-- Header `Authorization: Bearer ${SPRITES_TOKEN}` (server-side only, never sent to browser).
+2. Add backend-only auth header:
+- `Authorization: Bearer ${SPRITES_TOKEN}`
 
-3. Send initial JSON handshake frame:
-- `{\"host\":\"localhost\",\"port\":<SPRITES_LOCAL_API_PORT>}`
+3. Send handshake frame:
+- `{"host":"localhost","port":<SPRITES_LOCAL_API_PORT>}`
 
-4. After successful handshake, treat socket as raw TCP relay:
-- Backend writes raw HTTP/1.1 request bytes for `local-api` path (`/internal/v1/*`).
-- Backend reads raw HTTP response bytes and parses status/headers/body.
+4. On connected response, relay raw TCP bytes:
+- Write raw HTTP/1.1 request bytes for `/internal/*`
+- Parse raw HTTP response bytes into status, headers, body
 
-5. Error handling requirements:
-- Handshake failure => map to `502` with provider-specific detail in server logs.
-- Relay timeout => map to `504`.
-- Non-2xx local-api response => preserve status/body mapping from parsed HTTP response.
+5. Error mapping:
+- Handshake timeout/invalid response -> `502`
+- Relay timeout -> `504`
+- Parsed internal HTTP status -> preserve status/body
 
-## 4.4 Python module contracts
+6. Retry defaults:
+- Retryable: connect reset/timeout/`502`/`503`/`504`
+- Non-retryable: `400`/`401`/`403`/`404`/`422`
+- Default max attempts: `3`
+- Backoff: `100ms`, `300ms`, `900ms` (configurable)
 
-New exports:
+## 6. Configuration Interface (Actual Parameter Surface)
 
-- `boring_ui.api.local_api.create_local_api_app`
-- `boring_ui.api.local_api.create_local_api_router`
+The controlling parameter is runtime config loaded by `api`.
 
-Breaking Python import changes (intentional hard cut):
+## 6.1 Canonical Config Object
 
-- Remove reliance on `boring_ui.api.internal_app.create_internal_app`.
-- Remove reliance on `boring_ui.api.modules.sandbox.internal_api.create_internal_sandbox_router`.
-- All call sites import directly from `boring_ui.api.local_api`.
+Add/standardize `BoringUIConfig` in `src/back/boring_ui/api/config.py` with explicit fields:
 
+- `run_mode`: `local | hosted`
+- `sandbox_provider`: `local | sprites | ...`
+- `workspace_root`: path (local mode) or logical value used by local-api in sprite
+- `local_api_port`: default `8001`
+- `control_plane_port`: default `8000`
+- `sprites_token`: backend secret
+- `sprites_target_sprite`: hardcoded target sprite for current phase
+- `sprites_local_api_port`: default `8001`
+- `internal_sandbox_url`: only for non-Sprites hosted providers
+- `transport_timeout_sec`
+- `transport_max_retries`
+- `trace_id_header`: default `X-Trace-ID`
 
-## 5. Detailed Refactor Workstreams
+## 6.2 Env Var Mapping (move-fast, explicit)
 
-## 5.1 WS-A: Create `local_api` package
+Required now (Sprites hosted path):
 
-1. Add folder `src/back/boring_ui/api/local_api/`.
-2. Add `__init__.py` exporting app/router factories.
-3. Move/copy current internal handlers:
-- `modules/sandbox/internal_files.py` -> `local_api/files.py`
-- `modules/sandbox/internal_git.py` -> `local_api/git.py`
-- `modules/sandbox/internal_exec.py` -> `local_api/exec.py`
-4. Add `local_api/router.py` to compose these into a single router.
-5. Add `local_api/app.py` to build FastAPI app with:
-- workspace binding
-- no browser CORS surface by default (private service)
-- optional service-to-service verification hooks only (no end-user auth logic)
-- local-api listener port configurable and documented for sprites runtime (`SPRITES_LOCAL_API_PORT`)
+- `SANDBOX_PROVIDER=sprites`
+- `SPRITES_TOKEN=<secret>`
+- `SPRITES_TARGET_SPRITE=<sprite-name>`
+- `SPRITES_LOCAL_API_PORT=8001`
 
-## 5.2 WS-B: Rewire control plane to new package
+Required now (local mode):
 
-1. Update all call sites to import directly from `local_api.app` and `local_api.router`.
-2. Remove `api/internal_app.py`.
-3. Remove `modules/sandbox/internal_api.py`.
-4. Add transport abstraction in hosted client:
-- `HTTPInternalTransport` for non-sprites (`INTERNAL_SANDBOX_URL` via `httpx`).
-- `SpritesProxyTransport` for sprites (direct `wss://.../proxy` relay).
-5. Wire transport selection off provider/config in `app.py`.
-6. Ensure local mode mounts `local_api.router` directly and does not depend on removed modules.
-7. Ensure capabilities payload in hosted mode exposes only control-plane routes, not direct sandbox/local-api URLs.
-8. Ensure hosted sprites mode does not depend on `sprite proxy` CLI tunnel.
+- `BORING_UI_RUN_MODE=local`
+- `WORKSPACE_ROOT=<host-workspace-path>`
 
-## 5.3 WS-C: Enforce two-module ownership in docs
+Non-Sprites hosted only:
 
-1. Update `docs/DEPLOYMENT_MATRIX.md` with explicit ownership table:
-- control-plane responsibility vs local-api responsibility.
-2. Add section for local vs hosted/sprites traffic flow.
-3. Add env var ownership matrix:
-- control plane env
-- local-api env
-  - include `SPRITES_TARGET_SPRITE` and `SPRITES_LOCAL_API_PORT` with move-fast hardcoded defaults
-4. Document explicit security rule: no direct browser-to-sandbox or browser-to-local-api calls.
-5. Document that custom in-sandbox JWT/cookie reverse-proxy auth is out of scope for this phase.
-6. Add source links section with Sprites API references (proxy endpoint as required, additional endpoints as used).
+- `INTERNAL_SANDBOX_URL=http://...`
 
-## 5.4 WS-Preview: Preview gateway strategy in `api`
+Validation rules at startup:
 
-1. Add a dedicated preview gateway section to docs and architecture notes.
-2. Keep preview routing separate from `local-api` file/git/exec API.
-3. Define provider adapter contract in `api`:
-- resolve preview target (path/subdomain -> internal port/service)
-- apply control-plane auth/session checks
-- proxy response/stream
-4. Do not assume one fixed public port model in core architecture; map provider constraints in adapter layer.
-5. No custom in-sprite JWT proxy for v1.
+- If `sandbox_provider=sprites`, require `SPRITES_TOKEN` and `SPRITES_TARGET_SPRITE`
+- If `sandbox_provider!=sprites` in hosted, require `INTERNAL_SANDBOX_URL`
+- Fail fast with actionable error text
 
-## 5.5 WS-D: Cleanup track (repo mess)
+## 7. Transport Abstraction and Interfaces
 
-Create a deterministic cleanup list:
+Define a unified control-plane transport interface to avoid provider-specific sprawl.
 
-A) Artifacts likely temporary:
-- `.tmp_chat_probe.mjs`
-- `.tmp_pw_verify.mjs`
-- ad-hoc proof screenshots in `docs/*.png` if not part of release docs
+```python
+class WorkspaceTransport(ABC):
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+        timeout_sec: float = 30.0,
+        trace_id: str | None = None,
+    ) -> WorkspaceResponse: ...
 
-B) Build/cache artifacts that should not be tracked:
-- `__pycache__` files (if tracked by mistake)
+    async def health_check(self, timeout_sec: float = 5.0) -> HealthStatus: ...
+```
 
-C) Ambiguous docs/proof files:
-- `rodney-proof-file.txt`
-- `docs/HOSTED_UI_SHOWBOAT_RODNEY_PROOF.md`
+```python
+@dataclass
+class WorkspaceResponse:
+    status_code: int
+    headers: dict[str, str]
+    body: bytes
+    elapsed_sec: float
+    transport_type: str
+```
 
-Cleanup policy:
+Transport implementations:
 
-1. Keep only files referenced by docs index/README.
-2. Remove unreferenced artifacts.
-3. Add/verify `.gitignore` entries to prevent reintroduction.
+- `HTTPInternalTransport` (`INTERNAL_SANDBOX_URL`)
+- `SpritesProxyTransport` (`sprites/proxy` WebSocket relay)
 
-## 5.6 Workstream order and dependencies
+## 8. Error Model and Observability
 
-Execution order (required):
+## 8.1 Structured Error Codes
 
-1. WS-A (`local_api` package) - foundational module split.
-2. WS-B (rewire + delete old modules) - depends on WS-A completion.
-3. WS-C (docs ownership + env matrix updates) - depends on WS-B final paths.
-4. WS-Preview (preview gateway strategy docs/contracts) - depends on WS-C.
-5. WS-D (cleanup) - may run in parallel after WS-B starts, but must finish before final commit.
+Create `error_codes.py` with stable control-plane error codes:
 
+- `sprites_handshake_timeout`
+- `sprites_handshake_invalid`
+- `sprites_relay_lost`
+- `local_api_unavailable`
+- `local_api_timeout`
+- `transport_retry_exhausted`
 
-## 6. Testing Plan
+Standard error payload:
 
-## 6.1 Local automated tests (required)
+```json
+{
+  "error_code": "sprites_handshake_timeout",
+  "status_code": 502,
+  "message": "Failed to connect to local-api in sprite",
+  "trace_id": "<uuid>",
+  "is_retryable": true,
+  "retry_after_sec": 1
+}
+```
 
-Run at minimum:
+## 8.2 Request Context Propagation
 
-1. `pytest src/back/boring_ui/api/test_dualmode_integration_matrix.py -q`
-2. `pytest src/back/boring_ui/api/test_integration_auth_capability.py -q`
-3. `pytest src/back/boring_ui/api/test_sandbox_auth.py -q`
-4. `pytest tests/integration/test_direct_connect_auth.py -q`
-5. `pytest tests/integration/test_sprites_integration.py -q`
+Add request context model and middleware:
 
-Pass criteria:
+- `trace_id`
+- `user_id` (when authenticated)
+- `workspace_id` (hardcoded default for now, expandable later)
+- `session_id` (if available)
 
-- No regression in hosted/local router composition
-- Hosted mode never exposes direct local-api URLs to browser clients
-- local-api remains private-only in hosted/sprites topology
-- Hosted sprites path uses direct backend WebSocket proxy transport (no CLI tunnel)
-- Sprites provider integration tests pass (stub-based suite)
+Propagation rules:
 
-## 6.2 Live sprite validation (required)
+- Inbound: read or generate `X-Trace-ID`
+- Control plane -> local-api: include `X-Trace-ID` and internal workspace metadata headers
+- Include `trace_id` in all logs and error responses
 
-Using installed CLI (`sprite`):
+## 9. Workspace Isolation and Auth Scope
 
-1. Confirm selected sprite:
-- `sprite use <sprite-name>`
-- `sprite url`
+Current-phase behavior:
 
-2. Deploy/refresh local-api runtime in sprite workspace:
-- run command via `sprite exec` to pull latest code and restart service process.
+- Single workspace per running local-api instance
+- local-api enforces path scoping to configured workspace root
+- Browser/user auth stays in control plane
+- local-api does not implement independent user auth
 
-3. Validate local-api health inside sprite:
-- `sprite exec curl -s http://127.0.0.1:<port>/internal/health`
+Future-ready seam (not implemented now):
 
-4. Validate control plane to sprite path:
-- From host, call control plane endpoints (`/api/tree`, `/api/git/status`) and verify successful proxy to sprite-backed local-api.
-- Confirm requests succeed without running `sprite proxy` locally.
+- Swap hardcoded workspace binding for DB-backed workspace resolution and RBAC in control plane
 
-5. Boundary validation:
-- Confirm browser-facing capabilities/config endpoints do not publish direct local-api URL.
-- Confirm direct browser-style access path to local-api is unavailable in deployed topology.
-- Confirm control-plane proxied requests succeed end-to-end.
+## 10. Health Contract
 
-## 6.3 Manual smoke (frontend)
+Adopt a consistent `/health` shape for control-plane and local-api in addition to legacy internal health route.
 
-1. Load UI.
-2. Verify file tree displays sprite workspace content.
-3. Edit/save file and verify it exists in sprite workspace via `sprite exec`.
-4. Run git status from UI and from `sprite exec git status`; results must align.
+Response shape:
 
-## 6.4 Single-Sprite Org Validation (required, move-fast phase)
+```json
+{
+  "status": "ok|degraded|unhealthy",
+  "service": "api|local-api",
+  "checks": {
+    "filesystem": "ok",
+    "git": "ok",
+    "transport": "ok"
+  },
+  "timestamp": "<iso8601>"
+}
+```
 
-Run this end-to-end scenario against the only currently created sprite in the org.
+Compatibility rule:
 
-1. Select current sprite and confirm identity:
-- `sprite list`
-- `sprite use <existing-sprite>`
-- `sprite url`
+- Keep `/internal/health` for local-api consumers
+- Add/standardize `/health` for ops/readiness checks
 
-2. Start/control-plane against that sprite target:
-- Set hardcoded config values (`SPRITES_TARGET_SPRITE=<existing-sprite>`, `SPRITES_LOCAL_API_PORT=<port>`).
-- Start backend in hosted mode with `SANDBOX_PROVIDER=sprites`.
+## 11. Workstreams and Dependency Order
 
-3. Verify UI file source is sprite-backed, not local host:
-- Open app and inspect file tree root.
-- Compare UI tree entries with `sprite exec ls -la /home/sprite/workspace`.
-- Confirm local-only sentinel file on host (outside sprite workspace) does not appear in UI tree.
+Execution order is intentionally serial on critical path:
 
-4. Validate file operations both ways:
-- In UI: create/edit/rename/delete at least one file under workspace.
-- In sprite shell: verify changes with `sprite exec` (`cat`, `ls`, `test -f`).
-- In sprite shell: create or modify a file, then refresh UI and verify the same change appears.
+1. WS-A: Build `local_api` package and move handlers
+2. WS-B: Rewire control plane imports + transport abstraction + remove legacy modules
+3. WS-C: Docs and deployment matrix updates
+4. WS-D: Cleanup of temporary artifacts/docs noise
 
-5. Validate agent chat path:
-- Send a user message in agent chat panel.
-- Confirm response arrives (streamed or full message) without transport errors.
-- Optional: include one file-aware prompt and verify response is consistent with current sprite file content.
+Parallelizable after WS-B starts:
 
-6. Pass/fail criteria for this scenario:
-- UI shows sprite workspace content and excludes local-host-only files.
-- File operations are consistent between UI and sprite shell in both directions.
-- Agent chat returns at least one successful response.
-- No direct browser call to sprite/local-api endpoints is required for the flow.
+- test expansion
+- observability refinements
 
-## 6.5 Proof Report Strategy (Showboat + Rodney)
+## 12. Detailed Workstream Tasks
 
-All high-signal test runs in sections 6.2 and 6.4 must produce a reproducible proof report.
+## 12.1 WS-A (`local_api` package extraction)
 
-Reference workflow:
-- https://simonwillison.net/2026/Feb/10/showboat-and-rodney/
+- Create `src/back/boring_ui/api/local_api/`
+- Move `internal_files.py`, `internal_git.py`, `internal_exec.py` logic into `files.py`, `git.py`, `exec.py`
+- Add `router.py` composer and `app.py` factory
+- Keep internal endpoint paths unchanged
 
-Required tooling:
+## 12.2 WS-B (Control-plane rewiring)
+
+- Replace imports of `internal_app` and `internal_api`
+- Introduce `WorkspaceTransport` + implementations
+- Route Sprites provider through `SpritesProxyTransport`
+- Remove `src/back/boring_ui/api/internal_app.py`
+- Remove `src/back/boring_ui/api/modules/sandbox/internal_api.py`
+- Ensure hosted capability payload never includes direct local-api/sprite endpoint URLs
+
+## 12.3 WS-C (Docs and deployment matrix)
+
+Update docs with explicit ownership and mode behavior:
+
+- `docs/DEPLOYMENT_MATRIX.md`
+- `docs/TWO_MODULE_API_LOCAL_API_PLAN.md` (this file)
+
+Must include:
+
+- Local vs Hosted/Sprites data flow
+- Env var matrix
+- Security rule: no direct browser->sprite/local-api
+- Sprites transport contract with doc link
+
+## 12.4 WS-D (cleanup)
+
+- Remove stale one-off probe artifacts not referenced by docs
+- Keep proof artifacts that are required by test report strategy
+- Update `.gitignore` if needed
+
+## 13. Test Strategy (Expanded)
+
+## 13.1 Automated Contract Tests
+
+Add transport-level tests:
+
+- Sprites handshake success
+- Sprites handshake timeout -> `502`
+- Relay timeout -> `504`
+- HTTP parse correctness for proxied responses
+- Retry/backoff behavior
+
+Add integration tests:
+
+- control-plane routes still resolve correctly in local and hosted modes
+- local-api private boundary (no browser direct URL leakage)
+- auth middleware + capability behavior unchanged for frontend-facing flows
+
+## 13.2 Required Live Sprites Validation (Your org’s existing sprite)
+
+Run app against the single current sprite and verify:
+
+1. File tree source correctness:
+- UI shows sprite filesystem, not host-local filesystem
+
+2. Bidirectional file operations:
+- UI create/edit/delete reflected in sprite shell
+- sprite shell edits reflected in UI after refresh/reload
+
+3. Git parity:
+- UI git status matches `sprite exec git status`
+
+4. Agent chat path:
+- Send chat message and receive response through control-plane routed path
+
+5. Boundary:
+- No direct browser calls to sprite/local-api endpoints
+
+## 13.3 Proof Report Requirement (Showboat + Rodney)
+
+Use:
+
 - `uvx showboat`
 - `uvx rodney`
 
-Required report outputs:
+Produce report with:
 
-1. Command transcript:
-- Include exact backend/frontend startup commands, sprite selection commands, and validation commands.
-- Include timestamps and host context (control-plane host vs sprite shell).
+- command transcript (including sprite selection and startup commands)
+- screenshot evidence (file tree, file operations, chat response)
+- cross-verification snippets from `sprite exec`
+- pass/fail table per required behavior
 
-2. Screenshot evidence (Rodney):
-- Initial app load with file tree visible.
-- File tree state proving sprite content is shown.
-- File operation evidence in UI (before/after).
-- Chat input + chat response evidence.
+Recommended artifact:
 
-3. Cross-verification snippets:
-- `sprite exec` outputs that match UI state for created/modified files.
-- Browser-side assertions showing no direct local-api/sandbox URL exposure in capabilities.
+- `docs/HOSTED_UI_SHOWBOAT_RODNEY_PROOF.md`
 
-4. Final verdict table:
-- One row per required behavior with `PASS`/`FAIL`, artifact references, and notes.
+## 14. Deployment Matrix (Condensed)
 
-Recommended artifact locations:
-- Report markdown: `docs/HOSTED_UI_SHOWBOAT_RODNEY_PROOF.md` (or new dated equivalent).
-- Screenshots: `test-results/rodney-proof-*.png`.
+| Mode | Filesystem location | Control-plane -> local-api path | Browser direct sandbox access |
+|---|---|---|---|
+| local | host local FS | in-process router mount | no |
+| hosted + sprites | sprite FS | Sprites Proxy WebSocket transport | no |
+| hosted non-sprites | provider FS | HTTP via `INTERNAL_SANDBOX_URL` | no |
 
-Minimum acceptance for proof report:
-- Report includes at least 3 Rodney screenshots and 3 command-output snippets.
-- Evidence covers both filesystem operations and agent chat response.
-- Report demonstrates test execution without `sprite proxy` runtime dependency.
+## 15. Accepted / Partial / Deferred Revisions from External Review
 
+## 15.1 Fully Accepted Now
 
-## 7. Rollout Strategy
+- Transport interface and retry contract
+- Structured error codes and trace propagation
+- Explicit port/bind strategy by mode
+- Standard health contract
+- Expanded transport/integration/live test coverage
+- Config schema with startup validation
+- Documentation clarity and workstream ordering (`WS-A -> WS-B -> WS-C/WS-D`)
 
-## 7.1 Phase 1 (hard cut)
+## 15.2 Partially Accepted (Scope-limited this sprint)
 
-- Introduce `local_api` package and move implementation immediately.
-- Update all imports in one change set.
-- Remove legacy modules in the same commit series (no wrappers).
-- Keep endpoint behavior stable for frontend routes.
+- Service discovery: interface seam kept, implementation remains hardcoded single-sprite for now
+- Workspace isolation/RBAC: enforce workspace scoping now; full RBAC model deferred
+- Capability tokens: keep current control-plane auth model and tighten docs; full token lifecycle hardening can follow
+- OpenAPI and sequence diagrams: update core docs now, full generated-contract pipeline later
 
-## 7.2 Phase 2 (stabilization)
+## 15.3 Deferred (explicitly not in this sprint)
 
-- Run full test matrix.
-- Validate live sprite deployment path.
-- Fix regressions before adding new features.
+- Multi-sprite routing and load balancing
+- Full graceful-degradation operation queue/fallback orchestration
+- Full runbook suite and large doc tree reorganization
 
+## 16. Risks and Mitigations
 
-## 8. Risk Register
+1. Transport edge-case bugs in raw TCP relay
+- Mitigation: strict handshake validation, parser tests, timeout tests, trace IDs
 
-1. Import-cycle regressions after moving internal handlers.
-Mitigation: keep dependencies acyclic and run full test matrix.
+2. Import breakages from hard cut
+- Mitigation: remove legacy modules only after all call sites are updated in same PR stack
 
-2. Proxy breakage from path mismatch.
-Mitigation: keep `/internal/v1/*` contract unchanged.
+3. Misconfigured sprite target
+- Mitigation: startup config validation + explicit health checks + live smoke script
 
-3. Sprite deployment drift (service not restarted, wrong port).
-Mitigation: scripted `sprite exec` restart + explicit health checks.
+4. Security regression (URL leakage)
+- Mitigation: capability payload tests and manual browser-network verification
 
-4. Auth misconfiguration between control plane and local-api.
-Mitigation: enforce private-network-only local-api access and verify boundary tests in live validation.
+## 17. Acceptance Criteria
 
-5. Sprites proxy protocol/framing errors in backend relay client.
-Mitigation: strict handshake validation, HTTP parser tests for chunked + non-chunked responses, and timeout/error mapping tests.
+Refactor is accepted when all are true:
 
+1. Two-module ownership is real in code (`api` + `local_api`), legacy internal module entry points removed.
+2. Sprites hosted path works through backend direct Sprites proxy transport.
+3. Browser does not call sprite/local-api directly and never sees Sprites token.
+4. Local and hosted test suites pass, including transport contract tests.
+5. Live single-sprite validation passes for filesystem, git, and chat.
+6. Showboat/Rodney proof report is produced and committed.
 
-## 9. Acceptance Criteria
+## 18. Source Links
 
-Refactor accepted when all are true:
-
-1. `local_api` package exists and is the canonical workspace endpoint implementation.
-2. `api` remains canonical control plane (proxy + sandbox mgmt + user/auth).
-3. Public HTTP routes are unchanged.
-4. Local test matrix passes.
-5. Live sprite smoke passes for read/write/git with private local-api boundary preserved.
-6. Cleanup track removes agreed temporary artifacts and prevents recurrence.
-7. Hosted sprites path works with direct WebSocket relay to Sprites Proxy API (no CLI forwarding process).
-
-
-## 10. Execution Checklist
-
-1. Create `local_api` package and move internal handlers.
-2. Rewire imports across app/proxy modules to `local_api`.
-3. Delete `api/internal_app.py` and `modules/sandbox/internal_api.py`.
-4. Update docs (`DEPLOYMENT_MATRIX.md` + module ownership notes).
-5. Add preview-gateway contract notes in `api` docs.
-6. Run local tests.
-7. Deploy to running sprite and execute live smoke.
-8. Execute cleanup track and re-run sanity tests.
-9. Commit in logical slices:
-- refactor package split
-- docs update
-- cleanup artifacts
-
-
-## 11. Out of Scope (this cycle)
-
-1. New auth protocol design (Sprites already provides outer boundary).
-2. Public endpoint renames.
-3. Frontend architecture changes beyond verifying existing routes.
-4. Provider feature expansion (modal, new provider types).
-5. In-sandbox custom JWT/cookie reverse proxy for local-api access.
-
-## 12. Source Links
-
-- Sprites proxy API (authoritative for backend-to-sprite relay):
-  https://sprites.dev/api/sprites/proxy
-- Sprites API index (discover other endpoints used by provider):
-  https://sprites.dev/api
+- Sprites proxy endpoint docs: `https://sprites.dev/api/sprites/proxy`
+- Sprites API index: `https://sprites.dev/api`
+- Showboat/Rodney reference: `https://simonwillison.net/2026/Feb/10/showboat-and-rodney/`
