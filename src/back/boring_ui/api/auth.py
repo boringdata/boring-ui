@@ -285,8 +285,9 @@ class OIDCVerifier:
                         options={"verify_exp": True},
                     )
                     return payload
-                except jwt.InvalidTokenError:
-                    logger.debug("Token still invalid after JWKS refresh")
+                except (jwt.InvalidTokenError, jwt.exceptions.InvalidKeyError) as retry_err:
+                    # Refreshed JWKS might contain malformed/invalid key data
+                    logger.debug(f"Token still invalid after JWKS refresh: {retry_err}")
                     return None
             return None
         except jwt.InvalidTokenError as e:
