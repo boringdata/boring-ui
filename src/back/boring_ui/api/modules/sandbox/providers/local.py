@@ -86,10 +86,10 @@ class LocalProvider(SandboxProvider):
             )
 
         # Start sandbox-agent process
-        # Package: sandbox-agent from rivet-dev/sandbox-agent
+        # Package: @sandbox-agent/cli from rivet-dev/sandbox-agent
         cmd = [
             "npx",
-            "sandbox-agent",
+            "@sandbox-agent/cli",
             "server",
             "--host",
             "127.0.0.1",
