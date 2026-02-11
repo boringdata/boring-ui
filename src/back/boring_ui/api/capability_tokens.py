@@ -23,6 +23,7 @@ import time
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+from collections import OrderedDict
 
 import jwt
 
@@ -226,4 +227,90 @@ class CapabilityTokenValidator:
             return True
 
         logger.warning(f"Operation {operation} not in allowed {ops}")
+        return False
+
+
+class JTIReplayStore:
+    """Prevents token replay attacks by tracking used JTI (JWT ID) values.
+
+    Maintains a time-windowed cache of used JTIs with TTL matching token lifetime.
+    When a token is validated, its JTI is checked against this store; if found,
+    the token is rejected as a replay attempt.
+
+    Implements automatic cleanup of expired entries to prevent unbounded memory growth.
+    """
+
+    def __init__(self, max_size: int = 10000) -> None:
+        """Initialize replay store.
+
+        Args:
+            max_size: Maximum number of JTI entries to cache (default 10000)
+        """
+        self.max_size = max_size
+        # OrderedDict for LRU eviction when max_size exceeded
+        self._cache: OrderedDict[str, float] = OrderedDict()
+        self._hits = 0
+        self._misses = 0
+
+    @property
+    def stats(self) -> dict[str, Any]:
+        """Return cache statistics for observability."""
+        total = self._hits + self._misses
+        hit_rate = self._hits / total if total > 0 else 0.0
+        return {
+            "hits": self._hits,
+            "misses": self._misses,
+            "total": total,
+            "hit_rate": hit_rate,
+            "cached_jtis": len(self._cache),
+            "max_size": self.max_size,
+        }
+
+    def record_jti(self, jti: str, ttl_seconds: int) -> None:
+        """Record a JTI as seen, with expiry based on token TTL.
+
+        Args:
+            jti: JWT ID value to record
+            ttl_seconds: Token lifetime in seconds (use for setting expiry window)
+        """
+        now = time.time()
+        expires_at = now + ttl_seconds
+
+        self._cache[jti] = expires_at
+
+        # Evict oldest entry if cache exceeds max size (LRU)
+        if len(self._cache) > self.max_size:
+            oldest_jti, _ = self._cache.popitem(last=False)
+            logger.debug(f"JTI cache exceeded max_size, evicted oldest: {oldest_jti}")
+
+        logger.debug(f"JTI recorded: {jti}, expires_at={expires_at}")
+
+    def is_replayed(self, jti: str) -> bool:
+        """Check if JTI has been seen before and is still within TTL.
+
+        Automatic cleanup: expired entries are removed during check.
+
+        Args:
+            jti: JWT ID value to check
+
+        Returns:
+            True if JTI is a replay (seen and not expired), False if new
+        """
+        now = time.time()
+
+        # Clean up expired entries during check (lazy cleanup)
+        expired = [
+            j for j, exp_at in list(self._cache.items()) if now >= exp_at
+        ]
+        for j in expired:
+            del self._cache[j]
+            logger.debug(f"JTI expired and removed from replay cache: {j}")
+
+        # Check if JTI is in cache
+        if jti in self._cache:
+            self._hits += 1
+            logger.warning(f"JTI replay detected: {jti}")
+            return True
+
+        self._misses += 1
         return False
