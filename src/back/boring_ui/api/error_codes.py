@@ -44,7 +44,7 @@ class ErrorCode(str, Enum):
 
 
 @dataclass
-class TransportError:
+class TransportError(Exception):
     """Represents a transport-level error with code and details.
 
     Attributes:
