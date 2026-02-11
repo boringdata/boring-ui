@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import APIConfig, get_cors_origin
+from .config import APIConfig, get_cors_origin, is_dev_auth_bypass_enabled
 from .storage import Storage, LocalStorage
 from .modules.files import create_file_router
 from .modules.git import create_git_router
@@ -16,6 +16,10 @@ from .modules.sandbox import SandboxManager, create_provider
 from .modules.companion import CompanionManager, create_companion_provider
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
 from .auth import ServiceTokenIssuer
+from .auth import OIDCVerifier
+from .auth_middleware import add_oidc_auth_middleware, AuthContext
+from .capability_tokens import CapabilityTokenIssuer
+from .service_auth import ServiceTokenSigner
 from .capabilities import (
     RouterRegistry,
     ServiceConnectionInfo,
@@ -23,6 +27,10 @@ from .capabilities import (
     create_capabilities_router,
 )
 from .logging_middleware import add_logging_middleware, get_request_id
+from .modules.sandbox.hosted_client import HostedSandboxClient, SandboxClientConfig
+from .modules.sandbox.hosted_proxy import create_hosted_sandbox_proxy_router
+from .modules.sandbox.hosted_compat import create_hosted_compat_router
+from .modules.metrics import create_metrics_router
 
 # Global managers (for lifespan management)
 _sandbox_manager: SandboxManager | None = None
@@ -72,6 +80,10 @@ def _get_routers_for_mode(
         # - Sandbox Internal API (bd-1pwb.4) for data plane
         # - Hosted Proxy Layer (bd-1pwb.5) for client access
         enabled = {'approval'}
+        # Local hosted-dev workflow: keep code sessions available while
+        # privileged file/git operations stay on sandbox-backed compat routes.
+        if is_dev_auth_bypass_enabled():
+            enabled.update({'pty', 'chat_claude_code'})
     else:
         raise ValueError(f"Unknown run mode: {run_mode}")
 
@@ -161,22 +173,9 @@ def create_app(
     sandbox_auth_token = secrets.token_hex(16)
     cors_origin = get_cors_origin()
 
-    # Get external host for service URLs (e.g., from browser on different machine)
-    import subprocess
-    external_host = os.environ.get('EXTERNAL_HOST')
-    if not external_host:
-        try:
-            result = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=2)
-            if result.returncode == 0:
-                ips = result.stdout.strip().split()
-                for ip in ips:
-                    if ip and not ip.startswith('127.') and not ip.startswith('::'):
-                        external_host = ip
-                        break
-        except Exception:
-            pass
-    if not external_host:
-        external_host = '127.0.0.1'
+    # Service URLs should default to loopback unless explicitly overridden.
+    # Auto-discovering host IPs can unexpectedly expose internal endpoints.
+    external_host = os.environ.get('EXTERNAL_HOST', '127.0.0.1')
 
     # Create sandbox manager if needed
     if sandbox_manager is None and (include_sandbox or (routers and 'sandbox' in routers)):
@@ -188,6 +187,10 @@ def create_app(
             'SANDBOX_CORS_ORIGIN': cors_origin,
             'SANDBOX_EXTERNAL_HOST': external_host,
             'SANDBOX_RUN_MODE': config.run_mode.value,
+            # Sprites-specific config (passed through for sprites provider)
+            'SPRITES_TOKEN': os.environ.get('SPRITES_TOKEN', ''),
+            'SPRITES_ORG': os.environ.get('SPRITES_ORG', ''),
+            'SPRITES_NAME_PREFIX': os.environ.get('SPRITES_NAME_PREFIX', ''),
         }
         sandbox_manager = SandboxManager(
             create_provider(sandbox_config),
@@ -334,6 +337,33 @@ def create_app(
     # Must be added after CORS (middleware chain executes in reverse order)
     add_logging_middleware(app)
 
+    # Hosted-mode edge authentication (OIDC JWT validation)
+    if config.run_mode.value == 'hosted':
+        if is_dev_auth_bypass_enabled():
+            logger.warning(
+                "DEV_AUTH_BYPASS is enabled. Hosted auth is bypassed for local development only."
+            )
+
+            @app.middleware("http")
+            async def dev_auth_bypass(request, call_next):
+                if request.url.path != "/health" and request.method != "OPTIONS":
+                    request.state.auth_context = AuthContext(
+                        user_id="dev-local-user",
+                        workspace_id="default",
+                        permissions={
+                            "*",
+                            "files:read",
+                            "files:write",
+                            "git:read",
+                            "exec:run",
+                        },
+                        claims={"dev_bypass": True},
+                    )
+                return await call_next(request)
+        else:
+            oidc_verifier = OIDCVerifier.from_env()
+            add_oidc_auth_middleware(app, oidc_verifier)
+
     # Mount routers from registry based on enabled set
     router_args = {
         'files': (config, storage),
@@ -361,6 +391,55 @@ def create_app(
             mounted_factories.add(factory_id)
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
+
+    # Hosted-mode public proxy for privileged operations.
+    # Frontend interacts with control-plane routes only.
+    if config.run_mode.value == 'hosted':
+        internal_url = os.environ.get('INTERNAL_SANDBOX_URL', 'http://127.0.0.1:2469')
+        capability_private_key = os.environ.get('CAPABILITY_PRIVATE_KEY', '')
+        if capability_private_key:
+            capability_private_key = capability_private_key.replace("\\n", "\n")
+            capability_issuer = CapabilityTokenIssuer(capability_private_key)
+
+            service_signer = None
+            service_private_key = os.environ.get('SERVICE_PRIVATE_KEY', '')
+            if service_private_key:
+                service_private_key = service_private_key.replace("\\n", "\n")
+                service_signer = ServiceTokenSigner(
+                    private_key_pem=service_private_key,
+                    service_name='hosted-api',
+                )
+
+            hosted_client = HostedSandboxClient(
+                SandboxClientConfig(
+                    internal_url=internal_url,
+                    timeout_seconds=30,
+                    max_retries=3,
+                    service_signer=service_signer,
+                )
+            )
+            app.include_router(
+                create_hosted_sandbox_proxy_router(
+                    client=hosted_client,
+                    capability_issuer=capability_issuer,
+                ),
+                prefix='/api/v1',
+            )
+            app.include_router(
+                create_hosted_compat_router(
+                    client=hosted_client,
+                    capability_issuer=capability_issuer,
+                ),
+                prefix='/api',
+            )
+            # Compat layer provides filesystem + git surface in hosted mode.
+            enabled_features['files'] = True
+            enabled_features['git'] = True
+        else:
+            logger.warning(
+                'Hosted mode running without CAPABILITY_PRIVATE_KEY; '
+                'sandbox proxy routes are disabled.'
+            )
 
     # Build service connection registry for Direct Connect
     service_registry: dict[str, ServiceConnectionInfo] = {}
@@ -398,6 +477,9 @@ def create_app(
         ),
         prefix='/api',
     )
+
+    # Observability metrics endpoints (/api/v1/metrics)
+    app.include_router(create_metrics_router())
 
     # Store token issuer on app state for use by other components
     app.state.token_issuer = token_issuer
