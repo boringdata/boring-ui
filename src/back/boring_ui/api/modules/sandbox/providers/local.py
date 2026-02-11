@@ -146,7 +146,7 @@ class LocalProvider(SandboxProvider):
 
         return SandboxInfo(
             id=sandbox_id,
-            base_url=f"http://127.0.0.1:{self.port}",
+            base_url=f"http://{self.external_host}:{self.port}",
             status="running",
             workspace_path=str(self.workspace),
             provider="local",
