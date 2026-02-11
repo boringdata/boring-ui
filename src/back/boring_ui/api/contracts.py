@@ -24,19 +24,18 @@ from enum import Enum
 
 class FileInfo(BaseModel):
     """Metadata about a file or directory."""
-    
+
+    model_config = {"json_schema_extra": {
+        "example": {
+            "name": "app.py",
+            "type": "file",
+            "size": 1024,
+        }
+    }}
+
     name: str = Field(..., description="File or directory name")
     type: str = Field(..., description="'file' or 'dir'")
     size: Optional[int] = Field(None, description="File size in bytes (null for directories)")
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "name": "app.py",
-                "type": "file",
-                "size": 1024,
-            }
-        }
 
 
 class ListFilesRequest(BaseModel):
@@ -46,19 +45,19 @@ class ListFilesRequest(BaseModel):
 
 class ListFilesResponse(BaseModel):
     """Response with list of files."""
+
+    model_config = {"json_schema_extra": {
+        "example": {
+            "path": ".",
+            "files": [
+                {"name": "app.py", "type": "file", "size": 1024},
+                {"name": "src", "type": "dir", "size": None},
+            ],
+        }
+    }}
+
     files: List[FileInfo] = Field(..., description="List of files")
     path: str = Field(..., description="Listed directory path")
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "path": ".",
-                "files": [
-                    {"name": "app.py", "type": "file", "size": 1024},
-                    {"name": "src", "type": "dir", "size": None},
-                ],
-            }
-        }
 
 
 class ReadFileResponse(BaseModel):
@@ -115,7 +114,7 @@ class GitDiffResponse(BaseModel):
 class ExecRunRequest(BaseModel):
     """Request to execute command."""
     command: str = Field(..., description="Command to execute (no shell expansion)")
-    timeout_seconds: int = Field(30, description="Timeout in seconds (1-300)")
+    timeout_seconds: int = Field(30, ge=1, le=300, description="Timeout in seconds (1-300)")
 
 
 class ExecRunResponse(BaseModel):

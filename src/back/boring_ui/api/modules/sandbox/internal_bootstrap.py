@@ -22,7 +22,7 @@ class InternalSandboxConfig:
 
     def bind_address(self) -> str:
         """Get bind address based on run mode."""
-        if self.run_mode == "hosted":
+        if self.run_mode.lower() == "hosted":
             # In hosted mode, bind to all interfaces for internal control-plane access
             return "0.0.0.0"
         return self.host

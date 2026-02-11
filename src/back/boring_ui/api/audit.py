@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Optional, Any, Dict
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class AuditEventType(str, Enum):
@@ -72,7 +72,7 @@ class AuditLogger:
         trace_id = trace_id or str(uuid.uuid4())
         event = AuditEvent(
             event_type=AuditEventType.AUTH_SUCCESS,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             trace_id=trace_id,
             user_id=user_id,
             workspace_id=workspace_id,
@@ -86,7 +86,7 @@ class AuditLogger:
         trace_id = trace_id or str(uuid.uuid4())
         event = AuditEvent(
             event_type=AuditEventType.AUTH_FAILURE,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             trace_id=trace_id,
             status="failure",
             details={"reason": reason},
@@ -105,20 +105,26 @@ class AuditLogger:
     ):
         """Log file read/write operations."""
         trace_id = trace_id or str(uuid.uuid4())
+
+        # Normalize and validate operation
+        op_normalized = operation.lower().strip()
+        if op_normalized not in ("read", "write"):
+            raise ValueError(f"Invalid file operation: {operation}. Must be 'read' or 'write'.")
+
         event_type = (
-            AuditEventType.FILE_READ if operation == "read" else AuditEventType.FILE_WRITE
+            AuditEventType.FILE_READ if op_normalized == "read" else AuditEventType.FILE_WRITE
         )
         event = AuditEvent(
             event_type=event_type,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             trace_id=trace_id,
             user_id=user_id,
             workspace_id=workspace_id,
             resource=path,
-            action=operation,
+            action=op_normalized,
         )
         self.logger.info(f"File operation: {event.to_dict()}")
-        self.metrics.record_file_operation(operation)
+        self.metrics.record_file_operation(op_normalized)
         return event
 
     def log_exec_operation(
@@ -133,7 +139,7 @@ class AuditLogger:
         trace_id = trace_id or str(uuid.uuid4())
         event = AuditEvent(
             event_type=AuditEventType.EXEC_RUN,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             trace_id=trace_id,
             user_id=user_id,
             workspace_id=workspace_id,
@@ -161,7 +167,7 @@ class AuditMetrics:
         self.file_read_count = 0
         self.file_write_count = 0
         self.exec_count = 0
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
 
     def record_auth_success(self):
         self.auth_success_count += 1
@@ -170,17 +176,19 @@ class AuditMetrics:
         self.auth_failure_count += 1
 
     def record_file_operation(self, operation: str):
-        if operation == "read":
+        op = operation.lower().strip()
+        if op == "read":
             self.file_read_count += 1
-        elif operation == "write":
+        elif op == "write":
             self.file_write_count += 1
+        # Ignore unknown operations
 
     def record_exec_operation(self):
         self.exec_count += 1
 
     def to_dict(self) -> Dict[str, Any]:
         """Get metrics as dict."""
-        uptime_seconds = (datetime.utcnow() - self.start_time).total_seconds()
+        uptime_seconds = (datetime.now(timezone.utc) - self.start_time).total_seconds()
         return {
             "uptime_seconds": uptime_seconds,
             "auth_success": self.auth_success_count,

@@ -47,8 +47,8 @@ class SandboxPolicies:
         "dd",
         "mkfs",
         "fdisk",
-        ">dev/null",
-        ">dev/sda",
+        ">/dev/null",
+        ">/dev/sda",
         "chmod 777",
     }
 
@@ -65,16 +65,23 @@ class SandboxPolicies:
         if self.file_policy == FilePolicy.ALLOW_ALL:
             return True
 
+        # Both SANDBOXED and RESTRICTED modes require path validation
+        # SANDBOXED: must be validated by caller (workspace_root bounds)
+        # RESTRICTED: additionally block sensitive paths
         if self.file_policy == FilePolicy.RESTRICTED:
             # Block sensitive paths
             for blocked in self.BLOCKED_PATHS:
                 if path.startswith(blocked):
                     return False
 
+        # Allow access if within sandbox boundary (caller responsible for validation)
         return True
 
     def allow_command(self, command: str) -> bool:
         """Check if command execution is allowed."""
+        if not command or not command.strip():
+            return False  # Reject empty commands
+
         if self.exec_policy == ExecPolicy.ALLOW_ALL:
             return True
 
@@ -86,7 +93,10 @@ class SandboxPolicies:
         if self.exec_policy == ExecPolicy.SAFE_LIST:
             # Only allow specific commands
             safe_commands = {"ls", "cat", "grep", "echo", "pwd", "git", "npm", "python"}
-            cmd_name = command.split()[0]
+            parts = command.strip().split()
+            if not parts:
+                return False
+            cmd_name = parts[0]
             return cmd_name in safe_commands
 
         return True

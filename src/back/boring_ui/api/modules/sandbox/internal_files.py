@@ -24,7 +24,11 @@ def create_internal_files_router(workspace_root: Path) -> APIRouter:
     def validate_path(path: str) -> Path:
         """Validate that path is within workspace_root."""
         p = (workspace_root / path).resolve()
-        if not str(p).startswith(str(workspace_root.resolve())):
+        ws_root = workspace_root.resolve()
+        try:
+            # Proper ancestry check: throws ValueError if p is not relative to ws_root
+            p.relative_to(ws_root)
+        except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Path traversal detected",
