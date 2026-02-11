@@ -185,6 +185,8 @@ def create_capabilities_router(
     registry: RouterRegistry | None = None,
     token_issuer: Any | None = None,
     service_registry: dict[str, ServiceConnectionInfo] | None = None,
+    filesystem_source: str | None = None,
+    run_mode: str | None = None,
 ) -> APIRouter:
     """Create a router for the capabilities endpoint.
 
@@ -193,6 +195,8 @@ def create_capabilities_router(
         registry: Optional router registry for detailed info
         token_issuer: Optional ServiceTokenIssuer for generating fresh tokens
         service_registry: Optional map of service name -> connection info
+        filesystem_source: Configured filesystem source ('local', 'sandbox', etc)
+        run_mode: Runtime mode ('local' or 'hosted') for capability discovery
 
     Returns:
         Router with /capabilities endpoint
@@ -214,7 +218,9 @@ def create_capabilities_router(
         """
         capabilities: dict[str, Any] = {
             'version': '0.1.0',
+            'mode': run_mode or 'local',  # Runtime mode: 'local' or 'hosted'
             'features': enabled_features,
+            'filesystem_source': filesystem_source or 'local',
         }
 
         # Add router details if registry provided

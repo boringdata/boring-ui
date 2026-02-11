@@ -28,6 +28,55 @@ _sandbox_manager: SandboxManager | None = None
 _companion_manager: CompanionManager | None = None
 
 
+def _get_routers_for_mode(
+    run_mode: str,
+    include_pty: bool = True,
+    include_stream: bool = True,
+    include_approval: bool = True,
+    include_sandbox: bool = False,
+    include_companion: bool = False,
+) -> set[str]:
+    """Determine which routers to mount based on run mode.
+
+    LOCAL mode: All routers available (dev/local workflows)
+    HOSTED mode: Only capabilities and config (no direct privileged access)
+
+    Args:
+        run_mode: 'local' or 'hosted'
+        include_*: Feature flags for LOCAL mode only (ignored in HOSTED)
+
+    Returns:
+        Set of router names to mount
+    """
+    enabled = {'files', 'git'}  # Core routers always in LOCAL mode
+
+    if run_mode == 'local':
+        # LOCAL mode: mount all requested routers
+        if include_pty:
+            enabled.add('pty')
+        if include_stream:
+            enabled.add('chat_claude_code')
+        if include_approval:
+            enabled.add('approval')
+        if include_sandbox:
+            enabled.add('sandbox')
+        if include_companion:
+            enabled.add('companion')
+    elif run_mode == 'hosted':
+        # HOSTED mode: only safe control-plane routers
+        # - approval: tool approval workflow (safe for untrusted clients)
+        # No direct file/git/pty/chat/exec access in hosted mode.
+        # These will be provided via:
+        # - Hosted Auth (bd-1pwb.2) for control plane
+        # - Sandbox Internal API (bd-1pwb.4) for data plane
+        # - Hosted Proxy Layer (bd-1pwb.5) for client access
+        enabled = {'approval'}
+    else:
+        raise ValueError(f"Unknown run mode: {run_mode}")
+
+    return enabled
+
+
 def create_app(
     config: APIConfig | None = None,
     storage: Storage | None = None,
@@ -86,7 +135,22 @@ def create_app(
     global _sandbox_manager, _companion_manager
 
     # Apply defaults
-    config = config or APIConfig(workspace_root=Path.cwd())
+    if config is None:
+        # workspace_root can be configured via WORKSPACE_ROOT env var
+        # This allows pointing to local, sprites, or any filesystem
+        workspace = Path(os.environ.get('WORKSPACE_ROOT', Path.cwd()))
+        workspace.mkdir(parents=True, exist_ok=True)
+        config = APIConfig(workspace_root=workspace)
+
+    # Validate configuration at startup (fail-fast)
+    try:
+        config.validate_startup()
+    except ValueError as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error('Configuration validation failed: %s', e)
+        raise
+
     storage = storage or LocalStorage(config.workspace_root)
     approval_store = approval_store or InMemoryApprovalStore()
     registry = registry or create_default_registry()
@@ -95,6 +159,23 @@ def create_app(
     token_issuer = ServiceTokenIssuer()
     sandbox_auth_token = secrets.token_hex(16)
     cors_origin = get_cors_origin()
+
+    # Get external host for service URLs (e.g., from browser on different machine)
+    import subprocess
+    external_host = os.environ.get('EXTERNAL_HOST')
+    if not external_host:
+        try:
+            result = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                ips = result.stdout.strip().split()
+                for ip in ips:
+                    if ip and not ip.startswith('127.') and not ip.startswith('::'):
+                        external_host = ip
+                        break
+        except Exception:
+            pass
+    if not external_host:
+        external_host = '127.0.0.1'
 
     # Create sandbox manager if needed
     if sandbox_manager is None and (include_sandbox or (routers and 'sandbox' in routers)):
@@ -119,6 +200,7 @@ def create_app(
             'COMPANION_WORKSPACE': os.environ.get('COMPANION_WORKSPACE', str(config.workspace_root)),
             'COMPANION_SIGNING_KEY': token_issuer.signing_key_hex,
             'COMPANION_CORS_ORIGIN': cors_origin,
+            'COMPANION_EXTERNAL_HOST': external_host,
         }
         server_dir = os.environ.get('COMPANION_SERVER_DIR')
         if server_dir:
@@ -129,23 +211,52 @@ def create_app(
         )
         _companion_manager = companion_manager
 
-    # Determine which routers to include
-    # If routers list is provided, use it; otherwise use include_* flags
+    # Determine which routers to include based on mode
+    # Mode-aware composition: explicit paths, no hidden fallbacks
+    import logging
+    logger = logging.getLogger(__name__)
+
     if routers is not None:
+        # User provided explicit router list - honor it
         enabled_routers = set(routers)
+        # In HOSTED mode, warn if privileged routers requested
+        if config.run_mode.value == 'hosted':
+            privileged = {'files', 'git', 'pty', 'chat_claude_code', 'stream', 'sandbox', 'companion'}
+            requested_privileged = privileged & enabled_routers
+            if requested_privileged:
+                raise ValueError(
+                    f"SECURITY: Hosted mode cannot mount privileged routers. "
+                    f"Requested: {', '.join(sorted(requested_privileged))}. "
+                    f"These operations must be routed through Hosted Auth and Sandbox APIs (phases 2-5)."
+                )
     else:
-        enabled_routers = {'files', 'git'}  # Core routers always included
-        if include_pty:
-            enabled_routers.add('pty')
-        if include_stream:
-            # Use new canonical name, but 'stream' also works via registry alias
-            enabled_routers.add('chat_claude_code')
-        if include_approval:
-            enabled_routers.add('approval')
-        if include_sandbox:
-            enabled_routers.add('sandbox')
-        if include_companion:
-            enabled_routers.add('companion')
+        # Use mode-based defaults
+        enabled_routers = _get_routers_for_mode(
+            config.run_mode.value,
+            include_pty=include_pty,
+            include_stream=include_stream,
+            include_approval=include_approval,
+            include_sandbox=include_sandbox,
+            include_companion=include_companion,
+        )
+        # In HOSTED mode, log which routers would have been included in LOCAL
+        if config.run_mode.value == 'hosted':
+            local_routers = _get_routers_for_mode(
+                'local',
+                include_pty=include_pty,
+                include_stream=include_stream,
+                include_approval=include_approval,
+                include_sandbox=include_sandbox,
+                include_companion=include_companion,
+            )
+            deferred = local_routers - enabled_routers
+            if deferred:
+                logger.info(
+                    'HOSTED mode defers privileged routers to later phases: %s. '
+                    'Control plane uses only: %s.',
+                    ', '.join(sorted(deferred)),
+                    ', '.join(sorted(enabled_routers or ['capabilities']))
+                )
 
     # Support 'stream' alias -> 'chat_claude_code' for backward compatibility
     if 'stream' in enabled_routers:
@@ -168,13 +279,21 @@ def create_app(
     # Lifespan handler for startup/cleanup
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Startup — launch managed subprocesses
+        # Startup — log configuration and launch managed subprocesses
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info('Boring UI API startup')
+        logger.info('Run mode: %s', config.run_mode.value.upper())
+        logger.info('Workspace root: %s', config.workspace_root)
+        logger.info('Enabled features: %s', ', '.join(
+            k for k, v in enabled_features.items() if v
+        ))
+
         if companion_manager:
             try:
                 await companion_manager.ensure_running()
             except Exception as exc:
-                import logging
-                logging.getLogger(__name__).warning(
+                logger.warning(
                     'Companion auto-start failed: %s', exc,
                 )
         yield
@@ -243,7 +362,7 @@ def create_app(
         sandbox_port = getattr(sandbox_manager.provider, 'port', 2468)
         service_registry['sandbox'] = ServiceConnectionInfo(
             name='sandbox',
-            url=f'http://127.0.0.1:{sandbox_port}',
+            url=f'http://{external_host}:{sandbox_port}',
             token=sandbox_auth_token,  # Static token matching --token flag
             qp_token=sandbox_auth_token,  # Same token for SSE/WS
             protocol='rest+sse',
@@ -253,19 +372,21 @@ def create_app(
         companion_port = companion_manager.provider.port
         service_registry['companion'] = ServiceConnectionInfo(
             name='companion',
-            url=f'http://127.0.0.1:{companion_port}',
+            url=f'http://{external_host}:{companion_port}',
             token='',  # JWT issued per-request by token_issuer
             qp_token='',
             protocol='rest+sse',
         )
 
-    # Always include capabilities router
+    # Always include capabilities router (provides mode metadata)
     app.include_router(
         create_capabilities_router(
             enabled_features,
             registry,
             token_issuer=token_issuer if service_registry else None,
             service_registry=service_registry or None,
+            filesystem_source=config.filesystem_source,
+            run_mode=config.run_mode.value,
         ),
         prefix='/api',
     )

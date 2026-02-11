@@ -1,7 +1,34 @@
 """Configuration for boring-ui API."""
 import os
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+
+
+class RunMode(str, Enum):
+    """Execution mode for boring-ui backend.
+
+    - LOCAL: Single backend with direct operations (dev/local)
+    - HOSTED: Dual API model with control plane (public) and data plane (private)
+    """
+    LOCAL = 'local'
+    HOSTED = 'hosted'
+
+    @classmethod
+    def from_env(cls) -> 'RunMode':
+        """Get run mode from BORING_UI_RUN_MODE env var.
+
+        Defaults to LOCAL if not specified.
+        Case-insensitive.
+        """
+        mode_str = os.environ.get('BORING_UI_RUN_MODE', 'local').lower()
+        try:
+            return cls(mode_str)
+        except ValueError:
+            raise ValueError(
+                f"Invalid BORING_UI_RUN_MODE='{mode_str}'. "
+                f"Must be one of: {', '.join(m.value for m in cls)}"
+            )
 
 
 def _default_cors_origins() -> list[str]:
@@ -52,7 +79,12 @@ class APIConfig:
     enabling dependency injection and avoiding global state.
     """
     workspace_root: Path
+    run_mode: RunMode = field(default_factory=RunMode.from_env)
     cors_origins: list[str] = field(default_factory=_default_cors_origins)
+
+    # Filesystem source: 'local', 'sandbox', or 'sprites'
+    # Determines where FileTree loads files from
+    filesystem_source: str = field(default_factory=lambda: os.environ.get('FILESYSTEM_SOURCE', 'local'))
 
     # PTY provider configuration: provider_name -> command list
     # e.g., 'shell' -> ['bash'], 'claude' -> ['claude', '--dangerously-skip-permissions']
@@ -60,6 +92,15 @@ class APIConfig:
         'shell': ['bash'],
         'claude': ['claude', '--dangerously-skip-permissions'],
     })
+
+    # OIDC configuration (for hosted mode JWT verification)
+    # Environment variables:
+    #   OIDC_ISSUER: IdP issuer URL (e.g., https://auth.example.com)
+    #   OIDC_AUDIENCE: Expected audience claim
+    #   OIDC_CACHE_TTL_SECONDS: JWKS cache lifetime (default 3600)
+    oidc_issuer: str | None = field(default_factory=lambda: os.environ.get('OIDC_ISSUER'))
+    oidc_audience: str | None = field(default_factory=lambda: os.environ.get('OIDC_AUDIENCE'))
+    oidc_cache_ttl_seconds: int = field(default_factory=lambda: int(os.environ.get('OIDC_CACHE_TTL_SECONDS', '3600')))
 
     def validate_path(self, path: Path | str) -> Path:
         """Validate that a path is within workspace_root.
@@ -87,3 +128,50 @@ class APIConfig:
             raise ValueError(f'Path traversal detected: {path}')
 
         return resolved
+
+    def _get_required_env_vars(self) -> dict[str, list[str]]:
+        """Get required environment variables per mode.
+
+        Returns:
+            dict mapping run mode to list of required env vars
+        """
+        return {
+            RunMode.LOCAL.value: [
+                'WORKSPACE_ROOT',  # Required for all modes
+            ],
+            RunMode.HOSTED.value: [
+                'WORKSPACE_ROOT',  # Required for all modes
+                'ANTHROPIC_API_KEY',  # Hosted needs API key for auth
+                'HOSTED_API_TOKEN',  # Token for hosted API authn
+            ],
+        }
+
+    def validate_startup(self) -> None:
+        """Validate configuration at startup.
+
+        Checks that required environment variables are set for the active mode.
+        Raises ValueError with actionable error message if validation fails.
+
+        Note: WORKSPACE_ROOT check is skipped if workspace_root is already set in config.
+
+        Raises:
+            ValueError: If required env vars are missing or invalid
+        """
+        required = self._get_required_env_vars()[self.run_mode.value]
+
+        # Check required env vars, but skip WORKSPACE_ROOT if already configured
+        missing = []
+        for var in required:
+            if var == 'WORKSPACE_ROOT' and self.workspace_root:
+                # Skip WORKSPACE_ROOT check if workspace_root is already set
+                continue
+            if not os.environ.get(var):
+                missing.append(var)
+
+        if missing:
+            raise ValueError(
+                f"Startup validation failed for {self.run_mode.value.upper()} mode.\n"
+                f"Missing required environment variables: {', '.join(missing)}\n"
+                f"Mode: {self.run_mode.value}\n"
+                f"Required variables for {self.run_mode.value} mode: {', '.join(required)}"
+            )
