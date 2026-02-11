@@ -20,8 +20,10 @@ from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from .auth import OIDCVerifier
+from .auth_errors import AuthErrorEmitter
 
 logger = logging.getLogger(__name__)
+error_emitter = AuthErrorEmitter()
 
 
 @dataclass
@@ -113,42 +115,19 @@ def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> Non
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             # No token provided
-            logger.debug(f"Missing Bearer token: {request.method} {request.url.path}")
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "detail": "Missing or invalid authorization header",
-                    "code": "AUTH_MISSING",
-                },
-                headers={"WWW-Authenticate": 'Bearer realm="boring-ui"'},
-            )
+            return error_emitter.missing_token(request.url.path)
 
         token = auth_header[7:]  # Remove "Bearer " prefix
 
         # Validate JWT
         claims = verifier.verify_token(token)
         if claims is None:
-            logger.debug(f"Invalid JWT: {request.method} {request.url.path}")
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "detail": "Invalid or expired token",
-                    "code": "AUTH_INVALID",
-                },
-                headers={"WWW-Authenticate": 'Bearer realm="boring-ui", error="invalid_token"'},
-            )
+            return error_emitter.invalid_token(request.url.path)
 
         # Extract user identity
         user_id = claims.get("sub")
         if not user_id:
-            logger.warning(f"JWT missing 'sub' claim: {request.method} {request.url.path}")
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "detail": "Invalid token structure (missing 'sub')",
-                    "code": "AUTH_INVALID_CLAIMS",
-                },
-            )
+            return error_emitter.invalid_token(request.url.path, "Invalid token structure (missing 'sub')")
 
         # Extract workspace context
         workspace_id = claims.get("workspace")
@@ -223,14 +202,16 @@ def require_permission(permission: str) -> Callable:
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             auth_context = get_auth_context(request)
             if not auth_context.has_permission(permission):
-                logger.warning(
-                    f"Permission denied: user={auth_context.user_id}, "
-                    f"required={permission}, have={auth_context.permissions}"
+                resp = error_emitter.insufficient_permission(
+                    request.url.path,
+                    auth_context.user_id,
+                    permission,
+                    auth_context.permissions,
                 )
+                # Convert JSONResponse to HTTPException for FastAPI
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Permission denied: {permission}",
-                    headers={"X-Permission-Code": f"PERM_DENIED:{permission}"},
+                    status_code=resp.status_code,
+                    detail=resp.body.decode() if isinstance(resp.body, bytes) else resp.body,
                 )
             return await func(request, *args, **kwargs)
 
