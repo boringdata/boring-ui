@@ -189,10 +189,15 @@ class ServiceTokenValidator:
         - Token not expired
         - Service name is in accepted list (if provided)
 
+        Clock Skew Assumptions:
+        - Future key versions are always rejected (fail-closed on clock skew)
+        - Ensure system clocks are synchronized across services
+        - Grace period accounts for clock drift between key rotation events
+
         Args:
             token: JWT token string
             accepted_services: List of service names to accept
-                              (None = accept all services)
+                              (None = accept all services, [] = reject all)
 
         Returns:
             Claims dict on success, None on any validation failure
@@ -260,6 +265,7 @@ class ServiceTokenValidator:
             )
 
             # Validate service name (distinguish between None and empty list)
+            # None = accept all services; [] = reject all (fail-closed)
             service_name = claims.get("sub", "")
             if accepted_services is not None:  # Explicit allowlist provided
                 if service_name not in accepted_services:

@@ -176,8 +176,10 @@ def add_capability_auth_middleware(
         # Record JTI to prevent future replay using remaining lifetime
         now = int(time.time())
         exp = claims.get("exp", 0)
-        remaining_ttl = max(0, exp - now)  # Remaining lifetime, clamp at 0
-        replay_store.record_jti(jti, remaining_ttl)
+        remaining_ttl = exp - now
+        # Only record if token has remaining lifetime (avoid cache pollution with zero-TTL entries)
+        if remaining_ttl > 0:
+            replay_store.record_jti(jti, remaining_ttl)
 
         # Create and inject capability context
         capability_context = CapabilityAuthContext(

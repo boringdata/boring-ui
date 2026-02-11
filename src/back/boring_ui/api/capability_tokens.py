@@ -309,7 +309,8 @@ class JTIReplayStore:
         # Check if JTI is in cache
         if jti in self._cache:
             self._hits += 1
-            # Move to end to preserve true LRU ordering (refresh recency)
+            # Move to end to mark this JTI as recently seen (even though it's a replay).
+            # This prevents recently-replayed tokens from being evicted during max_size enforcement.
             self._cache.move_to_end(jti)
             logger.warning(f"JTI replay detected: {jti}")
             return True
