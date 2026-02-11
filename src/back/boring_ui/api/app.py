@@ -31,6 +31,7 @@ from .modules.sandbox.hosted_client import HostedSandboxClient, SandboxClientCon
 from .modules.sandbox.hosted_proxy import create_hosted_sandbox_proxy_router
 from .modules.sandbox.hosted_compat import create_hosted_compat_router
 from .modules.metrics import create_metrics_router
+from .local_api import create_local_api_router
 
 # Global managers (for lifespan management)
 _sandbox_manager: SandboxManager | None = None
@@ -464,6 +465,14 @@ def create_app(
             qp_token='',
             protocol='rest+sse',
         )
+
+    # LOCAL mode: mount local_api router in-process (bd-1adh.2.2)
+    # In LOCAL mode, internal workspace operations are available directly on control plane
+    # No separate service needed; local_api is mounted at /internal/* for consistency
+    if config.run_mode.value == 'local':
+        local_api_router = create_local_api_router(config.workspace_root)
+        app.include_router(local_api_router)
+        logger.debug('LOCAL mode: local_api router mounted at /internal/v1')
 
     # Always include capabilities router (provides mode metadata)
     app.include_router(
