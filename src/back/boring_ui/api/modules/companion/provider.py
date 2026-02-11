@@ -261,7 +261,7 @@ class CompanionProvider:
 
         return CompanionInfo(
             id=instance_id,
-            base_url=f"http://127.0.0.1:{instance.port}",
+            base_url=f"http://{self.external_host}:{instance.port}",
             status=status,
             workspace_path=str(instance.workspace),
         )
