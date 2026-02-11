@@ -31,6 +31,34 @@ class RunMode(str, Enum):
             )
 
 
+class SandboxProvider(str, Enum):
+    """Sandbox provider for workspace operations.
+
+    - LOCAL: In-process or local subprocess (dev/local)
+    - SANDBOX: Sandbox.dev API
+    - SPRITES: Sprites.dev API (hosted remote)
+    """
+    LOCAL = 'local'
+    SANDBOX = 'sandbox'
+    SPRITES = 'sprites'
+
+    @classmethod
+    def from_env(cls) -> 'SandboxProvider':
+        """Get sandbox provider from SANDBOX_PROVIDER env var.
+
+        Defaults to LOCAL if not specified.
+        Case-insensitive.
+        """
+        provider_str = os.environ.get('SANDBOX_PROVIDER', 'local').lower()
+        try:
+            return cls(provider_str)
+        except ValueError:
+            raise ValueError(
+                f"Invalid SANDBOX_PROVIDER='{provider_str}'. "
+                f"Must be one of: {', '.join(p.value for p in cls)}"
+            )
+
+
 def _default_cors_origins() -> list[str]:
     """Get default CORS origins, supporting env override."""
     env_origins = os.environ.get('CORS_ORIGINS', '')
@@ -89,6 +117,7 @@ class APIConfig:
     """
     workspace_root: Path
     run_mode: RunMode = field(default_factory=RunMode.from_env)
+    sandbox_provider: SandboxProvider = field(default_factory=SandboxProvider.from_env)
     cors_origins: list[str] = field(default_factory=_default_cors_origins)
 
     # Filesystem source: 'local', 'sandbox', or 'sprites'
@@ -138,11 +167,11 @@ class APIConfig:
 
         return resolved
 
-    def _get_required_env_vars(self) -> dict[str, list[str]]:
-        """Get required environment variables per mode.
+    def _get_required_env_vars(self) -> dict[str, dict[str, list[str]]]:
+        """Get required environment variables per mode and provider combination.
 
         Returns:
-            dict mapping run mode to list of required env vars
+            dict mapping mode -> provider -> list of required env vars
         """
         hosted_required = [
             'WORKSPACE_ROOT',  # Required for all modes
@@ -154,25 +183,46 @@ class APIConfig:
                 'WORKSPACE_ROOT',
             ]
 
+        # Sprites-specific requirements (only in hosted-sprites mode)
+        hosted_sprites_required = hosted_required + [
+            'SPRITES_TOKEN',  # API token for Sprites.dev
+            'SPRITES_ORG',  # Organization ID for Sprites
+        ]
+
         return {
-            RunMode.LOCAL.value: [
-                'WORKSPACE_ROOT',  # Required for all modes
-            ],
-            RunMode.HOSTED.value: hosted_required,
+            RunMode.LOCAL.value: {
+                SandboxProvider.LOCAL.value: [
+                    'WORKSPACE_ROOT',  # Required for all modes
+                ],
+                SandboxProvider.SANDBOX.value: [
+                    'WORKSPACE_ROOT',
+                ],
+                SandboxProvider.SPRITES.value: [
+                    'WORKSPACE_ROOT',
+                    'SPRITES_TOKEN',
+                    'SPRITES_ORG',
+                ],
+            },
+            RunMode.HOSTED.value: {
+                SandboxProvider.LOCAL.value: hosted_required,
+                SandboxProvider.SANDBOX.value: hosted_required,
+                SandboxProvider.SPRITES.value: hosted_sprites_required,
+            },
         }
 
     def validate_startup(self) -> None:
         """Validate configuration at startup.
 
-        Checks that required environment variables are set for the active mode.
-        Raises ValueError with actionable error message if validation fails.
+        Checks that required environment variables are set for the active mode and provider.
+        Raises ValueError with actionable error message listing all missing variables.
 
         Note: WORKSPACE_ROOT check is skipped if workspace_root is already set in config.
 
         Raises:
             ValueError: If required env vars are missing or invalid
         """
-        required = self._get_required_env_vars()[self.run_mode.value]
+        all_required_by_mode_provider = self._get_required_env_vars()
+        required = all_required_by_mode_provider[self.run_mode.value][self.sandbox_provider.value]
 
         # Check required env vars, but skip WORKSPACE_ROOT if already configured
         missing = []
@@ -184,9 +234,19 @@ class APIConfig:
                 missing.append(var)
 
         if missing:
+            mode_upper = self.run_mode.value.upper()
+            provider_upper = self.sandbox_provider.value.upper()
             raise ValueError(
-                f"Startup validation failed for {self.run_mode.value.upper()} mode.\n"
+                f"Startup validation failed for {mode_upper} mode with {provider_upper} provider.\n"
                 f"Missing required environment variables: {', '.join(missing)}\n"
-                f"Mode: {self.run_mode.value}\n"
-                f"Required variables for {self.run_mode.value} mode: {', '.join(required)}"
+                f"\n"
+                f"Configuration:\n"
+                f"  Mode: {self.run_mode.value}\n"
+                f"  Provider: {self.sandbox_provider.value}\n"
+                f"  Workspace Root: {self.workspace_root}\n"
+                f"\n"
+                f"Required variables:\n"
+                f"  {', '.join(required)}\n"
+                f"\n"
+                f"Set missing variables as environment variables and retry."
             )
