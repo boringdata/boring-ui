@@ -110,6 +110,19 @@ Important clarification:
 - In Sprites mode, control plane does not use `INTERNAL_SANDBOX_URL`
 - In Sprites mode, target is `{sprite_name, local_api_port}` and connection is through Sprites proxy API
 
+## 4.3 Port Binding Rules by Topology
+
+| Topology | local-api bind host | local-api port | Reachability |
+|---|---|---|---|
+| local in-process | no separate listener | n/a | mounted router only |
+| local standalone dev | `127.0.0.1` | `BORING_UI_LOCAL_API_PORT` | host-local only |
+| hosted non-sprites | `0.0.0.0` | `BORING_UI_LOCAL_API_PORT` | private network from control plane |
+| hosted + sprites | `127.0.0.1` (inside sprite) | `SPRITES_LOCAL_API_PORT` | via Sprites proxy transport only |
+
+Startup requirement:
+
+- Log effective runtime bind decision on boot (`mode`, `provider`, `host`, `port`) for both control-plane and local-api processes.
+
 ## 5. Public and Internal API Contracts
 
 ## 5.1 Browser-Facing (unchanged)
@@ -152,13 +165,23 @@ Control-plane transport steps:
 4. On connected response, relay raw TCP bytes:
 - Write raw HTTP/1.1 request bytes for `/internal/*`
 - Parse raw HTTP response bytes into status, headers, body
+- v1 simplification: one HTTP request per WebSocket connection
+- Control-plane request must set `Connection: close`
+- local-api response for `/internal/v1/*` must be non-streaming with `Content-Length` (no chunked transfer in v1)
 
-5. Error mapping:
+5. Timeouts and parser safety limits:
+- `connect_timeout_sec`: default `5`
+- `handshake_timeout_sec`: default `5`
+- `response_timeout_sec`: default `30` (or route-specific override)
+- `max_response_bytes`: default `10MB`
+- Missing `Content-Length`, malformed status line, or byte count overflow -> map to `502` with `local_api_protocol_error`
+
+6. Error mapping:
 - Handshake timeout/invalid response -> `502`
 - Relay timeout -> `504`
 - Parsed internal HTTP status -> preserve status/body
 
-6. Retry defaults:
+7. Retry defaults:
 - Retryable: connect reset/timeout/`502`/`503`/`504`
 - Non-retryable: `400`/`401`/`403`/`404`/`422`
 - Default max attempts: `3`
@@ -189,6 +212,7 @@ Add/standardize `BoringUIConfig` in `src/back/boring_ui/api/config.py` with expl
 
 Required now (Sprites hosted path):
 
+- `BORING_UI_RUN_MODE=hosted`
 - `SANDBOX_PROVIDER=sprites`
 - `SPRITES_TOKEN=<secret>`
 - `SPRITES_TARGET_SPRITE=<sprite-name>`
@@ -205,9 +229,40 @@ Non-Sprites hosted only:
 
 Validation rules at startup:
 
-- If `sandbox_provider=sprites`, require `SPRITES_TOKEN` and `SPRITES_TARGET_SPRITE`
+- If `run_mode=hosted` and `sandbox_provider=sprites`, require `SPRITES_TOKEN`, `SPRITES_TARGET_SPRITE`, and `SPRITES_LOCAL_API_PORT`
 - If `sandbox_provider!=sprites` in hosted, require `INTERNAL_SANDBOX_URL`
 - Fail fast with actionable error text
+
+Startup matrix enforcement:
+
+- Hosted + sprites boot must fail if `BORING_UI_RUN_MODE` is missing or not `hosted`.
+- Validation error must return one aggregated message listing all missing/invalid keys.
+
+## 6.3 Target Resolution Interface (Service Discovery Seam)
+
+Even in single-sprite move-fast mode, control-plane target lookup goes through one interface.
+
+```python
+@dataclass
+class WorkspaceTarget:
+    provider: str
+    sprite_name: str | None
+    local_api_port: int | None
+    internal_base_url: str | None
+
+class TargetResolver(ABC):
+    async def resolve(self, workspace_id: str, user_id: str | None) -> WorkspaceTarget: ...
+```
+
+Current sprint implementation:
+
+- `StaticTargetResolver` (env/hardcoded values only).
+- Sprites provider returns `WorkspaceTarget(provider="sprites", sprite_name=SPRITES_TARGET_SPRITE, local_api_port=SPRITES_LOCAL_API_PORT)`.
+- Non-sprites hosted returns `WorkspaceTarget(provider="<provider>", internal_base_url=INTERNAL_SANDBOX_URL)`.
+
+Future replacement:
+
+- `DbTargetResolver` with the same interface (`workspace/user -> provider target`), no control-plane call-site changes.
 
 ## 7. Transport Abstraction and Interfaces
 
@@ -411,6 +466,10 @@ Run app against the single current sprite and verify:
 
 5. Boundary:
 - No direct browser calls to sprite/local-api endpoints
+- Browser network capture must show:
+  - zero requests to `api.sprites.dev`
+  - zero requests to `*.sprites.app`
+  - zero requests to `/internal/*`
 
 ## 13.3 Proof Report Requirement (Showboat + Rodney)
 
@@ -425,6 +484,8 @@ Produce report with:
 - screenshot evidence (file tree, file operations, chat response)
 - cross-verification snippets from `sprite exec`
 - pass/fail table per required behavior
+- one network evidence artifact (HAR/export/log) proving no direct browser calls to sprite/local-api
+- explicit grep/assert output showing zero matches for `api.sprites.dev`, `\\.sprites\\.app`, and `/internal/`
 
 Recommended artifact:
 
@@ -487,6 +548,7 @@ Refactor is accepted when all are true:
 4. Local and hosted test suites pass, including transport contract tests.
 5. Live single-sprite validation passes for filesystem, git, and chat.
 6. Showboat/Rodney proof report is produced and committed.
+7. Browser network assertions pass with zero direct calls to Sprites API/domain/internal local-api paths.
 
 ## 18. Source Links
 
