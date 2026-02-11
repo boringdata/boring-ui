@@ -72,6 +72,8 @@ def create_companion_provider(config: dict) -> CompanionProvider:
             - COMPANION_SIGNING_KEY: Hex signing key for JWT auth
             - COMPANION_CORS_ORIGIN: CORS allowed origin
             - COMPANION_SERVER_DIR: Path to server source
+            - COMPANION_EXTERNAL_HOST: External hostname/IP for browser access
+            - COMPANION_RUN_MODE: 'local' or 'hosted' (default: 'local')
     """
     return CompanionProvider(
         port=int(config.get("COMPANION_PORT", 3456)),
@@ -79,4 +81,6 @@ def create_companion_provider(config: dict) -> CompanionProvider:
         signing_key_hex=config.get("COMPANION_SIGNING_KEY"),
         cors_origin=config.get("COMPANION_CORS_ORIGIN"),
         server_dir=Path(config["COMPANION_SERVER_DIR"]) if config.get("COMPANION_SERVER_DIR") else None,
+        external_host=config.get("COMPANION_EXTERNAL_HOST"),
+        run_mode=config.get("COMPANION_RUN_MODE", "local"),
     )

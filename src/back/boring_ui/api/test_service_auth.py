@@ -281,8 +281,20 @@ class TestServiceTokenValidator:
 
         token = signer.sign_request()
 
-        # Accept only sandbox-api
+        # Accept only sandbox-api (hosted-api should be rejected)
         claims = validator.validate_token(token, accepted_services=["sandbox-api"])
+
+        assert claims is None
+
+    def test_validate_service_name_empty_list(self, rsa_keys):
+        """ServiceTokenValidator should reject all services with empty allowlist."""
+        signer = ServiceTokenSigner(rsa_keys["private"], "hosted-api")
+        validator = ServiceTokenValidator({1: rsa_keys["public"]}, current_version=1)
+
+        token = signer.sign_request()
+
+        # Empty list should reject all services (not disable filtering)
+        claims = validator.validate_token(token, accepted_services=[])
 
         assert claims is None
 
@@ -338,7 +350,9 @@ class TestServiceTokenValidator:
         result = validator.retire_key_version(1)
 
         assert result is True
-        assert 1 not in validator.key_versions
+        # Key is retained in key_versions for grace period validation
+        assert 1 in validator.key_versions
+        assert 1 in validator._key_retirement_times
 
     def test_retire_nonexistent_key(self, rsa_keys):
         """ServiceTokenValidator should handle retiring nonexistent keys."""
@@ -379,17 +393,66 @@ class TestServiceTokenValidator:
 
         assert validator is None
 
+    def test_from_env_invalid_current_version(self, rsa_keys, monkeypatch):
+        """ServiceTokenValidator.from_env should handle invalid current_version."""
+        key_versions_json = json.dumps({1: rsa_keys["public"]})
+        monkeypatch.setenv("SERVICE_KEY_VERSIONS", key_versions_json)
+        monkeypatch.setenv("SERVICE_CURRENT_VERSION", "not-a-number")
+
+        validator = ServiceTokenValidator.from_env()
+
+        assert validator is None
+
+    def test_from_env_invalid_grace_period(self, rsa_keys, monkeypatch):
+        """ServiceTokenValidator.from_env should handle invalid grace_period."""
+        key_versions_json = json.dumps({1: rsa_keys["public"]})
+        monkeypatch.setenv("SERVICE_KEY_VERSIONS", key_versions_json)
+        monkeypatch.setenv("SERVICE_KEY_ROTATION_GRACE_SECONDS", "not-a-number")
+
+        validator = ServiceTokenValidator.from_env()
+
+        assert validator is None
+
+    def test_grace_period_enforcement(self, rsa_keys, rsa_keys_v2):
+        """ServiceTokenValidator should enforce grace period after key retirement."""
+        signer_v1 = ServiceTokenSigner(rsa_keys["private"], "hosted-api")
+        token_v1 = signer_v1.sign_request(ttl_seconds=120)
+
+        # Validator with both v1 and v2, current is v2
+        validator = ServiceTokenValidator(
+            {1: rsa_keys["public"], 2: rsa_keys_v2["public"]},
+            current_version=2,
+            grace_period_seconds=1,  # Very short grace period
+        )
+
+        # Token should be accepted before retirement
+        assert validator.validate_token(token_v1) is not None
+
+        # Retire v1
+        validator.retire_key_version(1)
+
+        # Token should still be accepted during grace period
+        assert validator.validate_token(token_v1) is not None
+
+        # Wait for grace period to expire
+        time.sleep(1.1)
+
+        # Token should be rejected after grace period
+        assert validator.validate_token(token_v1) is None
+
 
 class TestKeyRotationWorkflow:
     """Integration tests for key rotation workflow."""
 
     def test_rotation_workflow(self, rsa_keys, rsa_keys_v2):
         """Test complete key rotation workflow."""
-        # Initial setup with v1
+        # Initial setup with v1, short grace period for testing
         signer = ServiceTokenSigner(rsa_keys["private"], "hosted-api")
-        validator = ServiceTokenValidator({1: rsa_keys["public"]}, current_version=1)
+        validator = ServiceTokenValidator(
+            {1: rsa_keys["public"]}, current_version=1, grace_period_seconds=1
+        )
 
-        token_v1 = signer.sign_request()
+        token_v1 = signer.sign_request(ttl_seconds=120)
         assert validator.validate_token(token_v1) is not None
 
         # Rotation: add v2 to validator, rotate signer
@@ -403,11 +466,17 @@ class TestKeyRotationWorkflow:
         # Old tokens should still work during grace period
         assert validator.validate_token(token_v1) is not None
 
-        # Retire v1 after grace period
+        # Retire v1
         validator.retire_key_version(1)
 
         # New tokens work
         assert validator.validate_token(token_v2) is not None
 
-        # Old tokens fail after retirement
+        # Old tokens still work during grace period
+        assert validator.validate_token(token_v1) is not None
+
+        # Wait for grace period to expire
+        time.sleep(1.1)
+
+        # Old tokens fail after grace period
         assert validator.validate_token(token_v1) is None

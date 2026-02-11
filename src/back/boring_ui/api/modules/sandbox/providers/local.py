@@ -46,6 +46,8 @@ class LocalProvider(SandboxProvider):
         workspace: Path | None = None,
         token: str | None = None,
         cors_origin: str | None = None,
+        external_host: str | None = None,
+        run_mode: str = "local",
     ):
         """Initialize the local provider.
 
@@ -54,11 +56,15 @@ class LocalProvider(SandboxProvider):
             workspace: Working directory for sandbox-agent
             token: Bearer token for sandbox-agent auth. If None, starts with --no-token.
             cors_origin: CORS allowed origin for direct browser connections.
+            external_host: External hostname/IP for base_url. Defaults to 127.0.0.1.
+            run_mode: 'local' (dev, bind to 127.0.0.1) or 'hosted' (bind to 0.0.0.0).
         """
         self.port = port
         self.workspace = workspace or Path.cwd()
         self.token = token
         self.cors_origin = cors_origin
+        self.external_host = external_host or "127.0.0.1"
+        self.run_mode = run_mode
         self.sandboxes: dict[str, LocalSandbox] = {}
 
     async def create(self, sandbox_id: str, config: dict) -> SandboxInfo:

@@ -55,6 +55,8 @@ class CompanionProvider:
         signing_key_hex: str | None = None,
         cors_origin: str | None = None,
         server_dir: Path | None = None,
+        external_host: str | None = None,
+        run_mode: str = "local",
     ):
         """Initialize the Companion provider.
 
@@ -65,12 +67,17 @@ class CompanionProvider:
             cors_origin: Allowed CORS origin for browser connections.
             server_dir: Path to Companion server source. Defaults to
                 vendor/companion/ relative to the workspace.
+            external_host: External hostname/IP for base_url. Defaults to 127.0.0.1.
+            run_mode: 'local' (dev, bind to 127.0.0.1) or 'hosted' (bind to 0.0.0.0).
+                Determines which interface the service binds to.
         """
         self.port = port
         self.workspace = workspace or Path.cwd()
         self.signing_key_hex = signing_key_hex
         self.cors_origin = cors_origin
         self.server_dir = server_dir
+        self.external_host = external_host or "127.0.0.1"
+        self.run_mode = run_mode
         self._instances: dict[str, _CompanionProcess] = {}
 
     def _check_bun(self) -> str:
@@ -87,7 +94,9 @@ class CompanionProvider:
         """Build environment variables for the subprocess."""
         env = {**os.environ}
         env["PORT"] = str(self.port)
-        env["HOST"] = "127.0.0.1"
+        # In hosted mode, bind to all interfaces (0.0.0.0) for external connectivity.
+        # In local mode, bind to localhost only (127.0.0.1) for security.
+        env["HOST"] = "0.0.0.0" if self.run_mode == "hosted" else "127.0.0.1"
         env["DEFAULT_CWD"] = str(self.workspace)
 
         if self.signing_key_hex:
@@ -107,7 +116,7 @@ class CompanionProvider:
         if existing and existing.process and existing.process.poll() is None:
             return CompanionInfo(
                 id=instance_id,
-                base_url=f"http://127.0.0.1:{existing.port}",
+                base_url=f"http://{self.external_host}:{existing.port}",
                 status="running",
                 workspace_path=str(existing.workspace),
             )
@@ -161,7 +170,7 @@ class CompanionProvider:
 
         return CompanionInfo(
             id=instance_id,
-            base_url=f"http://127.0.0.1:{self.port}",
+            base_url=f"http://{self.external_host}:{self.port}",
             status="running",
             workspace_path=str(self.workspace),
         )

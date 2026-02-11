@@ -126,9 +126,8 @@ export default function Terminal({
   const historyBufferRef = useRef('')
   const historyFallbackTimerRef = useRef(null)
   const historySourceRef = useRef(null)
-  // Always use Claude as provider
-  const providerKey = 'claude'
-  const providerLabel = 'Claude'
+  const providerKey = provider || 'shell'
+  const providerLabel = provider === 'claude' ? 'Claude' : 'Shell'
 
   useEffect(() => {
     isActiveRef.current = isActive

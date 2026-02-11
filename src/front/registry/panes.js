@@ -316,13 +316,13 @@ const createDefaultRegistry = () => {
     requiresRouters: ['chat_claude_code'],
   })
 
-  // Shell - bottom of center column
+  // Shell - bottom of center column (DISABLED in demo - use agent chat only)
   registry.register({
     id: 'shell',
     component: ShellTerminalPanel,
     title: 'Shell',
     placement: 'bottom',
-    essential: true,
+    essential: false,  // Disabled - using agent/chat pane only
     locked: true,
     hideHeader: false,
     constraints: {

@@ -158,6 +158,8 @@ class ServiceTokenValidator:
         self.key_versions = key_versions
         self.current_version = current_version
         self.grace_period_seconds = grace_period_seconds
+        # Track when keys were retired for grace period enforcement
+        self._key_retirement_times: dict[int, float] = {}
         self._validation_attempts = 0
         self._validation_successes = 0
         self._rejected_old_keys = 0
@@ -216,13 +218,35 @@ class ServiceTokenValidator:
 
             # Check if key version is still valid (current or within grace period)
             is_current = key_version == self.current_version
-            is_grace_period = key_version < self.current_version
+            is_retired = key_version in self._key_retirement_times
+            is_grace_period = False
 
-            if not is_current and not is_grace_period:
+            if key_version < self.current_version:
+                # Old key: check if within grace period
+                if not is_retired:
+                    # Never retired: accept (not yet past grace period)
+                    is_grace_period = True
+                else:
+                    # Was retired: check grace period elapsed
+                    retired_at = self._key_retirement_times[key_version]
+                    grace_expiry = retired_at + self.grace_period_seconds
+                    if time.time() < grace_expiry:
+                        is_grace_period = True
+                    else:
+                        logger.warning(
+                            f"Token from key version past grace period: {key_version} "
+                            f"(retired at {retired_at}, grace expired at {grace_expiry})"
+                        )
+                        return None
+            elif key_version > self.current_version:
+                # Future key: always reject
                 logger.warning(
                     f"Token signed with future key version: {key_version} "
                     f"(current: {self.current_version})"
                 )
+                return None
+
+            if not is_current and not is_grace_period:
                 return None
 
             # Decode and verify token
@@ -235,14 +259,15 @@ class ServiceTokenValidator:
                 options={"verify_exp": True},
             )
 
-            # Validate service name
+            # Validate service name (distinguish between None and empty list)
             service_name = claims.get("sub", "")
-            if accepted_services and service_name not in accepted_services:
-                logger.warning(
-                    f"Token from unauthorized service: {service_name} "
-                    f"(accepted: {accepted_services})"
-                )
-                return None
+            if accepted_services is not None:  # Explicit allowlist provided
+                if service_name not in accepted_services:
+                    logger.warning(
+                        f"Token from unauthorized service: {service_name} "
+                        f"(accepted: {accepted_services})"
+                    )
+                    return None
 
             # Track if old key was used during grace period
             if is_grace_period:
@@ -283,6 +308,9 @@ class ServiceTokenValidator:
     def retire_key_version(self, key_version: int) -> bool:
         """Retire an old key version.
 
+        Records retirement time for grace period enforcement.
+        Key is kept in key_versions for validation during grace period.
+
         Args:
             key_version: Key version to retire
 
@@ -292,8 +320,10 @@ class ServiceTokenValidator:
         if key_version not in self.key_versions:
             return False
 
-        del self.key_versions[key_version]
-        logger.info(f"Retired key version {key_version}")
+        # Record retirement time for grace period enforcement
+        # Keep key available for validation during grace period
+        self._key_retirement_times[key_version] = time.time()
+        logger.info(f"Retired key version {key_version}, grace period active for {self.grace_period_seconds}s")
         return True
 
     @staticmethod
@@ -313,7 +343,7 @@ class ServiceTokenValidator:
             grace_period_env: Name of env var with grace period
 
         Returns:
-            ServiceTokenValidator instance, or None if env vars missing
+            ServiceTokenValidator instance, or None if env vars missing or malformed
         """
         versions_json = os.environ.get(versions_env)
         if not versions_json:
@@ -328,7 +358,17 @@ class ServiceTokenValidator:
             logger.error(f"Failed to parse {versions_env}: {e}")
             return None
 
-        current_version = int(os.environ.get(current_version_env, "1"))
-        grace_period = int(os.environ.get(grace_period_env, "300"))
+        # Parse numeric env vars with error handling
+        try:
+            current_version = int(os.environ.get(current_version_env, "1"))
+        except ValueError as e:
+            logger.error(f"Failed to parse {current_version_env}: {e}")
+            return None
+
+        try:
+            grace_period = int(os.environ.get(grace_period_env, "300"))
+        except ValueError as e:
+            logger.error(f"Failed to parse {grace_period_env}: {e}")
+            return None
 
         return ServiceTokenValidator(key_versions, current_version, grace_period)

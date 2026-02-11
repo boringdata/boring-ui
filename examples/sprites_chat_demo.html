@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprites + Chat Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel h2 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .section h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button.danger {
+            background: #dc3545;
+        }
+
+        button.danger:hover {
+            background: #c82333;
+        }
+
+        button.secondary {
+            background: #6c757d;
+        }
+
+        button.secondary:hover {
+            background: #545b62;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-family: 'Monaco', monospace;
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+            border-left: 3px solid #007bff;
+        }
+
+        .status.success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+
+        .status.error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+
+        .status.warning {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+
+        .logs {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Monaco', monospace;
+            font-size: 12px;
+            height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .logs.empty {
+            color: #666;
+        }
+
+        input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 100%;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .input-group input {
+            flex: 1;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #e9ecef;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        .badge.running {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge.sleeping {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .badge.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        h1 {
+            grid-column: 1 / -1;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .subtitle {
+            grid-column: 1 / -1;
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 Sprites + Chat Demo</h1>
+    <p class="subtitle">Interactive demo of Sprites.dev sandbox provider with chat integration</p>
+
+    <div class="container">
+        <!-- Sandbox Panel -->
+        <div class="panel">
+            <h2>📦 Sandbox (Sprites)</h2>
+
+            <div class="section">
+                <h3>Status</h3>
+                <div id="sandbox-status" class="status">Checking...</div>
+            </div>
+
+            <div class="section">
+                <h3>Controls</h3>
+                <div class="controls">
+                    <button onclick="sandboxStart()">▶️ Start</button>
+                    <button onclick="sandboxHealth()" class="secondary">❤️ Health Check</button>
+                    <button onclick="sandboxStop()" class="danger">⏹️ Stop</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Logs</h3>
+                <button onclick="sandboxLogs()" style="margin-bottom: 10px;">Fetch Logs</button>
+                <div id="sandbox-logs" class="logs empty">No logs yet. Click "Fetch Logs" to retrieve.</div>
+            </div>
+
+            <div class="section">
+                <h3>Metrics</h3>
+                <button onclick="sandboxMetrics()" style="margin-bottom: 10px;">Get Metrics</button>
+                <div id="sandbox-metrics" class="status" style="height: 150px; overflow-y: auto;">Click button to fetch metrics</div>
+            </div>
+        </div>
+
+        <!-- Chat Panel -->
+        <div class="panel">
+            <h2>💬 Chat (Companion)</h2>
+
+            <div class="section">
+                <h3>Capabilities</h3>
+                <button onclick="getCapabilities()" style="margin-bottom: 10px;">Fetch Capabilities</button>
+                <div id="capabilities" class="status" style="height: 150px; overflow-y: auto;">Click button to fetch</div>
+            </div>
+
+            <div class="section">
+                <h3>Send Message</h3>
+                <div class="input-group">
+                    <input
+                        type="text"
+                        id="message-input"
+                        placeholder="Type a message..."
+                        onkeypress="if(event.key==='Enter') sendMessage()"
+                    >
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+                <div id="message-status" class="status" style="display: none;"></div>
+            </div>
+
+            <div class="section">
+                <h3>Integration Test</h3>
+                <button onclick="integrationTest()">🔄 Run Integration Test</button>
+                <div id="integration-result" class="status" style="display: none; height: 200px; overflow-y: auto;"></div>
+            </div>
+        </div>
+
+        <!-- Raw API Explorer -->
+        <div class="panel full-width">
+            <h2>🔍 API Explorer</h2>
+
+            <div class="section">
+                <h3>Custom Request</h3>
+                <div class="input-group">
+                    <select id="api-method" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option>GET</option>
+                        <option>POST</option>
+                        <option>PUT</option>
+                        <option>DELETE</option>
+                    </select>
+                    <input
+                        type="text"
+                        id="api-path"
+                        placeholder="/api/sandbox/status"
+                    >
+                    <button onclick="makeRequest()">Execute</button>
+                </div>
+                <div id="api-result" class="status" style="height: 200px; overflow-y: auto;">Results will appear here</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        async function request(method, path, body = null) {
+            try {
+                const options = {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                };
+                if (body) options.body = JSON.stringify(body);
+
+                const response = await fetch(`${API_BASE}${path}`, options);
+                const data = await response.json();
+
+                return { success: response.ok, data, status: response.status };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+
+        function showStatus(elementId, message, type = 'info') {
+            const el = document.getElementById(elementId);
+            if (typeof message === 'object') {
+                message = JSON.stringify(message, null, 2);
+            }
+            el.textContent = message;
+            el.className = `status ${type}`;
+            el.style.display = 'block';
+        }
+
+        // ===== Sandbox =====
+
+        async function sandboxStatus() {
+            const result = await request('GET', '/api/sandbox/status');
+            if (result.success) {
+                const status = result.data.status || 'unknown';
+                const badge = document.createElement('span');
+                badge.className = `badge ${status}`;
+                badge.textContent = status.toUpperCase();
+
+                let msg = JSON.stringify(result.data, null, 2);
+                showStatus('sandbox-status', msg, 'success');
+                document.getElementById('sandbox-status').appendChild(badge);
+            } else {
+                showStatus('sandbox-status', result.error || 'Unknown error', 'error');
+            }
+        }
+
+        async function sandboxStart() {
+            showStatus('sandbox-status', 'Starting sandbox...', 'info');
+            const result = await request('POST', '/api/sandbox/start');
+            if (result.success) {
+                showStatus('sandbox-status', JSON.stringify(result.data, null, 2), 'success');
+            } else {
+                showStatus('sandbox-status', result.error, 'error');
+            }
+        }
+
+        async function sandboxHealth() {
+            const result = await request('GET', '/api/sandbox/health');
+            if (result.success) {
+                const type = result.data.healthy ? 'success' : 'error';
+                showStatus('sandbox-status', JSON.stringify(result.data, null, 2), type);
+            } else {
+                showStatus('sandbox-status', result.error, 'error');
+            }
+        }
+
+        async function sandboxLogs() {
+            const result = await request('GET', '/api/sandbox/logs?limit=50');
+            if (result.success) {
+                const logs = result.data.logs || [];
+                document.getElementById('sandbox-logs').textContent = logs.join('\n') || '(no logs)';
+                document.getElementById('sandbox-logs').classList.remove('empty');
+            } else {
+                document.getElementById('sandbox-logs').textContent = `Error: ${result.error}`;
+            }
+        }
+
+        async function sandboxMetrics() {
+            const result = await request('GET', '/api/sandbox/metrics');
+            if (result.success) {
+                showStatus('sandbox-metrics', JSON.stringify(result.data, null, 2), 'success');
+            } else {
+                showStatus('sandbox-metrics', result.error, 'error');
+            }
+        }
+
+        async function sandboxStop() {
+            if (!confirm('Stop the sandbox?')) return;
+            const result = await request('POST', '/api/sandbox/stop');
+            if (result.success) {
+                showStatus('sandbox-status', JSON.stringify(result.data, null, 2), 'warning');
+            } else {
+                showStatus('sandbox-status', result.error, 'error');
+            }
+        }
+
+        // ===== Chat =====
+
+        async function getCapabilities() {
+            const result = await request('GET', '/api/capabilities');
+            if (result.success) {
+                showStatus('capabilities', JSON.stringify(result.data, null, 2), 'success');
+            } else {
+                showStatus('capabilities', result.error, 'error');
+            }
+        }
+
+        async function sendMessage() {
+            const message = document.getElementById('message-input').value;
+            if (!message) return;
+
+            showStatus('message-status', 'Sending...', 'info');
+            // This is a placeholder - actual message sending would go to companion provider
+            showStatus('message-status', `Message queued: "${message}"`, 'success');
+            document.getElementById('message-input').value = '';
+        }
+
+        async function integrationTest() {
+            const resultEl = document.getElementById('integration-result');
+            resultEl.style.display = 'block';
+            resultEl.textContent = 'Running integration test...\n';
+
+            const tests = [
+                { name: 'Capabilities', path: '/api/capabilities' },
+                { name: 'Sandbox Status', path: '/api/sandbox/status' },
+                { name: 'Health Check', path: '/api/sandbox/health' },
+            ];
+
+            for (const test of tests) {
+                const result = await request('GET', test.path);
+                const status = result.success ? '✓' : '✗';
+                resultEl.textContent += `${status} ${test.name}: ${result.status || 'OK'}\n`;
+            }
+        }
+
+        // ===== API Explorer =====
+
+        async function makeRequest() {
+            const method = document.getElementById('api-method').value;
+            const path = document.getElementById('api-path').value;
+
+            showStatus('api-result', `${method} ${path}\nExecuting...`, 'info');
+
+            const result = await request(method, path);
+            if (result.success) {
+                showStatus('api-result', JSON.stringify(result.data, null, 2), 'success');
+            } else {
+                showStatus('api-result', `Error: ${result.error}`, 'error');
+            }
+        }
+
+        // ===== Auto-refresh =====
+
+        window.addEventListener('load', () => {
+            sandboxStatus();
+            getCapabilities();
+            setInterval(sandboxStatus, 5000);
+        });
+    </script>
+</body>
+</html>
