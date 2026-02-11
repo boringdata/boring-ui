@@ -61,7 +61,8 @@ Create package `src/back/boring_ui/api/local_api/`:
 - `files.py` (from current `internal_files.py`)
 - `git.py` (from current `internal_git.py`)
 - `exec.py` (from current `internal_exec.py`)
-- `policy.py` or import policy from sandbox module (decision: centralize in one place, avoid duplication)
+- No local policy module. Reuse shared policy from `src/back/boring_ui/api/modules/sandbox/policy.py`
+  so both proxy-side checks and local-api enforcement share one policy source.
 
 Runtime role:
 
@@ -91,6 +92,12 @@ Keep existing internal contract (current behavior) stable:
 - `/internal/v1/git/*`
 - `/internal/v1/exec/*`
 
+Service discovery for control plane -> local-api:
+
+- Hosted/Sprites control plane discovers target local-api via `INTERNAL_SANDBOX_URL`.
+- In sprite mode, `INTERNAL_SANDBOX_URL` must point to the sprite-exposed local-api URL/port.
+- In local mode (single process), no discovery call is required because local-api is mounted in-process.
+
 ## 4.3 Python module contracts
 
 New exports:
@@ -118,7 +125,7 @@ Breaking Python import changes (intentional hard cut):
 4. Add `local_api/router.py` to compose these into a single router.
 5. Add `local_api/app.py` to build FastAPI app with:
 - workspace binding
-- CORS for control plane
+- CORS only when local-api runs as a separate process (hosted/sprites) and is called by control plane
 - capability middleware
 - service middleware
 
@@ -127,8 +134,8 @@ Breaking Python import changes (intentional hard cut):
 1. Update all call sites to import directly from `local_api.app` and `local_api.router`.
 2. Remove `api/internal_app.py`.
 3. Remove `modules/sandbox/internal_api.py`.
-3. Ensure `app.py` hosted-mode proxy still points to `INTERNAL_SANDBOX_URL` and no path changes required.
-4. Ensure local mode mounts `local_api.router` directly and does not depend on removed modules.
+4. Ensure `app.py` hosted-mode proxy still points to `INTERNAL_SANDBOX_URL` and no path changes required.
+5. Ensure local mode mounts `local_api.router` directly and does not depend on removed modules.
 
 ## 5.3 WS-C: Enforce two-module ownership in docs
 
@@ -160,6 +167,15 @@ Cleanup policy:
 1. Keep only files referenced by docs index/README.
 2. Remove unreferenced artifacts.
 3. Add/verify `.gitignore` entries to prevent reintroduction.
+
+## 5.5 Workstream order and dependencies
+
+Execution order (required):
+
+1. WS-A (`local_api` package) - foundational module split.
+2. WS-B (rewire + delete old modules) - depends on WS-A completion.
+3. WS-C (docs ownership + env matrix updates) - depends on WS-B final paths.
+4. WS-D (cleanup) - may run in parallel after WS-B starts, but must finish before final commit.
 
 
 ## 6. Testing Plan
