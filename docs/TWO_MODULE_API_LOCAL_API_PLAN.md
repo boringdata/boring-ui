@@ -19,6 +19,7 @@ The primary invariant is:
 
 - Hosted/Sprites: `front -> api (proxy) -> local-api`
 - Local mode: `front -> api`, with `local-api` mounted in-process
+- Sprites transport for hosted mode uses Sprites Proxy WebSocket API directly from backend (no browser direct calls, no `sprite proxy` CLI dependency in runtime path)
 
 
 ## 2. Current State Snapshot
@@ -95,12 +96,41 @@ Keep existing internal contract (current behavior) stable:
 
 Service discovery for control plane -> local-api:
 
-- Hosted/Sprites control plane discovers target local-api via `INTERNAL_SANDBOX_URL`.
-- In sprite mode, `INTERNAL_SANDBOX_URL` must point to a private sprite endpoint reachable by control plane.
+- Hosted non-sprites control plane discovers target local-api via `INTERNAL_SANDBOX_URL`.
+- Hosted sprites control plane resolves the target sprite and local-api port from hardcoded config for now.
 - In local mode (single process), no discovery call is required because local-api is mounted in-process.
 - Frontend never receives `INTERNAL_SANDBOX_URL` and never calls `local-api` directly.
 
-## 4.3 Python module contracts
+Hardcoded now (move-fast phase):
+
+- `SPRITES_TARGET_SPRITE` (single sprite name used by hosted control plane).
+- `SPRITES_LOCAL_API_PORT` (port where local-api listens inside sprite).
+- Later replacement: DB-backed `user/workspace -> sprite` resolution.
+
+## 4.3 Sprites transport contract (precise)
+
+For `SANDBOX_PROVIDER=sprites`, backend-to-sandbox transport is:
+
+1. Open WebSocket:
+- `wss://api.sprites.dev/v1/sprites/{sprite-name}/proxy`
+- Reference: https://sprites.dev/api/sprites/proxy
+
+2. Authenticate backend call:
+- Header `Authorization: Bearer ${SPRITES_TOKEN}` (server-side only, never sent to browser).
+
+3. Send initial JSON handshake frame:
+- `{\"host\":\"localhost\",\"port\":<SPRITES_LOCAL_API_PORT>}`
+
+4. After successful handshake, treat socket as raw TCP relay:
+- Backend writes raw HTTP/1.1 request bytes for `local-api` path (`/internal/v1/*`).
+- Backend reads raw HTTP response bytes and parses status/headers/body.
+
+5. Error handling requirements:
+- Handshake failure => map to `502` with provider-specific detail in server logs.
+- Relay timeout => map to `504`.
+- Non-2xx local-api response => preserve status/body mapping from parsed HTTP response.
+
+## 4.4 Python module contracts
 
 New exports:
 
@@ -129,15 +159,20 @@ Breaking Python import changes (intentional hard cut):
 - workspace binding
 - no browser CORS surface by default (private service)
 - optional service-to-service verification hooks only (no end-user auth logic)
+- local-api listener port configurable and documented for sprites runtime (`SPRITES_LOCAL_API_PORT`)
 
 ## 5.2 WS-B: Rewire control plane to new package
 
 1. Update all call sites to import directly from `local_api.app` and `local_api.router`.
 2. Remove `api/internal_app.py`.
 3. Remove `modules/sandbox/internal_api.py`.
-4. Ensure `app.py` hosted-mode proxy still points to `INTERNAL_SANDBOX_URL` and no path changes required.
-5. Ensure local mode mounts `local_api.router` directly and does not depend on removed modules.
-6. Ensure capabilities payload in hosted mode exposes only control-plane routes, not direct sandbox/local-api URLs.
+4. Add transport abstraction in hosted client:
+- `HTTPInternalTransport` for non-sprites (`INTERNAL_SANDBOX_URL` via `httpx`).
+- `SpritesProxyTransport` for sprites (direct `wss://.../proxy` relay).
+5. Wire transport selection off provider/config in `app.py`.
+6. Ensure local mode mounts `local_api.router` directly and does not depend on removed modules.
+7. Ensure capabilities payload in hosted mode exposes only control-plane routes, not direct sandbox/local-api URLs.
+8. Ensure hosted sprites mode does not depend on `sprite proxy` CLI tunnel.
 
 ## 5.3 WS-C: Enforce two-module ownership in docs
 
@@ -147,8 +182,10 @@ Breaking Python import changes (intentional hard cut):
 3. Add env var ownership matrix:
 - control plane env
 - local-api env
+  - include `SPRITES_TARGET_SPRITE` and `SPRITES_LOCAL_API_PORT` with move-fast hardcoded defaults
 4. Document explicit security rule: no direct browser-to-sandbox or browser-to-local-api calls.
 5. Document that custom in-sandbox JWT/cookie reverse-proxy auth is out of scope for this phase.
+6. Add source links section with Sprites API references (proxy endpoint as required, additional endpoints as used).
 
 ## 5.4 WS-Preview: Preview gateway strategy in `api`
 
@@ -211,6 +248,7 @@ Pass criteria:
 - No regression in hosted/local router composition
 - Hosted mode never exposes direct local-api URLs to browser clients
 - local-api remains private-only in hosted/sprites topology
+- Hosted sprites path uses direct backend WebSocket proxy transport (no CLI tunnel)
 - Sprites provider integration tests pass (stub-based suite)
 
 ## 6.2 Live sprite validation (required)
@@ -229,6 +267,7 @@ Using installed CLI (`sprite`):
 
 4. Validate control plane to sprite path:
 - From host, call control plane endpoints (`/api/tree`, `/api/git/status`) and verify successful proxy to sprite-backed local-api.
+- Confirm requests succeed without running `sprite proxy` locally.
 
 5. Boundary validation:
 - Confirm browser-facing capabilities/config endpoints do not publish direct local-api URL.
@@ -273,6 +312,9 @@ Mitigation: scripted `sprite exec` restart + explicit health checks.
 4. Auth misconfiguration between control plane and local-api.
 Mitigation: enforce private-network-only local-api access and verify boundary tests in live validation.
 
+5. Sprites proxy protocol/framing errors in backend relay client.
+Mitigation: strict handshake validation, HTTP parser tests for chunked + non-chunked responses, and timeout/error mapping tests.
+
 
 ## 9. Acceptance Criteria
 
@@ -284,6 +326,7 @@ Refactor accepted when all are true:
 4. Local test matrix passes.
 5. Live sprite smoke passes for read/write/git with private local-api boundary preserved.
 6. Cleanup track removes agreed temporary artifacts and prevents recurrence.
+7. Hosted sprites path works with direct WebSocket relay to Sprites Proxy API (no CLI forwarding process).
 
 
 ## 10. Execution Checklist
@@ -309,3 +352,10 @@ Refactor accepted when all are true:
 3. Frontend architecture changes beyond verifying existing routes.
 4. Provider feature expansion (modal, new provider types).
 5. In-sandbox custom JWT/cookie reverse proxy for local-api access.
+
+## 12. Source Links
+
+- Sprites proxy API (authoritative for backend-to-sprite relay):
+  https://sprites.dev/api/sprites/proxy
+- Sprites API index (discover other endpoints used by provider):
+  https://sprites.dev/api
