@@ -26,17 +26,20 @@ from fastapi.middleware.cors import CORSMiddleware
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from boring_ui.api.modules.sandbox.internal_api import create_internal_sandbox_router
+from boring_ui.api.local_api import create_local_api_router
 from boring_ui.api.capability_tokens import CapabilityTokenValidator, JTIReplayStore
 from boring_ui.api.sandbox_auth import add_capability_auth_middleware
 from boring_ui.api.service_auth import ServiceTokenValidator, add_service_auth_middleware
 
 
 def create_internal_app():
-    """Create FastAPI app for internal sandbox operations.
+    """Create FastAPI app for internal sandbox operations (bd-1adh.2.3).
+
+    Uses local_api routers for file, git, and exec operations.
+    Runs as standalone service on sandbox/remote machine or in-process in LOCAL mode.
 
     Returns:
-        FastAPI application with internal sandbox routers.
+        FastAPI application with local_api routers.
     """
     # Read config from environment
     workspace_root = Path(os.environ.get('WORKSPACE_ROOT', Path.cwd()))
@@ -63,9 +66,10 @@ def create_internal_app():
         allow_headers=['*'],
     )
 
-    # Mount internal sandbox router
-    internal_router = create_internal_sandbox_router(workspace_root)
-    app.include_router(internal_router)
+    # Mount local_api router (file, git, exec operations)
+    # Routes available at /internal/v1/files/*, /internal/v1/git/*, /internal/v1/exec/*
+    local_api_router = create_local_api_router(workspace_root)
+    app.include_router(local_api_router)
 
     # Capability auth for internal API routes.
     # Expected caller: hosted control API issuing short-lived capability tokens.
