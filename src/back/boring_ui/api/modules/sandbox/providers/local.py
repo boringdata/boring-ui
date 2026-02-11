@@ -85,7 +85,7 @@ class LocalProvider(SandboxProvider):
         if existing and existing.process and existing.process.poll() is None:
             return SandboxInfo(
                 id=sandbox_id,
-                base_url=f"http://127.0.0.1:{existing.port}",
+                base_url=f"http://{self.external_host}:{existing.port}",
                 status="running",
                 workspace_path=str(existing.workspace),
                 provider="local",
@@ -93,12 +93,15 @@ class LocalProvider(SandboxProvider):
 
         # Start sandbox-agent process
         # Package: @sandbox-agent/cli from rivet-dev/sandbox-agent
+        # In hosted mode, bind to all interfaces (0.0.0.0) for external connectivity.
+        # In local mode, bind to localhost only (127.0.0.1) for security.
+        bind_host = "0.0.0.0" if self.run_mode == "hosted" else "127.0.0.1"
         cmd = [
             "npx",
             "@sandbox-agent/cli",
             "server",
             "--host",
-            "127.0.0.1",
+            bind_host,
             "--port",
             str(self.port),
         ]

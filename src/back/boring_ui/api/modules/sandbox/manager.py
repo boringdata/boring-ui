@@ -114,6 +114,8 @@ def create_provider(config: dict) -> SandboxProvider:
             - SANDBOX_WORKSPACE: Workspace path for local (default: ".")
             - SANDBOX_TOKEN: Bearer token for auth (optional, local)
             - SANDBOX_CORS_ORIGIN: CORS allowed origin (optional, local)
+            - SANDBOX_EXTERNAL_HOST: External hostname/IP for browser access (default: 127.0.0.1)
+            - SANDBOX_RUN_MODE: 'local' (bind to 127.0.0.1) or 'hosted' (bind to 0.0.0.0)
             - SPRITES_TOKEN: Sprites.dev API token (required for sprites)
             - SPRITES_ORG: Sprites.dev org slug (required for sprites)
             - SPRITES_NAME_PREFIX: Sprite name prefix (optional, sprites)
@@ -132,6 +134,8 @@ def create_provider(config: dict) -> SandboxProvider:
             workspace=Path(config.get("SANDBOX_WORKSPACE", ".")),
             token=config.get("SANDBOX_TOKEN"),
             cors_origin=config.get("SANDBOX_CORS_ORIGIN"),
+            external_host=config.get("SANDBOX_EXTERNAL_HOST"),
+            run_mode=config.get("SANDBOX_RUN_MODE", "local"),
         )
     elif provider_type == "sprites":
         from .providers.sprites import SpritesProvider

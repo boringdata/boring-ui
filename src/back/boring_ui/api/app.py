@@ -185,6 +185,8 @@ def create_app(
             'SANDBOX_WORKSPACE': os.environ.get('SANDBOX_WORKSPACE', str(config.workspace_root)),
             'SANDBOX_TOKEN': sandbox_auth_token,
             'SANDBOX_CORS_ORIGIN': cors_origin,
+            'SANDBOX_EXTERNAL_HOST': external_host,
+            'SANDBOX_RUN_MODE': config.run_mode.value,
         }
         sandbox_manager = SandboxManager(
             create_provider(sandbox_config),
@@ -201,6 +203,7 @@ def create_app(
             'COMPANION_SIGNING_KEY': token_issuer.signing_key_hex,
             'COMPANION_CORS_ORIGIN': cors_origin,
             'COMPANION_EXTERNAL_HOST': external_host,
+            'COMPANION_RUN_MODE': config.run_mode.value,
         }
         server_dir = os.environ.get('COMPANION_SERVER_DIR')
         if server_dir:
