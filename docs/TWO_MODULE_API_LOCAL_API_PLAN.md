@@ -13,12 +13,12 @@ Reorganize backend architecture into exactly two conceptual modules:
 2. `local-api` (workspace plane)
 - File/Git/Exec endpoints bound to one workspace
 - Deployed in local runs and in sprite sandbox runs
-- Validates capability/service auth on privileged endpoints
+- Private service, not browser-facing
 
 The primary invariant is:
 
 - Hosted/Sprites: `front -> api (proxy) -> local-api`
-- Local mode: `front -> local-api` directly (no proxy hop)
+- Local mode: `front -> api`, with `local-api` mounted in-process
 
 
 ## 2. Current State Snapshot
@@ -66,9 +66,10 @@ Create package `src/back/boring_ui/api/local_api/`:
 
 Runtime role:
 
-- One deployment unit that serves workspace endpoints.
-- In hosted/sprites, control plane targets this service URL.
-- In local mode, same handlers are mounted directly in-process.
+- One deployment unit that serves workspace endpoints to control plane only.
+- In hosted/sprites, control plane targets this private service URL.
+- In local mode, same handlers are mounted in-process behind control-plane routes.
+- `local-api` has no direct browser contract.
 
 
 ## 4. API/Interface Contracts
@@ -95,8 +96,9 @@ Keep existing internal contract (current behavior) stable:
 Service discovery for control plane -> local-api:
 
 - Hosted/Sprites control plane discovers target local-api via `INTERNAL_SANDBOX_URL`.
-- In sprite mode, `INTERNAL_SANDBOX_URL` must point to the sprite-exposed local-api URL/port.
+- In sprite mode, `INTERNAL_SANDBOX_URL` must point to a private sprite endpoint reachable by control plane.
 - In local mode (single process), no discovery call is required because local-api is mounted in-process.
+- Frontend never receives `INTERNAL_SANDBOX_URL` and never calls `local-api` directly.
 
 ## 4.3 Python module contracts
 
@@ -125,9 +127,8 @@ Breaking Python import changes (intentional hard cut):
 4. Add `local_api/router.py` to compose these into a single router.
 5. Add `local_api/app.py` to build FastAPI app with:
 - workspace binding
-- CORS only when local-api runs as a separate process (hosted/sprites) and is called by control plane
-- capability middleware
-- service middleware
+- no browser CORS surface by default (private service)
+- optional service-to-service verification hooks only (no end-user auth logic)
 
 ## 5.2 WS-B: Rewire control plane to new package
 
@@ -136,6 +137,7 @@ Breaking Python import changes (intentional hard cut):
 3. Remove `modules/sandbox/internal_api.py`.
 4. Ensure `app.py` hosted-mode proxy still points to `INTERNAL_SANDBOX_URL` and no path changes required.
 5. Ensure local mode mounts `local_api.router` directly and does not depend on removed modules.
+6. Ensure capabilities payload in hosted mode exposes only control-plane routes, not direct sandbox/local-api URLs.
 
 ## 5.3 WS-C: Enforce two-module ownership in docs
 
@@ -145,8 +147,21 @@ Breaking Python import changes (intentional hard cut):
 3. Add env var ownership matrix:
 - control plane env
 - local-api env
+4. Document explicit security rule: no direct browser-to-sandbox or browser-to-local-api calls.
+5. Document that custom in-sandbox JWT/cookie reverse-proxy auth is out of scope for this phase.
 
-## 5.4 WS-D: Cleanup track (repo mess)
+## 5.4 WS-Preview: Preview gateway strategy in `api`
+
+1. Add a dedicated preview gateway section to docs and architecture notes.
+2. Keep preview routing separate from `local-api` file/git/exec API.
+3. Define provider adapter contract in `api`:
+- resolve preview target (path/subdomain -> internal port/service)
+- apply control-plane auth/session checks
+- proxy response/stream
+4. Do not assume one fixed public port model in core architecture; map provider constraints in adapter layer.
+5. No custom in-sprite JWT proxy for v1.
+
+## 5.5 WS-D: Cleanup track (repo mess)
 
 Create a deterministic cleanup list:
 
@@ -168,14 +183,15 @@ Cleanup policy:
 2. Remove unreferenced artifacts.
 3. Add/verify `.gitignore` entries to prevent reintroduction.
 
-## 5.5 Workstream order and dependencies
+## 5.6 Workstream order and dependencies
 
 Execution order (required):
 
 1. WS-A (`local_api` package) - foundational module split.
 2. WS-B (rewire + delete old modules) - depends on WS-A completion.
 3. WS-C (docs ownership + env matrix updates) - depends on WS-B final paths.
-4. WS-D (cleanup) - may run in parallel after WS-B starts, but must finish before final commit.
+4. WS-Preview (preview gateway strategy docs/contracts) - depends on WS-C.
+5. WS-D (cleanup) - may run in parallel after WS-B starts, but must finish before final commit.
 
 
 ## 6. Testing Plan
@@ -193,7 +209,8 @@ Run at minimum:
 Pass criteria:
 
 - No regression in hosted/local router composition
-- Capability auth still enforced on internal endpoints
+- Hosted mode never exposes direct local-api URLs to browser clients
+- local-api remains private-only in hosted/sprites topology
 - Sprites provider integration tests pass (stub-based suite)
 
 ## 6.2 Live sprite validation (required)
@@ -213,9 +230,10 @@ Using installed CLI (`sprite`):
 4. Validate control plane to sprite path:
 - From host, call control plane endpoints (`/api/tree`, `/api/git/status`) and verify successful proxy to sprite-backed local-api.
 
-5. Auth validation:
-- Negative test: call local-api internal endpoint without token -> must fail.
-- Positive test: call through control plane with normal frontend auth -> must pass.
+5. Boundary validation:
+- Confirm browser-facing capabilities/config endpoints do not publish direct local-api URL.
+- Confirm direct browser-style access path to local-api is unavailable in deployed topology.
+- Confirm control-plane proxied requests succeed end-to-end.
 
 ## 6.3 Manual smoke (frontend)
 
@@ -253,7 +271,7 @@ Mitigation: keep `/internal/v1/*` contract unchanged.
 Mitigation: scripted `sprite exec` restart + explicit health checks.
 
 4. Auth misconfiguration between control plane and local-api.
-Mitigation: mandatory negative/positive auth tests in live validation.
+Mitigation: enforce private-network-only local-api access and verify boundary tests in live validation.
 
 
 ## 9. Acceptance Criteria
@@ -264,7 +282,7 @@ Refactor accepted when all are true:
 2. `api` remains canonical control plane (proxy + sandbox mgmt + user/auth).
 3. Public HTTP routes are unchanged.
 4. Local test matrix passes.
-5. Live sprite smoke passes for read/write/git and auth enforcement.
+5. Live sprite smoke passes for read/write/git with private local-api boundary preserved.
 6. Cleanup track removes agreed temporary artifacts and prevents recurrence.
 
 
@@ -274,10 +292,11 @@ Refactor accepted when all are true:
 2. Rewire imports across app/proxy modules to `local_api`.
 3. Delete `api/internal_app.py` and `modules/sandbox/internal_api.py`.
 4. Update docs (`DEPLOYMENT_MATRIX.md` + module ownership notes).
-5. Run local tests.
-6. Deploy to running sprite and execute live smoke.
-7. Execute cleanup track and re-run sanity tests.
-8. Commit in logical slices:
+5. Add preview-gateway contract notes in `api` docs.
+6. Run local tests.
+7. Deploy to running sprite and execute live smoke.
+8. Execute cleanup track and re-run sanity tests.
+9. Commit in logical slices:
 - refactor package split
 - docs update
 - cleanup artifacts
@@ -289,3 +308,4 @@ Refactor accepted when all are true:
 2. Public endpoint renames.
 3. Frontend architecture changes beyond verifying existing routes.
 4. Provider feature expansion (modal, new provider types).
+5. In-sandbox custom JWT/cookie reverse proxy for local-api access.
