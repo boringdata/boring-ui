@@ -315,6 +315,45 @@ Run this end-to-end scenario against the only currently created sprite in the or
 - Agent chat returns at least one successful response.
 - No direct browser call to sprite/local-api endpoints is required for the flow.
 
+## 6.5 Proof Report Strategy (Showboat + Rodney)
+
+All high-signal test runs in sections 6.2 and 6.4 must produce a reproducible proof report.
+
+Reference workflow:
+- https://simonwillison.net/2026/Feb/10/showboat-and-rodney/
+
+Required tooling:
+- `uvx showboat`
+- `uvx rodney`
+
+Required report outputs:
+
+1. Command transcript:
+- Include exact backend/frontend startup commands, sprite selection commands, and validation commands.
+- Include timestamps and host context (control-plane host vs sprite shell).
+
+2. Screenshot evidence (Rodney):
+- Initial app load with file tree visible.
+- File tree state proving sprite content is shown.
+- File operation evidence in UI (before/after).
+- Chat input + chat response evidence.
+
+3. Cross-verification snippets:
+- `sprite exec` outputs that match UI state for created/modified files.
+- Browser-side assertions showing no direct local-api/sandbox URL exposure in capabilities.
+
+4. Final verdict table:
+- One row per required behavior with `PASS`/`FAIL`, artifact references, and notes.
+
+Recommended artifact locations:
+- Report markdown: `docs/HOSTED_UI_SHOWBOAT_RODNEY_PROOF.md` (or new dated equivalent).
+- Screenshots: `test-results/rodney-proof-*.png`.
+
+Minimum acceptance for proof report:
+- Report includes at least 3 Rodney screenshots and 3 command-output snippets.
+- Evidence covers both filesystem operations and agent chat response.
+- Report demonstrates test execution without `sprite proxy` runtime dependency.
+
 
 ## 7. Rollout Strategy
 
