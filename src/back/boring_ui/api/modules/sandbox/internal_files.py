@@ -6,18 +6,22 @@ Provides privileged file access:
 - Write file contents
 - Delete files
 - Get file metadata (size, mtime, etc)
+
+All routes require capability token authorization via bd-1pwb.3.2.
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Request
 from pathlib import Path
 from typing import Optional
+from ...sandbox_auth import require_capability
 
 
 def create_internal_files_router(workspace_root: Path) -> APIRouter:
     """Create router for internal file operations.
-    
+
     Routes mounted at /internal/v1/files.
     All operations are relative to workspace_root.
+    Requires capability token authorization.
     """
     router = APIRouter(prefix="/files", tags=["files-internal"])
 
@@ -36,8 +40,12 @@ def create_internal_files_router(workspace_root: Path) -> APIRouter:
         return p
 
     @router.get("/list")
-    async def list_files(path: str = "."):
-        """List files in a directory."""
+    @require_capability("files:list")
+    async def list_files(request: Request, path: str = "."):
+        """List files in a directory.
+
+        Requires capability: files:list
+        """
         try:
             p = validate_path(path)
             if not p.is_dir():
@@ -63,8 +71,12 @@ def create_internal_files_router(workspace_root: Path) -> APIRouter:
             )
 
     @router.get("/read")
-    async def read_file(path: str):
-        """Read file contents."""
+    @require_capability("files:read")
+    async def read_file(request: Request, path: str):
+        """Read file contents.
+
+        Requires capability: files:read
+        """
         try:
             p = validate_path(path)
             if not p.is_file():
@@ -88,8 +100,12 @@ def create_internal_files_router(workspace_root: Path) -> APIRouter:
             )
 
     @router.post("/write")
-    async def write_file(path: str, content: str):
-        """Write file contents."""
+    @require_capability("files:write")
+    async def write_file(request: Request, path: str, content: str):
+        """Write file contents.
+
+        Requires capability: files:write
+        """
         try:
             p = validate_path(path)
             p.parent.mkdir(parents=True, exist_ok=True)

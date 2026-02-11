@@ -6,35 +6,43 @@ Provides privileged command execution:
 - Capture exit codes
 - Resource limits (memory, CPU)
 - Secret/credential masking in logs
+
+All routes require capability token authorization via bd-1pwb.3.2.
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Request
 from pathlib import Path
 from typing import Optional
 import subprocess
 import asyncio
+from ...sandbox_auth import require_capability
 
 
 def create_internal_exec_router(workspace_root: Path) -> APIRouter:
     """Create router for internal exec operations.
-    
+
     Routes mounted at /internal/v1/exec.
     Commands run in workspace_root context.
+    Requires capability token authorization.
     """
     router = APIRouter(prefix="/exec", tags=["exec-internal"])
 
     @router.post("/run")
+    @require_capability("exec:run")
     async def run_command(
+        request: Request,
         command: str,
         timeout_seconds: int = 30,
         capture_output: bool = True,
     ):
         """Run a command with timeout and capture.
-        
+
         Defensive guardrails:
         - Timeout protection (default 30s, max 300s)
         - Memory limits via subprocess restrictions
         - No shell expansion (use shlex for safe parsing)
+
+        Requires capability: exec:run
         """
         try:
             # Validate timeout
