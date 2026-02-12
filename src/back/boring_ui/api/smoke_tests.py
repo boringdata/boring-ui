@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Callable
 
 from boring_ui.api.request_correlation import generate_request_id
 from boring_ui.api.test_artifacts import (
@@ -199,6 +200,7 @@ class SmokeTestRunner:
         self._timeline = timeline or EventTimeline()
         self._results: list[SmokeStepResult] = []
         self._started_at = time.time()
+        self._step_handlers: dict[str, Callable[[SmokeStep], SmokeStepResult]] = {}
 
     @classmethod
     def from_env(
@@ -387,12 +389,30 @@ class SmokeTestRunner:
             )
             return result
 
+    def register_step_handler(
+        self,
+        step_name: str,
+        handler: Callable[[SmokeStep], SmokeStepResult],
+    ) -> None:
+        """Register an executor for a specific smoke step name."""
+        self._step_handlers[step_name] = handler
+
     def run_category(self, category: SmokeCategory) -> list[SmokeStepResult]:
         """Run all steps in a smoke test category."""
         steps = ALL_SMOKE_STEPS.get(category, [])
         results = []
         for step in steps:
-            result = self.execute_step(step)
+            handler = self._step_handlers.get(step.name)
+            if handler:
+                result = handler(step)
+            else:
+                # Never auto-pass in run mode; missing handlers are explicit failures.
+                result = self.execute_step(
+                    step,
+                    outcome=SmokeOutcome.FAIL,
+                    response_status=500,
+                    message='No smoke step handler registered',
+                )
             results.append(result)
         return results
 

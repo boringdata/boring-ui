@@ -71,3 +71,24 @@ def test_save_artifact_bundle_writes_manifest_and_outputs(tmp_path):
     assert manifest.summary['passed'] == 1
     assert manifest.summary['failed'] == 0
 
+
+def test_run_category_fails_without_registered_handler():
+    runner = SmokeTestRunner(gate=CredentialGate(api_token='t', base_url='https://x'))
+    results = runner.run_category(SmokeCategory.DEPLOY)
+    assert len(results) > 0
+    assert all(r.outcome == SmokeOutcome.FAIL for r in results)
+    assert runner.fail_count == len(results)
+
+
+def test_run_category_uses_registered_handler():
+    runner = SmokeTestRunner(gate=CredentialGate(api_token='t', base_url='https://x'))
+
+    def handler(step: SmokeStep):
+        return runner.execute_step(step, outcome=SmokeOutcome.PASS, response_status=200)
+
+    runner.register_step_handler('app_startup', handler)
+    runner.register_step_handler('health_endpoint', handler)
+    results = runner.run_category(SmokeCategory.DEPLOY)
+
+    assert len(results) == 2
+    assert all(r.outcome == SmokeOutcome.PASS for r in results)
