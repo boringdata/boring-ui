@@ -409,7 +409,11 @@ class VerificationRunner:
             matrix_report=matrix_report,
             flaky_summary=self._flaky_tracker.to_dict(),
         )
-        if smoke_summary or resilience_summary or perf_summary:
+        if (
+            smoke_summary is not None
+            or resilience_summary is not None
+            or perf_summary is not None
+        ):
             evidence = SLOEvidence.from_sources(
                 smoke_summary=smoke_summary,
                 resilience_summary=resilience_summary,

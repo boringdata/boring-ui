@@ -470,6 +470,16 @@ class TestVerificationRunner:
         assert 'slo_report' in paths
         assert Path(paths['slo_report']).exists()
 
+    def test_run_all_evaluates_slo_when_empty_inputs_provided(self):
+        runner = VerificationRunner()
+        report = runner.run_all(
+            simulate_results=self._sim_all_pass(),
+            smoke_summary={},
+            resilience_summary={},
+            perf_summary={},
+        )
+        assert report.slo_report['go_no_go'] == 'no-go'
+
     def test_phase_by_name_after_run(self):
         runner = VerificationRunner()
         report = runner.run_all(simulate_results=self._sim_all_pass())
