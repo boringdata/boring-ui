@@ -15,20 +15,26 @@ from boring_ui.api.e2e_resilience import (
     ExecAttachRetryConfig,
     FaultEvent,
     HealthFlapConfig,
+    MidstreamDisconnectConfig,
     RecoveryOutcome,
     ResilienceResult,
     ResilienceScenario,
     ResilienceSuiteRunner,
+    Workspace503Config,
+    assert_fault_injection_pass,
     simulate_backpressure,
     simulate_exec_attach_retry,
     simulate_health_flap,
     simulate_lifecycle_resilience,
+    simulate_midstream_disconnect,
     simulate_stale_session,
     simulate_upstream_timeout,
+    simulate_workspace_service_503,
     simulate_ws_reconnect,
 )
 from boring_ui.api.error_normalization import (
     WS_PROVIDER_TIMEOUT,
+    WS_PROVIDER_UNAVAILABLE,
     WS_SESSION_NOT_FOUND,
 )
 from boring_ui.api.test_artifacts import EventTimeline, StructuredTestLogger
@@ -346,6 +352,77 @@ class TestSimulateExecAttachRetry:
         assert len(result.faults) == 3  # 3 failures before success
 
 
+class TestSimulateWorkspaceService503:
+
+    def test_recovers_within_retry_budget(self):
+        result = simulate_workspace_service_503(
+            Workspace503Config(retry_budget=2, fail_attempts=1),
+        )
+        assert result.scenario == ResilienceScenario.WORKSPACE_SERVICE_503
+        assert result.outcome == RecoveryOutcome.RECOVERED
+        assert 503 in result.error_codes
+        assert WS_PROVIDER_UNAVAILABLE in result.error_codes
+        assert 'provider_unavailable' in result.error_categories
+        assert len(result.faults) == 1
+
+    def test_fails_when_exceeding_retry_budget(self):
+        result = simulate_workspace_service_503(
+            Workspace503Config(retry_budget=1, fail_attempts=3),
+        )
+        assert result.outcome == RecoveryOutcome.FAILED
+        assert result.reconnect_attempts == 2
+
+
+class TestSimulateMidstreamDisconnect:
+
+    def test_recovers_when_reattach_window_allows(self):
+        result = simulate_midstream_disconnect(
+            MidstreamDisconnectConfig(total_messages=20, disconnect_after=7, detach_window_seconds=30.0),
+        )
+        assert result.scenario == ResilienceScenario.TRANSIENT_DISCONNECT
+        assert result.outcome == RecoveryOutcome.RECOVERED
+        assert result.messages_delivered == 20
+        assert result.messages_dropped == 0
+        assert result.reconnect_attempts == 1
+        assert result.faults[0].fault_type == 'midstream_disconnect'
+        assert result.faults[0].recovered is True
+
+    def test_fails_when_window_is_expired(self):
+        result = simulate_midstream_disconnect(
+            MidstreamDisconnectConfig(total_messages=20, disconnect_after=7, detach_window_seconds=0.0),
+        )
+        assert result.outcome == RecoveryOutcome.FAILED
+        assert result.messages_delivered == 7
+        assert result.messages_dropped == 13
+        assert WS_SESSION_NOT_FOUND in result.error_codes
+        assert 'not_found' in result.error_categories
+
+
+class TestFaultInjectionAssertions:
+
+    def test_workspace_503_pass_assertion(self):
+        result = simulate_workspace_service_503()
+        assert_fault_injection_pass(result)
+
+    def test_exec_attach_pass_assertion(self):
+        result = simulate_exec_attach_retry()
+        assert_fault_injection_pass(result)
+
+    def test_transient_disconnect_pass_assertion(self):
+        result = simulate_midstream_disconnect()
+        assert_fault_injection_pass(result)
+
+    def test_transient_disconnect_assertion_fails_without_reconnect(self):
+        result = ResilienceResult(
+            scenario=ResilienceScenario.TRANSIENT_DISCONNECT,
+            outcome=RecoveryOutcome.FAILED,
+            faults=[FaultEvent(timestamp=time.time(), fault_type='midstream_disconnect', description='drop')],
+            reconnect_attempts=0,
+        )
+        with pytest.raises(AssertionError):
+            assert_fault_injection_pass(result)
+
+
 # ── Lifecycle policy resilience ──
 
 
@@ -391,12 +468,14 @@ class TestScenarioRegistry:
 
     def test_all_scenarios_registered(self):
         expected = {
+            ResilienceScenario.TRANSIENT_DISCONNECT,
             ResilienceScenario.BACKPRESSURE_OVERFLOW,
             ResilienceScenario.HEALTH_FLAP,
             ResilienceScenario.STALE_SESSION,
             ResilienceScenario.WS_RECONNECT,
             ResilienceScenario.UPSTREAM_TIMEOUT,
             ResilienceScenario.EXEC_ATTACH_RETRY,
+            ResilienceScenario.WORKSPACE_SERVICE_503,
         }
         assert set(ALL_SCENARIOS.keys()) == expected
 
@@ -545,6 +624,7 @@ class TestEnums:
         assert ResilienceScenario.WS_RECONNECT.value == 'ws_reconnect'
         assert ResilienceScenario.UPSTREAM_TIMEOUT.value == 'upstream_timeout'
         assert ResilienceScenario.EXEC_ATTACH_RETRY.value == 'exec_attach_retry'
+        assert ResilienceScenario.WORKSPACE_SERVICE_503.value == 'workspace_service_503'
 
     def test_recovery_outcomes(self):
         assert RecoveryOutcome.RECOVERED.value == 'recovered'

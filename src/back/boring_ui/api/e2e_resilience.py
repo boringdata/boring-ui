@@ -48,6 +48,7 @@ class ResilienceScenario(Enum):
     WS_RECONNECT = 'ws_reconnect'
     UPSTREAM_TIMEOUT = 'upstream_timeout'
     EXEC_ATTACH_RETRY = 'exec_attach_retry'
+    WORKSPACE_SERVICE_503 = 'workspace_service_503'
 
 
 class RecoveryOutcome(Enum):
@@ -118,6 +119,32 @@ class ResilienceResult:
             'error_categories': self.error_categories,
             'delivery_rate': self.delivery_rate,
         }
+
+
+def assert_fault_injection_pass(result: ResilienceResult) -> None:
+    """Raise AssertionError when a result violates scenario pass/fail contract."""
+    if result.scenario == ResilienceScenario.WORKSPACE_SERVICE_503:
+        assert 503 in result.error_codes, 'workspace_service_503 must include HTTP 503'
+        assert ErrorCategory.PROVIDER_UNAVAILABLE.value in result.error_categories, (
+            'workspace_service_503 must map to provider_unavailable category'
+        )
+        assert len(result.faults) > 0, 'workspace_service_503 must record at least one fault'
+        return
+
+    if result.scenario == ResilienceScenario.EXEC_ATTACH_RETRY:
+        assert result.reconnect_attempts > 0, 'exec_attach_retry must attempt attach at least once'
+        if result.outcome == RecoveryOutcome.RECOVERED:
+            assert any(f.recovered for f in result.faults) or len(result.faults) == 0, (
+                'recovered exec_attach_retry must either recover a fault or succeed first try'
+            )
+        return
+
+    if result.scenario == ResilienceScenario.TRANSIENT_DISCONNECT:
+        assert result.reconnect_attempts >= 1, 'transient_disconnect must attempt reconnect'
+        assert any(f.fault_type == 'midstream_disconnect' for f in result.faults), (
+            'transient_disconnect must include midstream_disconnect fault'
+        )
+        return
 
 
 # ── Backpressure simulation ──
@@ -196,6 +223,52 @@ class HealthFlapConfig:
     """Configuration for health flapping simulation."""
     flap_count: int = 3
     initial_healthy: bool = True
+
+
+@dataclass
+class Workspace503Config:
+    """Configuration for explicit workspace-service 503 fault injection."""
+    retry_budget: int = 2
+    fail_attempts: int = 1
+
+
+def simulate_workspace_service_503(
+    config: Workspace503Config | None = None,
+) -> ResilienceResult:
+    """Simulate workspace service returning HTTP 503 with deterministic recovery outcome."""
+    cfg = config or Workspace503Config()
+    faults: list[FaultEvent] = []
+    retries = 0
+
+    for attempt in range(cfg.retry_budget + 1):
+        if attempt < cfg.fail_attempts:
+            retries += 1
+            faults.append(FaultEvent(
+                timestamp=time.time(),
+                fault_type='workspace_503',
+                description=f'Workspace service returned HTTP 503 on attempt {attempt + 1}',
+            ))
+        else:
+            break
+
+    recovered = cfg.fail_attempts <= cfg.retry_budget
+    if recovered:
+        for fault in faults:
+            fault.recovered = True
+            fault.duration_ms = 100.0
+
+    norm_http = normalize_http_error('provider_unavailable')
+    norm_ws = normalize_ws_error('ws_provider_unavailable')
+
+    return ResilienceResult(
+        scenario=ResilienceScenario.WORKSPACE_SERVICE_503,
+        outcome=RecoveryOutcome.RECOVERED if recovered else RecoveryOutcome.FAILED,
+        faults=faults,
+        reconnect_attempts=retries,
+        recovery_time_ms=100.0 if recovered else 0.0,
+        error_codes=[norm_http.http_status, norm_ws.ws_close_code],
+        error_categories=[norm_http.category.value, norm_ws.category.value],
+    )
 
 
 def simulate_health_flap(
@@ -317,6 +390,60 @@ def simulate_ws_reconnect(
         outcome=outcome,
         faults=faults,
         reconnect_attempts=1,
+    )
+
+
+@dataclass
+class MidstreamDisconnectConfig:
+    """Configuration for explicit mid-stream disconnect fault injection."""
+    total_messages: int = 20
+    disconnect_after: int = 8
+    detach_window_seconds: float = 30.0
+
+
+def simulate_midstream_disconnect(
+    config: MidstreamDisconnectConfig | None = None,
+) -> ResilienceResult:
+    """Simulate a mid-stream WebSocket disconnect and reconnect attempt."""
+    cfg = config or MidstreamDisconnectConfig()
+    window = DetachWindow(window_seconds=cfg.detach_window_seconds)
+
+    delivered_before = max(0, min(cfg.disconnect_after, cfg.total_messages))
+    remaining = max(0, cfg.total_messages - delivered_before)
+
+    window.detach()
+    fault = FaultEvent(
+        timestamp=time.time(),
+        fault_type='midstream_disconnect',
+        description=f'WebSocket dropped after {delivered_before} messages',
+    )
+
+    reattached = window.reattach()
+    fault.recovered = reattached
+
+    if reattached:
+        outcome = RecoveryOutcome.RECOVERED
+        delivered = delivered_before + remaining
+        dropped = 0
+        error_codes: list[int] = []
+        error_categories: list[str] = []
+    else:
+        outcome = RecoveryOutcome.FAILED
+        delivered = delivered_before
+        dropped = remaining
+        ws_norm = normalize_ws_error('session_not_found')
+        error_codes = [ws_norm.ws_close_code]
+        error_categories = [ws_norm.category.value]
+
+    return ResilienceResult(
+        scenario=ResilienceScenario.TRANSIENT_DISCONNECT,
+        outcome=outcome,
+        faults=[fault],
+        reconnect_attempts=1,
+        messages_delivered=delivered,
+        messages_dropped=dropped,
+        error_codes=error_codes,
+        error_categories=error_categories,
     )
 
 
@@ -474,12 +601,14 @@ def simulate_lifecycle_resilience(
 
 
 ALL_SCENARIOS = {
+    ResilienceScenario.TRANSIENT_DISCONNECT: simulate_midstream_disconnect,
     ResilienceScenario.BACKPRESSURE_OVERFLOW: simulate_backpressure,
     ResilienceScenario.HEALTH_FLAP: simulate_health_flap,
     ResilienceScenario.STALE_SESSION: simulate_stale_session,
     ResilienceScenario.WS_RECONNECT: simulate_ws_reconnect,
     ResilienceScenario.UPSTREAM_TIMEOUT: simulate_upstream_timeout,
     ResilienceScenario.EXEC_ATTACH_RETRY: simulate_exec_attach_retry,
+    ResilienceScenario.WORKSPACE_SERVICE_503: simulate_workspace_service_503,
 }
 
 
