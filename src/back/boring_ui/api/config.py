@@ -29,6 +29,30 @@ FALSE_VALUES = {'0', 'false', 'no', 'off'}
 VALID_WORKSPACE_MODES = {'local', 'sandbox'}
 VALID_ROUTING_MODES = {'single_tenant', 'per_user'}
 
+# Sprite filesystem layout defaults (V0 plan §"Sprite filesystem layout")
+DEFAULT_SPRITE_WORKSPACE = Path('/home/sprite/workspace')
+DEFAULT_SPRITE_SERVICE_ROOT = Path('/srv/workspace-api')
+DEFAULT_SPRITE_SECRETS_DIR = Path('/home/sprite/.auth')
+
+
+@dataclass(frozen=True)
+class SpriteLayout:
+    """Sprite filesystem boundary configuration.
+
+    Enforces separation between user workspace and service runtime/secrets
+    directories. Workspace root for file tools must not overlap with
+    protected paths.
+    """
+
+    workspace_root: Path = DEFAULT_SPRITE_WORKSPACE
+    service_root: Path = DEFAULT_SPRITE_SERVICE_ROOT
+    secrets_dir: Path = DEFAULT_SPRITE_SECRETS_DIR
+
+    @property
+    def protected_paths(self) -> list[Path]:
+        """Paths that must not overlap with workspace_root."""
+        return [self.service_root, self.secrets_dir]
+
 
 class ConfigValidationError(ValueError):
     """Raised when startup configuration is invalid."""
@@ -69,6 +93,37 @@ def _require_env(
     return ''
 
 
+def _paths_overlap(a: Path, b: Path) -> bool:
+    """Check if two paths overlap (one is a prefix of the other)."""
+    try:
+        a_resolved = a.resolve()
+        b_resolved = b.resolve()
+    except OSError:
+        # If we can't resolve (path doesn't exist yet), use as-is
+        a_resolved = a
+        b_resolved = b
+    return a_resolved == b_resolved or b_resolved.is_relative_to(a_resolved) or a_resolved.is_relative_to(b_resolved)
+
+
+def validate_workspace_boundaries(
+    workspace_root: Path,
+    layout: SpriteLayout | None = None,
+) -> list[str]:
+    """Validate that workspace_root does not overlap with protected paths.
+
+    Returns a list of issue strings (empty if valid).
+    """
+    layout = layout or SpriteLayout()
+    issues: list[str] = []
+    for protected in layout.protected_paths:
+        if _paths_overlap(workspace_root, protected):
+            issues.append(
+                f'SANDBOX_WORKSPACE_ROOT ({workspace_root}) overlaps with protected path {protected}. '
+                f'Workspace must be separate from service runtime and secrets directories.'
+            )
+    return issues
+
+
 @dataclass(frozen=True)
 class SandboxServiceTarget:
     """Workspace service routing target inside sandbox mode."""
@@ -90,6 +145,7 @@ class SandboxConfig:
     multi_tenant: bool = False
     routing_mode: str = 'single_tenant'
     auth_identity_binding: bool = False
+    sprite_layout: SpriteLayout = field(default_factory=SpriteLayout)
 
 
 @dataclass(frozen=True)
@@ -172,6 +228,17 @@ def load_runtime_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
             '(MULTI_TENANT, ROUTE_BY_USER, WORKSPACE_ROUTING_MODE=per_user).'
         )
 
+    # Sprite filesystem layout boundaries
+    workspace_root_str = env.get('SANDBOX_WORKSPACE_ROOT', '').strip()
+    service_root_str = env.get('SANDBOX_SERVICE_ROOT', '').strip()
+    secrets_dir_str = env.get('SANDBOX_SECRETS_DIR', '').strip()
+    sprite_layout = SpriteLayout(
+        workspace_root=Path(workspace_root_str) if workspace_root_str else DEFAULT_SPRITE_WORKSPACE,
+        service_root=Path(service_root_str) if service_root_str else DEFAULT_SPRITE_SERVICE_ROOT,
+        secrets_dir=Path(secrets_dir_str) if secrets_dir_str else DEFAULT_SPRITE_SECRETS_DIR,
+    )
+    issues.extend(validate_workspace_boundaries(sprite_layout.workspace_root, sprite_layout))
+
     if issues:
         raise ConfigValidationError(issues)
 
@@ -190,6 +257,7 @@ def load_runtime_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
             multi_tenant=multi_tenant,
             routing_mode=routing_mode,
             auth_identity_binding=auth_identity_binding,
+            sprite_layout=sprite_layout,
         ),
     )
 

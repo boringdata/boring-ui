@@ -3,7 +3,32 @@ import sys
 
 import pytest
 from pathlib import Path
-from boring_ui.api.config import APIConfig, ConfigValidationError, load_runtime_config
+from boring_ui.api.config import (
+    APIConfig,
+    ConfigValidationError,
+    SpriteLayout,
+    load_runtime_config,
+    validate_workspace_boundaries,
+    _paths_overlap,
+)
+
+
+def _valid_sandbox_env(**overrides):
+    """Return a valid sandbox environment dict, with optional overrides."""
+    base = {
+        'WORKSPACE_MODE': 'sandbox',
+        'SPRITES_BASE_URL': 'https://sprites.example.internal',
+        'SPRITES_SPRITE_NAME': 'workspace-a',
+        'SPRITES_API_TOKEN': 'token-value',
+        'SESSION_TOKEN_SECRET': 'x' * 32,
+        'SPRITES_WORKSPACE_SERVICE_HOST': 'workspace-service',
+        'SPRITES_WORKSPACE_SERVICE_PORT': '8443',
+        'SPRITES_WORKSPACE_SERVICE_PATH': '/api/workspace',
+        'MULTI_TENANT': 'false',
+        'AUTH_IDENTITY_BINDING_ENABLED': 'false',
+    }
+    base.update(overrides)
+    return base
 
 
 # Check if symlinks are supported (Windows requires admin privileges)
@@ -228,3 +253,113 @@ class TestRuntimeConfig:
                 'SPRITES_WORKSPACE_SERVICE_PORT': '8443',
                 'AUTH_IDENTITY_BINDING_ENABLED': 'sometimes',
             })
+
+    def test_default_sprite_layout_in_sandbox_config(self):
+        """Valid sandbox config should include default sprite layout."""
+        runtime = load_runtime_config(_valid_sandbox_env())
+        assert runtime.sandbox is not None
+        layout = runtime.sandbox.sprite_layout
+        assert layout.workspace_root == Path('/home/sprite/workspace')
+        assert layout.service_root == Path('/srv/workspace-api')
+        assert layout.secrets_dir == Path('/home/sprite/.auth')
+
+    def test_custom_workspace_root_env(self):
+        """SANDBOX_WORKSPACE_ROOT should override default workspace path."""
+        runtime = load_runtime_config(_valid_sandbox_env(
+            SANDBOX_WORKSPACE_ROOT='/data/user/project',
+        ))
+        assert runtime.sandbox.sprite_layout.workspace_root == Path('/data/user/project')
+
+    def test_custom_service_root_env(self):
+        """SANDBOX_SERVICE_ROOT should override default service path."""
+        runtime = load_runtime_config(_valid_sandbox_env(
+            SANDBOX_SERVICE_ROOT='/opt/workspace-svc',
+        ))
+        assert runtime.sandbox.sprite_layout.service_root == Path('/opt/workspace-svc')
+
+    def test_custom_secrets_dir_env(self):
+        """SANDBOX_SECRETS_DIR should override default secrets path."""
+        runtime = load_runtime_config(_valid_sandbox_env(
+            SANDBOX_SECRETS_DIR='/run/secrets',
+        ))
+        assert runtime.sandbox.sprite_layout.secrets_dir == Path('/run/secrets')
+
+    def test_workspace_root_overlapping_service_root_rejected(self):
+        """Workspace root that overlaps service root must be rejected."""
+        with pytest.raises(ConfigValidationError, match='overlaps with protected path'):
+            load_runtime_config(_valid_sandbox_env(
+                SANDBOX_WORKSPACE_ROOT='/srv/workspace-api',
+            ))
+
+    def test_workspace_root_overlapping_secrets_dir_rejected(self):
+        """Workspace root that overlaps secrets dir must be rejected."""
+        with pytest.raises(ConfigValidationError, match='overlaps with protected path'):
+            load_runtime_config(_valid_sandbox_env(
+                SANDBOX_WORKSPACE_ROOT='/home/sprite/.auth',
+            ))
+
+    def test_workspace_root_parent_of_service_root_rejected(self):
+        """Workspace root containing service root must be rejected."""
+        with pytest.raises(ConfigValidationError, match='overlaps with protected path'):
+            load_runtime_config(_valid_sandbox_env(
+                SANDBOX_WORKSPACE_ROOT='/srv',
+            ))
+
+    def test_workspace_root_child_of_secrets_dir_rejected(self):
+        """Workspace root inside secrets dir must be rejected."""
+        with pytest.raises(ConfigValidationError, match='overlaps with protected path'):
+            load_runtime_config(_valid_sandbox_env(
+                SANDBOX_WORKSPACE_ROOT='/home/sprite/.auth/subdir',
+            ))
+
+
+class TestSpriteLayout:
+    """Tests for SpriteLayout and filesystem boundary validation."""
+
+    def test_default_protected_paths(self):
+        """Default layout should protect service root and secrets dir."""
+        layout = SpriteLayout()
+        protected = layout.protected_paths
+        assert Path('/srv/workspace-api') in protected
+        assert Path('/home/sprite/.auth') in protected
+
+    def test_validate_boundaries_clean(self):
+        """Non-overlapping paths should produce no issues."""
+        issues = validate_workspace_boundaries(Path('/home/sprite/workspace'))
+        assert issues == []
+
+    def test_validate_boundaries_overlap_service(self):
+        """Workspace overlapping service root should produce an issue."""
+        issues = validate_workspace_boundaries(Path('/srv/workspace-api'))
+        assert len(issues) == 1
+        assert 'overlaps' in issues[0]
+
+    def test_validate_boundaries_overlap_secrets(self):
+        """Workspace overlapping secrets dir should produce an issue."""
+        issues = validate_workspace_boundaries(Path('/home/sprite/.auth'))
+        assert len(issues) == 1
+        assert 'overlaps' in issues[0]
+
+    def test_validate_boundaries_custom_layout(self):
+        """Custom layout should enforce custom protected paths."""
+        layout = SpriteLayout(
+            workspace_root=Path('/data/work'),
+            service_root=Path('/data/work/service'),
+            secrets_dir=Path('/data/secrets'),
+        )
+        issues = validate_workspace_boundaries(Path('/data/work'), layout)
+        assert len(issues) == 1
+        assert '/data/work/service' in issues[0]
+
+    def test_paths_overlap_identical(self):
+        """Identical paths should overlap."""
+        assert _paths_overlap(Path('/a/b'), Path('/a/b')) is True
+
+    def test_paths_overlap_parent_child(self):
+        """Parent-child relationship should be detected as overlap."""
+        assert _paths_overlap(Path('/a'), Path('/a/b/c')) is True
+        assert _paths_overlap(Path('/a/b/c'), Path('/a')) is True
+
+    def test_paths_overlap_siblings(self):
+        """Sibling directories should not overlap."""
+        assert _paths_overlap(Path('/a/b'), Path('/a/c')) is False
