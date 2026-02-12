@@ -176,6 +176,44 @@ def delegate_git_show(path: str) -> DelegationRequest:
     )
 
 
+# ── Session route delegators ──
+
+
+def delegate_list_sessions() -> DelegationRequest:
+    """Build delegation request for GET /api/sessions."""
+    return DelegationRequest(
+        method=DelegationMethod.GET,
+        path='/api/sessions',
+    )
+
+
+def delegate_get_session(session_id: str) -> DelegationRequest:
+    """Build delegation request for GET /api/sessions/{session_id}."""
+    return DelegationRequest(
+        method=DelegationMethod.GET,
+        path=f'/api/sessions/{session_id}',
+    )
+
+
+def delegate_create_session(template_id: str, **kwargs: str) -> DelegationRequest:
+    """Build delegation request for POST /api/sessions."""
+    body: dict = {'template_id': template_id}
+    body.update(kwargs)
+    return DelegationRequest(
+        method=DelegationMethod.POST,
+        path='/api/sessions',
+        json_body=body,
+    )
+
+
+def delegate_terminate_session(session_id: str) -> DelegationRequest:
+    """Build delegation request for DELETE /api/sessions/{session_id}."""
+    return DelegationRequest(
+        method=DelegationMethod.DELETE,
+        path=f'/api/sessions/{session_id}',
+    )
+
+
 # ── Error mapping ──
 
 
@@ -232,6 +270,9 @@ DELEGATION_ROUTES: dict[tuple[str, str], str] = {
     ('GET', '/api/git/status'): 'git_status',
     ('GET', '/api/git/diff'): 'git_diff',
     ('GET', '/api/git/show'): 'git_show',
+    ('GET', '/api/sessions'): 'list_sessions',
+    ('POST', '/api/sessions'): 'create_session',
+    ('DELETE', '/api/sessions'): 'terminate_session',
 }
 
 

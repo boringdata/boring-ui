@@ -9,15 +9,19 @@ from boring_ui.api.http_delegation import (
     DelegationMethod,
     DelegationRequest,
     DelegationResponse,
+    delegate_create_session,
     delegate_delete_file,
+    delegate_get_session,
     delegate_git_diff,
     delegate_git_show,
     delegate_git_status,
+    delegate_list_sessions,
     delegate_list_tree,
     delegate_move_file,
     delegate_read_file,
     delegate_rename_file,
     delegate_search_files,
+    delegate_terminate_session,
     delegate_write_file,
     is_delegatable,
     list_delegatable_routes,
@@ -200,6 +204,39 @@ class TestGitDelegators:
         assert req.query_params['path'] == 'main.py'
 
 
+# ── Session delegators ──
+
+
+class TestSessionDelegators:
+
+    def test_list_sessions(self):
+        req = delegate_list_sessions()
+        assert req.method == DelegationMethod.GET
+        assert req.path == '/api/sessions'
+
+    def test_get_session(self):
+        req = delegate_get_session('sess-abc')
+        assert req.method == DelegationMethod.GET
+        assert req.path == '/api/sessions/sess-abc'
+
+    def test_create_session(self):
+        req = delegate_create_session('shell')
+        assert req.method == DelegationMethod.POST
+        assert req.path == '/api/sessions'
+        assert req.json_body == {'template_id': 'shell'}
+
+    def test_create_session_with_kwargs(self):
+        req = delegate_create_session('chat', mode='ask', model='sonnet')
+        assert req.json_body['template_id'] == 'chat'
+        assert req.json_body['mode'] == 'ask'
+        assert req.json_body['model'] == 'sonnet'
+
+    def test_terminate_session(self):
+        req = delegate_terminate_session('sess-abc')
+        assert req.method == DelegationMethod.DELETE
+        assert req.path == '/api/sessions/sess-abc'
+
+
 # ── Error mapping ──
 
 
@@ -304,3 +341,9 @@ class TestDelegationRegistry:
         assert ('GET', '/api/git/status') in routes
         assert ('GET', '/api/git/diff') in routes
         assert ('GET', '/api/git/show') in routes
+
+    def test_all_session_routes_present(self):
+        routes = {(m, p) for m, p, _ in list_delegatable_routes()}
+        assert ('GET', '/api/sessions') in routes
+        assert ('POST', '/api/sessions') in routes
+        assert ('DELETE', '/api/sessions') in routes
