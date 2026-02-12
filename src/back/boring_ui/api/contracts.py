@@ -85,33 +85,47 @@ class WriteFileResponse(BaseModel):
 # ============================================================================
 
 class GitStatusResponse(BaseModel):
-    """Git repository status."""
-    branch: str = Field(..., description="Current branch")
-    staged: List[str] = Field(default_factory=list, description="Staged files")
-    unstaged: List[str] = Field(default_factory=list, description="Unstaged files")
-    untracked: List[str] = Field(default_factory=list, description="Untracked files")
-    clean: bool = Field(..., description="True if no changes")
+    """Git repository status (public API shape)."""
+    is_repo: bool = Field(..., description="Whether workspace is a git repo")
+    files: Dict[str, str] = Field(default_factory=dict, description="Map of path → status char (M/A/D/U/C)")
 
 
 class GitDiffStats(BaseModel):
-    """Diff statistics."""
+    """Diff statistics (available from internal API)."""
     insertions: int = Field(0, description="Lines added")
     deletions: int = Field(0, description="Lines removed")
     files_changed: int = Field(0, description="Files with changes")
 
 
-class GitDiffResponse(BaseModel):
-    """Git diff output."""
+class InternalGitStatusResponse(BaseModel):
+    """Git status from internal API (richer schema)."""
+    branch: str = Field(..., description="Current branch")
+    staged: List[str] = Field(default_factory=list, description="Staged files")
+    unstaged: List[str] = Field(default_factory=list, description="Unstaged files")
+    untracked: List[str] = Field(default_factory=list, description="Untracked files")
+    clean: bool = Field(..., description="True if no changes")
+    is_repo: bool = Field(True, description="Whether workspace is a git repo")
+
+
+class InternalGitDiffResponse(BaseModel):
+    """Git diff from internal API (richer schema)."""
     context: str = Field(..., description="'working', 'staged', or 'head'")
     diff: str = Field(..., description="Unified diff output")
     stats: GitDiffStats = Field(..., description="Diff statistics")
+    is_repo: bool = Field(True, description="Whether workspace is a git repo")
+
+
+class GitDiffResponse(BaseModel):
+    """Git diff output (public API shape — per-file diff)."""
+    diff: str = Field(..., description="Unified diff output")
+    path: str = Field(..., description="File path")
 
 
 class GitShowResponse(BaseModel):
     """Git show output for a specific file."""
     path: str = Field(..., description="File path")
-    content: Optional[str] = Field(None, description="File content at HEAD")
-    is_new: bool = Field(False, description="True if file is new (not in HEAD)")
+    content: Optional[str] = Field(None, description="File content at HEAD (null if untracked)")
+    is_new: bool = Field(False, description="True if file is not in HEAD")
 
 
 # ============================================================================

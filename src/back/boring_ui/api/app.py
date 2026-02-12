@@ -37,6 +37,10 @@ from .logging_middleware import add_logging_middleware, get_request_id
 from .modules.sandbox.hosted_proxy import create_hosted_sandbox_proxy_router
 from .modules.sandbox.hosted_compat import create_hosted_compat_router
 from .modules.metrics import create_metrics_router
+from .v1_router import create_v1_router
+from .v1_local_backend import LocalFilesBackend, LocalGitBackend
+from .v1_hosted_backend import HostedFilesBackend, HostedGitBackend, HostedExecBackend
+from .deprecation import add_deprecation_middleware
 
 # Global managers (for lifespan management)
 _sandbox_manager: SandboxManager | None = None
@@ -68,6 +72,7 @@ class _HostedProxyClientAdapter:
         *,
         params: dict[str, str | int] | None = None,
         capability_token: str = "",
+        request_id: str = "",
     ) -> dict:
         self._request_count += 1
         trace_id = f"hosted-proxy-{self._request_count}"
@@ -75,6 +80,8 @@ class _HostedProxyClientAdapter:
 
         if capability_token:
             req_headers["Authorization"] = f"Bearer {capability_token}"
+        if request_id:
+            req_headers["X-Request-ID"] = request_id
         if self._service_signer:
             req_headers["X-Service-Token"] = self._service_signer.sign_request(ttl_seconds=60)
 
@@ -98,51 +105,71 @@ class _HostedProxyClientAdapter:
 
         return json.loads(body.decode("utf-8"))
 
-    async def list_files(self, path: str = ".", capability_token: str = "") -> dict:
+    async def list_files(
+        self, path: str = ".", capability_token: str = "", request_id: str = ""
+    ) -> dict:
         return await self._request_json(
             "GET",
             "/internal/v1/files/list",
             params={"path": path},
             capability_token=capability_token,
+            request_id=request_id,
         )
 
-    async def read_file(self, path: str, capability_token: str = "") -> dict:
+    async def read_file(
+        self, path: str, capability_token: str = "", request_id: str = ""
+    ) -> dict:
         return await self._request_json(
             "GET",
             "/internal/v1/files/read",
             params={"path": path},
             capability_token=capability_token,
+            request_id=request_id,
         )
 
-    async def write_file(self, path: str, content: str, capability_token: str = "") -> dict:
+    async def write_file(
+        self, path: str, content: str, capability_token: str = "", request_id: str = ""
+    ) -> dict:
         return await self._request_json(
             "POST",
             "/internal/v1/files/write",
             params={"path": path, "content": content},
             capability_token=capability_token,
+            request_id=request_id,
         )
 
-    async def git_status(self, capability_token: str = "") -> dict:
+    async def git_status(self, capability_token: str = "", request_id: str = "") -> dict:
         return await self._request_json(
             "GET",
             "/internal/v1/git/status",
             capability_token=capability_token,
+            request_id=request_id,
         )
 
-    async def git_diff(self, context: str = "working", capability_token: str = "") -> dict:
+    async def git_diff(
+        self, context: str = "working", capability_token: str = "", request_id: str = ""
+    ) -> dict:
         return await self._request_json(
             "GET",
             "/internal/v1/git/diff",
             params={"context": context},
             capability_token=capability_token,
+            request_id=request_id,
         )
 
-    async def exec_run(self, command: str, timeout_seconds: int = 30, capability_token: str = "") -> dict:
+    async def exec_run(
+        self,
+        command: str,
+        timeout_seconds: int = 30,
+        capability_token: str = "",
+        request_id: str = "",
+    ) -> dict:
         return await self._request_json(
             "POST",
             "/internal/v1/exec/run",
             params={"command": command, "timeout_seconds": timeout_seconds},
             capability_token=capability_token,
+            request_id=request_id,
         )
 
     def get_stats(self) -> dict:
@@ -455,6 +482,9 @@ def create_app(
     # Must be added after CORS (middleware chain executes in reverse order)
     add_logging_middleware(app)
 
+    # Deprecation signaling for legacy routes (bd-1pwb.6.2)
+    add_deprecation_middleware(app)
+
     # LOCAL mode: capability context for /internal/v1/* routes (bd-1adh.6.2)
     # In LOCAL mode there is no cross-service boundary — control plane and data
     # plane live in the same process. Inject a full-access CapabilityAuthContext
@@ -531,6 +561,19 @@ def create_app(
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 
+    # Canonical /api/v1 routes (bd-1pwb.6.1)
+    # LOCAL mode: delegate to in-process FileService/GitService
+    if config.run_mode.value == 'local':
+        from .modules.files.service import FileService
+        from .modules.git.service import GitService
+        file_service = FileService(config, storage)
+        git_service = GitService(config)
+        v1_router = create_v1_router(
+            files_backend=LocalFilesBackend(file_service),
+            git_backend=LocalGitBackend(git_service),
+        )
+        app.include_router(v1_router, prefix='/api/v1')
+
     # Hosted-mode public proxy for privileged operations.
     # Frontend interacts with control-plane routes only.
     if config.run_mode.value == 'hosted':
@@ -582,6 +625,13 @@ def create_app(
                 ),
                 prefix='/api',
             )
+            # Canonical v1 routes for hosted mode (bd-1pwb.6.1)
+            hosted_v1_router = create_v1_router(
+                files_backend=HostedFilesBackend(hosted_client, capability_issuer),
+                git_backend=HostedGitBackend(hosted_client, capability_issuer),
+                exec_backend=HostedExecBackend(hosted_client, capability_issuer),
+            )
+            app.include_router(hosted_v1_router, prefix='/api/v1')
             # Compat layer provides filesystem + git surface in hosted mode.
             enabled_features['files'] = True
             enabled_features['git'] = True
