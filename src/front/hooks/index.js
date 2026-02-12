@@ -35,3 +35,5 @@ export { useApprovals } from './useApprovals'
 export { useFileOperations } from './useFileOperations'
 
 export { useLayoutInit, debounce } from './useLayoutInit'
+
+export { usePanelParams } from './usePanelParams'
