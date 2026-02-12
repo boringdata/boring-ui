@@ -404,8 +404,11 @@ class SmokeTestRunner:
         for step in steps:
             handler = self._step_handlers.get(step.name)
             if handler:
+                before_count = len(self._results)
                 result = handler(step)
-                if not any(existing is result for existing in self._results):
+                # If handler didn't record via execute_step/execute_command_step,
+                # record exactly once for this invocation.
+                if len(self._results) == before_count:
                     self._results.append(result)
             else:
                 # Never auto-pass in run mode; missing handlers are explicit failures.

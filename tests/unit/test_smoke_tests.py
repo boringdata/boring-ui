@@ -111,3 +111,25 @@ def test_run_category_records_direct_handler_results():
     runner.run_category(SmokeCategory.DEPLOY)
 
     assert runner.pass_count == 2
+
+
+def test_run_category_counts_reused_result_instance_per_invocation():
+    runner = SmokeTestRunner(gate=CredentialGate(api_token='t', base_url='https://x'))
+    shared = SmokeStepResult(
+        step=SmokeStep('shared', SmokeCategory.DEPLOY, 'shared'),
+        outcome=SmokeOutcome.PASS,
+        request_id='shared-id',
+        elapsed_ms=1.0,
+    )
+
+    def reused_handler(step: SmokeStep):
+        # Mutate step metadata but intentionally reuse the same object instance.
+        shared.step = step
+        return shared
+
+    runner.register_step_handler('app_startup', reused_handler)
+    runner.register_step_handler('health_endpoint', reused_handler)
+    runner.run_category(SmokeCategory.DEPLOY)
+
+    assert runner.pass_count == 2
+    assert len(runner.results) == 2
