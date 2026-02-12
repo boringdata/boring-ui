@@ -1,17 +1,16 @@
-"""Authentication infrastructure: service tokens + OIDC JWT verification.
+"""Authentication infrastructure: token issuance/signing + OIDC JWT verification.
 
-Service Token Issuance (Direct Connect):
-  Issues tokens for chat services to authorize direct browser connections.
-  Two token types:
-    - JWT (HS256): For services that validate JWT claims (Companion/Hono)
-    - Plain bearer: For services with built-in --token flag (sandbox-agent/Rust)
+ServiceTokenIssuer (Direct Connect):
+  HS256 JWTs for browser→subprocess service auth (Companion, sandbox-agent).
   Signing key lives in memory only, regenerated each boring-ui startup.
 
-OIDC JWT Verification (Hosted Mode):
+ServiceTokenSigner (Hosted Mode, service-to-service):
+  RS256 JWTs for control plane → sandbox data plane trust.
+  Used by hosted mode to sign requests to the sandbox API.
+
+OIDCVerifier (Hosted Mode, user auth):
   Validates JWTs from external identity providers (Auth0, Cognito, custom IdP).
   Fetches and caches JWKS, validates signatures, extracts OIDC claims.
-  Designed for hosted deployments where frontend auth is handled externally.
-  See .planning/DIRECT_CONNECT_ARCHITECTURE.md and bd-1pwb.2 for design details.
 """
 
 import os
@@ -19,7 +18,6 @@ import time
 import json
 import logging
 from typing import Any
-from datetime import datetime, timezone
 
 import jwt  # PyJWT
 import httpx
@@ -68,41 +66,59 @@ class ServiceTokenIssuer:
         """
         return self.issue_token(service, ttl_seconds=120)
 
-    def generate_service_token(self) -> str:
-        """Generate a plain random bearer token for services with built-in auth.
 
-        Used for sandbox-agent (compiled Rust binary) which accepts a fixed
-        bearer token via --token CLI flag and does simple string comparison.
-        Not a JWT — no claims, no expiry, valid until process restart.
-        """
-        return os.urandom(24).hex()
+class ServiceTokenSigner:
+    """Signs RS256 service tokens for control plane → sandbox calls.
 
-    @staticmethod
-    def verify_token(
-        token: str, signing_key_hex: str, expected_service: str
-    ) -> dict | None:
-        """Verify a JWT and return its payload, or None on failure.
+    Used in hosted mode for service-to-service authentication. Maintains a
+    single active key version. Key rotation is managed by updating the key
+    material and incrementing the version.
+    """
 
-        FAIL-CLOSED: returns None if signing_key_hex is empty/None.
+    def __init__(self, private_key_pem: str, service_name: str = "hosted-api") -> None:
+        self.private_key_pem = private_key_pem
+        self.service_name = service_name
+        self._current_version = 1
 
-        Args:
-            token: The JWT string to verify.
-            signing_key_hex: Hex-encoded signing key.
-            expected_service: Expected value of the "svc" claim.
+    @property
+    def current_key_version(self) -> int:
+        return self._current_version
 
-        Returns:
-            Decoded payload dict on success, None on any failure.
-        """
-        if not signing_key_hex:
-            return None  # fail-closed: no key = reject
-        try:
-            signing_key = bytes.fromhex(signing_key_hex)
-            payload = jwt.decode(token, signing_key, algorithms=["HS256"])
-            if payload.get("svc") != expected_service:
-                return None
-            return payload
-        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, ValueError):
-            return None
+    def sign_request(self, ttl_seconds: int = 60) -> str:
+        """Sign a service request and return JWT token."""
+        now = int(time.time())
+        claims = {
+            "iss": "boring-ui",
+            "sub": self.service_name,
+            "iat": now,
+            "exp": now + ttl_seconds,
+            "key_version": self._current_version,
+        }
+        token = jwt.encode(
+            claims,
+            self.private_key_pem,
+            algorithm="RS256",
+            headers={
+                "typ": "JWT",
+                "kid": f"service-v{self._current_version}",
+                "service": self.service_name,
+            },
+        )
+        logger.debug(
+            f"Service token signed: service={self.service_name}, "
+            f"key_version={self._current_version}, ttl={ttl_seconds}s"
+        )
+        return token
+
+    def rotate_key(self, new_private_key_pem: str) -> int:
+        """Rotate to a new key version. Returns new version number."""
+        self.private_key_pem = new_private_key_pem
+        self._current_version += 1
+        logger.info(
+            f"Service key rotated: service={self.service_name}, "
+            f"new_version={self._current_version}"
+        )
+        return self._current_version
 
 
 class OIDCVerifier:

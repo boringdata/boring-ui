@@ -20,7 +20,7 @@ from boring_ui.api.auth_middleware import (
     get_auth_context,
     require_permission,
 )
-from boring_ui.api.auth_errors import AuthErrorEmitter, AuthErrorTelemetry
+from boring_ui.api.auth_middleware import AuthErrorEmitter, AuthErrorTelemetry
 
 
 # --- AuthContext ---

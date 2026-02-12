@@ -8,13 +8,13 @@ from functools import wraps
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.testclient import TestClient
 
-from .capability_tokens import (
+from boring_ui.api.capability_tokens import (
     CapabilityToken,
     CapabilityTokenIssuer,
     CapabilityTokenValidator,
     JTIReplayStore,
 )
-from .sandbox_auth import (
+from boring_ui.api.sandbox_auth import (
     CapabilityAuthContext,
     add_capability_auth_middleware,
     get_capability_context,

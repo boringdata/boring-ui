@@ -149,39 +149,39 @@ class TestCapabilitiesEndpoint:
             assert 'git' in router_names
 
 
-class TestFileRoutes:
-    """Integration tests for file endpoints through full app."""
+class TestV1FileRoutes:
+    """Integration tests for canonical /api/v1 file endpoints through full app."""
 
     @pytest.mark.asyncio
     async def test_tree_endpoint(self, app, workspace):
-        """Test /api/tree returns directory listing."""
+        """Test /api/v1/files/list returns directory listing."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/tree?path=.')
+            response = await client.get('/api/v1/files/list?path=.')
             assert response.status_code == 200
             data = response.json()
-            names = [e['name'] for e in data['entries']]
+            names = [e['name'] for e in data['files']]
             assert 'README.md' in names
             assert 'src' in names
 
     @pytest.mark.asyncio
     async def test_file_read_endpoint(self, app, workspace):
-        """Test /api/file returns file contents."""
+        """Test /api/v1/files/read returns file contents."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/file?path=README.md')
+            response = await client.get('/api/v1/files/read?path=README.md')
             assert response.status_code == 200
             data = response.json()
             assert data['content'] == '# Test Project'
 
     @pytest.mark.asyncio
     async def test_file_write_endpoint(self, app, workspace):
-        """Test PUT /api/file writes file contents."""
+        """Test POST /api/v1/files/write writes file contents."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.put(
-                '/api/file?path=new.txt',
-                json={'content': 'new content'}
+            response = await client.post(
+                '/api/v1/files/write',
+                json={'path': 'new.txt', 'content': 'new content'},
             )
             assert response.status_code == 200
             assert (workspace / 'new.txt').read_text() == 'new content'
@@ -227,7 +227,6 @@ class TestRouterSelection:
             assert data['features']['files'] is True
             assert data['features']['git'] is False
 
-    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_chat_claude_code_name_works(self, workspace):
         """Test chat_claude_code router enables chat feature."""

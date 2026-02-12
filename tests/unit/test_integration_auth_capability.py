@@ -19,29 +19,28 @@ from pathlib import Path
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.testclient import TestClient
 
-from .auth_middleware import add_oidc_auth_middleware, AuthContext, get_auth_context, require_permission
-from .auth import OIDCVerifier
-from .capability_tokens import (
+from boring_ui.api.auth_middleware import add_oidc_auth_middleware, AuthContext, get_auth_context, require_permission
+from boring_ui.api.auth import OIDCVerifier, ServiceTokenSigner
+from boring_ui.api.capability_tokens import (
     CapabilityToken,
     CapabilityTokenIssuer,
     CapabilityTokenValidator,
     JTIReplayStore,
 )
-from .sandbox_auth import (
+from boring_ui.api.sandbox_auth import (
     CapabilityAuthContext,
     add_capability_auth_middleware,
     get_capability_context,
     require_capability,
 )
-from .contracts import (
+from boring_ui.api.contracts import (
     FileInfo,
     ListFilesResponse,
     ReadFileResponse,
     ErrorCode,
     ErrorResponse,
 )
-from .service_auth import ServiceIdentity, ServiceTokenSigner, ServiceTokenValidator
-from .modules.sandbox.policy import SandboxPolicies, FilePolicy, ExecPolicy
+from boring_ui.api.modules.sandbox.policy import SandboxPolicies, FilePolicy, ExecPolicy
 
 
 # ============================================================================
@@ -98,16 +97,6 @@ def replay_store():
 def service_signer(rsa_key_pair):
     """Create service token signer."""
     return ServiceTokenSigner(rsa_key_pair["private"], service_name="hosted-api")
-
-
-@pytest.fixture
-def service_validator(rsa_key_pair):
-    """Create service token validator."""
-    return ServiceTokenValidator(
-        {1: rsa_key_pair["public"]},
-        current_version=1,
-        grace_period_seconds=300,
-    )
 
 
 # ============================================================================
@@ -427,58 +416,43 @@ class TestSecurityDenyPaths:
 class TestServiceIdentityFlow:
     """Test service-to-service authentication."""
 
-    def test_sign_and_validate_service_token(self, service_signer, service_validator, rsa_key_pair):
-        """Should sign and validate service tokens."""
+    def test_sign_service_token(self, service_signer):
+        """Should sign service tokens with correct claims."""
+        import jwt as pyjwt
         token = service_signer.sign_request(ttl_seconds=60)
 
-        # Update validator with correct public key
-        validator = ServiceTokenValidator(
-            {1: rsa_key_pair["public"]},
-            current_version=1,
-            grace_period_seconds=300,
-        )
-
-        claims = validator.validate_token(token)
-        assert claims is not None
+        claims = pyjwt.decode(token, options={"verify_signature": False})
         assert claims["sub"] == "hosted-api"
+        assert claims["iss"] == "boring-ui"
+        assert claims["key_version"] == 1
 
-    def test_key_rotation_with_grace_period(self, rsa_key_pair):
-        """Should support key rotation with grace period."""
-        # Generate second key
+    def test_key_rotation(self, rsa_key_pair):
+        """Should support key rotation."""
+        import jwt as pyjwt
+
+        signer = ServiceTokenSigner(rsa_key_pair["private"], service_name="hosted-api")
+        assert signer.current_key_version == 1
+
+        # Generate second key for rotation
         import cryptography.hazmat.primitives.asymmetric.rsa as rsa
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.backends import default_backend
 
         private_key_v2 = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-            backend=default_backend(),
+            public_exponent=65537, key_size=2048, backend=default_backend(),
         )
-        public_key_v2 = private_key_v2.public_key()
         private_pem_v2 = private_key_v2.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption(),
         ).decode()
-        public_pem_v2 = public_key_v2.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
-        ).decode()
 
-        # Signer with initial key
-        signer = ServiceTokenSigner(rsa_key_pair["private"], service_name="hosted-api")
+        signer.rotate_key(private_pem_v2)
+        assert signer.current_key_version == 2
 
-        # Validator with both key versions
-        validator = ServiceTokenValidator(
-            {1: rsa_key_pair["public"], 2: public_pem_v2},
-            current_version=2,
-            grace_period_seconds=300,
-        )
-
-        # Token signed with old key should still be valid during grace period
-        old_token = signer.sign_request(ttl_seconds=60)
-        claims = validator.validate_token(old_token)
-        assert claims is not None  # Still valid due to grace period
+        token = signer.sign_request(ttl_seconds=60)
+        header = pyjwt.get_unverified_header(token)
+        assert header["kid"] == "service-v2"
 
 
 if __name__ == "__main__":

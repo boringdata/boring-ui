@@ -21,7 +21,7 @@ A composable, capability-gated UI framework for building IDE-like applications. 
 │  │RouterRegistry│──│  Capabilities│──│   Modular    │──│   Storage    │   │
 │  │              │  │   Endpoint   │  │   Routers    │  │   Backends   │   │
 │  │ files, git,  │  │ /api/        │  │ files, git,  │  │ LocalStorage │   │
-│  │ pty, stream  │  │ capabilities │  │ pty, stream  │  │ (pluggable)  │   │
+│  │ pty, chat    │  │ capabilities │  │ pty, chat    │  │ (pluggable)  │   │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -156,7 +156,7 @@ stateDiagram-v2
 ```mermaid
 flowchart TD
     subgraph Backend
-        A[RouterRegistry] -->|registers| B[files, git, pty, stream]
+        A[RouterRegistry] -->|registers| B[files, git, pty, chat_claude_code]
         B -->|enabled set| C[/api/capabilities]
     end
 
@@ -355,21 +355,24 @@ npm run preview    # Preview production build
 
 ### Backend Endpoints
 
-| Endpoint              | Method | Description                      |
-|-----------------------|--------|----------------------------------|
-| /api/capabilities     | GET    | Available features and routers   |
-| /api/config           | GET    | Workspace configuration          |
-| /api/project          | GET    | Project root path                |
-| /api/tree             | GET    | Directory tree                   |
-| /api/file             | GET    | Read file                        |
-| /api/file             | PUT    | Write file                       |
-| /api/file             | DELETE | Delete file                      |
-| /api/file/rename      | POST   | Rename file                      |
-| /api/file/move        | POST   | Move file                        |
-| /api/git/status       | GET    | Git status                       |
-| /api/git/diff         | GET    | Git diff                         |
-| /ws/pty/{session_id}  | WS     | Shell PTY                        |
-| /ws/stream/{session}  | WS     | Claude chat stream               |
+| Endpoint                  | Method | Description                         |
+|---------------------------|--------|-------------------------------------|
+| /api/capabilities         | GET    | Available features and routers      |
+| /api/config               | GET    | Workspace configuration             |
+| /api/project              | GET    | Project root path                   |
+| /api/v1/files/list        | GET    | Directory listing                   |
+| /api/v1/files/read        | GET    | Read file                           |
+| /api/v1/files/write       | POST   | Write file                          |
+| /api/v1/files/delete      | DELETE | Delete file                         |
+| /api/v1/files/rename      | POST   | Rename file                         |
+| /api/v1/files/move        | POST   | Move file                           |
+| /api/v1/files/search      | GET    | Filename search                     |
+| /api/v1/git/status        | GET    | Git status                          |
+| /api/v1/git/diff          | GET    | Git diff                            |
+| /api/v1/git/show          | GET    | Git show                            |
+| /api/v1/exec/run          | POST   | Run command (hosted/parity backends) |
+| /ws/pty/{session_id}      | WS     | Shell PTY                           |
+| /ws/claude-stream/{session} | WS   | Claude chat stream                  |
 
 ### Frontend Hooks
 

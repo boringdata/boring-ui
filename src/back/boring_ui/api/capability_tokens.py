@@ -19,7 +19,7 @@ Token Lifecycle:
 
 Boundary rationale:
 - Capability tokens constrain operation scope for each proxied request.
-- Service tokens (see `service_auth.py`) identify calling services.
+- Service tokens (see `auth.py:ServiceTokenSigner`) identify calling services.
 - User/OIDC auth identifies end users at the control-plane edge.
 These concerns are intentionally split to keep trust boundaries explicit.
 """

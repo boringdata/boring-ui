@@ -3,10 +3,10 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import APIConfig, get_cors_origin, is_dev_auth_bypass_enabled, is_local_parity_mode
+from .config import APIConfig, get_cors_origin
 from .storage import Storage, LocalStorage
 from .modules.files import create_file_router
 from .modules.git import create_git_router
@@ -16,28 +16,19 @@ from .modules.sandbox import SandboxManager, create_provider
 from .modules.companion import CompanionManager, create_companion_provider
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
 from .auth import ServiceTokenIssuer
-from .auth import OIDCVerifier
-from .auth_middleware import add_oidc_auth_middleware, AuthContext
-from .capability_tokens import CapabilityTokenIssuer
-from .service_auth import ServiceTokenSigner
-from .sandbox_auth import CapabilityAuthContext
-from .local_api import create_local_api_router
-from .target_resolver import StaticTargetResolver
-from .transport import HTTPInternalTransport, SpritesProxyTransport
 from .capabilities import (
     RouterRegistry,
     ServiceConnectionInfo,
     create_default_registry,
     create_capabilities_router,
 )
-from .logging_middleware import add_logging_middleware, get_request_id
-from .modules.sandbox.hosted_client import (
-    HostedSandboxClient,
-    SandboxClientConfig,
+from .logging_middleware import add_logging_middleware
+from .app_mode_composition import (
+    configure_mode_auth,
+    resolve_enabled_routers,
+    mount_local_private_api_if_needed,
+    mount_mode_v1_routes,
 )
-from .v1_router import create_v1_router
-from .v1_local_backend import LocalFilesBackend, LocalGitBackend
-from .v1_hosted_backend import HostedFilesBackend, HostedGitBackend, HostedExecBackend
 
 # Global managers (for lifespan management)
 _sandbox_manager: SandboxManager | None = None
@@ -46,59 +37,6 @@ _companion_manager: CompanionManager | None = None
 
 # _HostedProxyClientAdapter removed (bd-2j57.4.2)
 # HostedSandboxClient now directly supports transport layer
-
-
-def _get_routers_for_mode(
-    run_mode: str,
-    include_pty: bool = True,
-    include_stream: bool = True,
-    include_approval: bool = True,
-    include_sandbox: bool = False,
-    include_companion: bool = False,
-) -> set[str]:
-    """Determine which routers to mount based on run mode.
-
-    LOCAL mode: All routers available (dev/local workflows)
-    HOSTED mode: Only capabilities and config (no direct privileged access)
-
-    Args:
-        run_mode: 'local' or 'hosted'
-        include_*: Feature flags for LOCAL mode only (ignored in HOSTED)
-
-    Returns:
-        Set of router names to mount
-    """
-    enabled = {'files', 'git'}  # Core routers always in LOCAL mode
-
-    if run_mode == 'local':
-        # LOCAL mode: mount all requested routers
-        if include_pty:
-            enabled.add('pty')
-        if include_stream:
-            enabled.add('chat_claude_code')
-        if include_approval:
-            enabled.add('approval')
-        if include_sandbox:
-            enabled.add('sandbox')
-        if include_companion:
-            enabled.add('companion')
-    elif run_mode == 'hosted':
-        # HOSTED mode: only safe control-plane routers
-        # - approval: tool approval workflow (safe for untrusted clients)
-        # No direct file/git/pty/chat/exec access in hosted mode.
-        # These will be provided via:
-        # - Hosted Auth (bd-1pwb.2) for control plane
-        # - Sandbox Internal API (bd-1pwb.4) for data plane
-        # - Hosted Proxy Layer (bd-1pwb.5) for client access
-        enabled = {'approval'}
-        # Local hosted-dev workflow: keep code sessions available while
-        # privileged file/git operations stay on sandbox-backed compat routes.
-        if is_dev_auth_bypass_enabled():
-            enabled.update({'pty', 'chat_claude_code'})
-    else:
-        raise ValueError(f"Unknown run mode: {run_mode}")
-
-    return enabled
 
 
 def create_app(
@@ -237,47 +175,16 @@ def create_app(
     import logging
     logger = logging.getLogger(__name__)
 
-    if routers is not None:
-        # User provided explicit router list - honor it
-        enabled_routers = set(routers)
-        # In HOSTED mode, warn if privileged routers requested
-        if config.run_mode.value == 'hosted':
-            privileged = {'files', 'git', 'pty', 'chat_claude_code', 'sandbox', 'companion'}
-            requested_privileged = privileged & enabled_routers
-            if requested_privileged:
-                raise ValueError(
-                    f"SECURITY: Hosted mode cannot mount privileged routers. "
-                    f"Requested: {', '.join(sorted(requested_privileged))}. "
-                    f"These operations must be routed through Hosted Auth and Sandbox APIs (phases 2-5)."
-                )
-    else:
-        # Use mode-based defaults
-        enabled_routers = _get_routers_for_mode(
-            config.run_mode.value,
-            include_pty=include_pty,
-            include_stream=include_stream,
-            include_approval=include_approval,
-            include_sandbox=include_sandbox,
-            include_companion=include_companion,
-        )
-        # In HOSTED mode, log which routers would have been included in LOCAL
-        if config.run_mode.value == 'hosted':
-            local_routers = _get_routers_for_mode(
-                'local',
-                include_pty=include_pty,
-                include_stream=include_stream,
-                include_approval=include_approval,
-                include_sandbox=include_sandbox,
-                include_companion=include_companion,
-            )
-            deferred = local_routers - enabled_routers
-            if deferred:
-                logger.info(
-                    'HOSTED mode defers privileged routers to later phases: %s. '
-                    'Control plane uses only: %s.',
-                    ', '.join(sorted(deferred)),
-                    ', '.join(sorted(enabled_routers or ['capabilities']))
-                )
+    enabled_routers = resolve_enabled_routers(
+        config.run_mode.value,
+        logger=logger,
+        routers=routers,
+        include_pty=include_pty,
+        include_stream=include_stream,
+        include_approval=include_approval,
+        include_sandbox=include_sandbox,
+        include_companion=include_companion,
+    )
 
     # Build enabled features map for capabilities endpoint
     chat_enabled = 'chat_claude_code' in enabled_routers
@@ -345,53 +252,8 @@ def create_app(
     # Must be added after CORS (middleware chain executes in reverse order)
     add_logging_middleware(app)
 
-    # LOCAL mode: capability context for /internal/v1/* routes (bd-1adh.6.2)
-    # In LOCAL mode there is no cross-service boundary — control plane and data
-    # plane live in the same process. Inject a full-access CapabilityAuthContext
-    # so the @require_capability decorators on local_api routes are satisfied
-    # without requiring token round-trips.
-    if config.run_mode.value == 'local':
-        @app.middleware("http")
-        async def local_capability_context(request: Request, call_next):
-            if request.url.path.startswith("/internal/v1"):
-                import time as _time
-                now = int(_time.time())
-                request.state.capability_context = CapabilityAuthContext(
-                    workspace_id="local",
-                    operations={"*"},          # full access in LOCAL mode
-                    jti="local-bypass",
-                    issued_at=now,
-                    expires_at=now + 3600,
-                )
-            return await call_next(request)
-        logger.debug('LOCAL mode: full-access capability context injected for /internal/v1')
-
-    # Hosted-mode edge authentication (OIDC JWT validation)
-    if config.run_mode.value == 'hosted':
-        if is_dev_auth_bypass_enabled():
-            logger.warning(
-                "DEV_AUTH_BYPASS is enabled. Hosted auth is bypassed for local development only."
-            )
-
-            @app.middleware("http")
-            async def dev_auth_bypass(request, call_next):
-                if request.url.path != "/health" and request.method != "OPTIONS":
-                    request.state.auth_context = AuthContext(
-                        user_id="dev-local-user",
-                        workspace_id="default",
-                        permissions={
-                            "*",
-                            "files:read",
-                            "files:write",
-                            "git:read",
-                            "exec:run",
-                        },
-                        claims={"dev_bypass": True},
-                    )
-                return await call_next(request)
-        else:
-            oidc_verifier = OIDCVerifier.from_env()
-            add_oidc_auth_middleware(app, oidc_verifier)
+    # Mode-specific auth middleware composition (LOCAL capability context, HOSTED OIDC/dev bypass).
+    configure_mode_auth(app, config, logger)
 
     # Mount routers from registry based on enabled set
     router_args = {
@@ -419,112 +281,8 @@ def create_app(
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 
-    # Canonical /api/v1 routes (bd-1pwb.6.1)
-    # LOCAL mode: delegate to in-process FileService/GitService
-    if config.run_mode.value == 'local':
-        if is_local_parity_mode():
-            # Parity mode (bd-1adh.7.2): route through HTTP transport to local-api
-            # to exercise the same code path as HOSTED mode.
-            parity_port = int(os.environ.get('LOCAL_PARITY_PORT', '2469'))
-            parity_url = f'http://127.0.0.1:{parity_port}'
-
-            parity_private_key = os.environ.get('CAPABILITY_PRIVATE_KEY', '')
-            if parity_private_key:
-                parity_private_key = parity_private_key.replace("\\n", "\n")
-                parity_capability_issuer = CapabilityTokenIssuer(parity_private_key)
-            else:
-                # Generate ephemeral RSA key pair for capability tokens
-                from cryptography.hazmat.primitives.asymmetric import rsa as _rsa
-                from cryptography.hazmat.primitives import serialization as _ser
-                _parity_key = _rsa.generate_private_key(public_exponent=65537, key_size=2048)
-                _parity_priv = _parity_key.private_bytes(
-                    _ser.Encoding.PEM, _ser.PrivateFormat.PKCS8, _ser.NoEncryption(),
-                ).decode()
-                parity_capability_issuer = CapabilityTokenIssuer(_parity_priv)
-                logger.warning(
-                    'LOCAL PARITY: CAPABILITY_PRIVATE_KEY not set; using ephemeral key. '
-                    'Set CAPABILITY_PRIVATE_KEY for stable parity keying.'
-                )
-
-            parity_transport = HTTPInternalTransport(base_url=parity_url)
-            parity_client_config = SandboxClientConfig(
-                internal_url=parity_url,
-                transport=parity_transport,
-            )
-            parity_hosted_client = HostedSandboxClient(config=parity_client_config)
-
-            v1_router = create_v1_router(
-                files_backend=HostedFilesBackend(parity_hosted_client, parity_capability_issuer),
-                git_backend=HostedGitBackend(parity_hosted_client, parity_capability_issuer),
-                exec_backend=HostedExecBackend(parity_hosted_client, parity_capability_issuer),
-            )
-            app.include_router(v1_router, prefix='/api/v1')
-            logger.info(
-                'LOCAL PARITY: /api/v1 routed through HTTP transport at %s '
-                '(exercises hosted code path)', parity_url,
-            )
-        else:
-            from .modules.files.service import FileService
-            from .modules.git.service import GitService
-            file_service = FileService(config, storage)
-            git_service = GitService(config)
-            v1_router = create_v1_router(
-                files_backend=LocalFilesBackend(file_service),
-                git_backend=LocalGitBackend(git_service),
-            )
-            app.include_router(v1_router, prefix='/api/v1')
-
-    # Hosted-mode public proxy for privileged operations.
-    # Frontend interacts with control-plane routes only.
-    if config.run_mode.value == 'hosted':
-        capability_private_key = os.environ.get('CAPABILITY_PRIVATE_KEY', '')
-        if capability_private_key:
-            capability_private_key = capability_private_key.replace("\\n", "\n")
-            capability_issuer = CapabilityTokenIssuer(capability_private_key)
-
-            service_signer = None
-            service_private_key = os.environ.get('SERVICE_PRIVATE_KEY', '')
-            if service_private_key:
-                service_private_key = service_private_key.replace("\\n", "\n")
-                service_signer = ServiceTokenSigner(
-                    private_key_pem=service_private_key,
-                    service_name='hosted-api',
-                )
-
-            target_resolver = StaticTargetResolver(provider=config.sandbox_provider.value)
-            if config.sandbox_provider.value == 'sprites':
-                sprites_token = os.environ.get('SPRITES_TOKEN', '')
-                transport = SpritesProxyTransport(
-                    sprites_token=sprites_token,
-                    sprite_name=target_resolver.sprite_name,
-                    local_api_port=target_resolver.local_api_port,
-                )
-                transport_target = f"sprites:{target_resolver.sprite_name}:{target_resolver.local_api_port}"
-            else:
-                transport = HTTPInternalTransport(base_url=target_resolver.internal_base_url)
-                transport_target = target_resolver.internal_base_url
-
-            client_config = SandboxClientConfig(
-                internal_url=transport_target,
-                service_signer=service_signer,
-                transport=transport,
-            )
-            hosted_client = HostedSandboxClient(config=client_config)
-            # Canonical v1 routes for hosted mode (bd-1pwb.6.1)
-            hosted_v1_router = create_v1_router(
-                files_backend=HostedFilesBackend(hosted_client, capability_issuer),
-                git_backend=HostedGitBackend(hosted_client, capability_issuer),
-                exec_backend=HostedExecBackend(hosted_client, capability_issuer),
-            )
-            app.include_router(hosted_v1_router, prefix='/api/v1')
-            # Hosted mode exposes filesystem + git via canonical /api/v1.
-            enabled_features['files'] = True
-            enabled_features['git'] = True
-        else:
-            logger.warning(
-                'Hosted mode running without CAPABILITY_PRIVATE_KEY; '
-                'sandbox proxy routes are disabled.'
-            )
+    # Canonical /api/v1 route composition split by run mode.
+    mount_mode_v1_routes(app, config, storage, enabled_features, logger)
 
     # Build service connection registry for Direct Connect
     service_registry: dict[str, ServiceConnectionInfo] = {}
@@ -550,23 +308,8 @@ def create_app(
             protocol='rest+sse',
         )
 
-    # LOCAL mode: mount local_api (bd-1adh.2.2, bd-1adh.7.2)
-    if config.run_mode.value == 'local':
-        if is_local_parity_mode():
-            # HTTP parity mode: route through HTTPInternalTransport for hosted-path testing
-            parity_port = int(os.environ.get('LOCAL_PARITY_PORT', '2469'))
-            parity_url = f'http://127.0.0.1:{parity_port}'
-            logger.info(
-                'LOCAL PARITY MODE: routing /internal/v1 through HTTP transport at %s. '
-                'Start local-api server separately: LOCAL_API_PORT=%d python -m boring_ui.api.local_api',
-                parity_url, parity_port,
-            )
-            app.state.local_parity_url = parity_url
-        else:
-            # Default: fast in-process mounting
-            local_api_router = create_local_api_router(config.workspace_root)
-            app.include_router(local_api_router)
-            logger.debug('LOCAL mode: local_api router mounted at /internal/v1')
+    # LOCAL mode private-plane composition (in-process router vs parity marker).
+    mount_local_private_api_if_needed(app, config, logger)
 
     # Always include capabilities router (provides mode metadata)
     app.include_router(

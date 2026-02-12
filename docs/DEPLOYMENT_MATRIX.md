@@ -6,7 +6,7 @@ Document what environment variables and configuration paths are relevant for the
 
 | Mode | Description | Primary API(s) | Filesystem target | Enabled routers |
 | --- | --- | --- | --- | --- |
-| `local` | Single FastAPI process runs file/git/pty/stream/approval/sandbox directly inside the configured workspace. | `boring-ui API` (`src/back/boring_ui/api/app.py`). | `WORKSPACE_ROOT` – local path. | All routers from `create_app` (files, git, pty, stream, sandbox, companion). |
+| `local` | Single FastAPI process runs file/git/pty/chat/approval/sandbox directly inside the configured workspace. | `boring-ui API` (`src/back/boring_ui/api/app.py`). | `WORKSPACE_ROOT` – local path. | All routers from `create_app` (files, git, pty, `chat_claude_code`, sandbox, companion). |
 | `hosted` | Control plane exposed to browsers; serves canonical `/api/v1/*` privileged operations backed by a private sandbox service. | `boring-ui API` (public) + `local_api` data plane (`python -m boring_ui.api.local_api`). | `WORKSPACE_ROOT` for the sandbox internal API (private). Frontend sees `FILESYSTEM_SOURCE` metadata but never directly hits this workspace. | Public routers limited to canonical control-plane surfaces (approval, capabilities, canonical `/api/v1/*`). |
 | `sprites` | Hosted mode with `SANDBOX_PROVIDER=sprites`; the sandbox data plane runs inside Sprites.dev, but the control plane still targets the workspace that the sprite exposes. | Same as `hosted`, plus the Sprites provider for sandbox-agent (`src/back/boring_ui/api/modules/sandbox/providers/sprites.py`). | The sprite’s `/home/sprite/workspace` (pointed to by the Sprites sandbox). | Same as hosted plus the sandbox capability published once `SandboxManager` is started. |
 
@@ -14,7 +14,7 @@ Document what environment variables and configuration paths are relevant for the
 
 | Env var | Mode | Required? | Purpose | Notes |
 | --- | --- | --- | --- | --- |
-| `BORING_UI_RUN_MODE` | local/hosted | **REQUIRED** | Switches app between direct-mode and control-plane proxy logic (`APIConfig.run_mode`). | Local mode mounts `files`/`git` routers directly; hosted mode relies on `local_api` plus `hosted_proxy`. |
+| `BORING_UI_RUN_MODE` | local/hosted | **REQUIRED** | Switches app between direct local composition and hosted control-plane composition (`APIConfig.run_mode`). | Hosted mode serves canonical `/api/v1/*` browser routes and reaches the private workspace plane internally. |
 | `WORKSPACE_ROOT` | all | **REQUIRED** | Sets the workspace path for whichever API instance is running (local app or internal sandbox). | `create_app` defaults to `Path.cwd()`; `create_local_api_app` uses this to drive file/git/exec endpoints. |
 | `FILESYSTEM_SOURCE` | UI | optional | Metadata returned by `/api/capabilities`; frontend displays whether files come from `local`, `sandbox`, or `sprites`. | Defaults to `local`. Doesn't change routing, only informs `FilesystemIndicator` and capability gating. |
 | `SANDBOX_PROVIDER` | sandbox-enabled | optional | Chooses `local`, `sprites`, or other sandbox-agent implementations (`create_provider`). | Defaults to `local`. Uses `LocalProvider`; `sprites` uses a SpritesClient with credentials. |
@@ -61,21 +61,10 @@ npx vite --host 0.0.0.0 --port 5173
 
 ### HOSTED mode (control plane local, sandbox private/remote)
 ```bash
-# Terminal 1: Remote sandbox (internal API only)
+# Terminal 1: Remote sandbox data plane (local_api only)
 export WORKSPACE_ROOT=/remote/workspace
-export INTERNAL_API_PORT=2469
-python3 -c "
-from boring_ui.api.modules.sandbox.internal_api import create_internal_sandbox_router
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
-import uvicorn
-
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
-app.include_router(create_internal_sandbox_router(Path('/remote/workspace')))
-uvicorn.run(app, host='0.0.0.0', port=2469)
-"
+export LOCAL_API_PORT=2469
+python3 -m boring_ui.api.local_api
 
 # Terminal 2: Local backend (control plane + proxy)
 export BORING_UI_RUN_MODE=hosted
@@ -123,7 +112,7 @@ npx vite --host 0.0.0.0 --port 5173
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | "`hosted mode running without CAPABILITY_PRIVATE_KEY`" warning | `BORING_UI_RUN_MODE=hosted` but no `CAPABILITY_PRIVATE_KEY` set | Generate key: `export CAPABILITY_PRIVATE_KEY="$(openssl rand -hex 32)"` and restart backend. |
-| Sandbox proxy routes return 502 Bad Gateway | `INTERNAL_SANDBOX_URL` unreachable or wrong port | Check remote is running on correct port (default 2469) and IP is accessible. Test: `curl http://REMOTE_IP:2469/internal/health` |
+| Hosted `/api/v1/*` routes return 502/504 | `INTERNAL_SANDBOX_URL` unreachable or wrong port | Check remote local-api is running on correct port (default 2469) and IP is accessible. Test: `curl http://REMOTE_IP:2469/health` |
 | Frontend shows "sandbox unavailable" but backend started OK | `SANDBOX_RUN_MODE=hosted` but services still bind to `127.0.0.1` | Ensure `EXTERNAL_HOST` is set to public hostname. Services will still bind to `0.0.0.0` but advertise correct URL to frontend. |
 | File operations work locally but fail in remote sandbox | `WORKSPACE_ROOT` on local backend != `WORKSPACE_ROOT` on remote sandbox | Verify both machines have consistent workspace paths (or intentionally different if using different filesystems). |
 

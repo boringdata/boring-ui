@@ -70,12 +70,10 @@ Key files (target ownership):
 - `config.py` (reuse: `RunMode`, `APIConfig` from REUSE_INVENTORY.md)
 - `capabilities.py`, `capability_tokens.py`
 - `logging_middleware.py` (reuse: `add_logging_middleware`, `get_request_id`, `propagate_request_context` from REUSE_INVENTORY.md)
-- `audit.py`, `audit_models.py` (reuse: `AuditLogger`, `AuditStore` from REUSE_INVENTORY.md)
-- `request_context.py` (new)
+- `app_mode_composition.py`
 - `error_codes.py` (new)
 - `modules/sandbox/manager.py`, `provider.py`, `providers/*`
 - `modules/sandbox/hosted_client.py` (refactor to transport interface)
-- `modules/sandbox/hosted_proxy.py`
 
 **Reuse Constraints** (see `.planning/bd-1adh/REUSE_INVENTORY.md`):
 - ✅ ServiceTokenIssuer: direct import, no modifications
@@ -83,7 +81,6 @@ Key files (target ownership):
 - ✅ AuthMiddleware: extend permissions if needed, preserve error semantics
 - ✅ RunMode/APIConfig: direct import, extend fields only if needed
 - ✅ LoggingMiddleware: import and use for trace propagation
-- ✅ AuditLogger: import global instance, call audit methods for all sensitive operations
 
 ## 3.2 `local-api` (Workspace Plane)
 

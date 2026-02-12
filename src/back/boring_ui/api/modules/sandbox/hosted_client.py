@@ -16,7 +16,7 @@ import httpx
 import uuid
 import json
 from urllib.parse import urlencode
-from ...service_auth import ServiceTokenSigner
+from ...auth import ServiceTokenSigner
 from ...transport import WorkspaceTransport
 
 logger = logging.getLogger(__name__)

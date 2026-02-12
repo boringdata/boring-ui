@@ -78,65 +78,6 @@ class TestServiceTokenIssuer:
 
     # --- Verification ---
 
-    def test_verify_valid_token(self, issuer):
-        """Valid token should verify successfully."""
-        token = issuer.issue_token("sandbox")
-        result = ServiceTokenIssuer.verify_token(
-            token, issuer.signing_key_hex, "sandbox"
-        )
-        assert result is not None
-        assert result["svc"] == "sandbox"
-
-    def test_verify_wrong_service_rejected(self, issuer):
-        """Token for wrong service should be rejected."""
-        token = issuer.issue_token("sandbox")
-        result = ServiceTokenIssuer.verify_token(
-            token, issuer.signing_key_hex, "companion"
-        )
-        assert result is None
-
-    def test_verify_empty_key_fail_closed(self, issuer):
-        """Empty signing key should reject all tokens (fail-closed)."""
-        token = issuer.issue_token("sandbox")
-        assert ServiceTokenIssuer.verify_token(token, "", "sandbox") is None
-
-    def test_verify_none_key_fail_closed(self, issuer):
-        """None signing key should reject all tokens (fail-closed)."""
-        token = issuer.issue_token("sandbox")
-        assert ServiceTokenIssuer.verify_token(token, None, "sandbox") is None
-
-    def test_verify_wrong_key_rejected(self, issuer):
-        """Token verified with wrong key should be rejected."""
-        token = issuer.issue_token("sandbox")
-        wrong_key = ServiceTokenIssuer().signing_key_hex  # Different issuer
-        result = ServiceTokenIssuer.verify_token(token, wrong_key, "sandbox")
-        assert result is None
-
-    def test_verify_tampered_token_rejected(self, issuer):
-        """Tampered token should be rejected."""
-        token = issuer.issue_token("sandbox")
-        tampered = token[:-5] + "XXXXX"
-        result = ServiceTokenIssuer.verify_token(
-            tampered, issuer.signing_key_hex, "sandbox"
-        )
-        assert result is None
-
-    def test_verify_garbage_token_rejected(self, issuer):
-        """Garbage input should be rejected, not raise."""
-        result = ServiceTokenIssuer.verify_token(
-            "not.a.jwt", issuer.signing_key_hex, "sandbox"
-        )
-        assert result is None
-
-    def test_verify_expired_token_rejected(self, issuer):
-        """Expired token should be rejected."""
-        token = issuer.issue_token("sandbox", ttl_seconds=-1)
-        result = ServiceTokenIssuer.verify_token(
-            token, issuer.signing_key_hex, "sandbox"
-        )
-        assert result is None
-
-
 class TestCapabilitiesServiceTokens:
     """Test service connection info in capabilities endpoint."""
 

@@ -14,7 +14,7 @@ from .capability_tokens import CapabilityTokenIssuer
 from .config import APIConfig, is_dev_auth_bypass_enabled, is_local_parity_mode
 from .local_api import create_local_api_router
 from .sandbox_auth import CapabilityAuthContext
-from .service_auth import ServiceTokenSigner
+from .auth import ServiceTokenSigner
 from .target_resolver import StaticTargetResolver
 from .transport import HTTPInternalTransport, SpritesProxyTransport
 from .v1_hosted_backend import HostedExecBackend, HostedFilesBackend, HostedGitBackend
