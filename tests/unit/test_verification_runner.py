@@ -432,6 +432,44 @@ class TestVerificationRunner:
         report = runner.run_all(simulate_results=sim)
         assert 'total_tracked' in report.flaky_summary
 
+    def test_run_all_includes_slo_report_when_inputs_provided(self):
+        runner = VerificationRunner()
+        report = runner.run_all(
+            simulate_results=self._sim_all_pass(),
+            smoke_summary={
+                'results': [{'step': 'readiness', 'outcome': 'pass', 'elapsed_ms': 1000.0}],
+            },
+            resilience_summary={
+                'results': [{'reconnect_attempts': 1, 'outcome': 'recovered', 'recovery_time_ms': 500.0}],
+            },
+            perf_summary={
+                'results': [{'endpoint': 'pty', 'latency': {'p50': 60.0}}],
+                'tree_local_p95_ms': 40.0,
+                'tree_sandbox_p95_ms': 80.0,
+            },
+        )
+        assert report.slo_report['go_no_go'] == 'go'
+
+    def test_save_bundle_includes_slo_artifact_when_present(self, tmp_path):
+        runner = VerificationRunner()
+        report = runner.run_all(
+            simulate_results=self._sim_all_pass(),
+            smoke_summary={
+                'results': [{'step': 'readiness', 'outcome': 'pass', 'elapsed_ms': 1000.0}],
+            },
+            resilience_summary={
+                'results': [{'reconnect_attempts': 1, 'outcome': 'recovered', 'recovery_time_ms': 500.0}],
+            },
+            perf_summary={
+                'results': [{'endpoint': 'pty', 'latency': {'p50': 60.0}}],
+                'tree_local_p95_ms': 40.0,
+                'tree_sandbox_p95_ms': 80.0,
+            },
+        )
+        paths = runner.save_bundle(report, tmp_path)
+        assert 'slo_report' in paths
+        assert Path(paths['slo_report']).exists()
+
     def test_phase_by_name_after_run(self):
         runner = VerificationRunner()
         report = runner.run_all(simulate_results=self._sim_all_pass())

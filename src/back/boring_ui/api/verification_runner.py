@@ -43,6 +43,12 @@ from boring_ui.api.test_artifacts import (
     TIMELINE_SUFFIX,
     artifact_path,
 )
+from boring_ui.api.slo_report import (
+    SLOEvidence,
+    SLOThresholds,
+    evaluate_v0_slos,
+    save_slo_report,
+)
 
 
 class VerificationVerdict(Enum):
@@ -168,6 +174,7 @@ class VerificationReport:
     phase_results: list[PhaseResult] = field(default_factory=list)
     matrix_report: CIMatrixReport | None = None
     flaky_summary: dict[str, Any] = field(default_factory=dict)
+    slo_report: dict[str, Any] = field(default_factory=dict)
     artifact_paths: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -220,6 +227,8 @@ class VerificationReport:
         }
         if self.flaky_summary:
             d['flaky_tests'] = self.flaky_summary
+        if self.slo_report:
+            d['slo_report'] = self.slo_report
         if self.artifact_paths:
             d['artifacts'] = self.artifact_paths
         return d
@@ -369,6 +378,10 @@ class VerificationRunner:
         *,
         simulate_results: dict[str, dict[str, Any]] | None = None,
         stop_on_required_failure: bool = False,
+        smoke_summary: dict[str, Any] | None = None,
+        resilience_summary: dict[str, Any] | None = None,
+        perf_summary: dict[str, Any] | None = None,
+        slo_thresholds: SLOThresholds | None = None,
     ) -> VerificationReport:
         """Run all verification phases and produce report."""
         for phase in self._phases:
@@ -396,6 +409,19 @@ class VerificationRunner:
             matrix_report=matrix_report,
             flaky_summary=self._flaky_tracker.to_dict(),
         )
+        if smoke_summary or resilience_summary or perf_summary:
+            evidence = SLOEvidence.from_sources(
+                smoke_summary=smoke_summary,
+                resilience_summary=resilience_summary,
+                perf_summary=perf_summary,
+            )
+            slo = evaluate_v0_slos(
+                run_id=self._run_id,
+                evidence=evidence,
+                thresholds=slo_thresholds,
+                started_at=self._started_at,
+            )
+            report.slo_report = slo.to_dict()
         return report
 
     def save_bundle(
@@ -436,11 +462,16 @@ class VerificationRunner:
         manifest.add_artifact('report', str(report_path), 'report')
         manifest.add_artifact('structured_log', str(log_path), 'jsonl')
         manifest.add_artifact('timeline', str(timeline_path), 'timeline')
+        slo_path: Path | None = None
+        if report.slo_report:
+            slo_path = save_slo_report(report.slo_report, base_dir, suite_name=suite_name)
+            manifest.add_artifact('slo_report', str(slo_path), 'slo')
         manifest.finish(summary={
             'verdict': report.verdict.value,
             'total_tests': report.total_tests,
             'total_passed': report.total_passed,
             'total_failed': report.total_failed,
+            'slo_go_no_go': report.slo_report.get('go_no_go') if report.slo_report else '',
         })
         manifest.save(manifest_path)
 
@@ -450,5 +481,7 @@ class VerificationRunner:
             'timeline': str(timeline_path),
             'manifest': str(manifest_path),
         }
+        if slo_path:
+            paths['slo_report'] = str(slo_path)
         report.artifact_paths = paths
         return paths
