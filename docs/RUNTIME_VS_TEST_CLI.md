@@ -39,7 +39,6 @@ E2E and integration tests MAY use the `sprite` CLI for:
 - Transport: Direct HTTP to internal sandbox service
 - Auth: Capability tokens (RS256 JWT)
 - Assumption: URL points to co-located service on private network
-- Validated at startup by `InternalSandboxURLValidator`
 
 ### Local Provider (LOCAL mode, default)
 - Requires: `WORKSPACE_ROOT`

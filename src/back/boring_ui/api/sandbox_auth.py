@@ -20,6 +20,7 @@ from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from .capability_tokens import CapabilityTokenValidator, JTIReplayStore
+from .authorization import has_scoped_access
 
 logger = logging.getLogger(__name__)
 
@@ -59,20 +60,7 @@ class CapabilityAuthContext:
         Returns:
             True if operation is allowed, False otherwise
         """
-        # Exact match
-        if operation in self.operations:
-            return True
-
-        # Wildcard checks
-        if "*" in self.operations:
-            return True
-
-        # Namespace wildcard (e.g., 'files:*' matches 'files:read')
-        namespace = operation.split(":")[0] + ":*"
-        if namespace in self.operations:
-            return True
-
-        return False
+        return has_scoped_access(operation, self.operations)
 
 
 def add_capability_auth_middleware(

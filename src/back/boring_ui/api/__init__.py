@@ -35,7 +35,7 @@ Example:
 from .config import APIConfig
 
 # Storage
-from .storage import Storage, LocalStorage, S3Storage
+from .storage import Storage, LocalStorage
 
 # Router factories
 from .modules.files import create_file_router
@@ -65,7 +65,6 @@ __all__ = [
     # Storage
     'Storage',
     'LocalStorage',
-    'S3Storage',
     # Router factories
     'create_file_router',
     'create_git_router',

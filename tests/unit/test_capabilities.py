@@ -15,7 +15,7 @@ class TestRouterRegistry:
         assert 'files' in router_names
         assert 'git' in router_names
         assert 'pty' in router_names
-        assert 'stream' in router_names
+        assert 'chat_claude_code' in router_names
         assert 'approval' in router_names
 
     def test_registry_get_router(self):
@@ -89,7 +89,7 @@ class TestCapabilitiesEndpoint:
         assert 'files' in features
         assert 'git' in features
         assert 'pty' in features
-        assert 'stream' in features
+        assert 'chat_claude_code' in features
         assert 'approval' in features
 
     def test_capabilities_has_routers(self, client):
@@ -133,7 +133,7 @@ class TestCapabilitiesEndpoint:
         assert features['files'] is True
         assert features['git'] is True
         assert features['pty'] is False
-        assert features['stream'] is False
+        assert features['chat_claude_code'] is False
         assert features['approval'] is False
 
     def test_capabilities_with_selective_routers(self):
@@ -148,7 +148,7 @@ class TestCapabilitiesEndpoint:
         assert features['files'] is True
         assert features['git'] is False
         assert features['pty'] is False
-        assert features['stream'] is False
+        assert features['chat_claude_code'] is False
         assert features['approval'] is True
 
 
@@ -168,7 +168,7 @@ class TestHealthEndpointFeatures:
         assert features['files'] is True
         assert features['git'] is True
         assert features['pty'] is True
-        assert features['stream'] is True
+        assert features['chat_claude_code'] is True
         assert features['approval'] is True
 
     def test_health_features_match_selective_routers(self):
@@ -183,5 +183,5 @@ class TestHealthEndpointFeatures:
         assert features['files'] is True
         assert features['git'] is True
         assert features['pty'] is False
-        assert features['stream'] is False
+        assert features['chat_claude_code'] is False
         assert features['approval'] is False

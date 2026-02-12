@@ -8,7 +8,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { buildApiUrl } from '../utils/apiBase'
+import { getAuthToken, setAuthToken } from '../utils/authStore'
+import { apiFetch, setApiMode } from '../utils/apiFetch'
 
 /**
  * Capabilities response from /api/capabilities endpoint.
@@ -48,12 +49,16 @@ export const useCapabilities = () => {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(buildApiUrl('/api/capabilities'))
+      const response = await apiFetch('/api/capabilities')
       if (!response.ok) {
         throw new Error(`Failed to fetch capabilities: ${response.status}`)
       }
 
       const data = await response.json()
+      setApiMode(data?.mode || 'local')
+      if (data?.mode === 'hosted') {
+        setAuthToken(data?.authToken || getAuthToken())
+      }
       setCapabilities(data)
     } catch (err) {
       console.error('[Capabilities] Failed to fetch:', err)

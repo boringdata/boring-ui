@@ -86,7 +86,6 @@ class TestHealthEndpoint:
             assert features['git'] is True
             assert features['pty'] is True
             assert features['chat_claude_code'] is True
-            assert features['stream'] is True  # Backward compat alias
             assert features['approval'] is True
 
     @pytest.mark.asyncio
@@ -101,7 +100,6 @@ class TestHealthEndpoint:
             assert features['git'] is True
             assert features['pty'] is False
             assert features['chat_claude_code'] is False
-            assert features['stream'] is False
             assert features['approval'] is False
 
 
@@ -230,21 +228,9 @@ class TestRouterSelection:
             assert data['features']['git'] is False
 
     @pytest.mark.asyncio
-    async def test_stream_alias_works(self, workspace):
-        """Test 'stream' alias enables chat_claude_code feature."""
-        config = APIConfig(workspace_root=workspace)
-        app = create_app(config, routers=['files', 'stream'])
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/health')
-            data = response.json()
-            assert data['features']['stream'] is True
-            assert data['features']['chat_claude_code'] is True
-
     @pytest.mark.asyncio
     async def test_chat_claude_code_name_works(self, workspace):
-        """Test 'chat_claude_code' name enables both features."""
+        """Test chat_claude_code router enables chat feature."""
         config = APIConfig(workspace_root=workspace)
         app = create_app(config, routers=['files', 'chat_claude_code'])
 
@@ -252,7 +238,6 @@ class TestRouterSelection:
         async with AsyncClient(transport=transport, base_url='http://test') as client:
             response = await client.get('/health')
             data = response.json()
-            assert data['features']['stream'] is True
             assert data['features']['chat_claude_code'] is True
 
 

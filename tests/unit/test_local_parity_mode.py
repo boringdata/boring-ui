@@ -159,6 +159,8 @@ class TestParityModeSecurityInvariants:
 
         response = client.get("/health")
         assert response.status_code == 200
+        internal_response = client.get("/internal/health")
+        assert internal_response.status_code == 404
 
     def test_path_traversal_blocked_when_authed(self, tmp_path):
         """Path traversal blocked even with valid capability context.

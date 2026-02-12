@@ -14,6 +14,14 @@ Final runtime invariant:
 
 This plan intentionally optimizes for fast delivery over backward compatibility.
 
+Authoritative contract decision for `bd-2j57.1`:
+
+- Canonical browser API is `/api/v1/*` for privileged workspace operations.
+- Canonical private workspace API is `/internal/v1/*`.
+- No runtime compatibility wrappers for legacy privileged browser routes.
+- No hidden path rewrites for privileged operations.
+- Control-plane and workspace-plane ownership is explicit and non-overlapping.
+
 ## 2. Non-Negotiable Design Decisions
 
 1. Exactly two backend modules:
@@ -67,7 +75,7 @@ Key files (target ownership):
 - `error_codes.py` (new)
 - `modules/sandbox/manager.py`, `provider.py`, `providers/*`
 - `modules/sandbox/hosted_client.py` (refactor to transport interface)
-- `modules/sandbox/hosted_proxy.py`, `hosted_compat.py`
+- `modules/sandbox/hosted_proxy.py`
 
 **Reuse Constraints** (see `.planning/bd-1adh/REUSE_INVENTORY.md`):
 - ✅ ServiceTokenIssuer: direct import, no modifications
@@ -138,25 +146,49 @@ Startup requirement:
 
 ## 5. Public and Internal API Contracts
 
-## 5.1 Browser-Facing (unchanged)
+## 5.1 Browser-Facing Canonical Contract
 
-Keep existing frontend contract stable:
+Control-plane endpoints exposed to browser clients:
 
-- `/api/tree`, `/api/file`, `/api/search`
-- `/api/git/status`, `/api/git/diff`, `/api/git/show`
-- `/api/v1/sandbox/proxy/*`
+- `/api/capabilities`
+- `/api/config`
+- `/api/project`
+- `/api/sessions`
+- `/api/v1/files/list`
+- `/api/v1/files/read`
+- `/api/v1/files/write`
+- `/api/v1/git/status`
+- `/api/v1/git/diff`
+- `/api/v1/git/show`
+- `/api/v1/exec/run`
+- `/ws/pty/{session_id}` (when PTY router enabled)
+- `/ws/stream/{session_id}` (when chat router enabled)
+- `/health`
+
+Explicit non-goals (not browser-facing contract):
+
+- No `/api/tree` or `/api/file` privileged compatibility routes.
+- No legacy privileged `/api/git/*` compatibility surface.
+- No browser access to `/internal/*`.
+- No runtime alias layers for privileged operations.
 
 ## 5.2 Internal `local-api` Contract
 
-Keep stable:
+Internal-only workspace plane endpoints:
 
-- `/internal/health`
 - `/internal/info`
 - `/internal/v1/files/*`
 - `/internal/v1/git/*`
 - `/internal/v1/exec/*`
 
 `local-api` is internal-only and not exposed to browser.
+
+Ownership map:
+
+- `api/app.py`: mode-aware composition and trust boundaries.
+- `api/v1_router.py`: canonical browser-facing privileged contract.
+- `api/local_api/router.py`: canonical internal workspace contract.
+- `api/transport.py` + `api/hosted_client.py`: control-plane to workspace transport.
 
 **Authentication model** (reuse from REUSE_INVENTORY.md):
 - In LOCAL mode: no authentication (internal routers in-process)
@@ -398,7 +430,7 @@ Future-ready seam (not implemented now):
 
 ## 10. Health Contract
 
-Adopt a consistent `/health` shape for control-plane and local-api in addition to legacy internal health route.
+Adopt a consistent `/health` shape for control-plane and local-api.
 
 Response shape:
 
@@ -415,10 +447,9 @@ Response shape:
 }
 ```
 
-Compatibility rule:
+Health rule:
 
-- Keep `/internal/health` for local-api consumers
-- Add/standardize `/health` for ops/readiness checks
+- `/health` is the canonical readiness endpoint shape.
 
 ## 11. Workstreams and Dependency Order
 

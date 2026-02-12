@@ -34,7 +34,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     initialMode,
   } = params || {}
 
-  const { buildUrl } = useApiMode()
+  const { apiFetch } = useApiMode()
   const [content, setContent] = useState(initialContent || '')
   const [contentVersion, setContentVersion] = useState(initialVersion || 1)
   const [isDirty, setIsDirty] = useState(false)
@@ -61,9 +61,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     if (!path) return
     setDiffError('')
     try {
-      const response = await fetch(
-        buildUrl(`/api/git/diff?path=${encodeURIComponent(path)}`)
-      )
+      const response = await apiFetch(`/api/v1/git/diff?path=${encodeURIComponent(path)}`)
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
         throw new Error(data.detail || 'Failed to load git diff')
@@ -74,14 +72,12 @@ export default function EditorPanel({ params: initialParams, api }) {
       setDiffError(err?.message || 'Failed to load git diff')
       setDiffText('')
     }
-  }, [path])
+  }, [path, apiFetch])
 
   const loadOriginalContent = useCallback(async () => {
     if (!path) return
     try {
-      const response = await fetch(
-        buildUrl(`/api/git/show?path=${encodeURIComponent(path)}`)
-      )
+      const response = await apiFetch(`/api/v1/git/show?path=${encodeURIComponent(path)}`)
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
         throw new Error(data.detail || 'Failed to load original content')
@@ -92,7 +88,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       setOriginalContent(null)
       setDiffError(err?.message || 'Failed to load original content')
     }
-  }, [path])
+  }, [path, apiFetch])
 
   // Apply initial mode when params change (e.g., opening from git changes)
   useEffect(() => {
@@ -129,7 +125,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       const abortController = new AbortController()
       pollAbortRef.current = abortController
 
-      fetch(buildUrl(`/api/file?path=${encodeURIComponent(path)}`), {
+      apiFetch(`/api/v1/files/read?path=${encodeURIComponent(path)}`, {
         signal: abortController.signal,
       })
         .then((r) => r.json())
@@ -160,7 +156,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       // Abort any in-flight poll when effect cleans up
       pollAbortRef.current?.abort()
     }
-  }, [path])
+  }, [path, apiFetch])
 
   const save = async (newContent) => {
     if (!path) return
@@ -174,10 +170,10 @@ export default function EditorPanel({ params: initialParams, api }) {
     setContent(newContent)
     setIsSaving(true)
     try {
-      await fetch(buildUrl(`/api/file?path=${encodeURIComponent(path)}`), {
-        method: 'PUT',
+      await apiFetch('/api/v1/files/write', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newContent }),
+        body: JSON.stringify({ path, content: newContent }),
       })
 
       setIsDirty(false)
@@ -219,7 +215,7 @@ export default function EditorPanel({ params: initialParams, api }) {
 
   const reloadFromDisk = () => {
     if (!path) return
-    fetch(buildUrl(`/api/file?path=${encodeURIComponent(path)}`))
+    apiFetch(`/api/v1/files/read?path=${encodeURIComponent(path)}`)
       .then((r) => r.json())
       .then((data) => {
         setContent(data.content || '')

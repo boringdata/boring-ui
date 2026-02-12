@@ -11,11 +11,13 @@ Provides:
 import logging
 from typing import Any, Dict, Optional
 from dataclasses import dataclass
+import asyncio
 import httpx
 import uuid
 import json
 from urllib.parse import urlencode
 from ...service_auth import ServiceTokenSigner
+from ...transport import WorkspaceTransport
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +48,7 @@ class SandboxClientConfig:
     max_retries: int = 3
     enable_observability: bool = True
     service_signer: ServiceTokenSigner | None = None
-    hosted_client: Any | None = None  # Optional HostedClient for transport abstraction (bd-2j57.4.2)
+    transport: WorkspaceTransport | None = None
 
 
 class HostedSandboxClient:
@@ -64,7 +66,7 @@ class HostedSandboxClient:
         self.config = config
         self.base_url = config.internal_url
         self._request_count = 0
-        self._hosted_client = config.hosted_client  # Optional transport layer (bd-2j57.4.2)
+        self._transport = config.transport
 
     async def list_files(
         self, path: str = ".", capability_token: str = "", request_id: str = ""
@@ -194,8 +196,7 @@ class HostedSandboxClient:
     ) -> Dict[str, Any]:
         """Execute request with auth, tracing, and retry logic.
 
-        Uses HostedClient (transport layer) if provided, otherwise httpx directly.
-        This allows support for both HTTP and Sprites transports (bd-2j57.4.2).
+        Uses injected transport when configured; otherwise falls back to direct httpx.
         """
         self._request_count += 1
         trace_id = str(uuid.uuid4())
@@ -206,8 +207,8 @@ class HostedSandboxClient:
             request_id=request_id,
         )
 
-        # Use HostedClient transport layer if available (bd-2j57.4.2)
-        if self._hosted_client:
+        # Use transport abstraction when available (bd-2j57.4)
+        if self._transport:
             return await self._request_via_transport(
                 method, path, params, json_body, headers, trace_id
             )
@@ -226,10 +227,9 @@ class HostedSandboxClient:
         headers: Dict[str, str],
         trace_id: str,
     ) -> Dict[str, Any]:
-        """Execute request via HostedClient transport layer."""
-        from urllib.parse import urlencode
+        """Execute request via WorkspaceTransport with retry/backoff."""
         import json as json_lib
-        from ..error_codes import TransportError
+        from ...error_codes import TransportError
 
         # Build full path with query params if present
         full_path = path
@@ -242,33 +242,48 @@ class HostedSandboxClient:
             body_bytes = json_lib.dumps(json_body).encode("utf-8")
             headers["Content-Type"] = "application/json"
 
-        try:
-            status_code, _, response_body = await self._hosted_client.request(
-                method=method,
-                path=full_path,
-                body=body_bytes,
-                headers=headers,
-                trace_id=trace_id,
-            )
-        except TransportError as te:
-            # Map TransportError to SandboxClientError
-            if te.http_status == 504:
-                mapped_status = 504
-            elif te.http_status >= 500:
-                mapped_status = 502
-            else:
-                mapped_status = te.http_status
-            raise SandboxClientError(
-                code=f"transport_{te.code.value}",
-                message=te.message,
-                http_status=mapped_status,
-                request_id=headers.get("X-Request-ID", ""),
-                trace_id=trace_id,
-                sandbox_status=te.http_status,
-                retryable=te.retryable,
-            )
+        attempts = max(1, self.config.max_retries)
+        backoff_ms = [100, 300, 900]
+        response_body: bytes = b""
+        status_code = 502
 
-        # Check response status
+        for attempt in range(attempts):
+            try:
+                status_code, _, response_body = await self._transport.request(
+                    method=method,
+                    path=full_path,
+                    body=body_bytes,
+                    headers=headers,
+                    timeout_sec=float(self.config.timeout_seconds),
+                    trace_id=trace_id,
+                )
+            except TransportError as te:
+                retryable = te.retryable or te.http_status in (502, 503, 504)
+                if retryable and attempt < attempts - 1:
+                    await asyncio.sleep(backoff_ms[min(attempt, len(backoff_ms) - 1)] / 1000)
+                    continue
+                if te.http_status == 504:
+                    mapped_status = 504
+                elif te.http_status >= 500:
+                    mapped_status = 502
+                else:
+                    mapped_status = te.http_status
+                raise SandboxClientError(
+                    code=f"transport_{te.code.value}",
+                    message=te.message,
+                    http_status=mapped_status,
+                    request_id=headers.get("X-Request-ID", ""),
+                    trace_id=trace_id,
+                    sandbox_status=te.http_status,
+                    retryable=te.retryable,
+                )
+
+            if status_code in (502, 503, 504) and attempt < attempts - 1:
+                await asyncio.sleep(backoff_ms[min(attempt, len(backoff_ms) - 1)] / 1000)
+                continue
+            break
+
+        # Check final response status
         if status_code >= 400:
             body_text = response_body.decode("utf-8", errors="replace") if response_body else ""
             is_timeout = status_code in (408, 504)

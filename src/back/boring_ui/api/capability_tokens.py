@@ -220,7 +220,7 @@ class CapabilityTokenValidator:
             True if operation is allowed, False otherwise
         """
         ops = claims.get("ops", [])
-        if has_scoped_access(set(ops), operation):
+        if has_scoped_access(operation, set(ops)):
             return True
 
         logger.warning(f"Operation {operation} not in allowed {ops}")

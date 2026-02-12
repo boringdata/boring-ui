@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 
 from .auth import OIDCVerifier
 from .auth_errors import AuthErrorEmitter
+from .authorization import has_scoped_access
 
 logger = logging.getLogger(__name__)
 error_emitter = AuthErrorEmitter()
@@ -62,20 +63,7 @@ class AuthContext:
         Returns:
             True if user has this permission
         """
-        # Exact match
-        if permission in self.permissions:
-            return True
-
-        # Wildcard checks
-        if "*" in self.permissions:
-            return True
-
-        # Check namespace wildcards (e.g., 'git:*' matches 'git:read')
-        namespace = permission.split(":")[0] + ":*"
-        if namespace in self.permissions:
-            return True
-
-        return False
+        return has_scoped_access(permission, self.permissions)
 
 
 def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> None:

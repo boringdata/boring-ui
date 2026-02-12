@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { buildApiUrl } from '../utils/apiBase'
+import { apiFetch } from '../utils/apiFetch'
 
 const MAX_RETRIES = 3
 const INITIAL_BACKOFF_MS = 500
@@ -48,7 +48,7 @@ export function useServiceConnection() {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch(buildApiUrl('/api/capabilities'))
+      const response = await apiFetch('/api/capabilities')
       if (!response.ok) {
         throw new Error(`Capabilities fetch failed: ${response.status}`)
       }

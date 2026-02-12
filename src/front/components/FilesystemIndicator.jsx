@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react'
 import { Server, HardDrive, Cloud, AlertCircle } from 'lucide-react'
+import { apiFetch } from '../utils/apiFetch'
 import './filesystem-indicator.css'
 
 export default function FilesystemIndicator() {
@@ -19,7 +20,7 @@ export default function FilesystemIndicator() {
     const getFilesystemSource = async () => {
       try {
         // Fetch backend capabilities to see workspace configuration
-        const response = await fetch('/api/capabilities')
+        const response = await apiFetch('/api/capabilities')
         const data = await response.json()
 
         // For now, show the filesystem indicator based on environment hints

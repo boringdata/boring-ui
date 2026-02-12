@@ -102,8 +102,8 @@ class TestOperationHelpers:
             call_args = mock_instance.request.call_args
             assert call_args[0][0] == "POST"
             assert "/internal/v1/files/write" in call_args[0][1]
-            assert call_args[1]["params"]["path"] == "out.txt"
-            assert call_args[1]["params"]["content"] == "data"
+            assert call_args[1]["json"]["path"] == "out.txt"
+            assert call_args[1]["json"]["content"] == "data"
 
     @pytest.mark.asyncio
     async def test_git_status(self, client):
@@ -151,8 +151,8 @@ class TestOperationHelpers:
             call_args = mock_instance.request.call_args
             assert call_args[0][0] == "POST"
             assert "/internal/v1/exec/run" in call_args[0][1]
-            assert call_args[1]["params"]["command"] == "ls -la"
-            assert call_args[1]["params"]["timeout_seconds"] == 60
+            assert call_args[1]["json"]["command"] == "ls -la"
+            assert call_args[1]["json"]["timeout_seconds"] == 60
 
 
 class TestCapabilityTokenInjection:

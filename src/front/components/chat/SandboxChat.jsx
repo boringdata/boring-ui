@@ -18,7 +18,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Send, Square, Loader2, AlertCircle, RefreshCw } from 'lucide-react'
-import { buildApiUrl } from '../../utils/apiBase'
+import { apiFetch } from '../../utils/apiFetch'
 import './SandboxChat.css'
 
 const SANDBOX_SESSION_KEY = 'kurt-web-sandbox-session'
@@ -184,7 +184,7 @@ export default function SandboxChat({ baseUrl, authToken, authFetch }) {
 
   const fetchSandboxStatus = useCallback(async () => {
     try {
-      const resp = await fetch(buildApiUrl('/api/sandbox/status'))
+      const resp = await apiFetch('/api/sandbox/status')
       if (!resp.ok) throw new Error('Failed to fetch status')
       const data = await resp.json()
       setSandboxStatus(data.status || 'not_running')
@@ -200,7 +200,7 @@ export default function SandboxChat({ baseUrl, authToken, authFetch }) {
     setSandboxStatus('starting')
     setSandboxError(null)
     try {
-      const resp = await fetch(buildApiUrl('/api/sandbox/start'), {
+      const resp = await apiFetch('/api/sandbox/start', {
         method: 'POST',
       })
       if (!resp.ok) {

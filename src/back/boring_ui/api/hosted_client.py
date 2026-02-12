@@ -10,13 +10,11 @@ import logging
 from typing import Optional
 from boring_ui.api.transport import (
     WorkspaceTransport,
-    WorkspaceResponse,
     HealthStatus,
 )
 from boring_ui.api.error_codes import (
     ErrorCode,
     TransportError,
-    map_http_status_to_error,
 )
 
 

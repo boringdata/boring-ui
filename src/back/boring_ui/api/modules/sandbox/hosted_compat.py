@@ -26,6 +26,16 @@ class FileContent(BaseModel):
     content: str
 
 
+class RenameRequest(BaseModel):
+    old_path: str
+    new_path: str
+
+
+class MoveRequest(BaseModel):
+    src_path: str
+    dest_dir: str
+
+
 def create_hosted_compat_router(
     client: HostedSandboxClient,
     capability_issuer: CapabilityTokenIssuer,
@@ -92,6 +102,52 @@ def create_hosted_compat_router(
             return {"success": True, "path": path}
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Sandbox write failed: {exc}")
+
+    @router.delete("/file")
+    @require_permission("files:write")
+    async def delete_file(request: Request, path: str):
+        try:
+            token = _issue_token(request, {"files:write"})
+            data = await client.delete_file(path, capability_token=token)
+            return {"success": bool(data.get("deleted", True)), "path": path}
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Sandbox delete failed: {exc}")
+
+    @router.post("/file/rename")
+    @require_permission("files:write")
+    async def rename_file(request: Request, body: RenameRequest):
+        try:
+            token = _issue_token(request, {"files:write"})
+            data = await client.rename_file(
+                body.old_path,
+                body.new_path,
+                capability_token=token,
+            )
+            return {
+                "success": bool(data.get("renamed", True)),
+                "old_path": body.old_path,
+                "new_path": data.get("new_path", body.new_path),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Sandbox rename failed: {exc}")
+
+    @router.post("/file/move")
+    @require_permission("files:write")
+    async def move_file(request: Request, body: MoveRequest):
+        try:
+            token = _issue_token(request, {"files:write"})
+            data = await client.move_file(
+                body.src_path,
+                body.dest_dir,
+                capability_token=token,
+            )
+            return {
+                "success": bool(data.get("moved", True)),
+                "old_path": body.src_path,
+                "dest_path": data.get("dest_path"),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Sandbox move failed: {exc}")
 
     @router.get("/search")
     @require_permission("files:read")

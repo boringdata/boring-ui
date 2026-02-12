@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { buildApiUrl } from '../utils/apiBase'
+import { apiFetch } from '../utils/apiFetch'
 
 /**
  * @param {Object} options
@@ -23,7 +23,7 @@ export function useApprovals({ dockApi, pollInterval = 1000 } = {}) {
     let isActive = true
 
     const fetchApprovals = () => {
-      fetch(buildApiUrl('/api/approval/pending'))
+      apiFetch('/api/approval/pending')
         .then((r) => r.json())
         .then((data) => {
           if (!isActive) return
@@ -61,7 +61,7 @@ export function useApprovals({ dockApi, pollInterval = 1000 } = {}) {
         setApprovals([])
       }
       try {
-        await fetch(buildApiUrl('/api/approval/decision'), {
+        await apiFetch('/api/approval/decision', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ request_id: requestId, decision, reason }),

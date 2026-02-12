@@ -72,6 +72,22 @@ class TransportError(Exception):
 
 
 # Error mapping utilities
+def _transport_error(
+    *,
+    code: ErrorCode,
+    message: str,
+    http_status: int,
+    retryable: bool,
+    details: Optional[dict] = None,
+) -> TransportError:
+    return TransportError(
+        code=code,
+        message=message,
+        http_status=http_status,
+        retryable=retryable,
+        details=details,
+    )
+
 
 def map_sprites_connect_error(
     error: Exception,
@@ -87,21 +103,21 @@ def map_sprites_connect_error(
         TransportError with appropriate code and status
     """
     if isinstance(error, TimeoutError):
-        return TransportError(
+        return _transport_error(
             code=ErrorCode.SPRITES_CONNECT_TIMEOUT,
             message=f"Sprites proxy connection timeout after {elapsed_sec:.1f}s",
             http_status=502,
             retryable=True,
             details={"elapsed_sec": elapsed_sec},
         )
-    else:
-        return TransportError(
-            code=ErrorCode.SPRITES_RELAY_LOST,
-            message=f"Sprites proxy connection failed: {str(error)}",
-            http_status=502,
-            retryable=True,
-            details={"error": str(error), "elapsed_sec": elapsed_sec},
-        )
+
+    return _transport_error(
+        code=ErrorCode.SPRITES_RELAY_LOST,
+        message=f"Sprites proxy connection failed: {str(error)}",
+        http_status=502,
+        retryable=True,
+        details={"error": str(error), "elapsed_sec": elapsed_sec},
+    )
 
 
 def map_sprites_handshake_error(
@@ -118,21 +134,21 @@ def map_sprites_handshake_error(
         TransportError with appropriate code and status
     """
     if isinstance(error, TimeoutError):
-        return TransportError(
+        return _transport_error(
             code=ErrorCode.SPRITES_HANDSHAKE_TIMEOUT,
             message=f"Sprites proxy handshake timeout after {elapsed_sec:.1f}s",
             http_status=502,
             retryable=True,
             details={"elapsed_sec": elapsed_sec},
         )
-    else:
-        return TransportError(
-            code=ErrorCode.SPRITES_HANDSHAKE_INVALID,
-            message=f"Sprites proxy handshake failed: {str(error)}",
-            http_status=502,
-            retryable=False,
-            details={"error": str(error)},
-        )
+
+    return _transport_error(
+        code=ErrorCode.SPRITES_HANDSHAKE_INVALID,
+        message=f"Sprites proxy handshake failed: {str(error)}",
+        http_status=502,
+        retryable=False,
+        details={"error": str(error)},
+    )
 
 
 def map_relay_timeout_error(
@@ -146,7 +162,7 @@ def map_relay_timeout_error(
     Returns:
         TransportError with appropriate code and status
     """
-    return TransportError(
+    return _transport_error(
         code=ErrorCode.SPRITES_RELAY_LOST,
         message=f"Sprites relay timeout after {elapsed_sec:.1f}s",
         http_status=504,
@@ -168,7 +184,7 @@ def map_protocol_parse_error(
     Returns:
         TransportError with appropriate code and status
     """
-    return TransportError(
+    return _transport_error(
         code=ErrorCode.LOCAL_API_PROTOCOL_ERROR,
         message=f"HTTP response parse error: {reason}",
         http_status=502,
@@ -190,7 +206,7 @@ def map_size_exceeded_error(
     Returns:
         TransportError with appropriate code and status
     """
-    return TransportError(
+    return _transport_error(
         code=ErrorCode.TRANSPORT_SIZE_EXCEEDED,
         message=f"Response exceeded size limit: {actual_bytes} > {max_bytes}",
         http_status=502,
@@ -211,71 +227,29 @@ def map_http_status_to_error(status_code: int) -> TransportError:
     Returns:
         TransportError preserving the original status
     """
-    # Retryable 5xx errors
-    if status_code == 502:
-        return TransportError(
-            code=ErrorCode.HTTP_STATUS_502,
-            message="Local API returned 502 Bad Gateway",
-            http_status=502,
-            retryable=True,
-        )
-    elif status_code == 503:
-        return TransportError(
-            code=ErrorCode.HTTP_STATUS_503,
-            message="Local API returned 503 Service Unavailable",
-            http_status=503,
-            retryable=True,
-        )
-    elif status_code == 504:
-        return TransportError(
-            code=ErrorCode.HTTP_STATUS_504,
-            message="Local API returned 504 Gateway Timeout",
-            http_status=504,
-            retryable=True,
-        )
-    elif status_code in (500,):
-        return TransportError(
-            code=ErrorCode.HTTP_STATUS_500,
-            message="Local API returned 500 Internal Server Error",
-            http_status=500,
-            retryable=True,
-        )
-
-    # Non-retryable client errors
-    elif status_code == 400:
-        return TransportError(
-            code=ErrorCode.HTTP_STATUS_400,
-            message="Local API returned 400 Bad Request",
-            http_status=400,
-            retryable=False,
-        )
-    elif status_code == 401:
-        return TransportError(
-            code=ErrorCode.HTTP_STATUS_401,
-            message="Local API returned 401 Unauthorized",
-            http_status=401,
-            retryable=False,
-        )
-    elif status_code == 403:
-        return TransportError(
-            code=ErrorCode.HTTP_STATUS_403,
-            message="Local API returned 403 Forbidden",
-            http_status=403,
-            retryable=False,
-        )
-    elif status_code == 404:
-        return TransportError(
-            code=ErrorCode.HTTP_STATUS_404,
-            message="Local API returned 404 Not Found",
-            http_status=404,
-            retryable=False,
-        )
-
-    # Default for other status codes
-    else:
-        return TransportError(
-            code=ErrorCode.LOCAL_API_UNAVAILABLE,
-            message=f"Local API returned status {status_code}",
+    http_error_map: dict[int, tuple[ErrorCode, bool]] = {
+        400: (ErrorCode.HTTP_STATUS_400, False),
+        401: (ErrorCode.HTTP_STATUS_401, False),
+        403: (ErrorCode.HTTP_STATUS_403, False),
+        404: (ErrorCode.HTTP_STATUS_404, False),
+        500: (ErrorCode.HTTP_STATUS_500, True),
+        502: (ErrorCode.HTTP_STATUS_502, True),
+        503: (ErrorCode.HTTP_STATUS_503, True),
+        504: (ErrorCode.HTTP_STATUS_504, True),
+    }
+    mapped = http_error_map.get(status_code)
+    if mapped:
+        code, retryable = mapped
+        return _transport_error(
+            code=code,
+            message=f"Local API returned {status_code}",
             http_status=status_code,
-            retryable=(500 <= status_code < 600),
+            retryable=retryable,
         )
+
+    return _transport_error(
+        code=ErrorCode.LOCAL_API_UNAVAILABLE,
+        message=f"Local API returned status {status_code}",
+        http_status=status_code,
+        retryable=(500 <= status_code < 600),
+    )

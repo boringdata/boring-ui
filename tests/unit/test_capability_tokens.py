@@ -198,6 +198,21 @@ class TestCapabilityTokenValidator:
         assert validator.validate_operation(claims, "files:write") is True
         assert validator.validate_operation(claims, "git:status") is False
 
+    @pytest.mark.parametrize(
+        ("ops", "operation", "expected"),
+        [
+            (["files:read"], "files:read", True),   # exact
+            (["files:*"], "files:write", True),     # namespace wildcard
+            (["*"], "exec:run", True),              # global wildcard
+            (["git:*"], "files:read", False),       # denied namespace
+        ],
+    )
+    def test_validate_operation_wildcard_regression_matrix(self, ops, operation, expected):
+        """Regression guard for scoped-access argument ordering and wildcard semantics."""
+        validator = CapabilityTokenValidator.__new__(CapabilityTokenValidator)
+        claims = {"ops": ops}
+        assert validator.validate_operation(claims, operation) is expected
+
 
 # --- JTIReplayStore ---
 

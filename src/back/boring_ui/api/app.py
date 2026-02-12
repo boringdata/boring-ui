@@ -1,10 +1,8 @@
 """Application factory for boring-ui API."""
 import os
 import secrets
-import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlencode
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -26,7 +24,6 @@ from .sandbox_auth import CapabilityAuthContext
 from .local_api import create_local_api_router
 from .target_resolver import StaticTargetResolver
 from .transport import HTTPInternalTransport, SpritesProxyTransport
-from .hosted_client import HostedClient
 from .capabilities import (
     RouterRegistry,
     ServiceConnectionInfo,
@@ -34,18 +31,14 @@ from .capabilities import (
     create_capabilities_router,
 )
 from .logging_middleware import add_logging_middleware, get_request_id
-from .modules.sandbox.hosted_proxy import create_hosted_sandbox_proxy_router
 from .modules.sandbox.hosted_client import (
     HostedSandboxClient,
     SandboxClientConfig,
-    SandboxClientError,
 )
-from .modules.sandbox.hosted_compat import create_hosted_compat_router
 from .modules.metrics import create_metrics_router
 from .v1_router import create_v1_router
 from .v1_local_backend import LocalFilesBackend, LocalGitBackend
 from .v1_hosted_backend import HostedFilesBackend, HostedGitBackend, HostedExecBackend
-from .deprecation import add_deprecation_middleware
 
 # Global managers (for lifespan management)
 _sandbox_manager: SandboxManager | None = None
@@ -137,7 +130,7 @@ def create_app(
         include_sandbox: Include sandbox-agent router (default: False)
         include_companion: Include Companion server router (default: False)
         routers: List of router names to include. If None, uses include_* flags.
-            Valid names: 'files', 'git', 'pty', 'stream', 'approval', 'sandbox', 'companion'
+            Valid names: 'files', 'git', 'pty', 'chat_claude_code', 'approval', 'sandbox', 'companion'
         registry: Custom router registry. Defaults to create_default_registry().
 
     Returns:
@@ -250,7 +243,7 @@ def create_app(
         enabled_routers = set(routers)
         # In HOSTED mode, warn if privileged routers requested
         if config.run_mode.value == 'hosted':
-            privileged = {'files', 'git', 'pty', 'chat_claude_code', 'stream', 'sandbox', 'companion'}
+            privileged = {'files', 'git', 'pty', 'chat_claude_code', 'sandbox', 'companion'}
             requested_privileged = privileged & enabled_routers
             if requested_privileged:
                 raise ValueError(
@@ -287,19 +280,13 @@ def create_app(
                     ', '.join(sorted(enabled_routers or ['capabilities']))
                 )
 
-    # Support 'stream' alias -> 'chat_claude_code' for backward compatibility
-    if 'stream' in enabled_routers:
-        enabled_routers.add('chat_claude_code')
-
     # Build enabled features map for capabilities endpoint
-    # Include both names for backward compatibility
-    chat_enabled = 'chat_claude_code' in enabled_routers or 'stream' in enabled_routers
+    chat_enabled = 'chat_claude_code' in enabled_routers
     enabled_features = {
         'files': 'files' in enabled_routers,
         'git': 'git' in enabled_routers,
         'pty': 'pty' in enabled_routers,
         'chat_claude_code': chat_enabled,
-        'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
         'sandbox': 'sandbox' in enabled_routers,
         'companion': 'companion' in enabled_routers,
@@ -359,9 +346,6 @@ def create_app(
     # Must be added after CORS (middleware chain executes in reverse order)
     add_logging_middleware(app)
 
-    # Deprecation signaling for legacy routes (bd-1pwb.6.2)
-    add_deprecation_middleware(app)
-
     # LOCAL mode: capability context for /internal/v1/* routes (bd-1adh.6.2)
     # In LOCAL mode there is no cross-service boundary — control plane and data
     # plane live in the same process. Inject a full-access CapabilityAuthContext
@@ -416,14 +400,12 @@ def create_app(
         'git': (config,),
         'pty': (config,),
         'chat_claude_code': (config,),
-        'stream': (config,),  # Alias
         'approval': (approval_store,),
         'sandbox': (sandbox_manager,) if sandbox_manager else (),
         'companion': (companion_manager,) if companion_manager else (),
     }
 
-    # Track mounted factories to avoid double-mounting aliases
-    # (stream and chat_claude_code use the same factory, but pty uses a different one)
+    # Track mounted factories to avoid accidental double-mounting.
     mounted_factories: set[int] = set()
 
     for router_name in enabled_routers:
@@ -466,10 +448,9 @@ def create_app(
                 )
 
             parity_transport = HTTPInternalTransport(base_url=parity_url)
-            parity_hosted_transport = HostedClient(transport=parity_transport)
             parity_client_config = SandboxClientConfig(
                 internal_url=parity_url,
-                hosted_client=parity_hosted_transport,
+                transport=parity_transport,
             )
             parity_hosted_client = HostedSandboxClient(config=parity_client_config)
 
@@ -524,27 +505,12 @@ def create_app(
                 transport = HTTPInternalTransport(base_url=target_resolver.internal_base_url)
                 transport_target = target_resolver.internal_base_url
 
-            hosted_transport = HostedClient(transport=transport)
             client_config = SandboxClientConfig(
                 internal_url=transport_target,
                 service_signer=service_signer,
-                hosted_client=hosted_transport,
+                transport=transport,
             )
             hosted_client = HostedSandboxClient(config=client_config)
-            app.include_router(
-                create_hosted_sandbox_proxy_router(
-                    client=hosted_client,
-                    capability_issuer=capability_issuer,
-                ),
-                prefix='/api/v1',
-            )
-            app.include_router(
-                create_hosted_compat_router(
-                    client=hosted_client,
-                    capability_issuer=capability_issuer,
-                ),
-                prefix='/api',
-            )
             # Canonical v1 routes for hosted mode (bd-1pwb.6.1)
             hosted_v1_router = create_v1_router(
                 files_backend=HostedFilesBackend(hosted_client, capability_issuer),
@@ -552,7 +518,7 @@ def create_app(
                 exec_backend=HostedExecBackend(hosted_client, capability_issuer),
             )
             app.include_router(hosted_v1_router, prefix='/api/v1')
-            # Compat layer provides filesystem + git surface in hosted mode.
+            # Hosted mode exposes filesystem + git via canonical /api/v1.
             enabled_features['files'] = True
             enabled_features['git'] = True
         else:

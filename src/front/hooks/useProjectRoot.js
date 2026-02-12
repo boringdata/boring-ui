@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { buildApiUrl } from '../utils/apiBase'
+import { apiFetch } from '../utils/apiFetch'
 
 /**
  * Fetch project root from the backend with retry logic.
@@ -26,7 +26,7 @@ export function useProjectRoot({ maxRetries = 6, retryDelay = 500 } = {}) {
     let fallbackApplied = false
 
     const fetchProjectRoot = () => {
-      fetch(buildApiUrl('/api/project'))
+      apiFetch('/api/project')
         .then((r) => r.json())
         .then((data) => {
           const root = data.root || ''
