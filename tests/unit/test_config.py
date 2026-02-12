@@ -63,6 +63,35 @@ class TestAPIConfig:
         config = APIConfig(workspace_root=tmp_path)
         config.validate_startup()
 
+    def test_hosted_sprites_requires_target_sprite_and_port(self, tmp_path, monkeypatch):
+        """Hosted+sprites mode requires resolver-target env vars."""
+        monkeypatch.setenv('BORING_UI_RUN_MODE', 'hosted')
+        monkeypatch.setenv('SANDBOX_PROVIDER', 'sprites')
+        monkeypatch.setenv('OIDC_ISSUER', 'https://issuer.example')
+        monkeypatch.setenv('OIDC_AUDIENCE', 'boring-ui')
+        monkeypatch.setenv('SPRITES_TOKEN', 'token')
+        monkeypatch.setenv('SPRITES_ORG', 'org')
+        monkeypatch.delenv('SPRITES_TARGET_SPRITE', raising=False)
+        monkeypatch.delenv('SPRITES_LOCAL_API_PORT', raising=False)
+
+        config = APIConfig(workspace_root=tmp_path)
+        with pytest.raises(ValueError, match='SPRITES_TARGET_SPRITE'):
+            config.validate_startup()
+
+    def test_hosted_sprites_accepts_target_sprite_and_port(self, tmp_path, monkeypatch):
+        """Hosted+sprites mode validates when resolver-target env vars are present."""
+        monkeypatch.setenv('BORING_UI_RUN_MODE', 'hosted')
+        monkeypatch.setenv('SANDBOX_PROVIDER', 'sprites')
+        monkeypatch.setenv('OIDC_ISSUER', 'https://issuer.example')
+        monkeypatch.setenv('OIDC_AUDIENCE', 'boring-ui')
+        monkeypatch.setenv('SPRITES_TOKEN', 'token')
+        monkeypatch.setenv('SPRITES_ORG', 'org')
+        monkeypatch.setenv('SPRITES_TARGET_SPRITE', 'sprite-123')
+        monkeypatch.setenv('SPRITES_LOCAL_API_PORT', '8001')
+
+        config = APIConfig(workspace_root=tmp_path)
+        config.validate_startup()
+
 
 class TestValidatePath:
     """Tests for APIConfig.validate_path method."""

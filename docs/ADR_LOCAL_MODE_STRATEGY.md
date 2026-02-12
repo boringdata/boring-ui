@@ -1,7 +1,7 @@
 # ADR: Local Mode Strategy — Fast In-Process Default with Optional HTTP Parity Mode
 
 **Status:** Accepted
-**Date:** 2026-02-11
+**Date:** 2026-02-12
 **Bead:** bd-1adh.7.1
 
 ## Context
@@ -38,7 +38,7 @@ PARITY MODE (http):
 ### Why in-process by default
 
 1. **Speed**: No HTTP overhead for local development. File operations, git status, etc. are synchronous function calls.
-2. **Simplicity**: No need to start a second service. Single `python -m boring_ui` starts everything.
+2. **Simplicity**: No need to start a second service for default local development. `create_app()` mounts `local_api` in-process.
 3. **Reliability**: No port conflicts, no connection timeouts, no process management for the second service.
 
 ### Why optional parity mode
@@ -68,5 +68,6 @@ Both modes maintain the same security properties:
 
 - Local development remains fast and simple (single process).
 - Integration tests can opt into HTTP parity for pre-deployment confidence.
+- HTTP parity mode uses the canonical local-api runner: `LOCAL_API_PORT=2469 python -m boring_ui.api.local_api`.
 - The `@require_capability` decorators serve as documentation and enforcement in parity/hosted modes, while being automatically satisfied in default local mode.
 - No code duplication: the same `local_api` handlers are used in all modes.

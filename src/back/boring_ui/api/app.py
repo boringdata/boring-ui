@@ -564,15 +564,49 @@ def create_app(
     # Canonical /api/v1 routes (bd-1pwb.6.1)
     # LOCAL mode: delegate to in-process FileService/GitService
     if config.run_mode.value == 'local':
-        from .modules.files.service import FileService
-        from .modules.git.service import GitService
-        file_service = FileService(config, storage)
-        git_service = GitService(config)
-        v1_router = create_v1_router(
-            files_backend=LocalFilesBackend(file_service),
-            git_backend=LocalGitBackend(git_service),
-        )
-        app.include_router(v1_router, prefix='/api/v1')
+        if is_local_parity_mode():
+            # Parity mode (bd-1adh.7.2): route through HTTP transport to local-api
+            # to exercise the same code path as HOSTED mode.
+            parity_port = int(os.environ.get('LOCAL_PARITY_PORT', '2469'))
+            parity_url = f'http://127.0.0.1:{parity_port}'
+
+            # Generate ephemeral RSA key pair for capability tokens
+            from cryptography.hazmat.primitives.asymmetric import rsa as _rsa
+            from cryptography.hazmat.primitives import serialization as _ser
+            _parity_key = _rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            _parity_priv = _parity_key.private_bytes(
+                _ser.Encoding.PEM, _ser.PrivateFormat.PKCS8, _ser.NoEncryption(),
+            ).decode()
+            parity_capability_issuer = CapabilityTokenIssuer(_parity_priv)
+
+            parity_transport = HTTPInternalTransport(base_url=parity_url)
+            parity_hosted_client = _HostedProxyClientAdapter(
+                hosted_client=HostedClient(transport=parity_transport),
+                provider='local-parity',
+                transport_type='HTTPInternalTransport',
+                target=parity_url,
+            )
+
+            v1_router = create_v1_router(
+                files_backend=HostedFilesBackend(parity_hosted_client, parity_capability_issuer),
+                git_backend=HostedGitBackend(parity_hosted_client, parity_capability_issuer),
+                exec_backend=HostedExecBackend(parity_hosted_client, parity_capability_issuer),
+            )
+            app.include_router(v1_router, prefix='/api/v1')
+            logger.info(
+                'LOCAL PARITY: /api/v1 routed through HTTP transport at %s '
+                '(exercises hosted code path)', parity_url,
+            )
+        else:
+            from .modules.files.service import FileService
+            from .modules.git.service import GitService
+            file_service = FileService(config, storage)
+            git_service = GitService(config)
+            v1_router = create_v1_router(
+                files_backend=LocalFilesBackend(file_service),
+                git_backend=LocalGitBackend(git_service),
+            )
+            app.include_router(v1_router, prefix='/api/v1')
 
     # Hosted-mode public proxy for privileged operations.
     # Frontend interacts with control-plane routes only.
@@ -673,7 +707,7 @@ def create_app(
             parity_url = f'http://127.0.0.1:{parity_port}'
             logger.info(
                 'LOCAL PARITY MODE: routing /internal/v1 through HTTP transport at %s. '
-                'Start local-api server separately: LOCAL_API_PORT=%d python -m boring_ui.api.local_api.app',
+                'Start local-api server separately: LOCAL_API_PORT=%d python -m boring_ui.api.local_api',
                 parity_url, parity_port,
             )
             app.state.local_parity_url = parity_url

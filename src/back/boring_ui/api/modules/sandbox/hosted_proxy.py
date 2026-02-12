@@ -7,9 +7,10 @@ Routes exposed publicly but authenticated via capability tokens.
 """
 
 from fastapi import APIRouter, HTTPException, status, Request
-from .hosted_client import HostedSandboxClient
+from .hosted_client import HostedSandboxClient, SandboxClientError
 from ...auth_middleware import require_permission, get_auth_context
 from ...capability_tokens import CapabilityTokenIssuer
+from ...logging_middleware import get_request_id
 
 import logging
 
@@ -36,6 +37,28 @@ def create_hosted_sandbox_proxy_router(
             ttl_seconds=60,
         )
 
+    def _raise_proxy_error(err: SandboxClientError) -> None:
+        raise HTTPException(
+            status_code=err.http_status,
+            detail={
+                "error": err.code,
+                "message": err.message,
+                "request_id": err.request_id,
+                "trace_id": err.trace_id,
+                "sandbox_status": err.sandbox_status,
+            },
+        )
+
+    def _generic_proxy_error(request: Request) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "proxy_sandbox_failed",
+                "message": "failed to access sandbox",
+                "request_id": get_request_id(request) or "",
+            },
+        )
+
     # File operations (bd-1pwb.5.2)
     @router.get("/files/list")
     @require_permission("files:read")
@@ -43,13 +66,23 @@ def create_hosted_sandbox_proxy_router(
         """Proxy: List files in sandbox."""
         try:
             token = _issue_token(request, {"files:list"})
-            return await client.list_files(path, capability_token=token)
+            return await client.list_files(
+                path,
+                capability_token=token,
+                request_id=get_request_id(request) or "",
+            )
+        except SandboxClientError as e:
+            logger.error(
+                "Files list proxy sandbox error code=%s request_id=%s trace_id=%s sandbox_status=%s",
+                e.code,
+                e.request_id,
+                e.trace_id,
+                e.sandbox_status,
+            )
+            _raise_proxy_error(e)
         except Exception as e:
             logger.error(f"Failed to list files: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to access sandbox",
-            )
+            raise _generic_proxy_error(request)
 
     @router.get("/files/read")
     @require_permission("files:read")
@@ -57,13 +90,23 @@ def create_hosted_sandbox_proxy_router(
         """Proxy: Read file from sandbox."""
         try:
             token = _issue_token(request, {"files:read"})
-            return await client.read_file(path, capability_token=token)
+            return await client.read_file(
+                path,
+                capability_token=token,
+                request_id=get_request_id(request) or "",
+            )
+        except SandboxClientError as e:
+            logger.error(
+                "Files read proxy sandbox error code=%s request_id=%s trace_id=%s sandbox_status=%s",
+                e.code,
+                e.request_id,
+                e.trace_id,
+                e.sandbox_status,
+            )
+            _raise_proxy_error(e)
         except Exception as e:
             logger.error(f"Failed to read file: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to access sandbox",
-            )
+            raise _generic_proxy_error(request)
 
     @router.post("/files/write")
     @require_permission("files:write")
@@ -71,13 +114,24 @@ def create_hosted_sandbox_proxy_router(
         """Proxy: Write file to sandbox."""
         try:
             token = _issue_token(request, {"files:write"})
-            return await client.write_file(path, content, capability_token=token)
+            return await client.write_file(
+                path,
+                content,
+                capability_token=token,
+                request_id=get_request_id(request) or "",
+            )
+        except SandboxClientError as e:
+            logger.error(
+                "Files write proxy sandbox error code=%s request_id=%s trace_id=%s sandbox_status=%s",
+                e.code,
+                e.request_id,
+                e.trace_id,
+                e.sandbox_status,
+            )
+            _raise_proxy_error(e)
         except Exception as e:
             logger.error(f"Failed to write file: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to access sandbox",
-            )
+            raise _generic_proxy_error(request)
 
     # Git operations (bd-1pwb.5.2)
     @router.get("/git/status")
@@ -86,13 +140,22 @@ def create_hosted_sandbox_proxy_router(
         """Proxy: Get git status from sandbox."""
         try:
             token = _issue_token(request, {"git:status"})
-            return await client.git_status(capability_token=token)
+            return await client.git_status(
+                capability_token=token,
+                request_id=get_request_id(request) or "",
+            )
+        except SandboxClientError as e:
+            logger.error(
+                "Git status proxy sandbox error code=%s request_id=%s trace_id=%s sandbox_status=%s",
+                e.code,
+                e.request_id,
+                e.trace_id,
+                e.sandbox_status,
+            )
+            _raise_proxy_error(e)
         except Exception as e:
             logger.error(f"Failed to get git status: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to access sandbox",
-            )
+            raise _generic_proxy_error(request)
 
     @router.get("/git/diff")
     @require_permission("git:read")
@@ -100,13 +163,23 @@ def create_hosted_sandbox_proxy_router(
         """Proxy: Get git diff from sandbox."""
         try:
             token = _issue_token(request, {"git:diff"})
-            return await client.git_diff(context, capability_token=token)
+            return await client.git_diff(
+                context,
+                capability_token=token,
+                request_id=get_request_id(request) or "",
+            )
+        except SandboxClientError as e:
+            logger.error(
+                "Git diff proxy sandbox error code=%s request_id=%s trace_id=%s sandbox_status=%s",
+                e.code,
+                e.request_id,
+                e.trace_id,
+                e.sandbox_status,
+            )
+            _raise_proxy_error(e)
         except Exception as e:
             logger.error(f"Failed to get git diff: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to access sandbox",
-            )
+            raise _generic_proxy_error(request)
 
     # Exec operations (bd-1pwb.5.3)
     @router.post("/exec/run")
@@ -118,6 +191,11 @@ def create_hosted_sandbox_proxy_router(
         - Timeout enforcement (max 300s)
         - Rate limiting (will be added)
         - Audit logging of all exec operations
+
+        Error semantics:
+        - sandbox timeout -> 504 with structured detail
+        - sandbox unreachable/http/protocol errors -> 502 with structured detail
+        - unexpected proxy failures -> 502 `proxy_exec_failed`
         """
         try:
             # Enforce timeout limits
@@ -127,12 +205,31 @@ def create_hosted_sandbox_proxy_router(
 
             logger.info(f"Executing command in sandbox: {command[:50]}...")
             token = _issue_token(request, {"exec:run"})
-            return await client.exec_run(command, timeout, capability_token=token)
+            request_id = get_request_id(request) or ""
+            return await client.exec_run(
+                command,
+                timeout,
+                capability_token=token,
+                request_id=request_id,
+            )
+        except SandboxClientError as e:
+            logger.error(
+                "Exec proxy sandbox error code=%s request_id=%s trace_id=%s sandbox_status=%s",
+                e.code,
+                e.request_id,
+                e.trace_id,
+                e.sandbox_status,
+            )
+            _raise_proxy_error(e)
         except Exception as e:
             logger.error(f"Failed to execute command: {e}")
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to execute in sandbox",
+                detail={
+                    "error": "proxy_exec_failed",
+                    "message": "failed to execute in sandbox",
+                    "request_id": get_request_id(request) or "",
+                },
             )
 
     @router.get("/health")

@@ -14,7 +14,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from boring_ui.api.modules.sandbox.hosted_proxy import create_hosted_sandbox_proxy_router
-from boring_ui.api.modules.sandbox.hosted_client import HostedSandboxClient, SandboxClientConfig
+from boring_ui.api.modules.sandbox.hosted_client import (
+    HostedSandboxClient,
+    SandboxClientConfig,
+    SandboxClientError,
+)
 
 
 def _make_mock_issuer():
@@ -68,6 +72,7 @@ class TestHostedFilesProxy:
         resp = tc.get("/api/v1/sandbox/proxy/files/list", params={"path": "src/"})
         assert resp.status_code == 200
         client.list_files.assert_called_once()
+        assert "request_id" in client.list_files.call_args[1]
         # Verify capability token was issued
         issuer.issue_token.assert_called()
 
@@ -128,6 +133,7 @@ class TestHostedGitProxy:
         resp = tc.get("/api/v1/sandbox/proxy/git/status")
         assert resp.status_code == 200
         client.git_status.assert_called_once()
+        assert "request_id" in client.git_status.call_args[1]
 
     def test_git_diff_proxies(self):
         client = _make_mock_client()
@@ -138,6 +144,7 @@ class TestHostedGitProxy:
         resp = tc.get("/api/v1/sandbox/proxy/git/diff", params={"context": "staged"})
         assert resp.status_code == 200
         client.git_diff.assert_called_once()
+        assert "request_id" in client.git_diff.call_args[1]
 
     def test_git_status_error_returns_502(self):
         client = _make_mock_client()
@@ -148,6 +155,27 @@ class TestHostedGitProxy:
 
         resp = tc.get("/api/v1/sandbox/proxy/git/status")
         assert resp.status_code == 502
+
+    def test_files_typed_timeout_error_maps_to_504(self):
+        client = _make_mock_client()
+        client.list_files = AsyncMock(
+            side_effect=SandboxClientError(
+                code="sandbox_timeout",
+                message="sandbox request timed out",
+                http_status=504,
+                request_id="req-files-1",
+                trace_id="trace-files-1",
+            )
+        )
+        issuer = _make_mock_issuer()
+        app = _make_app_with_auth(client, issuer)
+        tc = TestClient(app)
+
+        resp = tc.get("/api/v1/sandbox/proxy/files/list", params={"path": "."})
+        assert resp.status_code == 504
+        data = resp.json()["detail"]
+        assert data["error"] == "sandbox_timeout"
+        assert data["request_id"] == "req-files-1"
 
 
 class TestHostedExecProxy:
@@ -165,6 +193,8 @@ class TestHostedExecProxy:
         )
         assert resp.status_code == 200
         client.exec_run.assert_called_once()
+        call_kwargs = client.exec_run.call_args[1]
+        assert "request_id" in call_kwargs
 
     def test_exec_timeout_capped_at_300(self):
         client = _make_mock_client()
@@ -193,9 +223,34 @@ class TestHostedExecProxy:
         call_args = client.exec_run.call_args
         assert call_args[0][1] == 30
 
-    def test_exec_error_returns_502(self):
+    def test_exec_sandbox_timeout_maps_to_504(self):
         client = _make_mock_client()
-        client.exec_run = AsyncMock(side_effect=Exception("timeout"))
+        client.exec_run = AsyncMock(
+            side_effect=SandboxClientError(
+                code="sandbox_timeout",
+                message="sandbox request timed out",
+                http_status=504,
+                request_id="req-123",
+                trace_id="trace-abc",
+            )
+        )
+        issuer = _make_mock_issuer()
+        app = _make_app_with_auth(client, issuer)
+        tc = TestClient(app)
+
+        resp = tc.post(
+            "/api/v1/sandbox/proxy/exec/run",
+            params={"command": "bad-cmd"},
+        )
+        assert resp.status_code == 504
+        data = resp.json()["detail"]
+        assert data["error"] == "sandbox_timeout"
+        assert data["request_id"] == "req-123"
+        assert data["trace_id"] == "trace-abc"
+
+    def test_exec_untyped_error_maps_to_502(self):
+        client = _make_mock_client()
+        client.exec_run = AsyncMock(side_effect=RuntimeError("boom"))
         issuer = _make_mock_issuer()
         app = _make_app_with_auth(client, issuer)
         tc = TestClient(app)
@@ -205,6 +260,8 @@ class TestHostedExecProxy:
             params={"command": "bad-cmd"},
         )
         assert resp.status_code == 502
+        data = resp.json()["detail"]
+        assert data["error"] == "proxy_exec_failed"
 
     def test_exec_capability_scoped(self):
         client = _make_mock_client()

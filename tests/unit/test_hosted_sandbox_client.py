@@ -15,6 +15,7 @@ import httpx
 from boring_ui.api.modules.sandbox.hosted_client import (
     HostedSandboxClient,
     SandboxClientConfig,
+    SandboxClientError,
 )
 
 
@@ -313,8 +314,8 @@ class TestErrorHandling:
     """Error handling for HTTP errors."""
 
     @pytest.mark.asyncio
-    async def test_http_error_raises(self, client):
-        """HTTP errors are raised as httpx.HTTPStatusError."""
+    async def test_http_error_raises_typed_error(self, client):
+        """HTTP errors map to typed sandbox client errors."""
         with patch("httpx.AsyncClient") as MockClient:
             mock_instance = AsyncMock()
             mock_instance.request.return_value = _mock_response(
@@ -324,12 +325,16 @@ class TestErrorHandling:
             mock_instance.__aexit__ = AsyncMock(return_value=False)
             MockClient.return_value = mock_instance
 
-            with pytest.raises(httpx.HTTPStatusError):
+            with pytest.raises(SandboxClientError) as exc_info:
                 await client.read_file("missing.py")
+            err = exc_info.value
+            assert err.code == "sandbox_http_error"
+            assert err.http_status == 502
+            assert err.sandbox_status == 404
 
     @pytest.mark.asyncio
-    async def test_500_error_raises(self, client):
-        """Server errors are raised."""
+    async def test_500_error_raises_typed_error(self, client):
+        """Server errors map to typed sandbox client errors."""
         with patch("httpx.AsyncClient") as MockClient:
             mock_instance = AsyncMock()
             mock_instance.request.return_value = _mock_response(
@@ -339,8 +344,44 @@ class TestErrorHandling:
             mock_instance.__aexit__ = AsyncMock(return_value=False)
             MockClient.return_value = mock_instance
 
-            with pytest.raises(httpx.HTTPStatusError):
+            with pytest.raises(SandboxClientError) as exc_info:
                 await client.exec_run("bad-cmd")
+            err = exc_info.value
+            assert err.code == "sandbox_http_error"
+            assert err.http_status == 502
+            assert err.sandbox_status == 500
+
+    @pytest.mark.asyncio
+    async def test_timeout_maps_to_gateway_timeout(self, client):
+        """Timeouts map to sandbox_timeout with 504 status."""
+        with patch("httpx.AsyncClient") as MockClient:
+            mock_instance = AsyncMock()
+            mock_instance.request.side_effect = httpx.TimeoutException("timeout")
+            mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_instance.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = mock_instance
+
+            with pytest.raises(SandboxClientError) as exc_info:
+                await client.exec_run("sleep 10")
+            err = exc_info.value
+            assert err.code == "sandbox_timeout"
+            assert err.http_status == 504
+
+    @pytest.mark.asyncio
+    async def test_request_error_maps_to_unreachable(self, client):
+        """Request errors map to sandbox_unreachable with 502 status."""
+        with patch("httpx.AsyncClient") as MockClient:
+            mock_instance = AsyncMock()
+            mock_instance.request.side_effect = httpx.ConnectError("connect fail")
+            mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_instance.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = mock_instance
+
+            with pytest.raises(SandboxClientError) as exc_info:
+                await client.exec_run("echo hi")
+            err = exc_info.value
+            assert err.code == "sandbox_unreachable"
+            assert err.http_status == 502
 
 
 class TestSandboxClientConfig:
