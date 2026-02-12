@@ -642,7 +642,7 @@ Frontend implements automatic reconnection for abnormal close events:
 - Sessions persist across WebSocket reconnects
 
 **TTL:**
-- PTY: 1 hour idle TTL
+- PTY: 30 seconds idle TTL (configurable via `PTY_IDLE_TTL` env var)
 - Chat: Configurable idle TTL (eviction when at max sessions)
 
 ### 3.3 Error Handling
@@ -662,7 +662,7 @@ Frontend implements automatic reconnection for abnormal close events:
 ### 3.4 History and State Persistence
 
 **PTY:**
-- Server: 100KB rolling buffer per session
+- Server: 200KB rolling buffer per session (configurable via `PTY_HISTORY_BYTES` env var)
 - Client: 200KB localStorage per session
 - Server history takes precedence
 
@@ -740,7 +740,7 @@ Frontend implements automatic reconnection for abnormal close events:
 
 **Session Eviction:**
 - Chat: Idle sessions evicted when at MAX_SESSIONS
-- PTY: Idle sessions cleaned up after 1 hour
+- PTY: Idle sessions cleaned up after 30 seconds (configurable via `PTY_IDLE_TTL`)
 - Frontend detects via close event → shows "session expired" message
 
 ---
