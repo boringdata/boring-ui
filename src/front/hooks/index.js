@@ -26,8 +26,6 @@ export { usePanelToggle, DEFAULT_TOGGLE_CONFIGS } from './usePanelToggle'
 
 export { useCollapsedEffect, DEFAULT_COLLAPSE_PANELS } from './useCollapsedState'
 
-export { useTabManager } from './useTabManager'
-
 export { useBrowserTitle, computeTitle, getFolderName } from './useBrowserTitle'
 
 export { useApprovals } from './useApprovals'
