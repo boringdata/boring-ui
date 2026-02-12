@@ -108,7 +108,7 @@ describe('createPanelToggle', () => {
     expect(setCollapsed).toHaveBeenCalledTimes(1)
   })
 
-  it('is a graceful no-op when dockApi is missing', () => {
+  it('still toggles when dockApi is missing (size capture skipped)', () => {
     const setCollapsed = vi.fn()
 
     const toggle = createPanelToggle({
@@ -122,6 +122,8 @@ describe('createPanelToggle', () => {
     })
 
     expect(() => toggle()).not.toThrow()
-    expect(setCollapsed).not.toHaveBeenCalled()
+    expect(setCollapsed).toHaveBeenCalledTimes(1)
+    const updater = setCollapsed.mock.calls[0][0]
+    expect(updater({ filetree: false }).filetree).toBe(true)
   })
 })

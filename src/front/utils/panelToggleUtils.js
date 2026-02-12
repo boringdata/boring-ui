@@ -64,11 +64,11 @@ export function createPanelToggle(options) {
   } = options || {}
 
   return () => {
-    if (!dockApi || !groupId || !panelKey || typeof setCollapsed !== 'function') {
+    if (!panelKey || typeof setCollapsed !== 'function') {
       return
     }
 
-    if (!collapsed?.[panelKey]) {
+    if (!collapsed?.[panelKey] && dockApi && groupId) {
       const currentSize = capturePanelSize(dockApi, groupId, dimension)
       if (currentSize !== null && currentSize > collapsedSize && panelSizesRef?.current) {
         panelSizesRef.current = {
