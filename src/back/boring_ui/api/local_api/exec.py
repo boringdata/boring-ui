@@ -15,7 +15,12 @@ from pathlib import Path
 import subprocess
 import asyncio
 from ..sandbox_auth import require_capability
-from ..modules.sandbox.policy import SandboxPolicies
+from ..modules.sandbox.policy import (
+    SandboxPolicies,
+    sanitize_exec_env,
+    mask_secrets,
+    truncate_output,
+)
 
 
 def create_exec_router(workspace_root: Path) -> APIRouter:
@@ -33,6 +38,9 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
     """
     router = APIRouter(prefix="/exec", tags=["exec-internal"])
     policies = SandboxPolicies()
+    resource_limits = policies.get_resource_limits()
+    # Build sanitized env once at router creation time
+    clean_env = sanitize_exec_env()
 
     @router.post("/run")
     @require_capability("exec:run")
@@ -45,15 +53,18 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
         """Run a command with timeout and capture.
 
         Defensive guardrails:
-        - Timeout protection (default 30s, max 300s)
-        - Memory limits via subprocess restrictions
+        - Timeout protection (default 30s, max from policy)
+        - Environment sanitization (control-plane secrets stripped)
+        - Output truncation (max_output_lines from policy)
+        - Secret masking in stdout/stderr
         - No shell expansion (use shlex for safe parsing)
 
         Requires capability: exec:run
         """
         try:
-            # Validate timeout
-            timeout = min(timeout_seconds, 300)
+            # Validate timeout against policy limit
+            max_timeout = resource_limits["timeout_seconds"]
+            timeout = min(timeout_seconds, max_timeout)
             if timeout < 1:
                 timeout = 30
 
@@ -79,13 +90,14 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
                     detail="Command blocked by execution policy",
                 )
 
-            # Run with timeout and capture output
+            # Run with sanitized environment and timeout
             try:
                 proc = await asyncio.create_subprocess_exec(
                         *args,
                         stdout=asyncio.subprocess.PIPE if capture_output else None,
                         stderr=asyncio.subprocess.PIPE if capture_output else None,
                         cwd=workspace_root,
+                        env=clean_env,
                 )
                 stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
@@ -99,6 +111,22 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
 
             stdout = stdout_b.decode(errors="replace") if capture_output and stdout_b else None
             stderr = stderr_b.decode(errors="replace") if capture_output and stderr_b else None
+
+            # Enforce output limits
+            max_lines = resource_limits["max_output_lines"]
+            stdout_truncated = False
+            stderr_truncated = False
+            if stdout:
+                stdout, stdout_truncated = truncate_output(stdout, max_lines)
+            if stderr:
+                stderr, stderr_truncated = truncate_output(stderr, max_lines)
+
+            # Mask secrets in output
+            if stdout:
+                stdout = mask_secrets(stdout)
+            if stderr:
+                stderr = mask_secrets(stderr)
+
             return {
                 "command": command,
                 "exit_code": proc.returncode,
@@ -106,6 +134,7 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
                 "status": "completed",
                 "stdout": stdout,
                 "stderr": stderr,
+                "truncated": stdout_truncated or stderr_truncated,
             }
         except HTTPException:
             raise
