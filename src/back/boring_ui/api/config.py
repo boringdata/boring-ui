@@ -102,7 +102,7 @@ class RuntimeConfig:
 
 def load_runtime_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
     """Load and validate startup runtime configuration from environment."""
-    env = env or os.environ
+    env = os.environ if env is None else env
     issues: list[str] = []
 
     workspace_mode = env.get('WORKSPACE_MODE', 'local').strip().lower()

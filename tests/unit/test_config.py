@@ -136,6 +136,13 @@ class TestRuntimeConfig:
         assert runtime.workspace_mode == 'local'
         assert runtime.sandbox is None
 
+    def test_explicit_empty_env_does_not_fallback_to_process_env(self, monkeypatch):
+        """Explicit env mapping should be honored even if process env is sandbox."""
+        monkeypatch.setenv('WORKSPACE_MODE', 'sandbox')
+        runtime = load_runtime_config({})
+        assert runtime.workspace_mode == 'local'
+        assert runtime.sandbox is None
+
     def test_rejects_invalid_workspace_mode(self):
         """Unknown workspace modes should fail fast."""
         with pytest.raises(ConfigValidationError, match='WORKSPACE_MODE'):
