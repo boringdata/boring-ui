@@ -236,6 +236,10 @@ def create_capabilities_router(
                 for info, _ in registry.all()
             ]
 
+        # Issue short-lived WS auth token for hosted mode (bd-1pwb.7.3)
+        if run_mode == 'hosted' and token_issuer:
+            capabilities['wsToken'] = token_issuer.issue_query_param_token('ws')
+
         # Add service connection info for Direct Connect
         if service_registry:
             services: dict[str, dict] = {}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Editor from '../components/Editor'
 import CodeEditor from '../components/CodeEditor'
 import GitDiff from '../components/GitDiff'
-import { buildApiUrl } from '../utils/apiBase'
+import { useApiMode } from '../hooks/useApiMode'
 
 // Check if file is markdown
 const isMarkdownFile = (filepath) => {
@@ -34,6 +34,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     initialMode,
   } = params || {}
 
+  const { buildUrl } = useApiMode()
   const [content, setContent] = useState(initialContent || '')
   const [contentVersion, setContentVersion] = useState(initialVersion || 1)
   const [isDirty, setIsDirty] = useState(false)
@@ -61,7 +62,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     setDiffError('')
     try {
       const response = await fetch(
-        buildApiUrl(`/api/git/diff?path=${encodeURIComponent(path)}`)
+        buildUrl(`/api/git/diff?path=${encodeURIComponent(path)}`)
       )
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
@@ -79,7 +80,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     if (!path) return
     try {
       const response = await fetch(
-        buildApiUrl(`/api/git/show?path=${encodeURIComponent(path)}`)
+        buildUrl(`/api/git/show?path=${encodeURIComponent(path)}`)
       )
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
@@ -128,7 +129,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       const abortController = new AbortController()
       pollAbortRef.current = abortController
 
-      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`), {
+      fetch(buildUrl(`/api/file?path=${encodeURIComponent(path)}`), {
         signal: abortController.signal,
       })
         .then((r) => r.json())
@@ -173,7 +174,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     setContent(newContent)
     setIsSaving(true)
     try {
-      await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`), {
+      await fetch(buildUrl(`/api/file?path=${encodeURIComponent(path)}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newContent }),
@@ -218,7 +219,7 @@ export default function EditorPanel({ params: initialParams, api }) {
 
   const reloadFromDisk = () => {
     if (!path) return
-    fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
+    fetch(buildUrl(`/api/file?path=${encodeURIComponent(path)}`))
       .then((r) => r.json())
       .then((data) => {
         setContent(data.content || '')

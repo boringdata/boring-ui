@@ -12,6 +12,7 @@
 
 import { useCallback } from 'react'
 import { buildApiUrl } from '../utils/apiBase'
+import { useApiMode } from './useApiMode'
 import { findEditorPosition, findSidePosition, findDiffPosition } from '../utils/filePositioning'
 import { getFileName } from '../layout'
 
@@ -31,6 +32,7 @@ export function useFileOperations({
   centerGroupRef,
   panelMinRef,
 }) {
+  const { buildUrl } = useApiMode()
   const openFileAtPosition = useCallback(
     (path, position, extraParams = {}) => {
       if (!dockApi) return
@@ -100,7 +102,7 @@ export function useFileOperations({
         }
       }
 
-      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
+      fetch(buildUrl(`/api/file?path=${encodeURIComponent(path)}`))
         .then((r) => r.json())
         .then((data) => {
           addEditorPanel(data.content || '')
@@ -109,7 +111,7 @@ export function useFileOperations({
           addEditorPanel('')
         })
     },
-    [dockApi, setTabs, centerGroupRef, panelMinRef],
+    [dockApi, setTabs, centerGroupRef, panelMinRef, buildUrl],
   )
 
   const openFile = useCallback(

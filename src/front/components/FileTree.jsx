@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X, Folder, FolderOpen, File, FolderInput, ChevronRight, ChevronDown, MoreHorizontal, Settings } from 'lucide-react'
 import { buildApiUrl } from '../utils/apiBase'
+import { useApiMode } from '../hooks/useApiMode'
 import { getFileIcon } from '../utils/fileIcons'
 
 const configPath = import.meta.env.VITE_CONFIG_PATH || ''
@@ -35,6 +36,8 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
   const renameInputRef = useRef(null)
   const newFileInputRef = useRef(null)
 
+  const { buildUrl } = useApiMode()
+
   // Use ref to track expandedDirs for polling (avoids stale closure)
   const expandedDirsRef = useRef(expandedDirs)
   useEffect(() => {
@@ -42,14 +45,14 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
   }, [expandedDirs])
 
   const fetchDir = (dirPath) => {
-    return fetch(buildApiUrl(`/api/tree?path=${encodeURIComponent(dirPath)}`))
+    return fetch(buildUrl(`/api/tree?path=${encodeURIComponent(dirPath)}`))
       .then((r) => r.json())
       .then((data) => data.entries || [])
       .catch(() => [])
   }
 
   const fetchGitStatus = () => {
-    fetch(buildApiUrl('/api/git/status'))
+    fetch(buildUrl('/api/git/status'))
       .then((r) => r.json())
       .then((data) => {
         if (data.available && data.files) {
@@ -273,7 +276,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!window.confirm(confirmMsg)) return
 
     try {
-      const res = await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(entry.path)}`), {
+      const res = await fetch(buildUrl(`/api/file?path=${encodeURIComponent(entry.path)}`), {
         method: 'DELETE',
       })
       if (res.ok) {
@@ -304,7 +307,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     }
 
     try {
-      const res = await fetch(buildApiUrl('/api/file/rename'), {
+      const res = await fetch(buildUrl('/api/file/rename'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ old_path: oldPath, new_path: newPath }),
@@ -358,7 +361,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
       : fileName
 
     try {
-      const res = await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(filePath)}`), {
+      const res = await fetch(buildUrl(`/api/file?path=${encodeURIComponent(filePath)}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: '' }),
@@ -464,7 +467,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (destEntry.path.startsWith(srcFile.path + '/')) return
 
     try {
-      const res = await fetch(buildApiUrl('/api/file/move'), {
+      const res = await fetch(buildUrl('/api/file/move'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: destEntry.path }),
@@ -494,7 +497,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!srcFile.path.includes('/')) return
 
     try {
-      const res = await fetch(buildApiUrl('/api/file/move'), {
+      const res = await fetch(buildUrl('/api/file/move'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: '.' }),
