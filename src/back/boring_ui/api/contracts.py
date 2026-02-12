@@ -107,6 +107,13 @@ class GitDiffResponse(BaseModel):
     stats: GitDiffStats = Field(..., description="Diff statistics")
 
 
+class GitShowResponse(BaseModel):
+    """Git show output for a specific file."""
+    path: str = Field(..., description="File path")
+    content: Optional[str] = Field(None, description="File content at HEAD")
+    is_new: bool = Field(False, description="True if file is new (not in HEAD)")
+
+
 # ============================================================================
 # Exec Operations (bd-1pwb.6.1)
 # ============================================================================
@@ -162,12 +169,11 @@ class ErrorResponse(BaseModel):
     request_id: Optional[str] = Field(None, description="Request correlation ID")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional context")
     
-    class Config:
-        schema_extra = {
-            "example": {
-                "code": "AUTH_MISSING",
-                "message": "Missing or invalid authorization header",
-                "request_id": "550e8400-e29b-41d4-a716-446655440000",
-                "details": None,
-            }
+    model_config = {"json_schema_extra": {
+        "example": {
+            "code": "AUTH_MISSING",
+            "message": "Missing or invalid authorization header",
+            "request_id": "550e8400-e29b-41d4-a716-446655440000",
+            "details": None,
         }
+    }}
