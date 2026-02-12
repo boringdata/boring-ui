@@ -23,3 +23,5 @@ export {
 export { useAppState } from './useAppState'
 
 export { usePanelToggle, DEFAULT_TOGGLE_CONFIGS } from './usePanelToggle'
+
+export { useCollapsedEffect, DEFAULT_COLLAPSE_PANELS } from './useCollapsedState'
