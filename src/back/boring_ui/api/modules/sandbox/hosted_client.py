@@ -13,6 +13,8 @@ from typing import Any, Dict, Optional
 from dataclasses import dataclass
 import httpx
 import uuid
+import json
+from urllib.parse import urlencode
 from ...service_auth import ServiceTokenSigner
 
 logger = logging.getLogger(__name__)
@@ -37,29 +39,32 @@ class SandboxClientError(Exception):
 @dataclass
 class SandboxClientConfig:
     """Configuration for sandbox client."""
-    
+
     internal_url: str  # e.g., http://127.0.0.1:2469
     capability_token: str = ""  # Injected by control plane
     timeout_seconds: int = 30
     max_retries: int = 3
     enable_observability: bool = True
     service_signer: ServiceTokenSigner | None = None
+    hosted_client: Any | None = None  # Optional HostedClient for transport abstraction (bd-2j57.4.2)
 
 
 class HostedSandboxClient:
     """Client for communicating with internal sandbox service.
-    
+
     Handles:
     - Capability token injection in Authorization header
     - Trace context propagation (request correlation)
-    - Timeout and retry policies
+    - Timeout and retry policies (via HostedClient if provided, else httpx)
     - Observability (logging, metrics)
+    - Transport abstraction (supports HTTP and Sprites via HostedClient)
     """
 
     def __init__(self, config: SandboxClientConfig):
         self.config = config
         self.base_url = config.internal_url
         self._request_count = 0
+        self._hosted_client = config.hosted_client  # Optional transport layer (bd-2j57.4.2)
 
     async def list_files(
         self, path: str = ".", capability_token: str = "", request_id: str = ""
@@ -187,16 +192,113 @@ class HostedSandboxClient:
         capability_token: str = "",
         request_id: str = "",
     ) -> Dict[str, Any]:
-        """Execute request with auth, tracing, and retry logic."""
+        """Execute request with auth, tracing, and retry logic.
+
+        Uses HostedClient (transport layer) if provided, otherwise httpx directly.
+        This allows support for both HTTP and Sprites transports (bd-2j57.4.2).
+        """
         self._request_count += 1
         trace_id = str(uuid.uuid4())
-        url = f"{self.base_url}{path}"
 
         headers = self._build_headers(
             trace_id=trace_id,
             capability_token=capability_token,
             request_id=request_id,
         )
+
+        # Use HostedClient transport layer if available (bd-2j57.4.2)
+        if self._hosted_client:
+            return await self._request_via_transport(
+                method, path, params, json_body, headers, trace_id
+            )
+
+        # Fallback to direct httpx (for cases where transport not needed)
+        return await self._request_via_httpx(
+            method, path, params, json_body, headers, trace_id
+        )
+
+    async def _request_via_transport(
+        self,
+        method: str,
+        path: str,
+        params: Optional[Dict[str, Any]],
+        json_body: Optional[Dict[str, Any]],
+        headers: Dict[str, str],
+        trace_id: str,
+    ) -> Dict[str, Any]:
+        """Execute request via HostedClient transport layer."""
+        from urllib.parse import urlencode
+        import json as json_lib
+        from ..error_codes import TransportError
+
+        # Build full path with query params if present
+        full_path = path
+        if params:
+            full_path = f"{path}?{urlencode(params)}"
+
+        # Prepare request body
+        body_bytes = None
+        if json_body:
+            body_bytes = json_lib.dumps(json_body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+
+        try:
+            status_code, _, response_body = await self._hosted_client.request(
+                method=method,
+                path=full_path,
+                body=body_bytes,
+                headers=headers,
+                trace_id=trace_id,
+            )
+        except TransportError as te:
+            # Map TransportError to SandboxClientError
+            if te.http_status == 504:
+                mapped_status = 504
+            elif te.http_status >= 500:
+                mapped_status = 502
+            else:
+                mapped_status = te.http_status
+            raise SandboxClientError(
+                code=f"transport_{te.code.value}",
+                message=te.message,
+                http_status=mapped_status,
+                request_id=headers.get("X-Request-ID", ""),
+                trace_id=trace_id,
+                sandbox_status=te.http_status,
+                retryable=te.retryable,
+            )
+
+        # Check response status
+        if status_code >= 400:
+            body_text = response_body.decode("utf-8", errors="replace") if response_body else ""
+            is_timeout = status_code in (408, 504)
+            is_unavailable = status_code in (502, 503)
+            raise SandboxClientError(
+                code="sandbox_timeout" if is_timeout else "sandbox_unavailable" if is_unavailable else "sandbox_error",
+                message=body_text or f"Sandbox returned status {status_code}",
+                http_status=504 if is_timeout else 502 if is_unavailable else status_code,
+                request_id=headers.get("X-Request-ID", ""),
+                trace_id=trace_id,
+                sandbox_status=status_code,
+                retryable=is_timeout or is_unavailable,
+            )
+
+        # Parse JSON response
+        if not response_body:
+            return {}
+        return json_lib.loads(response_body.decode("utf-8"))
+
+    async def _request_via_httpx(
+        self,
+        method: str,
+        path: str,
+        params: Optional[Dict[str, Any]],
+        json_body: Optional[Dict[str, Any]],
+        headers: Dict[str, str],
+        trace_id: str,
+    ) -> Dict[str, Any]:
+        """Execute request via httpx directly."""
+        url = f"{self.base_url}{path}"
 
         try:
             async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:

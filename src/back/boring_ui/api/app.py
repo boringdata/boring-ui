@@ -35,7 +35,11 @@ from .capabilities import (
 )
 from .logging_middleware import add_logging_middleware, get_request_id
 from .modules.sandbox.hosted_proxy import create_hosted_sandbox_proxy_router
-from .modules.sandbox.hosted_client import SandboxClientError
+from .modules.sandbox.hosted_client import (
+    HostedSandboxClient,
+    SandboxClientConfig,
+    SandboxClientError,
+)
 from .modules.sandbox.hosted_compat import create_hosted_compat_router
 from .modules.metrics import create_metrics_router
 from .v1_router import create_v1_router
@@ -48,161 +52,8 @@ _sandbox_manager: SandboxManager | None = None
 _companion_manager: CompanionManager | None = None
 
 
-class _HostedProxyClientAdapter:
-    """Adapter exposing HostedSandboxClient-compatible methods over transport client."""
-
-    def __init__(
-        self,
-        hosted_client: HostedClient,
-        provider: str,
-        transport_type: str,
-        target: str,
-        service_signer: ServiceTokenSigner | None = None,
-    ):
-        self._hosted_client = hosted_client
-        self._provider = provider
-        self._transport_type = transport_type
-        self._target = target
-        self._service_signer = service_signer
-        self._request_count = 0
-
-    async def _request_json(
-        self,
-        method: str,
-        path: str,
-        *,
-        params: dict[str, str | int] | None = None,
-        capability_token: str = "",
-        request_id: str = "",
-    ) -> dict:
-        self._request_count += 1
-        trace_id = f"hosted-proxy-{self._request_count}"
-        req_headers: dict[str, str] = {}
-
-        if capability_token:
-            req_headers["Authorization"] = f"Bearer {capability_token}"
-        if request_id:
-            req_headers["X-Request-ID"] = request_id
-        if self._service_signer:
-            req_headers["X-Service-Token"] = self._service_signer.sign_request(ttl_seconds=60)
-
-        req_path = path
-        if params:
-            req_path = f"{path}?{urlencode(params)}"
-
-        from .error_codes import TransportError as _TransportError
-        try:
-            status_code, _, body = await self._hosted_client.request(
-                method=method,
-                path=req_path,
-                headers=req_headers or None,
-                trace_id=trace_id,
-            )
-        except _TransportError as te:
-            raise SandboxClientError(
-                code=f"transport_{te.code.value}",
-                message=te.message,
-                http_status=te.http_status if te.http_status < 500 else 502,
-                request_id=req_headers.get("X-Request-ID", ""),
-                trace_id=trace_id,
-                sandbox_status=te.http_status,
-                retryable=te.retryable,
-            )
-
-        if status_code >= 400:
-            body_text = body.decode("utf-8", errors="replace")
-            is_timeout = status_code in (408, 504)
-            is_unavailable = status_code in (502, 503)
-            raise SandboxClientError(
-                code="sandbox_timeout" if is_timeout else "sandbox_unavailable" if is_unavailable else "sandbox_error",
-                message=body_text or f"Sandbox request failed with status {status_code}",
-                http_status=502 if is_unavailable or is_timeout else status_code,
-                request_id=req_headers.get("X-Request-ID", ""),
-                trace_id=trace_id,
-                sandbox_status=status_code,
-                retryable=is_timeout or is_unavailable,
-            )
-
-        if not body:
-            return {}
-
-        return json.loads(body.decode("utf-8"))
-
-    async def list_files(
-        self, path: str = ".", capability_token: str = "", request_id: str = ""
-    ) -> dict:
-        return await self._request_json(
-            "GET",
-            "/internal/v1/files/list",
-            params={"path": path},
-            capability_token=capability_token,
-            request_id=request_id,
-        )
-
-    async def read_file(
-        self, path: str, capability_token: str = "", request_id: str = ""
-    ) -> dict:
-        return await self._request_json(
-            "GET",
-            "/internal/v1/files/read",
-            params={"path": path},
-            capability_token=capability_token,
-            request_id=request_id,
-        )
-
-    async def write_file(
-        self, path: str, content: str, capability_token: str = "", request_id: str = ""
-    ) -> dict:
-        return await self._request_json(
-            "POST",
-            "/internal/v1/files/write",
-            params={"path": path, "content": content},
-            capability_token=capability_token,
-            request_id=request_id,
-        )
-
-    async def git_status(self, capability_token: str = "", request_id: str = "") -> dict:
-        return await self._request_json(
-            "GET",
-            "/internal/v1/git/status",
-            capability_token=capability_token,
-            request_id=request_id,
-        )
-
-    async def git_diff(
-        self, context: str = "working", capability_token: str = "", request_id: str = ""
-    ) -> dict:
-        return await self._request_json(
-            "GET",
-            "/internal/v1/git/diff",
-            params={"context": context},
-            capability_token=capability_token,
-            request_id=request_id,
-        )
-
-    async def exec_run(
-        self,
-        command: str,
-        timeout_seconds: int = 30,
-        capability_token: str = "",
-        request_id: str = "",
-    ) -> dict:
-        return await self._request_json(
-            "POST",
-            "/internal/v1/exec/run",
-            params={"command": command, "timeout_seconds": timeout_seconds},
-            capability_token=capability_token,
-            request_id=request_id,
-        )
-
-    def get_stats(self) -> dict:
-        return {
-            "provider": self._provider,
-            "transport_type": self._transport_type,
-            "target": self._target,
-            "requests": self._request_count,
-            "internal_url": self._target,
-        }
+# _HostedProxyClientAdapter removed (bd-2j57.4.2)
+# HostedSandboxClient now directly supports transport layer
 
 
 def _get_routers_for_mode(
@@ -336,7 +187,10 @@ def create_app(
     approval_store = approval_store or InMemoryApprovalStore()
     registry = registry or create_default_registry()
 
-    # Auth infrastructure: token issuer (JWT) + static token for sandbox
+    # Auth systems are intentionally boundary-specific and minimal:
+    # - OIDC JWT (auth_middleware): browser -> control plane user identity
+    # - Capability JWT (capability_tokens): control plane -> workspace operation scope
+    # - Service token (ServiceTokenSigner/ServiceTokenIssuer): service-to-service trust
     token_issuer = ServiceTokenIssuer()
     sandbox_auth_token = secrets.token_hex(16)
     cors_origin = get_cors_origin()
@@ -593,22 +447,31 @@ def create_app(
             parity_port = int(os.environ.get('LOCAL_PARITY_PORT', '2469'))
             parity_url = f'http://127.0.0.1:{parity_port}'
 
-            # Generate ephemeral RSA key pair for capability tokens
-            from cryptography.hazmat.primitives.asymmetric import rsa as _rsa
-            from cryptography.hazmat.primitives import serialization as _ser
-            _parity_key = _rsa.generate_private_key(public_exponent=65537, key_size=2048)
-            _parity_priv = _parity_key.private_bytes(
-                _ser.Encoding.PEM, _ser.PrivateFormat.PKCS8, _ser.NoEncryption(),
-            ).decode()
-            parity_capability_issuer = CapabilityTokenIssuer(_parity_priv)
+            parity_private_key = os.environ.get('CAPABILITY_PRIVATE_KEY', '')
+            if parity_private_key:
+                parity_private_key = parity_private_key.replace("\\n", "\n")
+                parity_capability_issuer = CapabilityTokenIssuer(parity_private_key)
+            else:
+                # Generate ephemeral RSA key pair for capability tokens
+                from cryptography.hazmat.primitives.asymmetric import rsa as _rsa
+                from cryptography.hazmat.primitives import serialization as _ser
+                _parity_key = _rsa.generate_private_key(public_exponent=65537, key_size=2048)
+                _parity_priv = _parity_key.private_bytes(
+                    _ser.Encoding.PEM, _ser.PrivateFormat.PKCS8, _ser.NoEncryption(),
+                ).decode()
+                parity_capability_issuer = CapabilityTokenIssuer(_parity_priv)
+                logger.warning(
+                    'LOCAL PARITY: CAPABILITY_PRIVATE_KEY not set; using ephemeral key. '
+                    'Set CAPABILITY_PRIVATE_KEY for stable parity keying.'
+                )
 
             parity_transport = HTTPInternalTransport(base_url=parity_url)
-            parity_hosted_client = _HostedProxyClientAdapter(
-                hosted_client=HostedClient(transport=parity_transport),
-                provider='local-parity',
-                transport_type='HTTPInternalTransport',
-                target=parity_url,
+            parity_hosted_transport = HostedClient(transport=parity_transport)
+            parity_client_config = SandboxClientConfig(
+                internal_url=parity_url,
+                hosted_client=parity_hosted_transport,
             )
+            parity_hosted_client = HostedSandboxClient(config=parity_client_config)
 
             v1_router = create_v1_router(
                 files_backend=HostedFilesBackend(parity_hosted_client, parity_capability_issuer),
@@ -661,13 +524,13 @@ def create_app(
                 transport = HTTPInternalTransport(base_url=target_resolver.internal_base_url)
                 transport_target = target_resolver.internal_base_url
 
-            hosted_client = _HostedProxyClientAdapter(
-                hosted_client=HostedClient(transport=transport),
-                provider=config.sandbox_provider.value,
-                transport_type=transport.__class__.__name__,
-                target=transport_target,
+            hosted_transport = HostedClient(transport=transport)
+            client_config = SandboxClientConfig(
+                internal_url=transport_target,
                 service_signer=service_signer,
+                hosted_client=hosted_transport,
             )
+            hosted_client = HostedSandboxClient(config=client_config)
             app.include_router(
                 create_hosted_sandbox_proxy_router(
                     client=hosted_client,
