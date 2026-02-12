@@ -140,16 +140,6 @@ Backend sends these message types:
 
 **Code:** Exit code from process (0 = success, non-zero = error, "unknown" if unavailable).
 
-#### 1.4.6 Session Not Found Message
-```json
-{
-  "type": "session_not_found"
-}
-```
-
-**Behavior:** Sent when client requests `resume` but session doesn't exist.
-
-**Frontend Action:** Display "No saved conversation found" banner, invoke `onResumeMissing` callback.
 
 ### 1.5 WebSocket Close Codes
 
@@ -184,7 +174,7 @@ Backend sends these message types:
 
 4. **Session Persistence:**
    - Session remains alive on server while at least one client is connected
-   - Idle TTL: 1 hour (backend `PTY_IDLE_TTL`)
+   - Idle TTL: 30 seconds (backend `PTY_IDLE_TTL`, configurable via env var)
    - Multiple clients can connect to same session (shared view)
 
 ### 1.7 Session Management Invariants
@@ -197,7 +187,7 @@ Backend sends these message types:
    - Session reuse: `get_or_create_session(session_id)` returns existing if alive
 
 2. **History Persistence:**
-   - Rolling buffer: Last 100KB of output (`PTY_HISTORY_BYTES`)
+   - Rolling buffer: Last 200KB of output (`PTY_HISTORY_BYTES`, configurable via env var)
    - Sent as `{ "type": "history" }` on first client connect
 
 3. **Multi-Client Support:**
@@ -618,9 +608,10 @@ Backend splits suggestions into session-scoped and persistent:
 
 **From ClaudeStreamChat.jsx:**
 
-Frontend doesn't implement automatic reconnection for chat WebSocket (unlike PTY). On disconnect:
-- Session persists on backend (idle)
-- User must manually reconnect or create new session
+Frontend implements automatic reconnection for abnormal close events:
+- On abnormal close (code 1006 = connection lost) → auto-reconnect after 1 second delay
+- On normal close (code 1000/1001 = intentional) → no auto-reconnect
+- Session persists on backend (idle) during reconnection
 - History stored in localStorage (200 messages max)
 
 **Session Recovery:**
