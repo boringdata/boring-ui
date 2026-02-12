@@ -20,12 +20,17 @@ from .contracts import (
     ReadFileResponse,
     WriteFileRequest,
     WriteFileResponse,
+    DeleteFileResponse,
+    RenameFileRequest,
+    RenameFileResponse,
+    MoveFileRequest,
+    MoveFileResponse,
+    SearchFilesResponse,
     GitStatusResponse,
     GitDiffResponse,
     GitShowResponse,
     ExecRunRequest,
     ExecRunResponse,
-    FileInfo,
 )
 
 
@@ -36,6 +41,10 @@ class V1FilesBackend(Protocol):
     async def v1_list_files(self, path: str) -> ListFilesResponse: ...
     async def v1_read_file(self, path: str) -> ReadFileResponse: ...
     async def v1_write_file(self, path: str, content: str) -> WriteFileResponse: ...
+    async def v1_delete_file(self, path: str) -> DeleteFileResponse: ...
+    async def v1_rename_file(self, old_path: str, new_path: str) -> RenameFileResponse: ...
+    async def v1_move_file(self, src_path: str, dest_dir: str) -> MoveFileResponse: ...
+    async def v1_search_files(self, pattern: str, path: str = ".") -> SearchFilesResponse: ...
 
 
 @runtime_checkable
@@ -85,6 +94,30 @@ def create_v1_router(
         if files_backend is None:
             raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Files not available")
         return await files_backend.v1_write_file(body.path, body.content)
+
+    @router.delete("/files/delete", response_model=DeleteFileResponse)
+    async def delete_file(path: str):
+        if files_backend is None:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Files not available")
+        return await files_backend.v1_delete_file(path)
+
+    @router.post("/files/rename", response_model=RenameFileResponse)
+    async def rename_file(body: RenameFileRequest):
+        if files_backend is None:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Files not available")
+        return await files_backend.v1_rename_file(body.old_path, body.new_path)
+
+    @router.post("/files/move", response_model=MoveFileResponse)
+    async def move_file(body: MoveFileRequest):
+        if files_backend is None:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Files not available")
+        return await files_backend.v1_move_file(body.src_path, body.dest_dir)
+
+    @router.get("/files/search", response_model=SearchFilesResponse)
+    async def search_files(q: str, path: str = "."):
+        if files_backend is None:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Files not available")
+        return await files_backend.v1_search_files(q, path)
 
     # ─── Git ──────────────────────────────────────────────────────
 

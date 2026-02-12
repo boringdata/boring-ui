@@ -80,6 +80,55 @@ class WriteFileResponse(BaseModel):
     written: bool = Field(True, description="Operation success")
 
 
+class DeleteFileResponse(BaseModel):
+    """Response after deleting file/directory."""
+    path: str = Field(..., description="Deleted path")
+    deleted: bool = Field(True, description="Operation success")
+
+
+class RenameFileRequest(BaseModel):
+    """Request to rename file/directory."""
+    old_path: str = Field(..., description="Current path")
+    new_path: str = Field(..., description="Target path")
+
+
+class RenameFileResponse(BaseModel):
+    """Response after rename operation."""
+    old_path: str = Field(..., description="Original path")
+    new_path: str = Field(..., description="New path")
+    renamed: bool = Field(True, description="Operation success")
+
+
+class MoveFileRequest(BaseModel):
+    """Request to move file/directory into destination directory."""
+    src_path: str = Field(..., description="Source path")
+    dest_dir: str = Field(..., description="Destination directory")
+
+
+class MoveFileResponse(BaseModel):
+    """Response after move operation."""
+    src_path: str = Field(..., description="Original path")
+    dest_path: str = Field(..., description="Moved path")
+    moved: bool = Field(True, description="Operation success")
+
+
+class SearchFileResult(BaseModel):
+    """Single search match result."""
+    name: str = Field(..., description="Matched entry name")
+    path: str = Field(..., description="Workspace-relative path")
+    dir: str = Field(..., description="Parent directory for UI compatibility")
+
+
+class SearchFilesResponse(BaseModel):
+    """Response containing matched file/directory entries."""
+    results: List[SearchFileResult] = Field(
+        default_factory=list,
+        description="Matched results",
+    )
+    pattern: str = Field(..., description="Search pattern (glob-style)")
+    path: str = Field(..., description="Search root path")
+
+
 # ============================================================================
 # Git Operations (bd-1pwb.6.1)
 # ============================================================================

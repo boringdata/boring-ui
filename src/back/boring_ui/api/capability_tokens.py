@@ -16,6 +16,12 @@ Token Lifecycle:
   - Sandbox validates token signature, claims, and JTI
   - Sandbox executes operation and returns result
   - Token expires after 60 seconds (cannot be reused)
+
+Boundary rationale:
+- Capability tokens constrain operation scope for each proxied request.
+- Service tokens (see `service_auth.py`) identify calling services.
+- User/OIDC auth identifies end users at the control-plane edge.
+These concerns are intentionally split to keep trust boundaries explicit.
 """
 
 import uuid
@@ -26,6 +32,8 @@ from typing import Any
 from collections import OrderedDict
 
 import jwt
+
+from .authorization import has_scoped_access
 
 logger = logging.getLogger(__name__)
 
@@ -212,18 +220,7 @@ class CapabilityTokenValidator:
             True if operation is allowed, False otherwise
         """
         ops = claims.get("ops", [])
-
-        # Exact match
-        if operation in ops:
-            return True
-
-        # Wildcard checks
-        if "*" in ops:
-            return True
-
-        # Namespace wildcard (e.g., 'files:*' matches 'files:read')
-        namespace = operation.split(":")[0] + ":*"
-        if namespace in ops:
+        if has_scoped_access(set(ops), operation):
             return True
 
         logger.warning(f"Operation {operation} not in allowed {ops}")

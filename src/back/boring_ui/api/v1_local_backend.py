@@ -11,6 +11,11 @@ from .contracts import (
     ListFilesResponse,
     ReadFileResponse,
     WriteFileResponse,
+    DeleteFileResponse,
+    RenameFileResponse,
+    MoveFileResponse,
+    SearchFilesResponse,
+    SearchFileResult,
     GitStatusResponse,
     GitDiffResponse,
     GitShowResponse,
@@ -48,6 +53,45 @@ class LocalFilesBackend:
     async def v1_write_file(self, path: str, content: str) -> WriteFileResponse:
         self._svc.write_file(path, content)
         return WriteFileResponse(path=path, size=len(content), written=True)
+
+    async def v1_delete_file(self, path: str) -> DeleteFileResponse:
+        result = self._svc.delete_file(path)
+        return DeleteFileResponse(
+            path=result.get("path", path),
+            deleted=bool(result.get("success", True)),
+        )
+
+    async def v1_rename_file(self, old_path: str, new_path: str) -> RenameFileResponse:
+        result = self._svc.rename_file(old_path, new_path)
+        return RenameFileResponse(
+            old_path=result.get("old_path", old_path),
+            new_path=result.get("new_path", new_path),
+            renamed=bool(result.get("success", True)),
+        )
+
+    async def v1_move_file(self, src_path: str, dest_dir: str) -> MoveFileResponse:
+        result = self._svc.move_file(src_path, dest_dir)
+        return MoveFileResponse(
+            src_path=result.get("old_path", src_path),
+            dest_path=result.get("dest_path", src_path),
+            moved=bool(result.get("success", True)),
+        )
+
+    async def v1_search_files(self, pattern: str, path: str = ".") -> SearchFilesResponse:
+        result = self._svc.search_files(pattern, path)
+        entries = [
+            SearchFileResult(
+                name=item.get("name", ""),
+                path=item.get("path", ""),
+                dir=item.get("dir", ""),
+            )
+            for item in result.get("results", [])
+        ]
+        return SearchFilesResponse(
+            results=entries,
+            pattern=result.get("pattern", pattern),
+            path=result.get("path", path),
+        )
 
 
 class LocalGitBackend:

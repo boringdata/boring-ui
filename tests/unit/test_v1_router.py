@@ -16,10 +16,13 @@ from boring_ui.api.contracts import (
     ListFilesResponse,
     ReadFileResponse,
     WriteFileResponse,
+    DeleteFileResponse,
+    RenameFileResponse,
+    MoveFileResponse,
+    SearchFilesResponse,
     GitStatusResponse,
     GitDiffResponse,
     GitShowResponse,
-    FileInfo,
 )
 
 
@@ -108,6 +111,76 @@ class TestV1FilesLocalMode:
 
         resp = client.get("/api/v1/files/read", params={"path": "missing.txt"})
         assert resp.status_code == 404
+
+    def test_delete_file_returns_contract_shape(self, tmp_path):
+        (tmp_path / "deleteme.txt").write_text("gone")
+        app = _make_local_v1_app(tmp_path)
+        client = TestClient(app)
+
+        resp = client.delete("/api/v1/files/delete", params={"path": "deleteme.txt"})
+        assert resp.status_code == 200
+        data = resp.json()
+
+        parsed = DeleteFileResponse(**data)
+        assert parsed.path == "deleteme.txt"
+        assert parsed.deleted is True
+        assert not (tmp_path / "deleteme.txt").exists()
+
+    def test_rename_file_returns_contract_shape(self, tmp_path):
+        (tmp_path / "old.txt").write_text("x")
+        app = _make_local_v1_app(tmp_path)
+        client = TestClient(app)
+
+        resp = client.post(
+            "/api/v1/files/rename",
+            json={"old_path": "old.txt", "new_path": "new.txt"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        parsed = RenameFileResponse(**data)
+        assert parsed.old_path == "old.txt"
+        assert parsed.new_path == "new.txt"
+        assert parsed.renamed is True
+        assert not (tmp_path / "old.txt").exists()
+        assert (tmp_path / "new.txt").exists()
+
+    def test_move_file_returns_contract_shape(self, tmp_path):
+        (tmp_path / "src.txt").write_text("x")
+        (tmp_path / "dest").mkdir()
+        app = _make_local_v1_app(tmp_path)
+        client = TestClient(app)
+
+        resp = client.post(
+            "/api/v1/files/move",
+            json={"src_path": "src.txt", "dest_dir": "dest"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        parsed = MoveFileResponse(**data)
+        assert parsed.src_path == "src.txt"
+        assert parsed.dest_path == "dest/src.txt"
+        assert parsed.moved is True
+        assert not (tmp_path / "src.txt").exists()
+        assert (tmp_path / "dest" / "src.txt").exists()
+
+    def test_search_files_returns_contract_shape(self, tmp_path):
+        (tmp_path / "alpha.py").write_text("print('a')")
+        (tmp_path / "beta.txt").write_text("b")
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "gamma.py").write_text("print('g')")
+        app = _make_local_v1_app(tmp_path)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/files/search", params={"q": "*.py", "path": "."})
+        assert resp.status_code == 200
+        data = resp.json()
+
+        parsed = SearchFilesResponse(**data)
+        assert parsed.pattern == "*.py"
+        names = {entry.name for entry in parsed.results}
+        assert names == {"alpha.py", "gamma.py"}
 
 
 class TestV1GitLocalMode:

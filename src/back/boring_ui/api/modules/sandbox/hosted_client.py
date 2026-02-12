@@ -97,6 +97,50 @@ class HostedSandboxClient:
             request_id=request_id,
         )
 
+    async def delete_file(
+        self, path: str, capability_token: str = "", request_id: str = ""
+    ) -> Dict[str, Any]:
+        """Delete file/directory in sandbox (privileged operation)."""
+        return await self._request(
+            "DELETE",
+            "/internal/v1/files/delete",
+            params={"path": path},
+            capability_token=capability_token,
+            request_id=request_id,
+        )
+
+    async def rename_file(
+        self,
+        old_path: str,
+        new_path: str,
+        capability_token: str = "",
+        request_id: str = "",
+    ) -> Dict[str, Any]:
+        """Rename file/directory in sandbox (privileged operation)."""
+        return await self._request(
+            "POST",
+            "/internal/v1/files/rename",
+            params={"old_path": old_path, "new_path": new_path},
+            capability_token=capability_token,
+            request_id=request_id,
+        )
+
+    async def move_file(
+        self,
+        src_path: str,
+        dest_dir: str,
+        capability_token: str = "",
+        request_id: str = "",
+    ) -> Dict[str, Any]:
+        """Move file/directory in sandbox (privileged operation)."""
+        return await self._request(
+            "POST",
+            "/internal/v1/files/move",
+            params={"src_path": src_path, "dest_dir": dest_dir},
+            capability_token=capability_token,
+            request_id=request_id,
+        )
+
     async def git_status(self, capability_token: str = "", request_id: str = "") -> Dict[str, Any]:
         """Get git status from sandbox."""
         return await self._request(

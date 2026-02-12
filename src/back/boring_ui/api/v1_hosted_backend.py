@@ -7,6 +7,7 @@ token injection.
 
 from __future__ import annotations
 
+import fnmatch
 from pathlib import PurePosixPath
 
 from .contracts import (
@@ -14,10 +15,14 @@ from .contracts import (
     ListFilesResponse,
     ReadFileResponse,
     WriteFileResponse,
+    DeleteFileResponse,
+    RenameFileResponse,
+    MoveFileResponse,
+    SearchFilesResponse,
+    SearchFileResult,
     GitStatusResponse,
     GitDiffResponse,
     GitShowResponse,
-    ExecRunRequest,
     ExecRunResponse,
 )
 
@@ -69,6 +74,58 @@ class HostedFilesBackend:
             size=data.get("size", len(content)),
             written=data.get("written", True),
         )
+
+    async def v1_delete_file(self, path: str) -> DeleteFileResponse:
+        token = self._issue_token({"files:write"})
+        data = await self._client.delete_file(path, capability_token=token)
+        return DeleteFileResponse(
+            path=data.get("path", path),
+            deleted=data.get("deleted", data.get("success", True)),
+        )
+
+    async def v1_rename_file(self, old_path: str, new_path: str) -> RenameFileResponse:
+        token = self._issue_token({"files:write"})
+        data = await self._client.rename_file(old_path, new_path, capability_token=token)
+        return RenameFileResponse(
+            old_path=data.get("old_path", old_path),
+            new_path=data.get("new_path", new_path),
+            renamed=data.get("renamed", data.get("success", True)),
+        )
+
+    async def v1_move_file(self, src_path: str, dest_dir: str) -> MoveFileResponse:
+        token = self._issue_token({"files:write"})
+        data = await self._client.move_file(src_path, dest_dir, capability_token=token)
+        return MoveFileResponse(
+            src_path=data.get("src_path", data.get("old_path", src_path)),
+            dest_path=data.get("dest_path", src_path),
+            moved=data.get("moved", data.get("success", True)),
+        )
+
+    async def v1_search_files(self, pattern: str, path: str = ".") -> SearchFilesResponse:
+        token = self._issue_token({"files:list"})
+        results: list[SearchFileResult] = []
+
+        async def walk(dir_path: str, depth: int = 0) -> None:
+            if depth > 10:
+                return
+            listing = await self._client.list_files(dir_path, capability_token=token)
+            for item in listing.get("files", []):
+                name = item.get("name", "")
+                rel_path = str(PurePosixPath(dir_path) / name) if dir_path != "." else name
+                parent_dir = str(PurePosixPath(rel_path).parent)
+                if parent_dir == ".":
+                    parent_dir = ""
+
+                if fnmatch.fnmatch(name.lower(), pattern.lower()):
+                    results.append(
+                        SearchFileResult(name=name, path=rel_path, dir=parent_dir)
+                    )
+
+                if item.get("type") == "dir":
+                    await walk(rel_path, depth + 1)
+
+        await walk(path)
+        return SearchFilesResponse(results=results, pattern=pattern, path=path)
 
 
 class HostedGitBackend:

@@ -4,6 +4,12 @@ Implements mutual authentication between Hosted API (control plane) and Sandbox 
 (data plane) using signed service tokens. Supports key rotation with configurable
 grace periods.
 
+Boundary rationale:
+- Service tokens answer "which service is calling?" (caller identity).
+- Capability tokens answer "which operations are allowed?" (least-privilege scope).
+- OIDC/user auth answers "which user initiated the request?" (end-user identity).
+These layers remain separate because they enforce different trust boundaries.
+
 Architecture:
   1. Hosted API signs requests using private key (signs service identity)
   2. Sandbox API validates signatures using public key (verifies caller identity)
