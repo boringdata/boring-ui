@@ -39,3 +39,9 @@ export { useLayoutInit, debounce } from './useLayoutInit'
 export { usePanelParams } from './usePanelParams'
 
 export { useActivePanel } from './useActivePanel'
+
+export { useApprovalPanels } from './useApprovalPanels'
+
+export { useUrlSync } from './useUrlSync'
+
+export { useDragDrop } from './useDragDrop'
