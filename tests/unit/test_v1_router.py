@@ -273,32 +273,3 @@ class TestV1MissingBackend:
         )
         assert resp.status_code == 501
 
-
-class TestV1ContractParity:
-    """Verify v1 and legacy routes return compatible data."""
-
-    def test_list_files_parity(self, tmp_path):
-        """V1 list_files and legacy /api/tree return same directory contents."""
-        (tmp_path / "a.txt").write_text("aaa")
-        (tmp_path / "b").mkdir()
-        app = _make_local_v1_app(tmp_path)
-        client = TestClient(app)
-
-        legacy = client.get("/api/tree", params={"path": "."}).json()
-        v1 = client.get("/api/v1/files/list", params={"path": "."}).json()
-
-        legacy_names = {e["name"] for e in legacy["entries"]}
-        v1_names = {f["name"] for f in v1["files"]}
-        assert legacy_names == v1_names
-
-    def test_read_file_parity(self, tmp_path):
-        """V1 read_file and legacy /api/file return same content."""
-        (tmp_path / "test.txt").write_text("parity test")
-        app = _make_local_v1_app(tmp_path)
-        client = TestClient(app)
-
-        legacy = client.get("/api/file", params={"path": "test.txt"}).json()
-        v1 = client.get("/api/v1/files/read", params={"path": "test.txt"}).json()
-
-        assert legacy["content"] == v1["content"]
-        assert legacy["path"] == v1["path"]

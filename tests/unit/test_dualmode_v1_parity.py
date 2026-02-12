@@ -4,13 +4,11 @@ Verifies:
 - V1 routes function in LOCAL mode with real filesystem
 - HOSTED mode would route through hosted backend (mocked)
 - Auth context injection differs by mode but v1 shape is identical
-- Deprecation headers only on legacy, not v1 in both modes
 - Capabilities endpoint reports correct mode metadata
 """
 
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-from pathlib import Path
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from boring_ui.api.contracts import (
@@ -153,20 +151,17 @@ class TestV1ResponseShapeConsistency:
         assert isinstance(parsed.files, dict)
 
 
-class TestDeprecationParityAcrossModes:
-    """Deprecation headers present on legacy, absent on v1 in LOCAL mode."""
+class TestHostedLegacySurfaceAbsent:
+    """Hosted composition should not expose legacy compatibility paths."""
 
-    def test_legacy_tree_deprecated_in_local(self, tmp_path):
-        app = _make_local_app(tmp_path)
-        client = TestClient(app)
-        resp = client.get("/api/tree", params={"path": "."})
-        assert resp.headers.get("Deprecation") == "true"
+    def test_hosted_route_table_excludes_legacy_paths(self, tmp_path):
+        app = _make_hosted_app(tmp_path)
+        route_paths = {route.path for route in app.routes if hasattr(route, "path")}
 
-    def test_v1_list_not_deprecated_in_local(self, tmp_path):
-        app = _make_local_app(tmp_path)
-        client = TestClient(app)
-        resp = client.get("/api/v1/files/list", params={"path": "."})
-        assert resp.headers.get("Deprecation") is None
+        assert "/api/tree" not in route_paths
+        assert "/api/file" not in route_paths
+        assert "/api/search" not in route_paths
+        assert "/api/v1/sandbox/proxy/files/list" not in route_paths
 
 
 class TestAuthContextInjection:
@@ -199,14 +194,14 @@ class TestRouterCompositionParity:
     """Router composition differs correctly between modes."""
 
     def test_local_includes_file_and_git_routers(self, tmp_path):
-        from boring_ui.api.app import _get_routers_for_mode
-        routers = _get_routers_for_mode("local")
+        from boring_ui.api.app_mode_composition import get_routers_for_mode
+        routers = get_routers_for_mode("local")
         assert "files" in routers
         assert "git" in routers
 
     def test_hosted_excludes_privileged_routers(self, tmp_path):
-        from boring_ui.api.app import _get_routers_for_mode
-        routers = _get_routers_for_mode("hosted")
+        from boring_ui.api.app_mode_composition import get_routers_for_mode
+        routers = get_routers_for_mode("hosted")
         assert "files" not in routers
         assert "git" not in routers
         assert "pty" not in routers

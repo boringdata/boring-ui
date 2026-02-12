@@ -89,6 +89,14 @@ class TestHostedModeBlocking:
         response = client.get("/health")
         assert response.status_code == 200
 
+    def test_hosted_route_table_excludes_legacy_compat_paths(self, hosted_app):
+        """Hosted app should not mount legacy browser compatibility routes."""
+        paths = {r.path for r in hosted_app.routes if hasattr(r, "path")}
+        assert "/api/tree" not in paths
+        assert "/api/file" not in paths
+        assert "/api/search" not in paths
+        assert "/api/v1/sandbox/proxy/files/list" not in paths
+
 
 class TestHostedModeRejectsPrivilegedRouters:
     """HOSTED mode rejects explicit mounting of privileged routers."""
