@@ -16,13 +16,13 @@ These artifacts are part of the codebase and must not be deleted:
 | Source modules | `src/back/boring_ui/api/error_codes.py` | Production code |
 | Source modules | `src/back/boring_ui/api/hosted_client.py` | Production code |
 | Source modules | `src/back/boring_ui/api/sandbox_url_validator.py` | Production code |
-| Source modules | `src/back/boring_ui/api/capability_decorator.py` | Production code |
+| Source modules | `src/back/boring_ui/api/sandbox_auth.py` | Canonical capability auth module |
 | Unit tests | `tests/unit/test_target_resolver.py` | Regression tests |
 | Unit tests | `tests/unit/test_transport.py` | Regression tests |
 | Unit tests | `tests/unit/test_error_codes.py` | Regression tests |
 | Unit tests | `tests/unit/test_hosted_client.py` | Regression tests |
 | Unit tests | `tests/unit/test_sandbox_url_validator.py` | Regression tests |
-| Unit tests | `tests/unit/test_capability_decorator.py` | Regression tests |
+| Unit tests | `tests/unit/test_capability_decorator.py` | Regression tests for `sandbox_auth` decorator exports |
 | Integration tests | `tests/unit/test_local_capability_middleware.py` | Regression tests |
 | Security tests | `tests/unit/test_security_boundary.py` | Security regression |
 | Matrix tests | `tests/unit/test_verification_matrix.py` | Cross-cutting verification |

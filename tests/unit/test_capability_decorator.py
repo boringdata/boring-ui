@@ -4,8 +4,11 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.testclient import TestClient
-from boring_ui.api.capability_decorator import require_capability, get_capability_context
-from boring_ui.api.sandbox_auth import CapabilityAuthContext
+from boring_ui.api.sandbox_auth import (
+    CapabilityAuthContext,
+    require_capability,
+    get_capability_context,
+)
 
 
 @pytest.fixture
@@ -109,15 +112,12 @@ class TestCapabilityDecorator:
         assert result == {"status": "ok"}
 
     @pytest.mark.asyncio
-    async def test_decorator_allows_multiple_operations(self, mock_context):
-        """Decorator allows request if any required operation matches."""
+    async def test_decorator_rejects_invalid_operation_type(self, mock_context):
+        """Decorator rejects non-string operation requirements at runtime."""
 
         @require_capability(["exec:*", "files:read"])
         async def route_handler(request: Request):
             return {"status": "ok"}
-
-        # Context doesn't have exec but has files:read
-        mock_context.operations = {"files:read", "git:read"}
 
         request = AsyncMock(spec=Request)
         request.state = MagicMock()
@@ -125,27 +125,14 @@ class TestCapabilityDecorator:
         request.method = "GET"
         request.url.path = "/files"
 
-        result = await route_handler(request=request)
-
-        assert result == {"status": "ok"}
+        with pytest.raises(TypeError):
+            await route_handler(request=request)
 
     @pytest.mark.asyncio
-    async def test_decorator_no_operation_required(self, mock_context):
-        """Decorator allows any capability when no operation specified."""
-
-        @require_capability()
-        async def route_handler(request: Request):
-            return {"status": "ok"}
-
-        request = AsyncMock(spec=Request)
-        request.state = MagicMock()
-        request.state.capability_context = mock_context
-        request.method = "GET"
-        request.url.path = "/health"
-
-        result = await route_handler(request=request)
-
-        assert result == {"status": "ok"}
+    async def test_decorator_requires_operation_argument(self):
+        """Decorator construction fails when required operation is omitted."""
+        with pytest.raises(TypeError):
+            require_capability()
 
 
 class TestGetCapabilityContext:
