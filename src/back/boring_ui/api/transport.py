@@ -204,7 +204,7 @@ class HTTPInternalTransport(WorkspaceTransport):
         try:
             response = await self.request(
                 "GET",
-                "/internal/health",
+                "/health",
                 timeout_sec=timeout_sec,
             )
             if response.status_code == 200:
@@ -585,7 +585,7 @@ class SpritesProxyTransport(WorkspaceTransport):
         try:
             response = await self.request(
                 "GET",
-                "/internal/health",
+                "/health",
                 timeout_sec=timeout_sec,
             )
             if response.status_code == 200:

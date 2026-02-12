@@ -22,15 +22,19 @@ def main():
     workspace = Path(os.environ.get("WORKSPACE_ROOT", Path.cwd()))
     workspace.mkdir(parents=True, exist_ok=True)
 
-    app = create_local_api_app(workspace)
+    # Read capability public key for token validation (optional for parity mode)
+    cap_pub_key = os.environ.get("CAPABILITY_PUBLIC_KEY", "")
+    if cap_pub_key:
+        cap_pub_key = cap_pub_key.replace("\\n", "\n")
+
+    app = create_local_api_app(workspace, capability_public_key_pem=cap_pub_key or None)
 
     print(f"Local API parity server starting on http://127.0.0.1:{port}")
     print(f"Workspace: {workspace}")
+    print(f"Capability auth: {'enabled' if cap_pub_key else 'disabled'}")
 
     uvicorn.run(app, host="127.0.0.1", port=port)
 
 
 if __name__ == "__main__":
     main()
-
-main()

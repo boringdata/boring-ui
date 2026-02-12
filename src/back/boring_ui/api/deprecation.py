@@ -23,7 +23,6 @@ from starlette.responses import Response
 LEGACY_ROUTE_MAP: dict[str, str] = {
     "/api/tree": "/api/v1/files/list",
     "/api/file": "/api/v1/files/read",
-    "/api/search": "/api/v1/files/search",
     "/api/git/status": "/api/v1/git/status",
     "/api/git/diff": "/api/v1/git/diff",
     "/api/git/show": "/api/v1/git/show",

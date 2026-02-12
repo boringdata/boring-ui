@@ -35,6 +35,7 @@ from .capabilities import (
 )
 from .logging_middleware import add_logging_middleware, get_request_id
 from .modules.sandbox.hosted_proxy import create_hosted_sandbox_proxy_router
+from .modules.sandbox.hosted_client import SandboxClientError
 from .modules.sandbox.hosted_compat import create_hosted_compat_router
 from .modules.metrics import create_metrics_router
 from .v1_router import create_v1_router
@@ -89,16 +90,38 @@ class _HostedProxyClientAdapter:
         if params:
             req_path = f"{path}?{urlencode(params)}"
 
-        status_code, _, body = await self._hosted_client.request(
-            method=method,
-            path=req_path,
-            headers=req_headers or None,
-            trace_id=trace_id,
-        )
+        from .error_codes import TransportError as _TransportError
+        try:
+            status_code, _, body = await self._hosted_client.request(
+                method=method,
+                path=req_path,
+                headers=req_headers or None,
+                trace_id=trace_id,
+            )
+        except _TransportError as te:
+            raise SandboxClientError(
+                code=f"transport_{te.code.value}",
+                message=te.message,
+                http_status=te.http_status if te.http_status < 500 else 502,
+                request_id=req_headers.get("X-Request-ID", ""),
+                trace_id=trace_id,
+                sandbox_status=te.http_status,
+                retryable=te.retryable,
+            )
 
         if status_code >= 400:
             body_text = body.decode("utf-8", errors="replace")
-            raise RuntimeError(f"Sandbox request failed {status_code}: {body_text}")
+            is_timeout = status_code in (408, 504)
+            is_unavailable = status_code in (502, 503)
+            raise SandboxClientError(
+                code="sandbox_timeout" if is_timeout else "sandbox_unavailable" if is_unavailable else "sandbox_error",
+                message=body_text or f"Sandbox request failed with status {status_code}",
+                http_status=502 if is_unavailable or is_timeout else status_code,
+                request_id=req_headers.get("X-Request-ID", ""),
+                trace_id=trace_id,
+                sandbox_status=status_code,
+                retryable=is_timeout or is_unavailable,
+            )
 
         if not body:
             return {}
