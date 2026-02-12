@@ -31,3 +31,5 @@ export { useTabManager } from './useTabManager'
 export { useBrowserTitle, computeTitle, getFolderName } from './useBrowserTitle'
 
 export { useApprovals } from './useApprovals'
+
+export { useFileOperations } from './useFileOperations'
