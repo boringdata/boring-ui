@@ -11,6 +11,7 @@ from .modules.pty import create_pty_router
 from .modules.stream import create_stream_router
 from .modules.sandbox import InMemorySandboxStore, SandboxStore, TargetResolver
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
+from .workspace_gateway import create_workspace_gateway
 from .capabilities import (
     RouterRegistry,
     create_default_registry,
@@ -80,6 +81,11 @@ def create_app(
     sandbox_store = sandbox_store or InMemorySandboxStore()
     target_resolver = TargetResolver(store=sandbox_store)
     registry = registry or create_default_registry()
+    workspace_gateway = create_workspace_gateway(
+        api_config=config,
+        runtime_config=runtime_config,
+        storage=storage,
+    )
 
     # Determine which routers to include
     # If routers list is provided, use it; otherwise use include_* flags
@@ -130,6 +136,7 @@ def create_app(
         allow_headers=['*'],
     )
     app.state.runtime_config = runtime_config
+    app.state.workspace_gateway = workspace_gateway
 
     # Mount routers from registry based on enabled set
     router_args = {

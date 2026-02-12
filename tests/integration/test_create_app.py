@@ -9,6 +9,7 @@ from httpx import AsyncClient, ASGITransport
 
 from boring_ui.api.app import create_app
 from boring_ui.api.config import APIConfig
+from boring_ui.api.testing.factories import sandbox_runtime_config_factory
 
 
 @pytest.fixture
@@ -70,6 +71,18 @@ class TestAppFactory:
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
         assert '/api/sandbox' in paths
         assert '/api/sandbox/target' in paths
+
+    def test_app_sets_local_workspace_gateway_by_default(self, workspace):
+        """Default app wiring should use local gateway mode."""
+        config = APIConfig(workspace_root=workspace)
+        app = create_app(config)
+        assert app.state.workspace_gateway.mode == 'local'
+
+    def test_app_sets_sandbox_workspace_gateway_when_runtime_is_sandbox(self, workspace):
+        """Sandbox runtime config should dispatch sandbox gateway."""
+        config = APIConfig(workspace_root=workspace)
+        app = create_app(config, runtime_config=sandbox_runtime_config_factory())
+        assert app.state.workspace_gateway.mode == 'sandbox'
 
 
 class TestHealthEndpoint:

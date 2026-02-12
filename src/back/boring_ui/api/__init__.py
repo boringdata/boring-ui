@@ -55,6 +55,13 @@ from .approval import (
     InMemoryApprovalStore,
     create_approval_router,
 )
+from .workspace_gateway import (
+    WorkspaceGateway,
+    LocalWorkspaceGateway,
+    SandboxWorkspaceGateway,
+    SpritesGateway,
+    create_workspace_gateway,
+)
 
 # Capabilities and registry
 from .capabilities import (
@@ -86,12 +93,18 @@ __all__ = [
     'create_stream_router',
     'create_sandbox_router',
     'create_approval_router',
+    'create_workspace_gateway',
     # Approval
     'ApprovalStore',
     'InMemoryApprovalStore',
     'SandboxStore',
     'InMemorySandboxStore',
     'TargetResolver',
+    # Gateway
+    'WorkspaceGateway',
+    'LocalWorkspaceGateway',
+    'SandboxWorkspaceGateway',
+    'SpritesGateway',
     # Capabilities and registry
     'RouterRegistry',
     'RouterInfo',
