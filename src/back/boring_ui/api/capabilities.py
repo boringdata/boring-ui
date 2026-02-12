@@ -94,6 +94,7 @@ def create_default_registry() -> RouterRegistry:
     from .modules.git import create_git_router
     from .modules.pty import create_pty_router
     from .modules.stream import create_stream_router
+    from .modules.sandbox import create_sandbox_router
     from .approval import create_approval_router
 
     registry = RouterRegistry()
@@ -143,6 +144,13 @@ def create_default_registry() -> RouterRegistry:
         create_approval_router,
         description='Approval workflow endpoints',
         tags=['approval'],
+    )
+    registry.register(
+        'sandbox',
+        '/api/sandbox',
+        create_sandbox_router,
+        description='Sandbox lifecycle and target resolution endpoints',
+        tags=['sandbox', 'management'],
     )
 
     return registry

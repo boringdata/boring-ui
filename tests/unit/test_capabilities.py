@@ -17,6 +17,7 @@ class TestRouterRegistry:
         assert 'pty' in router_names
         assert 'stream' in router_names
         assert 'approval' in router_names
+        assert 'sandbox' in router_names
 
     def test_registry_get_router(self):
         """Should be able to get a registered router."""
@@ -91,6 +92,7 @@ class TestCapabilitiesEndpoint:
         assert 'pty' in features
         assert 'stream' in features
         assert 'approval' in features
+        assert 'sandbox' in features
 
     def test_capabilities_has_routers(self, client):
         """Response should include router details."""
@@ -135,6 +137,7 @@ class TestCapabilitiesEndpoint:
         assert features['pty'] is False
         assert features['stream'] is False
         assert features['approval'] is False
+        assert features['sandbox'] is False
 
     def test_capabilities_with_selective_routers(self):
         """Creating app with specific routers should enable only those."""
@@ -150,6 +153,7 @@ class TestCapabilitiesEndpoint:
         assert features['pty'] is False
         assert features['stream'] is False
         assert features['approval'] is True
+        assert features['sandbox'] is False
 
 
 class TestHealthEndpointFeatures:
@@ -170,6 +174,7 @@ class TestHealthEndpointFeatures:
         assert features['pty'] is True
         assert features['stream'] is True
         assert features['approval'] is True
+        assert features['sandbox'] is True
 
     def test_health_features_match_selective_routers(self):
         """Health features should match when using selective routers."""
@@ -185,3 +190,4 @@ class TestHealthEndpointFeatures:
         assert features['pty'] is False
         assert features['stream'] is False
         assert features['approval'] is False
+        assert features['sandbox'] is False

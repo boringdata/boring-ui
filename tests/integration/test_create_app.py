@@ -32,7 +32,13 @@ def app(workspace):
 def minimal_app(workspace):
     """Create a minimal application with only core routers."""
     config = APIConfig(workspace_root=workspace)
-    return create_app(config, include_pty=False, include_stream=False, include_approval=False)
+    return create_app(
+        config,
+        include_pty=False,
+        include_stream=False,
+        include_approval=False,
+        include_sandbox=False,
+    )
 
 
 class TestAppFactory:
@@ -58,6 +64,12 @@ class TestAppFactory:
         """Test that capabilities endpoint is available."""
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
         assert '/api/capabilities' in paths
+
+    def test_app_has_sandbox_endpoints(self, app):
+        """Test that sandbox endpoints are registered in full app."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/api/sandbox' in paths
+        assert '/api/sandbox/target' in paths
 
 
 class TestHealthEndpoint:
@@ -88,6 +100,7 @@ class TestHealthEndpoint:
             assert features['chat_claude_code'] is True
             assert features['stream'] is True  # Backward compat alias
             assert features['approval'] is True
+            assert features['sandbox'] is True
 
     @pytest.mark.asyncio
     async def test_minimal_app_features(self, minimal_app):
@@ -103,6 +116,7 @@ class TestHealthEndpoint:
             assert features['chat_claude_code'] is False
             assert features['stream'] is False
             assert features['approval'] is False
+            assert features['sandbox'] is False
 
 
 class TestCapabilitiesEndpoint:

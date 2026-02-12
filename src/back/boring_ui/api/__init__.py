@@ -49,6 +49,7 @@ from .modules.files import create_file_router
 from .modules.git import create_git_router
 from .modules.pty import create_pty_router
 from .modules.stream import create_stream_router
+from .modules.sandbox import create_sandbox_router, SandboxStore, InMemorySandboxStore, TargetResolver
 from .approval import (
     ApprovalStore,
     InMemoryApprovalStore,
@@ -83,10 +84,14 @@ __all__ = [
     'create_git_router',
     'create_pty_router',
     'create_stream_router',
+    'create_sandbox_router',
     'create_approval_router',
     # Approval
     'ApprovalStore',
     'InMemoryApprovalStore',
+    'SandboxStore',
+    'InMemorySandboxStore',
+    'TargetResolver',
     # Capabilities and registry
     'RouterRegistry',
     'RouterInfo',
