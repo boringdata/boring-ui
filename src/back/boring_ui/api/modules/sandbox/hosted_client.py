@@ -92,7 +92,7 @@ class HostedSandboxClient:
         return await self._request(
             "POST",
             "/internal/v1/files/write",
-            params={"path": path, "content": content},
+            json_body={"path": path, "content": content},
             capability_token=capability_token,
             request_id=request_id,
         )
@@ -129,7 +129,7 @@ class HostedSandboxClient:
         return await self._request(
             "POST",
             "/internal/v1/exec/run",
-            params={"command": command, "timeout_seconds": timeout_seconds},
+            json_body={"command": command, "timeout_seconds": timeout_seconds},
             capability_token=capability_token,
             request_id=request_id,
         )

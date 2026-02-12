@@ -15,6 +15,7 @@ from pathlib import Path
 import subprocess
 import asyncio
 from ..sandbox_auth import require_capability
+from ..contracts import ExecRunRequest
 from ..modules.sandbox.policy import (
     SandboxPolicies,
     sanitize_exec_env,
@@ -46,8 +47,7 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
     @require_capability("exec:run")
     async def run_command(
         request: Request,
-        command: str,
-        timeout_seconds: int = 30,
+        body: ExecRunRequest,
         capture_output: bool = True,
     ):
         """Run a command with timeout and capture.
@@ -64,14 +64,14 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
         try:
             # Validate timeout against policy limit
             max_timeout = resource_limits["timeout_seconds"]
-            timeout = min(timeout_seconds, max_timeout)
+            timeout = min(body.timeout_seconds, max_timeout)
             if timeout < 1:
                 timeout = 30
 
             # Parse command safely (no shell expansion)
             import shlex
             try:
-                args = shlex.split(command)
+                args = shlex.split(body.command)
             except ValueError as e:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -84,13 +84,13 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
                     detail="Command cannot be empty",
                 )
 
-            if not policies.allow_command(command):
+            if not policies.allow_command(body.command):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Command blocked by execution policy",
                 )
 
-            if not policies.allow_network_command(command):
+            if not policies.allow_network_command(body.command):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Command blocked by network egress policy",
@@ -134,7 +134,7 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
                 stderr = mask_secrets(stderr)
 
             return {
-                "command": command,
+                "command": body.command,
                 "exit_code": proc.returncode,
                 "timeout_seconds": timeout,
                 "status": "completed",

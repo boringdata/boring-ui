@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, status, Request
 from pathlib import Path
 from typing import Optional
 from ..sandbox_auth import require_capability
+from ..contracts import WriteFileRequest
 
 
 def create_files_router(workspace_root: Path) -> APIRouter:
@@ -118,20 +119,117 @@ def create_files_router(workspace_root: Path) -> APIRouter:
 
     @router.post("/write")
     @require_capability("files:write")
-    async def write_file(request: Request, path: str, content: str):
+    async def write_file(request: Request, body: WriteFileRequest):
         """Write file contents.
 
         Requires capability: files:write
         """
         try:
-            p = validate_path(path)
+            p = validate_path(body.path)
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content)
+            p.write_text(body.content)
             return {
-                "path": path,
-                "size": len(content),
+                "path": body.path,
+                "size": len(body.content),
                 "written": True,
             }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e),
+            )
+
+    @router.delete("/delete")
+    @require_capability("files:write")
+    async def delete_file(request: Request, path: str):
+        """Delete file or directory.
+
+        Requires capability: files:write
+        """
+        try:
+            p = validate_path(path)
+            if not p.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Not found",
+                )
+            if p.is_dir():
+                import shutil
+                shutil.rmtree(p)
+            else:
+                p.unlink()
+            return {"path": path, "deleted": True}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e),
+            )
+
+    @router.post("/rename")
+    @require_capability("files:write")
+    async def rename_file(request: Request, old_path: str, new_path: str):
+        """Rename file or directory.
+
+        Requires capability: files:write
+        """
+        try:
+            old_p = validate_path(old_path)
+            new_p = validate_path(new_path)
+            if not old_p.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Not found",
+                )
+            if new_p.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Target exists",
+                )
+            new_p.parent.mkdir(parents=True, exist_ok=True)
+            old_p.rename(new_p)
+            return {"old_path": old_path, "new_path": new_path, "renamed": True}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e),
+            )
+
+    @router.post("/move")
+    @require_capability("files:write")
+    async def move_file(request: Request, src_path: str, dest_dir: str):
+        """Move file or directory into a destination directory.
+
+        Requires capability: files:write
+        """
+        try:
+            src_p = validate_path(src_path)
+            dest_d = validate_path(dest_dir)
+            if not src_p.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Not found",
+                )
+            if not dest_d.is_dir():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Destination is not a directory",
+                )
+            dest_p = dest_d / src_p.name
+            if dest_p.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Target exists",
+                )
+            import shutil
+            shutil.move(str(src_p), str(dest_p))
+            rel_dest = str(dest_p.relative_to(workspace_root.resolve()))
+            return {"src_path": src_path, "dest_path": rel_dest, "moved": True}
         except HTTPException:
             raise
         except Exception as e:
