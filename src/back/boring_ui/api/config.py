@@ -108,6 +108,20 @@ def is_dev_auth_bypass_enabled() -> bool:
     return raw in {'1', 'true', 'yes', 'on'}
 
 
+def is_local_parity_mode() -> bool:
+    """Return True when LOCAL mode should use HTTP parity transport (bd-1adh.7.2).
+
+    When enabled, LOCAL mode routes /internal/v1/* calls through
+    HTTPInternalTransport to a co-located local-api HTTP server instead
+    of in-process mounting. This exercises the same code path as hosted
+    mode for integration testing.
+
+    Set LOCAL_PARITY_MODE=http to enable.
+    """
+    raw = os.environ.get('LOCAL_PARITY_MODE', '').strip().lower()
+    return raw == 'http'
+
+
 @dataclass
 class APIConfig:
     """Central configuration for all API routers.
@@ -187,6 +201,8 @@ class APIConfig:
         hosted_sprites_required = hosted_required + [
             'SPRITES_TOKEN',  # API token for Sprites.dev
             'SPRITES_ORG',  # Organization ID for Sprites
+            'SPRITES_TARGET_SPRITE',  # Workspace sprite to target
+            'SPRITES_LOCAL_API_PORT',  # local_api port inside target sprite
         ]
 
         return {

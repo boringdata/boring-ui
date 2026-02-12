@@ -1,12 +1,14 @@
 """Application factory for boring-ui API."""
 import os
 import secrets
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlencode
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import APIConfig, get_cors_origin, is_dev_auth_bypass_enabled
+from .config import APIConfig, get_cors_origin, is_dev_auth_bypass_enabled, is_local_parity_mode
 from .storage import Storage, LocalStorage
 from .modules.files import create_file_router
 from .modules.git import create_git_router
@@ -22,6 +24,9 @@ from .capability_tokens import CapabilityTokenIssuer
 from .service_auth import ServiceTokenSigner
 from .sandbox_auth import CapabilityAuthContext
 from .local_api import create_local_api_router
+from .target_resolver import StaticTargetResolver
+from .transport import HTTPInternalTransport, SpritesProxyTransport
+from .hosted_client import HostedClient
 from .capabilities import (
     RouterRegistry,
     ServiceConnectionInfo,
@@ -29,7 +34,6 @@ from .capabilities import (
     create_capabilities_router,
 )
 from .logging_middleware import add_logging_middleware, get_request_id
-from .modules.sandbox.hosted_client import HostedSandboxClient, SandboxClientConfig
 from .modules.sandbox.hosted_proxy import create_hosted_sandbox_proxy_router
 from .modules.sandbox.hosted_compat import create_hosted_compat_router
 from .modules.metrics import create_metrics_router
@@ -37,6 +41,118 @@ from .modules.metrics import create_metrics_router
 # Global managers (for lifespan management)
 _sandbox_manager: SandboxManager | None = None
 _companion_manager: CompanionManager | None = None
+
+
+class _HostedProxyClientAdapter:
+    """Adapter exposing HostedSandboxClient-compatible methods over transport client."""
+
+    def __init__(
+        self,
+        hosted_client: HostedClient,
+        provider: str,
+        transport_type: str,
+        target: str,
+        service_signer: ServiceTokenSigner | None = None,
+    ):
+        self._hosted_client = hosted_client
+        self._provider = provider
+        self._transport_type = transport_type
+        self._target = target
+        self._service_signer = service_signer
+        self._request_count = 0
+
+    async def _request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, str | int] | None = None,
+        capability_token: str = "",
+    ) -> dict:
+        self._request_count += 1
+        trace_id = f"hosted-proxy-{self._request_count}"
+        req_headers: dict[str, str] = {}
+
+        if capability_token:
+            req_headers["Authorization"] = f"Bearer {capability_token}"
+        if self._service_signer:
+            req_headers["X-Service-Token"] = self._service_signer.sign_request(ttl_seconds=60)
+
+        req_path = path
+        if params:
+            req_path = f"{path}?{urlencode(params)}"
+
+        status_code, _, body = await self._hosted_client.request(
+            method=method,
+            path=req_path,
+            headers=req_headers or None,
+            trace_id=trace_id,
+        )
+
+        if status_code >= 400:
+            body_text = body.decode("utf-8", errors="replace")
+            raise RuntimeError(f"Sandbox request failed {status_code}: {body_text}")
+
+        if not body:
+            return {}
+
+        return json.loads(body.decode("utf-8"))
+
+    async def list_files(self, path: str = ".", capability_token: str = "") -> dict:
+        return await self._request_json(
+            "GET",
+            "/internal/v1/files/list",
+            params={"path": path},
+            capability_token=capability_token,
+        )
+
+    async def read_file(self, path: str, capability_token: str = "") -> dict:
+        return await self._request_json(
+            "GET",
+            "/internal/v1/files/read",
+            params={"path": path},
+            capability_token=capability_token,
+        )
+
+    async def write_file(self, path: str, content: str, capability_token: str = "") -> dict:
+        return await self._request_json(
+            "POST",
+            "/internal/v1/files/write",
+            params={"path": path, "content": content},
+            capability_token=capability_token,
+        )
+
+    async def git_status(self, capability_token: str = "") -> dict:
+        return await self._request_json(
+            "GET",
+            "/internal/v1/git/status",
+            capability_token=capability_token,
+        )
+
+    async def git_diff(self, context: str = "working", capability_token: str = "") -> dict:
+        return await self._request_json(
+            "GET",
+            "/internal/v1/git/diff",
+            params={"context": context},
+            capability_token=capability_token,
+        )
+
+    async def exec_run(self, command: str, timeout_seconds: int = 30, capability_token: str = "") -> dict:
+        return await self._request_json(
+            "POST",
+            "/internal/v1/exec/run",
+            params={"command": command, "timeout_seconds": timeout_seconds},
+            capability_token=capability_token,
+        )
+
+    def get_stats(self) -> dict:
+        return {
+            "provider": self._provider,
+            "transport_type": self._transport_type,
+            "target": self._target,
+            "requests": self._request_count,
+            "internal_url": self._target,
+        }
 
 
 def _get_routers_for_mode(
@@ -418,7 +534,6 @@ def create_app(
     # Hosted-mode public proxy for privileged operations.
     # Frontend interacts with control-plane routes only.
     if config.run_mode.value == 'hosted':
-        internal_url = os.environ.get('INTERNAL_SANDBOX_URL', 'http://127.0.0.1:2469')
         capability_private_key = os.environ.get('CAPABILITY_PRIVATE_KEY', '')
         if capability_private_key:
             capability_private_key = capability_private_key.replace("\\n", "\n")
@@ -433,13 +548,25 @@ def create_app(
                     service_name='hosted-api',
                 )
 
-            hosted_client = HostedSandboxClient(
-                SandboxClientConfig(
-                    internal_url=internal_url,
-                    timeout_seconds=30,
-                    max_retries=3,
-                    service_signer=service_signer,
+            target_resolver = StaticTargetResolver(provider=config.sandbox_provider.value)
+            if config.sandbox_provider.value == 'sprites':
+                sprites_token = os.environ.get('SPRITES_TOKEN', '')
+                transport = SpritesProxyTransport(
+                    sprites_token=sprites_token,
+                    sprite_name=target_resolver.sprite_name,
+                    local_api_port=target_resolver.local_api_port,
                 )
+                transport_target = f"sprites:{target_resolver.sprite_name}:{target_resolver.local_api_port}"
+            else:
+                transport = HTTPInternalTransport(base_url=target_resolver.internal_base_url)
+                transport_target = target_resolver.internal_base_url
+
+            hosted_client = _HostedProxyClientAdapter(
+                hosted_client=HostedClient(transport=transport),
+                provider=config.sandbox_provider.value,
+                transport_type=transport.__class__.__name__,
+                target=transport_target,
+                service_signer=service_signer,
             )
             app.include_router(
                 create_hosted_sandbox_proxy_router(
@@ -488,13 +615,23 @@ def create_app(
             protocol='rest+sse',
         )
 
-    # LOCAL mode: mount local_api router in-process (bd-1adh.2.2)
-    # In LOCAL mode, internal workspace operations are available directly on control plane
-    # No separate service needed; local_api is mounted at /internal/* for consistency
+    # LOCAL mode: mount local_api (bd-1adh.2.2, bd-1adh.7.2)
     if config.run_mode.value == 'local':
-        local_api_router = create_local_api_router(config.workspace_root)
-        app.include_router(local_api_router)
-        logger.debug('LOCAL mode: local_api router mounted at /internal/v1')
+        if is_local_parity_mode():
+            # HTTP parity mode: route through HTTPInternalTransport for hosted-path testing
+            parity_port = int(os.environ.get('LOCAL_PARITY_PORT', '2469'))
+            parity_url = f'http://127.0.0.1:{parity_port}'
+            logger.info(
+                'LOCAL PARITY MODE: routing /internal/v1 through HTTP transport at %s. '
+                'Start local-api server separately: LOCAL_API_PORT=%d python -m boring_ui.api.local_api.app',
+                parity_url, parity_port,
+            )
+            app.state.local_parity_url = parity_url
+        else:
+            # Default: fast in-process mounting
+            local_api_router = create_local_api_router(config.workspace_root)
+            app.include_router(local_api_router)
+            logger.debug('LOCAL mode: local_api router mounted at /internal/v1')
 
     # Always include capabilities router (provides mode metadata)
     app.include_router(
