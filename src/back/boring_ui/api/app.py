@@ -3,7 +3,7 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import APIConfig, get_cors_origin, is_dev_auth_bypass_enabled
@@ -20,6 +20,8 @@ from .auth import OIDCVerifier
 from .auth_middleware import add_oidc_auth_middleware, AuthContext
 from .capability_tokens import CapabilityTokenIssuer
 from .service_auth import ServiceTokenSigner
+from .sandbox_auth import CapabilityAuthContext
+from .local_api import create_local_api_router
 from .capabilities import (
     RouterRegistry,
     ServiceConnectionInfo,
@@ -336,6 +338,27 @@ def create_app(
     # Structured logging and request correlation middleware (bd-1pwb.9.1)
     # Must be added after CORS (middleware chain executes in reverse order)
     add_logging_middleware(app)
+
+    # LOCAL mode: capability context for /internal/v1/* routes (bd-1adh.6.2)
+    # In LOCAL mode there is no cross-service boundary — control plane and data
+    # plane live in the same process. Inject a full-access CapabilityAuthContext
+    # so the @require_capability decorators on local_api routes are satisfied
+    # without requiring token round-trips.
+    if config.run_mode.value == 'local':
+        @app.middleware("http")
+        async def local_capability_context(request: Request, call_next):
+            if request.url.path.startswith("/internal/v1"):
+                import time as _time
+                now = int(_time.time())
+                request.state.capability_context = CapabilityAuthContext(
+                    workspace_id="local",
+                    operations={"*"},          # full access in LOCAL mode
+                    jti="local-bypass",
+                    issued_at=now,
+                    expires_at=now + 3600,
+                )
+            return await call_next(request)
+        logger.debug('LOCAL mode: full-access capability context injected for /internal/v1')
 
     # Hosted-mode edge authentication (OIDC JWT validation)
     if config.run_mode.value == 'hosted':
