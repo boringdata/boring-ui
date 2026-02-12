@@ -146,6 +146,7 @@ class ExecRunResponse(BaseModel):
     status: str = Field(..., description="'completed' or 'timeout'")
     stdout: Optional[str] = Field(None, description="Standard output (optional)")
     stderr: Optional[str] = Field(None, description="Standard error (optional)")
+    truncated: bool = Field(False, description="True if output was truncated")
 
 
 # ============================================================================
