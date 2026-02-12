@@ -78,6 +78,12 @@ export function useProjectRoot() {
 
   // Manual refetch - resets retry count and fallback state
   const refetch = useCallback(() => {
+    // Clear any pending retry timer to prevent race conditions
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current)
+      retryTimeoutRef.current = null
+    }
+
     retryCountRef.current = 0
     fallbackAppliedRef.current = false
     setHasFallback(false)
