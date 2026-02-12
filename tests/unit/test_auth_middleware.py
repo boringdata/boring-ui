@@ -12,6 +12,7 @@ import pytest
 from unittest.mock import MagicMock
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+import boring_ui.api.auth_middleware as auth_middleware_module
 
 from boring_ui.api.auth_middleware import (
     AuthContext,
@@ -378,3 +379,5 @@ class TestAuthErrorEmitter:
         import json
         body = json.loads(resp.body.decode())
         assert len(body["request_id"]) > 0  # UUID auto-generated
+
+

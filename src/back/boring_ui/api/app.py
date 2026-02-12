@@ -35,7 +35,6 @@ from .modules.sandbox.hosted_client import (
     HostedSandboxClient,
     SandboxClientConfig,
 )
-from .modules.metrics import create_metrics_router
 from .v1_router import create_v1_router
 from .v1_local_backend import LocalFilesBackend, LocalGitBackend
 from .v1_hosted_backend import HostedFilesBackend, HostedGitBackend, HostedExecBackend
@@ -581,9 +580,6 @@ def create_app(
         ),
         prefix='/api',
     )
-
-    # Observability metrics endpoints (/api/v1/metrics)
-    app.include_router(create_metrics_router())
 
     # Store token issuer on app state for use by other components
     app.state.token_issuer = token_issuer

@@ -143,6 +143,7 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
 
         # Calculate latency
         latency_ms = (time.time() - start_time) * 1000
+        self._record_operation_metrics(request.url.path, latency_ms, response.status_code)
 
         # Build log record with structured fields
         log_record = logger.makeRecord(
@@ -179,6 +180,11 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
         logger.handle(log_record)
 
         return response
+
+    @staticmethod
+    def _record_operation_metrics(path: str, latency_ms: float, status_code: int) -> None:
+        """Record canonical operation metrics from request path (disabled - observability removed)."""
+        pass
 
 
 def add_logging_middleware(app: FastAPI) -> None:

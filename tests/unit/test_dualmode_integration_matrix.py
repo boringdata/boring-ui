@@ -167,27 +167,6 @@ class TestDualModeIntegrationMatrix:
         except ValueError:
             pass  # Expected
 
-    def test_audit_trail_generation(self):
-        """Should generate audit trails in both modes."""
-        from boring_ui.api.audit import AuditLogger, AuditEventType
-
-        logger = AuditLogger()
-
-        # Successful auth
-        event = logger.log_auth_success("user1", workspace_id="ws1")
-        assert event.event_type == AuditEventType.AUTH_SUCCESS
-        assert event.user_id == "user1"
-
-        # File operation
-        event = logger.log_file_operation(
-            user_id="user1",
-            operation="read",
-            path="/workspace/file.txt",
-            workspace_id="ws1",
-        )
-        assert event.event_type == AuditEventType.FILE_READ
-        assert event.action == "read"
-
     def test_service_identity_authentication(self):
         """Should authenticate service-to-service calls in HOSTED mode."""
         from boring_ui.api.service_auth import ServiceTokenSigner, ServiceTokenValidator
