@@ -9,6 +9,7 @@ from boring_ui.api.smoke_tests import (
     SmokeCategory,
     SmokeOutcome,
     SmokeStep,
+    SmokeStepResult,
     SmokeTestRunner,
 )
 
@@ -92,3 +93,21 @@ def test_run_category_uses_registered_handler():
 
     assert len(results) == 2
     assert all(r.outcome == SmokeOutcome.PASS for r in results)
+
+
+def test_run_category_records_direct_handler_results():
+    runner = SmokeTestRunner(gate=CredentialGate(api_token='t', base_url='https://x'))
+
+    def handler(step: SmokeStep):
+        return runner.execute_step(step, outcome=SmokeOutcome.PASS, response_status=200)
+
+    runner.register_step_handler('app_startup', handler)
+    runner.register_step_handler('health_endpoint', lambda step: SmokeStepResult(
+        step=step,
+        outcome=SmokeOutcome.PASS,
+        request_id='manual-id',
+        elapsed_ms=1.0,
+    ))
+    runner.run_category(SmokeCategory.DEPLOY)
+
+    assert runner.pass_count == 2

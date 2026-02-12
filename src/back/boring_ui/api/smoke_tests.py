@@ -405,6 +405,8 @@ class SmokeTestRunner:
             handler = self._step_handlers.get(step.name)
             if handler:
                 result = handler(step)
+                if not any(existing is result for existing in self._results):
+                    self._results.append(result)
             else:
                 # Never auto-pass in run mode; missing handlers are explicit failures.
                 result = self.execute_step(
