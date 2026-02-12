@@ -90,6 +90,12 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
                     detail="Command blocked by execution policy",
                 )
 
+            if not policies.allow_network_command(command):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Command blocked by network egress policy",
+                )
+
             # Run with sanitized environment and timeout
             try:
                 proc = await asyncio.create_subprocess_exec(
@@ -149,8 +155,9 @@ def create_exec_router(workspace_root: Path) -> APIRouter:
         """Check if exec service is healthy."""
         return {
             "status": "ok",
-            "max_timeout": 300,
+            "max_timeout": resource_limits["timeout_seconds"],
             "default_timeout": 30,
+            "egress_posture": policies.get_egress_posture(),
         }
 
     return router

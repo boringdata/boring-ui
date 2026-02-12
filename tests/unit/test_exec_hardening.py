@@ -1,4 +1,5 @@
-"""Tests for exec hardening: env sanitization, output limits, secret masking (bd-1pwb.8.2)."""
+"""Tests for exec hardening: env sanitization, output limits, secret masking,
+network egress controls (bd-1pwb.8.2, bd-1pwb.8.3)."""
 
 import pytest
 from boring_ui.api.modules.sandbox.policy import (
@@ -6,8 +7,10 @@ from boring_ui.api.modules.sandbox.policy import (
     mask_secrets,
     truncate_output,
     SandboxPolicies,
+    NetworkEgressPolicy,
     SENSITIVE_ENV_PREFIXES,
     SENSITIVE_ENV_EXACT,
+    PROXY_ENV_VARS,
 )
 
 
@@ -218,3 +221,142 @@ class TestSensitiveEnvCoverage:
         critical = ["VAULT_TOKEN", "SERVICE_AUTH_SECRET", "HOSTED_API_TOKEN", "DATABASE_URL", "SECRET_KEY"]
         for var in critical:
             assert var in SENSITIVE_ENV_EXACT, f"Missing exact match: {var}"
+
+
+# --- Network egress controls (bd-1pwb.8.3) ---
+
+class TestNetworkEgressPolicy:
+    """Tests for network egress policy enforcement."""
+
+    def test_default_policy_is_workspace_only(self):
+        p = SandboxPolicies()
+        assert p.network_egress_policy == NetworkEgressPolicy.WORKSPACE_ONLY
+
+    def test_workspace_only_allows_safe_commands(self):
+        p = SandboxPolicies()
+        assert p.allow_network_command("ls -la") is True
+        assert p.allow_network_command("git status") is True
+        assert p.allow_network_command("npm install") is True
+        assert p.allow_network_command("python script.py") is True
+        assert p.allow_network_command("pip install requests") is True
+
+    def test_workspace_only_blocks_raw_network_tools(self):
+        p = SandboxPolicies()
+        assert p.allow_network_command("curl http://evil.com") is False
+        assert p.allow_network_command("wget http://evil.com") is False
+        assert p.allow_network_command("ssh user@host") is False
+        assert p.allow_network_command("scp file user@host:") is False
+        assert p.allow_network_command("nc -l 1234") is False
+        assert p.allow_network_command("ncat host 80") is False
+        assert p.allow_network_command("netcat host 80") is False
+        assert p.allow_network_command("telnet host 25") is False
+        assert p.allow_network_command("ftp ftp.example.com") is False
+        assert p.allow_network_command("nmap 192.168.1.0/24") is False
+        assert p.allow_network_command("ping 8.8.8.8") is False
+
+    def test_deny_all_blocks_network_commands(self):
+        p = SandboxPolicies(network_egress_policy=NetworkEgressPolicy.DENY_ALL)
+        assert p.allow_network_command("curl http://x") is False
+        assert p.allow_network_command("rsync -avz src/ dst/") is False
+        assert p.allow_network_command("ssh host") is False
+
+    def test_deny_all_allows_non_network_commands(self):
+        p = SandboxPolicies(network_egress_policy=NetworkEgressPolicy.DENY_ALL)
+        assert p.allow_network_command("ls") is True
+        assert p.allow_network_command("cat file.txt") is True
+        assert p.allow_network_command("git status") is True
+
+    def test_allow_all_permits_everything(self):
+        p = SandboxPolicies(network_egress_policy=NetworkEgressPolicy.ALLOW_ALL)
+        assert p.allow_network_command("curl http://x") is True
+        assert p.allow_network_command("wget http://x") is True
+        assert p.allow_network_command("ssh user@host") is True
+        assert p.allow_network_command("nmap 10.0.0.0/8") is True
+
+    def test_allowlist_overrides_workspace_only(self):
+        p = SandboxPolicies(egress_allowlist={"curl"})
+        assert p.allow_network_command("curl http://api.internal") is True
+        assert p.allow_network_command("wget http://evil.com") is False
+
+    def test_allowlist_multiple_entries(self):
+        p = SandboxPolicies(egress_allowlist={"curl", "rsync"})
+        assert p.allow_network_command("curl http://api") is True
+        assert p.allow_network_command("rsync -avz src/ dst/") is True
+        assert p.allow_network_command("wget http://evil.com") is False
+
+    def test_empty_command_allowed(self):
+        p = SandboxPolicies()
+        assert p.allow_network_command("") is True
+        assert p.allow_network_command("   ") is True
+
+
+class TestEgressPosture:
+    """Tests for egress posture reporting."""
+
+    def test_workspace_only_posture(self):
+        p = SandboxPolicies()
+        posture = p.get_egress_posture()
+        assert posture["policy"] == "workspace_only"
+        assert len(posture["blocked_commands"]) > 0
+        assert "curl" in posture["blocked_commands"]
+        assert posture["allowlist"] == []
+
+    def test_allow_all_posture_no_blocked(self):
+        p = SandboxPolicies(network_egress_policy=NetworkEgressPolicy.ALLOW_ALL)
+        posture = p.get_egress_posture()
+        assert posture["policy"] == "allow_all"
+        assert posture["blocked_commands"] == []
+
+    def test_deny_all_posture(self):
+        p = SandboxPolicies(network_egress_policy=NetworkEgressPolicy.DENY_ALL)
+        posture = p.get_egress_posture()
+        assert posture["policy"] == "deny_all"
+        assert len(posture["blocked_commands"]) > 0
+
+    def test_posture_with_allowlist(self):
+        p = SandboxPolicies(egress_allowlist={"curl", "wget"})
+        posture = p.get_egress_posture()
+        assert posture["allowlist"] == ["curl", "wget"]  # sorted
+
+
+class TestProxyEnvStripping:
+    """Tests for proxy environment variable stripping."""
+
+    def test_strips_http_proxy(self):
+        env = {"HTTP_PROXY": "http://proxy:8080", "PATH": "/bin"}
+        result = sanitize_exec_env(env, strip_proxy=True)
+        assert "HTTP_PROXY" not in result
+        assert result["PATH"] == "/bin"
+
+    def test_strips_https_proxy(self):
+        env = {"HTTPS_PROXY": "http://proxy:8080", "HOME": "/home/user"}
+        result = sanitize_exec_env(env, strip_proxy=True)
+        assert "HTTPS_PROXY" not in result
+
+    def test_strips_all_proxy_variants(self):
+        env = {
+            "HTTP_PROXY": "http://p:80",
+            "HTTPS_PROXY": "http://p:80",
+            "ALL_PROXY": "socks5://p:1080",
+            "NO_PROXY": "localhost",
+            "http_proxy": "http://p:80",
+            "https_proxy": "http://p:80",
+            "all_proxy": "socks5://p:1080",
+            "no_proxy": "localhost",
+            "PATH": "/bin",
+        }
+        result = sanitize_exec_env(env, strip_proxy=True)
+        for proxy_var in PROXY_ENV_VARS:
+            assert proxy_var not in result, f"{proxy_var} should be stripped"
+        assert result["PATH"] == "/bin"
+
+    def test_preserves_proxy_when_disabled(self):
+        env = {"HTTP_PROXY": "http://proxy:8080", "PATH": "/bin"}
+        result = sanitize_exec_env(env, strip_proxy=False)
+        assert result["HTTP_PROXY"] == "http://proxy:8080"
+
+    def test_default_strips_proxy(self):
+        """Default behavior strips proxy vars."""
+        env = {"HTTP_PROXY": "http://proxy:8080", "PATH": "/bin"}
+        result = sanitize_exec_env(env)
+        assert "HTTP_PROXY" not in result

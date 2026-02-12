@@ -27,6 +27,13 @@ class ExecPolicy(Enum):
     DENY_DANGEROUS = "deny_dangerous"  # Block dangerous commands
 
 
+class NetworkEgressPolicy(Enum):
+    """Network egress policies for sandbox child processes."""
+    ALLOW_ALL = "allow_all"  # No restrictions (local mode only)
+    WORKSPACE_ONLY = "workspace_only"  # Only local workspace services (default)
+    DENY_ALL = "deny_all"  # No outbound network access
+
+
 class SandboxPolicies:
     """Policy enforcement for all sandbox operations."""
 
@@ -52,13 +59,23 @@ class SandboxPolicies:
         "chmod 777",
     }
 
+    # Network-related commands that imply outbound connectivity
+    NETWORK_COMMANDS = {
+        "curl", "wget", "nc", "ncat", "netcat", "ssh", "scp", "sftp",
+        "telnet", "ftp", "rsync", "nmap", "ping",
+    }
+
     def __init__(
         self,
         file_policy: FilePolicy = FilePolicy.SANDBOXED,
         exec_policy: ExecPolicy = ExecPolicy.DENY_DANGEROUS,
+        network_egress_policy: NetworkEgressPolicy = NetworkEgressPolicy.WORKSPACE_ONLY,
+        egress_allowlist: set[str] | None = None,
     ):
         self.file_policy = file_policy
         self.exec_policy = exec_policy
+        self.network_egress_policy = network_egress_policy
+        self.egress_allowlist = egress_allowlist or set()
 
     def allow_file_access(self, path: str) -> bool:
         """Check if file access is allowed."""
@@ -110,6 +127,60 @@ class SandboxPolicies:
             "max_processes": 10,  # Max 10 concurrent processes
         }
 
+    def allow_network_command(self, command: str) -> bool:
+        """Check if a command with network implications is allowed.
+
+        Blocks network-oriented commands (curl, wget, ssh, etc.) when the
+        egress policy restricts outbound access. Commands in egress_allowlist
+        are always permitted regardless of policy.
+
+        Args:
+            command: Full command string to evaluate.
+
+        Returns:
+            True if the command is allowed, False if blocked by egress policy.
+        """
+        if self.network_egress_policy == NetworkEgressPolicy.ALLOW_ALL:
+            return True
+
+        parts = command.strip().split()
+        if not parts:
+            return True
+
+        cmd_name = parts[0]
+
+        # Check allowlist first — overrides policy
+        if cmd_name in self.egress_allowlist:
+            return True
+
+        if self.network_egress_policy == NetworkEgressPolicy.DENY_ALL:
+            return cmd_name not in self.NETWORK_COMMANDS
+
+        # WORKSPACE_ONLY: block raw network tools but allow package managers
+        # (npm, pip, git clone) since they need registry access
+        if self.network_egress_policy == NetworkEgressPolicy.WORKSPACE_ONLY:
+            blocked_in_workspace = {"curl", "wget", "nc", "ncat", "netcat",
+                                     "ssh", "scp", "sftp", "telnet", "ftp",
+                                     "nmap", "ping"}
+            return cmd_name not in blocked_in_workspace
+
+        return True
+
+    def get_egress_posture(self) -> dict:
+        """Return the current egress posture for operational visibility.
+
+        Returns:
+            Dict with policy name, allowlist, and blocked commands for
+            dashboards and audit logs.
+        """
+        return {
+            "policy": self.network_egress_policy.value,
+            "allowlist": sorted(self.egress_allowlist),
+            "blocked_commands": sorted(self.NETWORK_COMMANDS)
+                if self.network_egress_policy != NetworkEgressPolicy.ALLOW_ALL
+                else [],
+        }
+
 
 # --- Environment sanitization (bd-1pwb.8.2) ---
 
@@ -127,6 +198,18 @@ SENSITIVE_ENV_PREFIXES = (
     "AWS_SESSION",
 )
 
+# Proxy env vars that could route sandbox traffic through unintended endpoints
+PROXY_ENV_VARS = {
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+}
+
 SENSITIVE_ENV_EXACT = {
     "VAULT_TOKEN",
     "VAULT_ADDR",
@@ -138,14 +221,20 @@ SENSITIVE_ENV_EXACT = {
 }
 
 
-def sanitize_exec_env(env: dict[str, str] | None = None) -> dict[str, str]:
+def sanitize_exec_env(
+    env: dict[str, str] | None = None,
+    strip_proxy: bool = True,
+) -> dict[str, str]:
     """Build a clean environment for child processes, stripping control-plane secrets.
 
     Starts from the provided env (or os.environ) and removes any variable whose
     name matches a sensitive prefix or is in the exact-match blocklist.
+    When strip_proxy is True, also removes proxy variables to prevent
+    unintended egress routing.
 
     Args:
         env: Base environment dict. If None, uses os.environ.
+        strip_proxy: If True, remove HTTP_PROXY/HTTPS_PROXY/etc.
 
     Returns:
         Sanitized copy of the environment.
@@ -158,6 +247,8 @@ def sanitize_exec_env(env: dict[str, str] | None = None) -> dict[str, str]:
         if upper_key in SENSITIVE_ENV_EXACT:
             continue
         if any(upper_key.startswith(prefix) for prefix in SENSITIVE_ENV_PREFIXES):
+            continue
+        if strip_proxy and key in PROXY_ENV_VARS:
             continue
         cleaned[key] = value
     return cleaned
