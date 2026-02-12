@@ -1,0 +1,350 @@
+"""Authentication and authorization middleware for hosted mode.
+
+Provides FastAPI middleware stack for JWT validation, auth context injection,
+and permission enforcement. Designed for hosted deployments where frontend
+auth is handled by an external OIDC provider (Auth0, Cognito, etc).
+
+Architecture:
+  1. add_oidc_auth_middleware() validates JWT and injects AuthContext
+  2. AuthContext is available as request.state.auth_context
+  3. Permission checks use AuthContext to enforce workspace/operation ACLs
+  4. Consistent error semantics: 401 (invalid), 403 (insufficient permissions)
+"""
+
+import logging
+import uuid
+import functools
+from dataclasses import dataclass, field
+from typing import Callable, Any
+
+from fastapi import FastAPI, Request, HTTPException, status
+from fastapi.responses import JSONResponse
+
+from .auth import OIDCVerifier
+from .authorization import has_scoped_access
+
+logger = logging.getLogger(__name__)
+
+
+# ─── Auth Error Responses (inlined from auth_errors.py) ─────────────
+
+@dataclass
+class AuthErrorTelemetry:
+    """Telemetry counters for auth failures."""
+
+    authn_missing: int = 0  # 401: Missing/invalid token
+    authn_invalid: int = 0  # 401: Token validation failure
+    authz_insufficient: int = 0  # 403: Valid token but insufficient permissions
+
+
+class AuthErrorEmitter:
+    """Emits standardized auth error responses with telemetry."""
+
+    def __init__(self):
+        self.telemetry = AuthErrorTelemetry()
+
+    def missing_token(self, request_path: str, request_id: str | None = None) -> JSONResponse:
+        """Emit 401 for missing/invalid authorization header."""
+        self.telemetry.authn_missing += 1
+        request_id = request_id or str(uuid.uuid4())
+        logger.debug(f"[{request_id}] Missing Bearer token: {request_path}")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "code": "AUTH_MISSING",
+                "message": "Missing or invalid authorization header",
+                "request_id": request_id,
+            },
+            headers={"WWW-Authenticate": 'Bearer realm="boring-ui"'},
+        )
+
+    def invalid_token(
+        self,
+        request_path: str,
+        reason: str = "Invalid or expired token",
+        request_id: str | None = None,
+    ) -> JSONResponse:
+        """Emit 401 for token validation failure."""
+        self.telemetry.authn_invalid += 1
+        request_id = request_id or str(uuid.uuid4())
+        logger.debug(f"[{request_id}] Invalid JWT: {request_path} ({reason})")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "code": "AUTH_INVALID",
+                "message": reason,
+                "request_id": request_id,
+            },
+            headers={"WWW-Authenticate": 'Bearer realm="boring-ui", error="invalid_token"'},
+        )
+
+    def insufficient_permission(
+        self,
+        request_path: str,
+        user_id: str,
+        required: str,
+        have: set[str],
+        request_id: str | None = None,
+    ) -> JSONResponse:
+        """Emit 403 for insufficient permissions."""
+        self.telemetry.authz_insufficient += 1
+        request_id = request_id or str(uuid.uuid4())
+        logger.warning(
+            f"[{request_id}] Permission denied: user={user_id}, "
+            f"required={required}, have={have}, path={request_path}"
+        )
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={
+                "code": "AUTHZ_INSUFFICIENT",
+                "message": f"Permission denied: {required}",
+                "request_id": request_id,
+                "required_permission": required,
+            },
+        )
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get current telemetry stats."""
+        total = (
+            self.telemetry.authn_missing
+            + self.telemetry.authn_invalid
+            + self.telemetry.authz_insufficient
+        )
+        return {
+            "total_failures": total,
+            "authn_missing": self.telemetry.authn_missing,
+            "authn_invalid": self.telemetry.authn_invalid,
+            "authz_insufficient": self.telemetry.authz_insufficient,
+        }
+
+
+error_emitter = AuthErrorEmitter()
+
+
+@dataclass
+class AuthContext:
+    """Authentication and authorization context injected into requests.
+
+    Available as request.state.auth_context for authorized routes.
+    """
+
+    # User identity
+    user_id: str
+    """Subject (user ID) from JWT 'sub' claim."""
+
+    # Workspace context
+    workspace_id: str | None = None
+    """Workspace ID from JWT 'workspace' claim or configured default."""
+
+    # Authorization
+    permissions: set[str] = field(default_factory=set)
+    """Set of permission strings (e.g., 'files:read', 'git:*', 'exec:exec')."""
+
+    # Token data
+    claims: dict[str, Any] = field(default_factory=dict)
+    """Full JWT payload for inspection (read-only in production)."""
+
+    def has_permission(self, permission: str) -> bool:
+        """Check if user has a specific permission.
+
+        Supports wildcards:
+          'git:*' - has all git permissions
+          '*' - has all permissions
+
+        Args:
+            permission: Permission string to check
+
+        Returns:
+            True if user has this permission
+        """
+        return has_scoped_access(permission, self.permissions)
+
+
+def add_oidc_auth_middleware(app: FastAPI, verifier: OIDCVerifier | None) -> None:
+    """Add OIDC authentication middleware to FastAPI app.
+
+    Validates incoming JWTs against configured OIDC provider and injects
+    AuthContext into request state. Only activates if OIDC is configured
+    and run mode is HOSTED.
+
+    Middleware behavior:
+      - Extracts Bearer token from Authorization header
+      - Validates JWT using OIDCVerifier
+      - Injects AuthContext into request.state.auth_context
+      - Returns 401 if invalid/missing token
+      - Allows request to proceed (downstream routes check permissions)
+
+    Args:
+        app: FastAPI application
+        verifier: OIDCVerifier instance (if None, middleware is skipped)
+    """
+    if verifier is None:
+        logger.info("OIDC auth middleware disabled (OIDC not configured)")
+        return
+
+    @app.middleware("http")
+    async def oidc_auth(request: Request, call_next: Callable) -> Any:
+        # Public health check endpoint
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        # Allow CORS preflight requests (OPTIONS) without authentication
+        # Browser preflight happens before actual request, need auth to be optional
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
+        # Extract request_id for correlation (bd-1pwb.9.1)
+        request_id = getattr(request.state, 'request_id', None)
+
+        # Extract Authorization header
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            # No token provided - log with structured fields
+            log_record = logger.makeRecord(
+                name=logger.name,
+                level=logging.WARNING,
+                fn=__file__,
+                lno=0,
+                msg=f"Missing auth token for {request.method} {request.url.path}",
+                args=(),
+                exc_info=None,
+            )
+            if request_id:
+                log_record.request_id = request_id
+            logger.handle(log_record)
+            return error_emitter.missing_token(request.url.path, request_id=request_id)
+
+        token = auth_header[7:]  # Remove "Bearer " prefix
+
+        # Validate JWT
+        if hasattr(verifier, "verify_token"):
+            claims = verifier.verify_token(token)
+        elif hasattr(verifier, "validate_token"):
+            claims = verifier.validate_token(token)
+        else:
+            claims = None
+        if claims is None:
+            # Invalid token - log with structured fields
+            log_record = logger.makeRecord(
+                name=logger.name,
+                level=logging.WARNING,
+                fn=__file__,
+                lno=0,
+                msg=f"Invalid auth token for {request.method} {request.url.path}",
+                args=(),
+                exc_info=None,
+            )
+            if request_id:
+                log_record.request_id = request_id
+            logger.handle(log_record)
+            return error_emitter.invalid_token(request.url.path, request_id=request_id)
+
+        # Extract user identity
+        user_id = claims.get("sub")
+        if not user_id:
+            return error_emitter.invalid_token(
+                request.url.path,
+                "Invalid token structure (missing 'sub')",
+                request_id=request_id,
+            )
+
+        # Extract workspace context
+        workspace_id = claims.get("workspace")
+
+        # Extract permissions (could come from 'scope', 'permissions', or custom claim)
+        # Handle both string (space-delimited) and list (array) formats from OIDC provider
+        permissions_claim = claims.get("permissions", "")
+        if isinstance(permissions_claim, list):
+            permissions = set(p.strip() for p in permissions_claim if isinstance(p, str) and p.strip())
+        elif isinstance(permissions_claim, str):
+            permissions = set(p.strip() for p in permissions_claim.split() if p.strip())
+        else:
+            permissions = set()
+
+        # Create and inject AuthContext
+        auth_context = AuthContext(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            permissions=permissions,
+            claims=claims,
+        )
+        request.state.auth_context = auth_context
+
+        # Log auth context with structured fields for trace correlation (bd-1pwb.9.1)
+        request_id = getattr(request.state, 'request_id', None)
+        log_record = logger.makeRecord(
+            name=logger.name,
+            level=logging.DEBUG,
+            fn=__file__,
+            lno=0,
+            msg=f"Auth context injected: workspace={workspace_id}",
+            args=(),
+            exc_info=None,
+        )
+        if request_id:
+            log_record.request_id = request_id
+        log_record.user_id = user_id
+        logger.handle(log_record)
+
+        return await call_next(request)
+
+    logger.info(f"OIDC auth middleware added (issuer: {verifier.issuer_url})")
+
+
+def get_auth_context(request: Request) -> AuthContext:
+    """Extract AuthContext from request state.
+
+    Use this in route handlers to access authenticated user context.
+
+    Args:
+        request: FastAPI Request object
+
+    Returns:
+        AuthContext with user identity and permissions
+
+    Raises:
+        HTTPException: 401 if not authenticated
+    """
+    auth_context = getattr(request.state, "auth_context", None)
+    if auth_context is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+    return auth_context
+
+
+def require_permission(permission: str) -> Callable:
+    """Decorator to require a specific permission for a route.
+
+    Usage:
+        @app.get("/api/files")
+        @require_permission("files:read")
+        async def list_files(request: Request):
+            ...
+
+    Args:
+        permission: Permission string required (e.g., "files:read")
+
+    Returns:
+        Decorator function
+    """
+
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
+            auth_context = get_auth_context(request)
+            if not auth_context.has_permission(permission):
+                # Return JSONResponse directly to preserve error contract
+                return error_emitter.insufficient_permission(
+                    request.url.path,
+                    auth_context.user_id,
+                    permission,
+                    auth_context.permissions,
+                    request_id=getattr(request.state, "request_id", None),
+                )
+            return await func(request, *args, **kwargs)
+
+        return wrapper
+
+    return decorator

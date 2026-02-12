@@ -1,0 +1,25 @@
+/**
+ * Theme bridge: maps boring-ui CSS variables to inspector CSS variables.
+ *
+ * This overrides the inspector's default dark theme with boring-ui's
+ * current theme colors. The inspector vars are set on .provider-inspector
+ * and cascade into all child components.
+ */
+.provider-inspector {
+  --bg: var(--color-bg-primary);
+  --surface: var(--color-bg-secondary);
+  --surface-2: var(--color-bg-primary);
+  --border: var(--color-border);
+  --border-2: var(--color-border-strong);
+  --input-bg: var(--color-bg-secondary);
+  --input-border: var(--color-border-strong);
+  --text: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --muted: var(--color-text-tertiary);
+  --muted-2: var(--color-border);
+  --accent: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
+  --success: var(--color-success, #30d158);
+  --warning: var(--color-warning, #ff9f0a);
+  --danger: var(--color-error, #ff3b30);
+}

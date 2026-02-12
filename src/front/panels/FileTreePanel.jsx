@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { ChevronRight, ChevronLeft, FolderOpen, GitBranch, Plus } from 'lucide-react'
 import FileTree from '../components/FileTree'
 import GitChangesView from '../components/GitChangesView'
+import FilesystemIndicator from '../components/FilesystemIndicator'
 
 export default function FileTreePanel({ params }) {
   const { onOpenFile, onOpenFileToSide, onOpenDiff, projectRoot, activeFile, activeDiffFile, collapsed, onToggleCollapse } = params
@@ -84,6 +85,7 @@ export default function FileTreePanel({ params }) {
           </button>
         </div>
       </div>
+      <FilesystemIndicator />
       {viewMode === 'files' ? (
         <FileTree
           onOpen={onOpenFile}

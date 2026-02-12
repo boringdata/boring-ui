@@ -9,24 +9,24 @@ from .service import FileService
 
 def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
     """Create file operations router.
-    
+
     Args:
         config: API configuration (for path validation)
         storage: Storage backend
-        
+
     Returns:
         Configured APIRouter with file endpoints
     """
     router = APIRouter(tags=['files'])
     service = FileService(config, storage)
-    
+
     @router.get('/tree')
     async def get_tree(path: str = '.'):
         """List directory contents.
-        
+
         Args:
             path: Directory path relative to workspace root
-            
+
         Returns:
             dict with entries list and path
         """

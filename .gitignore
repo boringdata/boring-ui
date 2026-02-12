@@ -25,8 +25,35 @@ Thumbs.db
 
 # Test
 coverage/
+test-results/
 
-# bv (beads viewer) local config and caches
+# Beads local state
 .bv/
+.beads/
+.beads.old/
+
+# Python
 *.pyc
 __pycache__/
+
+# POC / reference repos
+poc/
+
+# Vendor (cloned repos, not tracked — use /* to allow negation of specific files)
+vendor/*
+# Track our custom modifications to Companion server
+!vendor/companion/
+vendor/companion/*
+!vendor/companion/web/
+vendor/companion/web/*
+!vendor/companion/web/server/
+vendor/companion/web/server/*
+!vendor/companion/web/server/index.ts
+!vendor/companion/web/server/middleware/
+vendor/companion/web/server/middleware/*
+!vendor/companion/web/server/middleware/auth.ts
+!vendor/companion/web/server/middleware/auth.test.ts
+
+# Temp / scratch
+tt
+tt.txt

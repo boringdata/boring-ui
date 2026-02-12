@@ -14,16 +14,22 @@ import ChatPanel, { chatThemeVars } from './ChatPanel'
 import MessageList, { Messages, EmptyState } from './MessageList'
 import TextBlock from './TextBlock'
 import SessionHeader from './SessionHeader'
-import BashToolRenderer from './BashToolRenderer'
-import ReadToolRenderer from './ReadToolRenderer'
-import WriteToolRenderer from './WriteToolRenderer'
-import EditToolRenderer from './EditToolRenderer'
-import GlobToolRenderer from './GlobToolRenderer'
-import GrepToolRenderer from './GrepToolRenderer'
-import ToolUseBlock, { ToolOutput } from './ToolUseBlock'
+import {
+  BashRenderer as BashToolRenderer,
+  ReadRenderer as ReadToolRenderer,
+  WriteRenderer as WriteToolRenderer,
+  EditRenderer as EditToolRenderer,
+  GlobRenderer as GlobToolRenderer,
+  GrepRenderer as GrepToolRenderer,
+  ToolUseBlock,
+  ToolOutput,
+} from '../../shared/renderers'
 import PermissionPanel from './PermissionPanel'
 import './styles.css'
-import { buildApiUrl, getWsBase } from '../../utils/apiBase'
+import { getWsBase } from '../../utils/apiBase'
+import { apiFetch } from '../../utils/apiFetch'
+import { appendWsToken } from '../../utils/wsAuth'
+import { useCapabilitiesContext } from '../CapabilityGate'
 
 // Generate a valid UUID, with fallback for environments without crypto.randomUUID
 const generateUUID = () => {
@@ -199,7 +205,8 @@ const buildWsUrl = (
   forceNew = false,
   resume = false,
   options = {},
-  fileSpecs = []
+  fileSpecs = [],
+  token = null
 ) => {
   const queryParams = new URLSearchParams()
   if (sessionId) queryParams.set('session_id', sessionId)
@@ -219,13 +226,14 @@ const buildWsUrl = (
   }
   const params = queryParams.toString() ? `?${queryParams.toString()}` : ''
   const wsBase = getWsBase()
-  return `${wsBase}/ws/claude-stream${params}`
+  const url = `${wsBase}/ws/claude-stream${params}`
+  return appendWsToken(url, token)
 }
 
-const uploadAttachment = async (file) => {
+const uploadAttachment = async (apiFetchFn, file) => {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(buildApiUrl('/api/attachments'), {
+  const res = await apiFetchFn('/api/attachments', {
     method: 'POST',
     body: formData,
   })
@@ -235,9 +243,9 @@ const uploadAttachment = async (file) => {
   return res.json()
 }
 
-const fetchSessions = async () => {
+const fetchSessions = async (apiFetchFn) => {
   try {
-    const res = await fetch(buildApiUrl('/api/sessions'))
+    const res = await apiFetchFn('/api/sessions')
     if (!res.ok) return []
     const data = await res.json()
     return data.sessions || []
@@ -246,10 +254,10 @@ const fetchSessions = async () => {
   }
 }
 
-const searchFiles = async (query, onError) => {
+const searchFiles = async (apiFetchFn, query, onError) => {
   if (!query || query.length < 1) return []
   try {
-    const res = await fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}`))
+    const res = await apiFetchFn(`/api/v1/files/search?q=${encodeURIComponent(query)}`)
     if (!res.ok) {
       onError?.({
         title: 'File search failed',
@@ -281,9 +289,9 @@ const searchFiles = async (query, onError) => {
   }
 }
 
-const fetchMentionDefaults = async (onError) => {
+const fetchMentionDefaults = async (apiFetchFn, onError) => {
   try {
-    const res = await fetch(buildApiUrl('/api/tree?path=.'))
+    const res = await apiFetchFn('/api/v1/files/list?path=.')
     if (!res.ok) {
       onError?.({
         title: 'File list failed',
@@ -296,13 +304,12 @@ const fetchMentionDefaults = async (onError) => {
       return []
     }
     const data = await res.json()
-    const entries = Array.isArray(data.entries) ? data.entries : []
-    const files = entries.filter((entry) => !entry.is_dir)
+    const files = Array.isArray(data.files) ? data.files.filter((entry) => entry.type !== 'dir') : []
     return files.map((file) => ({
-      id: file.path,
+      id: file.name,
       label: file.name,
-      path: file.path,
-      dir: file.path.includes('/') ? file.path.split('/').slice(0, -1).join('/') : '',
+      path: file.name,
+      dir: '',
     }))
   } catch (error) {
     onError?.({
@@ -317,9 +324,9 @@ const fetchMentionDefaults = async (onError) => {
   }
 }
 
-const createNewSession = async () => {
+const createNewSession = async (apiFetchFn) => {
   try {
-    const res = await fetch(buildApiUrl('/api/sessions'), { method: 'POST' })
+    const res = await apiFetchFn('/api/sessions', { method: 'POST' })
     if (!res.ok) return null
     const data = await res.json()
     return data.session_id
@@ -328,9 +335,9 @@ const createNewSession = async () => {
   }
 }
 
-const fetchPendingApprovals = async () => {
+const fetchPendingApprovals = async (apiFetchFn) => {
   try {
-    const res = await fetch(buildApiUrl('/api/approval/pending'))
+    const res = await apiFetchFn('/api/approval/pending')
     if (!res.ok) return []
     const data = await res.json()
     return data.requests || []
@@ -339,9 +346,9 @@ const fetchPendingApprovals = async () => {
   }
 }
 
-const submitApprovalDecision = async (requestId, decision, reason) => {
+const submitApprovalDecision = async (apiFetchFn, requestId, decision, reason) => {
   try {
-    const res = await fetch(buildApiUrl('/api/approval/decision'), {
+    const res = await apiFetchFn('/api/approval/decision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ request_id: requestId, decision, reason }),
@@ -565,7 +572,7 @@ const useClaudeStreamRuntime = (
 
     return new Promise((resolve, reject) => {
       const shouldForceNew = optionsChanged || attachmentsChanged
-      const url = buildWsUrl(sessionId, useMode, shouldForceNew, shouldResume, optionsRef.current, fileSpecs)
+      const url = buildWsUrl(sessionId, useMode, shouldForceNew, shouldResume, optionsRef.current, fileSpecs, wsToken)
       console.log('[ClaudeStream] Connecting to:', url)
       const ws = new WebSocket(url)
       wsRef.current = ws
@@ -757,6 +764,7 @@ const useClaudeStreamRuntime = (
       resumeRef.current,
       optionsRef.current,
       fileSpecs,
+      wsToken,
     ) // force_new=true
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
@@ -1571,10 +1579,10 @@ const ComposerShell = ({
 
     if (query.length < 1) {
       timerId = window.setTimeout(() => {
-        fetchMentionDefaults(onError).then(handleResults)
+        fetchMentionDefaults(apiFetch, onError).then(handleResults)
       }, 150)
     } else {
-      searchFiles(query, onError).then(handleResults)
+      searchFiles(apiFetch, query, onError).then(handleResults)
     }
 
     return () => {
@@ -2517,6 +2525,9 @@ export default function ClaudeStreamChat({
   onSessionStarted,
   showSessionPicker = true,
 }) {
+  const capabilities = useCapabilitiesContext()
+  const wsToken = capabilities?.wsToken || null
+
   const [attachments, setAttachments] = useState([])
   const [contextFiles, setContextFiles] = useState([])
   const [sessions, setSessions] = useState([])
@@ -2563,7 +2574,7 @@ export default function ClaudeStreamChat({
   // Fetch sessions on mount and when dropdown opens
   useEffect(() => {
     if (showSessionDropdown) {
-      fetchSessions().then(setSessions)
+      fetchSessions(apiFetch).then(setSessions)
     }
   }, [showSessionDropdown])
 
@@ -2922,11 +2933,11 @@ export default function ClaudeStreamChat({
   }, [])
 
   const handleNewSession = useCallback(async () => {
-    const newId = await createNewSession()
+    const newId = await createNewSession(apiFetch)
     if (newId) {
       switchSession(newId, false)
       // Refresh sessions list
-      fetchSessions().then(setSessions)
+      fetchSessions(apiFetch).then(setSessions)
     } else {
       logError({
         title: 'Could not start a new session',
@@ -2961,7 +2972,7 @@ export default function ClaudeStreamChat({
           status: 'uploading',
         },
       ])
-      uploadAttachment(file)
+      uploadAttachment(apiFetch, file)
         .then((data) => {
           setFileAttachments((prev) => prev.map((item) => (
             item.id === tempId

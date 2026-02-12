@@ -296,7 +296,6 @@ The `/api/capabilities` endpoint reports available features.
     "git": true,
     "pty": true,
     "chat_claude_code": true,
-    "stream": true,
     "approval": true
   },
   "routers": [
@@ -318,7 +317,7 @@ The `/api/capabilities` endpoint reports available features.
 }
 ```
 
-Note: `chat_claude_code` is the canonical name for Claude chat functionality. `stream` is provided as a backward-compatible alias.
+Note: `chat_claude_code` is the canonical name for Claude chat functionality.
 
 ### Using Capabilities in Frontend
 

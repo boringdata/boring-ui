@@ -3,10 +3,12 @@
 This module provides:
 - A registry for tracking available routers/features
 - A capabilities endpoint for UI feature discovery
+- Service connection info for Direct Connect architecture
 """
 from dataclasses import dataclass, field
 from typing import Callable, Any
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 
 @dataclass
@@ -94,6 +96,8 @@ def create_default_registry() -> RouterRegistry:
     from .modules.git import create_git_router
     from .modules.pty import create_pty_router
     from .modules.stream import create_stream_router
+    from .modules.sandbox import create_sandbox_router
+    from .modules.companion import create_companion_router
     from .approval import create_approval_router
 
     registry = RouterRegistry()
@@ -129,14 +133,6 @@ def create_default_registry() -> RouterRegistry:
         description='Claude stream WebSocket for AI chat',
         tags=['websocket', 'ai'],
     )
-    # Backward compatibility alias: 'stream' -> 'chat_claude_code'
-    registry.register(
-        'stream',
-        '/ws',
-        create_stream_router,
-        description='Claude stream WebSocket for AI chat (alias for chat_claude_code)',
-        tags=['websocket', 'ai'],
-    )
     registry.register(
         'approval',
         '/api',
@@ -144,19 +140,55 @@ def create_default_registry() -> RouterRegistry:
         description='Approval workflow endpoints',
         tags=['approval'],
     )
+    registry.register(
+        'sandbox',
+        '/api',
+        create_sandbox_router,
+        description='Sandbox-agent proxy and lifecycle management',
+        tags=['sandbox'],
+    )
+    registry.register(
+        'companion',
+        '/api',
+        create_companion_router,
+        description='Companion server lifecycle management',
+        tags=['companion'],
+    )
 
     return registry
+
+
+@dataclass
+class ServiceConnectionInfo:
+    """Connection details for a chat service (Direct Connect).
+
+    Frontend adapters use this to connect directly to services,
+    bypassing the boring-ui proxy.
+    """
+    name: str
+    url: str
+    token: str  # Bearer token for REST API calls
+    qp_token: str  # Short-lived token for SSE/WS query params
+    protocol: str  # "rest+sse" | "rest+ws"
 
 
 def create_capabilities_router(
     enabled_features: dict[str, bool],
     registry: RouterRegistry | None = None,
+    token_issuer: Any | None = None,
+    service_registry: dict[str, ServiceConnectionInfo] | None = None,
+    filesystem_source: str | None = None,
+    run_mode: str | None = None,
 ) -> APIRouter:
     """Create a router for the capabilities endpoint.
 
     Args:
         enabled_features: Map of feature name -> enabled status
         registry: Optional router registry for detailed info
+        token_issuer: Optional ServiceTokenIssuer for generating fresh tokens
+        service_registry: Optional map of service name -> connection info
+        filesystem_source: Configured filesystem source ('local', 'sandbox', etc)
+        run_mode: Runtime mode ('local' or 'hosted') for capability discovery
 
     Returns:
         Router with /capabilities endpoint
@@ -170,10 +202,17 @@ def create_capabilities_router(
         Returns a stable JSON structure describing what features
         are enabled in this API instance. The UI uses this to
         conditionally render components.
+
+        When services are configured, includes a ``services`` section
+        with direct-connect URLs and auth tokens.  Tokens are
+        security-sensitive -- the response includes Cache-Control
+        headers to prevent accidental caching.
         """
-        capabilities = {
+        capabilities: dict[str, Any] = {
             'version': '0.1.0',
+            'mode': run_mode or 'local',  # Runtime mode: 'local' or 'hosted'
             'features': enabled_features,
+            'filesystem_source': filesystem_source or 'local',
         }
 
         # Add router details if registry provided
@@ -189,6 +228,36 @@ def create_capabilities_router(
                 for info, _ in registry.all()
             ]
 
-        return capabilities
+        # Issue short-lived WS auth token for hosted mode (bd-1pwb.7.3)
+        if run_mode == 'hosted' and token_issuer:
+            capabilities['wsToken'] = token_issuer.issue_query_param_token('ws')
+
+        # Add service connection info for Direct Connect
+        if service_registry:
+            services: dict[str, dict] = {}
+            for svc_name, svc_info in service_registry.items():
+                svc_entry: dict[str, str] = {
+                    'url': svc_info.url,
+                    'protocol': svc_info.protocol,
+                }
+                if svc_info.token:
+                    # Service uses static auth token (e.g., sandbox-agent --token)
+                    svc_entry['token'] = svc_info.token
+                    svc_entry['qpToken'] = svc_info.qp_token or svc_info.token
+                elif token_issuer:
+                    # Issue fresh JWT per request (e.g., Companion with jose)
+                    svc_entry['token'] = token_issuer.issue_token(svc_name)
+                    svc_entry['qpToken'] = token_issuer.issue_query_param_token(svc_name)
+                services[svc_name] = svc_entry
+            capabilities['services'] = services
+
+        # Always use JSONResponse for consistent return type.
+        # Add no-cache headers when tokens are present.
+        headers = {}
+        if service_registry:
+            headers['Cache-Control'] = 'no-store'
+            headers['Pragma'] = 'no-cache'
+
+        return JSONResponse(content=capabilities, headers=headers)
 
     return router

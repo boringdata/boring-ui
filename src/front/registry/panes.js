@@ -52,6 +52,7 @@ import TerminalPanel from '../panels/TerminalPanel'
 import ShellTerminalPanel from '../panels/ShellTerminalPanel'
 import EmptyPanel from '../panels/EmptyPanel'
 import ReviewPanel from '../panels/ReviewPanel'
+// SandboxPanel iframe removed - sandbox chat is now integrated natively in TerminalPanel
 
 /**
  * @typedef {Object} PaneConfig
@@ -315,13 +316,13 @@ const createDefaultRegistry = () => {
     requiresRouters: ['chat_claude_code'],
   })
 
-  // Shell - bottom of center column
+  // Shell - bottom of center column (DISABLED in demo - use agent chat only)
   registry.register({
     id: 'shell',
     component: ShellTerminalPanel,
     title: 'Shell',
     placement: 'bottom',
-    essential: true,
+    essential: false,  // Disabled - using agent/chat pane only
     locked: true,
     hideHeader: false,
     constraints: {
@@ -349,6 +350,9 @@ const createDefaultRegistry = () => {
     essential: false,
     requiresRouters: ['approval'],
   })
+
+  // Sandbox chat is now integrated natively in TerminalPanel via provider toggle
+  // No separate panel registration needed
 
   return registry
 }

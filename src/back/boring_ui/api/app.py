@@ -1,29 +1,54 @@
 """Application factory for boring-ui API."""
+import os
+import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import APIConfig
+from .config import APIConfig, get_cors_origin
 from .storage import Storage, LocalStorage
 from .modules.files import create_file_router
 from .modules.git import create_git_router
 from .modules.pty import create_pty_router
 from .modules.stream import create_stream_router
+from .modules.sandbox import SandboxManager, create_provider
+from .modules.companion import CompanionManager, create_companion_provider
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
+from .auth import ServiceTokenIssuer
 from .capabilities import (
     RouterRegistry,
+    ServiceConnectionInfo,
     create_default_registry,
     create_capabilities_router,
 )
+from .logging_middleware import add_logging_middleware
+from .app_mode_composition import (
+    configure_mode_auth,
+    resolve_enabled_routers,
+    mount_local_private_api_if_needed,
+    mount_mode_v1_routes,
+)
+
+# Global managers (for lifespan management)
+_sandbox_manager: SandboxManager | None = None
+_companion_manager: CompanionManager | None = None
+
+
+# _HostedProxyClientAdapter removed (bd-2j57.4.2)
+# HostedSandboxClient now directly supports transport layer
 
 
 def create_app(
     config: APIConfig | None = None,
     storage: Storage | None = None,
     approval_store: ApprovalStore | None = None,
+    sandbox_manager: SandboxManager | None = None,
     include_pty: bool = True,
     include_stream: bool = True,
     include_approval: bool = True,
+    include_sandbox: bool = False,
+    include_companion: bool = False,
     routers: list[str] | None = None,
     registry: RouterRegistry | None = None,
 ) -> FastAPI:
@@ -39,8 +64,10 @@ def create_app(
         include_pty: Include PTY WebSocket router (default: True)
         include_stream: Include Claude stream WebSocket router (default: True)
         include_approval: Include approval workflow router (default: True)
+        include_sandbox: Include sandbox-agent router (default: False)
+        include_companion: Include Companion server router (default: False)
         routers: List of router names to include. If None, uses include_* flags.
-            Valid names: 'files', 'git', 'pty', 'stream', 'approval'
+            Valid names: 'files', 'git', 'pty', 'chat_claude_code', 'approval', 'sandbox', 'companion'
         registry: Custom router registry. Defaults to create_default_registry().
 
     Returns:
@@ -67,47 +94,149 @@ def create_app(
         # Using router list (alternative to include_* flags)
         app = create_app(routers=['files', 'git'])  # Only file and git routes
     """
+    global _sandbox_manager, _companion_manager
+
     # Apply defaults
-    config = config or APIConfig(workspace_root=Path.cwd())
+    if config is None:
+        # workspace_root can be configured via WORKSPACE_ROOT env var
+        # This allows pointing to local, sprites, or any filesystem
+        workspace = Path(os.environ.get('WORKSPACE_ROOT', Path.cwd()))
+        workspace.mkdir(parents=True, exist_ok=True)
+        config = APIConfig(workspace_root=workspace)
+
+    # Validate configuration at startup (fail-fast)
+    try:
+        config.validate_startup()
+    except ValueError as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error('Configuration validation failed: %s', e)
+        raise
+
     storage = storage or LocalStorage(config.workspace_root)
     approval_store = approval_store or InMemoryApprovalStore()
     registry = registry or create_default_registry()
 
-    # Determine which routers to include
-    # If routers list is provided, use it; otherwise use include_* flags
-    if routers is not None:
-        enabled_routers = set(routers)
-    else:
-        enabled_routers = {'files', 'git'}  # Core routers always included
-        if include_pty:
-            enabled_routers.add('pty')
-        if include_stream:
-            # Use new canonical name, but 'stream' also works via registry alias
-            enabled_routers.add('chat_claude_code')
-        if include_approval:
-            enabled_routers.add('approval')
+    # Auth systems are intentionally boundary-specific and minimal:
+    # - OIDC JWT (auth_middleware): browser -> control plane user identity
+    # - Capability JWT (capability_tokens): control plane -> workspace operation scope
+    # - Service token (ServiceTokenSigner/ServiceTokenIssuer): service-to-service trust
+    token_issuer = ServiceTokenIssuer()
+    sandbox_auth_token = secrets.token_hex(16)
+    cors_origin = get_cors_origin()
 
-    # Support 'stream' alias -> 'chat_claude_code' for backward compatibility
-    if 'stream' in enabled_routers:
-        enabled_routers.add('chat_claude_code')
+    # Service URLs should default to loopback unless explicitly overridden.
+    # Auto-discovering host IPs can unexpectedly expose internal endpoints.
+    external_host = os.environ.get('EXTERNAL_HOST', '127.0.0.1')
+
+    # Create sandbox manager if needed
+    if sandbox_manager is None and (include_sandbox or (routers and 'sandbox' in routers)):
+        sandbox_config = {
+            'SANDBOX_PROVIDER': os.environ.get('SANDBOX_PROVIDER', 'local'),
+            'SANDBOX_PORT': os.environ.get('SANDBOX_PORT', '2468'),
+            'SANDBOX_WORKSPACE': os.environ.get('SANDBOX_WORKSPACE', str(config.workspace_root)),
+            'SANDBOX_TOKEN': sandbox_auth_token,
+            'SANDBOX_CORS_ORIGIN': cors_origin,
+            'SANDBOX_EXTERNAL_HOST': external_host,
+            'SANDBOX_RUN_MODE': config.run_mode.value,
+            # Sprites-specific config (passed through for sprites provider)
+            'SPRITES_TOKEN': os.environ.get('SPRITES_TOKEN', ''),
+            'SPRITES_ORG': os.environ.get('SPRITES_ORG', ''),
+            'SPRITES_NAME_PREFIX': os.environ.get('SPRITES_NAME_PREFIX', ''),
+        }
+        sandbox_manager = SandboxManager(
+            create_provider(sandbox_config),
+            service_token=sandbox_auth_token,
+        )
+        _sandbox_manager = sandbox_manager
+
+    # Create companion manager if needed
+    companion_manager: CompanionManager | None = None
+    if include_companion or (routers and 'companion' in routers):
+        companion_config = {
+            'COMPANION_PORT': os.environ.get('COMPANION_PORT', '3456'),
+            'COMPANION_WORKSPACE': os.environ.get('COMPANION_WORKSPACE', str(config.workspace_root)),
+            'COMPANION_SIGNING_KEY': token_issuer.signing_key_hex,
+            'COMPANION_CORS_ORIGIN': cors_origin,
+            'COMPANION_EXTERNAL_HOST': external_host,
+            'COMPANION_RUN_MODE': config.run_mode.value,
+        }
+        server_dir = os.environ.get('COMPANION_SERVER_DIR')
+        if server_dir:
+            companion_config['COMPANION_SERVER_DIR'] = server_dir
+        companion_manager = CompanionManager(
+            create_companion_provider(companion_config),
+            service_token=token_issuer.signing_key_hex,
+        )
+        _companion_manager = companion_manager
+
+    # Determine which routers to include based on mode
+    # Mode-aware composition: explicit paths, no hidden fallbacks
+    import logging
+    logger = logging.getLogger(__name__)
+
+    enabled_routers = resolve_enabled_routers(
+        config.run_mode.value,
+        logger=logger,
+        routers=routers,
+        include_pty=include_pty,
+        include_stream=include_stream,
+        include_approval=include_approval,
+        include_sandbox=include_sandbox,
+        include_companion=include_companion,
+    )
 
     # Build enabled features map for capabilities endpoint
-    # Include both names for backward compatibility
-    chat_enabled = 'chat_claude_code' in enabled_routers or 'stream' in enabled_routers
+    chat_enabled = 'chat_claude_code' in enabled_routers
     enabled_features = {
         'files': 'files' in enabled_routers,
         'git': 'git' in enabled_routers,
         'pty': 'pty' in enabled_routers,
         'chat_claude_code': chat_enabled,
-        'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
+        'sandbox': 'sandbox' in enabled_routers,
+        'companion': 'companion' in enabled_routers,
     }
+
+    # Lifespan handler for startup/cleanup
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Startup — log configuration and launch managed subprocesses
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info('Boring UI API startup')
+        logger.info('Run mode: %s', config.run_mode.value.upper())
+        logger.info('Workspace root: %s', config.workspace_root)
+        logger.info('Enabled features: %s', ', '.join(
+            k for k, v in enabled_features.items() if v
+        ))
+
+        if companion_manager:
+            try:
+                await companion_manager.ensure_running()
+            except Exception as exc:
+                logger.warning(
+                    'Companion auto-start failed: %s', exc,
+                )
+        yield
+        # Shutdown - cleanup managed subprocesses
+        if sandbox_manager:
+            try:
+                await sandbox_manager.shutdown()
+            except Exception:
+                pass  # Best effort cleanup
+        if companion_manager:
+            try:
+                await companion_manager.shutdown()
+            except Exception:
+                pass  # Best effort cleanup
 
     # Create app
     app = FastAPI(
         title='Boring UI API',
         description='A composition-based web IDE backend',
         version='0.1.0',
+        lifespan=lifespan,
     )
 
     # CORS middleware
@@ -119,18 +248,25 @@ def create_app(
         allow_headers=['*'],
     )
 
+    # Structured logging and request correlation middleware (bd-1pwb.9.1)
+    # Must be added after CORS (middleware chain executes in reverse order)
+    add_logging_middleware(app)
+
+    # Mode-specific auth middleware composition (LOCAL capability context, HOSTED OIDC/dev bypass).
+    configure_mode_auth(app, config, logger)
+
     # Mount routers from registry based on enabled set
     router_args = {
         'files': (config, storage),
         'git': (config,),
         'pty': (config,),
         'chat_claude_code': (config,),
-        'stream': (config,),  # Alias
         'approval': (approval_store,),
+        'sandbox': (sandbox_manager,) if sandbox_manager else (),
+        'companion': (companion_manager,) if companion_manager else (),
     }
 
-    # Track mounted factories to avoid double-mounting aliases
-    # (stream and chat_claude_code use the same factory, but pty uses a different one)
+    # Track mounted factories to avoid accidental double-mounting.
     mounted_factories: set[int] = set()
 
     for router_name in enabled_routers:
@@ -145,11 +281,51 @@ def create_app(
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 
-    # Always include capabilities router
+    # Canonical /api/v1 route composition split by run mode.
+    mount_mode_v1_routes(app, config, storage, enabled_features, logger)
+
+    # Build service connection registry for Direct Connect
+    service_registry: dict[str, ServiceConnectionInfo] = {}
+
+    if 'sandbox' in enabled_routers and sandbox_manager:
+        # Derive URL from provider's configured port
+        sandbox_port = getattr(sandbox_manager.provider, 'port', 2468)
+        service_registry['sandbox'] = ServiceConnectionInfo(
+            name='sandbox',
+            url=f'http://{external_host}:{sandbox_port}',
+            token=sandbox_auth_token,  # Static token matching --token flag
+            qp_token=sandbox_auth_token,  # Same token for SSE/WS
+            protocol='rest+sse',
+        )
+
+    if 'companion' in enabled_routers and companion_manager:
+        companion_port = companion_manager.provider.port
+        service_registry['companion'] = ServiceConnectionInfo(
+            name='companion',
+            url=f'http://{external_host}:{companion_port}',
+            token='',  # JWT issued per-request by token_issuer
+            qp_token='',
+            protocol='rest+sse',
+        )
+
+    # LOCAL mode private-plane composition (in-process router vs parity marker).
+    mount_local_private_api_if_needed(app, config, logger)
+
+    # Always include capabilities router (provides mode metadata)
     app.include_router(
-        create_capabilities_router(enabled_features, registry),
+        create_capabilities_router(
+            enabled_features,
+            registry,
+            token_issuer=token_issuer if service_registry else None,
+            service_registry=service_registry or None,
+            filesystem_source=config.filesystem_source,
+            run_mode=config.run_mode.value,
+        ),
         prefix='/api',
     )
+
+    # Store token issuer on app state for use by other components
+    app.state.token_issuer = token_issuer
 
     # Health check
     @app.get('/health')
