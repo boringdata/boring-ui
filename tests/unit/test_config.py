@@ -1,10 +1,9 @@
 """Unit tests for boring_ui.api.config module."""
-import os
 import sys
 
 import pytest
 from pathlib import Path
-from boring_ui.api.config import APIConfig
+from boring_ui.api.config import APIConfig, ConfigValidationError, load_runtime_config
 
 
 # Check if symlinks are supported (Windows requires admin privileges)
@@ -126,3 +125,99 @@ class TestValidatePath:
                 symlink.unlink()
             if outside_dir.exists():
                 outside_dir.rmdir()
+
+
+class TestRuntimeConfig:
+    """Tests for startup/runtime environment validation."""
+
+    def test_defaults_to_local_mode(self):
+        """Default runtime mode should be local with no sandbox config."""
+        runtime = load_runtime_config({})
+        assert runtime.workspace_mode == 'local'
+        assert runtime.sandbox is None
+
+    def test_rejects_invalid_workspace_mode(self):
+        """Unknown workspace modes should fail fast."""
+        with pytest.raises(ConfigValidationError, match='WORKSPACE_MODE'):
+            load_runtime_config({'WORKSPACE_MODE': 'remote'})
+
+    def test_sandbox_requires_expected_env_vars(self):
+        """Sandbox mode should list required env vars when missing."""
+        with pytest.raises(ConfigValidationError) as exc:
+            load_runtime_config({'WORKSPACE_MODE': 'sandbox'})
+
+        message = str(exc.value)
+        assert 'SPRITES_BASE_URL is required' in message
+        assert 'SPRITES_SPRITE_NAME is required' in message
+        assert 'SPRITES_API_TOKEN is required' in message
+        assert 'SESSION_TOKEN_SECRET is required' in message
+        assert 'SPRITES_WORKSPACE_SERVICE_HOST is required' in message
+        assert 'SPRITES_WORKSPACE_SERVICE_PORT is required' in message
+
+    def test_sandbox_valid_config_parses_cleanly(self):
+        """Valid sandbox env should produce parsed runtime config."""
+        runtime = load_runtime_config({
+            'WORKSPACE_MODE': 'sandbox',
+            'SPRITES_BASE_URL': 'https://sprites.example.internal',
+            'SPRITES_SPRITE_NAME': 'workspace-a',
+            'SPRITES_API_TOKEN': 'token-value',
+            'SESSION_TOKEN_SECRET': 'x' * 32,
+            'SPRITES_WORKSPACE_SERVICE_HOST': 'workspace-service',
+            'SPRITES_WORKSPACE_SERVICE_PORT': '8443',
+            'SPRITES_WORKSPACE_SERVICE_PATH': '/api/workspace',
+            'MULTI_TENANT': 'false',
+            'AUTH_IDENTITY_BINDING_ENABLED': 'false',
+        })
+
+        assert runtime.workspace_mode == 'sandbox'
+        assert runtime.sandbox is not None
+        assert runtime.sandbox.base_url == 'https://sprites.example.internal'
+        assert runtime.sandbox.sprite_name == 'workspace-a'
+        assert runtime.sandbox.service_target.host == 'workspace-service'
+        assert runtime.sandbox.service_target.port == 8443
+        assert runtime.sandbox.service_target.path == '/api/workspace'
+        assert runtime.sandbox.multi_tenant is False
+
+    def test_multi_tenant_requires_auth_identity_binding(self):
+        """Multi-tenant indicators must be blocked without identity binding."""
+        with pytest.raises(ConfigValidationError, match='Multi-tenant sandbox mode is not supported'):
+            load_runtime_config({
+                'WORKSPACE_MODE': 'sandbox',
+                'SPRITES_BASE_URL': 'https://sprites.example.internal',
+                'SPRITES_SPRITE_NAME': 'workspace-a',
+                'SPRITES_API_TOKEN': 'token-value',
+                'SESSION_TOKEN_SECRET': 'x' * 32,
+                'SPRITES_WORKSPACE_SERVICE_HOST': 'workspace-service',
+                'SPRITES_WORKSPACE_SERVICE_PORT': '8443',
+                'MULTI_TENANT': 'true',
+                'AUTH_IDENTITY_BINDING_ENABLED': 'false',
+            })
+
+    def test_per_user_routing_requires_auth_identity_binding(self):
+        """Per-user routing mode must be blocked without identity binding."""
+        with pytest.raises(ConfigValidationError, match='Multi-tenant sandbox mode is not supported'):
+            load_runtime_config({
+                'WORKSPACE_MODE': 'sandbox',
+                'SPRITES_BASE_URL': 'https://sprites.example.internal',
+                'SPRITES_SPRITE_NAME': 'workspace-a',
+                'SPRITES_API_TOKEN': 'token-value',
+                'SESSION_TOKEN_SECRET': 'x' * 32,
+                'SPRITES_WORKSPACE_SERVICE_HOST': 'workspace-service',
+                'SPRITES_WORKSPACE_SERVICE_PORT': '8443',
+                'WORKSPACE_ROUTING_MODE': 'per_user',
+                'AUTH_IDENTITY_BINDING_ENABLED': 'no',
+            })
+
+    def test_rejects_invalid_boolean_values(self):
+        """Boolean-like env vars must use supported values only."""
+        with pytest.raises(ConfigValidationError, match='AUTH_IDENTITY_BINDING_ENABLED must be a boolean'):
+            load_runtime_config({
+                'WORKSPACE_MODE': 'sandbox',
+                'SPRITES_BASE_URL': 'https://sprites.example.internal',
+                'SPRITES_SPRITE_NAME': 'workspace-a',
+                'SPRITES_API_TOKEN': 'token-value',
+                'SESSION_TOKEN_SECRET': 'x' * 32,
+                'SPRITES_WORKSPACE_SERVICE_HOST': 'workspace-service',
+                'SPRITES_WORKSPACE_SERVICE_PORT': '8443',
+                'AUTH_IDENTITY_BINDING_ENABLED': 'sometimes',
+            })

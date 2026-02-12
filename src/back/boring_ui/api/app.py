@@ -3,12 +3,13 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import APIConfig
+from .config import APIConfig, RuntimeConfig, load_runtime_config
 from .storage import Storage, LocalStorage
 from .modules.files import create_file_router
 from .modules.git import create_git_router
 from .modules.pty import create_pty_router
 from .modules.stream import create_stream_router
+from .modules.sandbox import InMemorySandboxStore, SandboxStore, TargetResolver
 from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
 from .capabilities import (
     RouterRegistry,
@@ -19,11 +20,14 @@ from .capabilities import (
 
 def create_app(
     config: APIConfig | None = None,
+    runtime_config: RuntimeConfig | None = None,
     storage: Storage | None = None,
     approval_store: ApprovalStore | None = None,
     include_pty: bool = True,
     include_stream: bool = True,
     include_approval: bool = True,
+    include_sandbox: bool = True,
+    sandbox_store: SandboxStore | None = None,
     routers: list[str] | None = None,
     registry: RouterRegistry | None = None,
 ) -> FastAPI:
@@ -35,12 +39,13 @@ def create_app(
     Args:
         config: API configuration. Defaults to current directory as workspace.
         storage: Storage backend. Defaults to LocalStorage.
+        runtime_config: Runtime mode/config loaded from environment when omitted.
         approval_store: Approval store. Defaults to InMemoryApprovalStore.
         include_pty: Include PTY WebSocket router (default: True)
         include_stream: Include Claude stream WebSocket router (default: True)
         include_approval: Include approval workflow router (default: True)
         routers: List of router names to include. If None, uses include_* flags.
-            Valid names: 'files', 'git', 'pty', 'stream', 'approval'
+            Valid names: 'files', 'git', 'pty', 'stream', 'approval', 'sandbox'
         registry: Custom router registry. Defaults to create_default_registry().
 
     Returns:
@@ -70,7 +75,10 @@ def create_app(
     # Apply defaults
     config = config or APIConfig(workspace_root=Path.cwd())
     storage = storage or LocalStorage(config.workspace_root)
+    runtime_config = runtime_config or load_runtime_config()
     approval_store = approval_store or InMemoryApprovalStore()
+    sandbox_store = sandbox_store or InMemorySandboxStore()
+    target_resolver = TargetResolver(store=sandbox_store)
     registry = registry or create_default_registry()
 
     # Determine which routers to include
@@ -86,6 +94,8 @@ def create_app(
             enabled_routers.add('chat_claude_code')
         if include_approval:
             enabled_routers.add('approval')
+        if include_sandbox:
+            enabled_routers.add('sandbox')
 
     # Support 'stream' alias -> 'chat_claude_code' for backward compatibility
     if 'stream' in enabled_routers:
@@ -101,6 +111,7 @@ def create_app(
         'chat_claude_code': chat_enabled,
         'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
+        'sandbox': 'sandbox' in enabled_routers,
     }
 
     # Create app
@@ -118,6 +129,7 @@ def create_app(
         allow_methods=['*'],
         allow_headers=['*'],
     )
+    app.state.runtime_config = runtime_config
 
     # Mount routers from registry based on enabled set
     router_args = {
@@ -127,6 +139,7 @@ def create_app(
         'chat_claude_code': (config,),
         'stream': (config,),  # Alias
         'approval': (approval_store,),
+        'sandbox': (sandbox_store, target_resolver),
     }
 
     # Track mounted factories to avoid double-mounting aliases
@@ -158,6 +171,7 @@ def create_app(
         return {
             'status': 'ok',
             'workspace': str(config.workspace_root),
+            'workspace_mode': runtime_config.workspace_mode,
             'features': enabled_features,
         }
 
@@ -165,13 +179,28 @@ def create_app(
     @app.get('/api/config')
     async def get_config():
         """Get API configuration info."""
-        return {
+        response = {
             'workspace_root': str(config.workspace_root),
+            'workspace_mode': runtime_config.workspace_mode,
             'pty_providers': list(config.pty_providers.keys()),
             'paths': {
                 'files': '.',
             },
         }
+        if runtime_config.sandbox:
+            response['sandbox'] = {
+                'base_url': runtime_config.sandbox.base_url,
+                'sprite_name': runtime_config.sandbox.sprite_name,
+                'service_target': {
+                    'host': runtime_config.sandbox.service_target.host,
+                    'port': runtime_config.sandbox.service_target.port,
+                    'path': runtime_config.sandbox.service_target.path,
+                },
+                'multi_tenant': runtime_config.sandbox.multi_tenant,
+                'routing_mode': runtime_config.sandbox.routing_mode,
+                'auth_identity_binding': runtime_config.sandbox.auth_identity_binding,
+            }
+        return response
 
     # Project endpoint (expected by frontend)
     @app.get('/api/project')

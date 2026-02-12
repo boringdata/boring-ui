@@ -2,6 +2,8 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Mapping
+from urllib.parse import urlparse
 
 
 def _default_cors_origins() -> list[str]:
@@ -20,6 +22,176 @@ def _default_cors_origins() -> list[str]:
         'http://127.0.0.1:5175',
         '*',  # Allow all origins in dev - restrict in production
     ]
+
+
+TRUE_VALUES = {'1', 'true', 'yes', 'on'}
+FALSE_VALUES = {'0', 'false', 'no', 'off'}
+VALID_WORKSPACE_MODES = {'local', 'sandbox'}
+VALID_ROUTING_MODES = {'single_tenant', 'per_user'}
+
+
+class ConfigValidationError(ValueError):
+    """Raised when startup configuration is invalid."""
+
+    def __init__(self, issues: list[str]):
+        self.issues = issues
+        formatted = '\n'.join(f'- {issue}' for issue in issues)
+        super().__init__(f'Invalid startup configuration:\n{formatted}')
+
+
+def _parse_bool(value: str | None, var_name: str, issues: list[str], *, default: bool = False) -> bool:
+    """Parse an environment boolean with strict accepted values."""
+    if value is None or value.strip() == '':
+        return default
+    normalized = value.strip().lower()
+    if normalized in TRUE_VALUES:
+        return True
+    if normalized in FALSE_VALUES:
+        return False
+    issues.append(
+        f'{var_name} must be a boolean (one of: 1/0, true/false, yes/no, on/off), got {value!r}.'
+    )
+    return default
+
+
+def _require_env(
+    env: Mapping[str, str],
+    key: str,
+    issues: list[str],
+    *,
+    mode_hint: str = 'sandbox mode',
+) -> str:
+    """Read a required env var and emit a clear issue when missing."""
+    value = env.get(key, '').strip()
+    if value:
+        return value
+    issues.append(f'{key} is required for {mode_hint}.')
+    return ''
+
+
+@dataclass(frozen=True)
+class SandboxServiceTarget:
+    """Workspace service routing target inside sandbox mode."""
+
+    host: str
+    port: int
+    path: str
+
+
+@dataclass(frozen=True)
+class SandboxConfig:
+    """Validated sandbox runtime configuration."""
+
+    base_url: str
+    sprite_name: str
+    api_token: str
+    session_token_secret: str
+    service_target: SandboxServiceTarget
+    multi_tenant: bool = False
+    routing_mode: str = 'single_tenant'
+    auth_identity_binding: bool = False
+
+
+@dataclass(frozen=True)
+class RuntimeConfig:
+    """Validated runtime mode and optional sandbox settings."""
+
+    workspace_mode: str = 'local'
+    sandbox: SandboxConfig | None = None
+
+
+def load_runtime_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
+    """Load and validate startup runtime configuration from environment."""
+    env = env or os.environ
+    issues: list[str] = []
+
+    workspace_mode = env.get('WORKSPACE_MODE', 'local').strip().lower()
+    if workspace_mode not in VALID_WORKSPACE_MODES:
+        issues.append(
+            f"WORKSPACE_MODE must be one of {sorted(VALID_WORKSPACE_MODES)}, got {workspace_mode!r}."
+        )
+        raise ConfigValidationError(issues)
+
+    if workspace_mode == 'local':
+        return RuntimeConfig(workspace_mode='local', sandbox=None)
+
+    base_url = _require_env(env, 'SPRITES_BASE_URL', issues)
+    sprite_name = _require_env(env, 'SPRITES_SPRITE_NAME', issues)
+    api_token = _require_env(env, 'SPRITES_API_TOKEN', issues)
+    session_token_secret = _require_env(env, 'SESSION_TOKEN_SECRET', issues)
+    service_host = _require_env(env, 'SPRITES_WORKSPACE_SERVICE_HOST', issues)
+    service_port_raw = _require_env(env, 'SPRITES_WORKSPACE_SERVICE_PORT', issues)
+    service_path = env.get('SPRITES_WORKSPACE_SERVICE_PATH', '/').strip() or '/'
+
+    multi_tenant = _parse_bool(env.get('MULTI_TENANT'), 'MULTI_TENANT', issues, default=False)
+    route_by_user = _parse_bool(env.get('ROUTE_BY_USER'), 'ROUTE_BY_USER', issues, default=False)
+    auth_identity_binding = _parse_bool(
+        env.get('AUTH_IDENTITY_BINDING_ENABLED'),
+        'AUTH_IDENTITY_BINDING_ENABLED',
+        issues,
+        default=False,
+    )
+
+    routing_mode = env.get('WORKSPACE_ROUTING_MODE', 'single_tenant').strip().lower()
+    if routing_mode not in VALID_ROUTING_MODES:
+        issues.append(
+            f"WORKSPACE_ROUTING_MODE must be one of {sorted(VALID_ROUTING_MODES)}, got {routing_mode!r}."
+        )
+
+    if service_path and not service_path.startswith('/'):
+        issues.append('SPRITES_WORKSPACE_SERVICE_PATH must start with "/" (example: /workspace).')
+
+    service_port = 0
+    if service_port_raw:
+        try:
+            service_port = int(service_port_raw)
+            if not 1 <= service_port <= 65535:
+                issues.append(
+                    f'SPRITES_WORKSPACE_SERVICE_PORT must be between 1 and 65535, got {service_port}.'
+                )
+        except ValueError:
+            issues.append(
+                f'SPRITES_WORKSPACE_SERVICE_PORT must be an integer, got {service_port_raw!r}.'
+            )
+
+    if session_token_secret and len(session_token_secret) < 32:
+        issues.append('SESSION_TOKEN_SECRET must be at least 32 characters.')
+
+    if base_url:
+        parsed = urlparse(base_url)
+        if not parsed.scheme or not parsed.netloc:
+            issues.append(
+                f"SPRITES_BASE_URL must be an absolute URL like 'https://host', got {base_url!r}."
+            )
+
+    multi_tenant_indicators_present = multi_tenant or route_by_user or routing_mode == 'per_user'
+    if multi_tenant_indicators_present and not auth_identity_binding:
+        issues.append(
+            'Multi-tenant sandbox mode is not supported unless authenticated identity binding is enabled. '
+            'Set AUTH_IDENTITY_BINDING_ENABLED=true or disable multi-tenant indicators '
+            '(MULTI_TENANT, ROUTE_BY_USER, WORKSPACE_ROUTING_MODE=per_user).'
+        )
+
+    if issues:
+        raise ConfigValidationError(issues)
+
+    return RuntimeConfig(
+        workspace_mode='sandbox',
+        sandbox=SandboxConfig(
+            base_url=base_url,
+            sprite_name=sprite_name,
+            api_token=api_token,
+            session_token_secret=session_token_secret,
+            service_target=SandboxServiceTarget(
+                host=service_host,
+                port=service_port,
+                path=service_path,
+            ),
+            multi_tenant=multi_tenant,
+            routing_mode=routing_mode,
+            auth_identity_binding=auth_identity_binding,
+        ),
+    )
 
 
 @dataclass
