@@ -45,3 +45,5 @@ export { useApprovalPanels } from './useApprovalPanels'
 export { useUrlSync } from './useUrlSync'
 
 export { useDragDrop } from './useDragDrop'
+
+export { useLayoutRestore } from './useLayoutRestore'
