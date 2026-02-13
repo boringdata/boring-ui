@@ -3,7 +3,7 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
+import { ThemeProvider, useCapabilities, useKeyboardShortcuts, useOnboardingState } from './hooks'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import {
@@ -23,6 +23,7 @@ import {
 } from './layout'
 import ThemeToggle from './components/ThemeToggle'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
+import OnboardingStateGate from './components/OnboardingStateGate'
 import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
 import {
   getGatedComponents,
@@ -80,6 +81,8 @@ const tabComponents = {
 export default function App() {
   // Get config (defaults are used until async load completes)
   const config = useConfig()
+  const onboardingEnabled = config.features?.controlPlaneOnboarding === true
+  const onboarding = useOnboardingState({ enabled: onboardingEnabled })
   const storagePrefix = config.storage?.prefix || 'kurt-web'
   const layoutVersion = config.storage?.layoutVersion || 1
 
@@ -1528,6 +1531,14 @@ export default function App() {
     return (
       <ThemeProvider>
         <ClaudeStreamChat />
+      </ThemeProvider>
+    )
+  }
+
+  if (onboardingEnabled && onboarding.isBlocking) {
+    return (
+      <ThemeProvider>
+        <OnboardingStateGate machine={onboarding} />
       </ThemeProvider>
     )
   }
