@@ -26,7 +26,7 @@ class TestRouterRegistry:
         assert entry is not None
         info, factory = entry
         assert info.name == 'files'
-        assert info.prefix == '/api'
+        assert info.prefix == '/api/v1/files'
         assert callable(factory)
 
     def test_registry_get_nonexistent(self):
@@ -43,7 +43,7 @@ class TestRouterRegistry:
 
         assert info is not None
         assert info.name == 'git'
-        assert info.prefix == '/api/git'
+        assert info.prefix == '/api/v1/git'
         assert 'git' in info.tags
 
 

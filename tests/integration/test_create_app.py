@@ -9,9 +9,6 @@ from httpx import AsyncClient, ASGITransport
 
 from boring_ui.api.app import create_app
 from boring_ui.api.config import APIConfig
-from boring_ui.api.storage import LocalStorage
-from boring_ui.api.modules.files import create_file_router
-from boring_ui.api.modules.git import create_git_router
 
 
 @pytest.fixture
@@ -28,11 +25,7 @@ def workspace(tmp_path):
 def app(workspace):
     """Create a full application with all routers enabled."""
     config = APIConfig(workspace_root=workspace)
-    app = create_app(config)
-    storage = LocalStorage(workspace)
-    app.include_router(create_file_router(config, storage), prefix='/api/v1/files')
-    app.include_router(create_git_router(config), prefix='/api/v1/git')
-    return app
+    return create_app(config)
 
 
 @pytest.fixture
