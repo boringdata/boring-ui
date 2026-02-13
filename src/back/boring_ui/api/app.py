@@ -2,6 +2,7 @@
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 
 from .config import APIConfig
 from .storage import Storage, LocalStorage
@@ -14,6 +15,13 @@ from .capabilities import (
     RouterRegistry,
     create_default_registry,
     create_capabilities_router,
+)
+from boring_ui.observability import configure_logging, get_logger
+from boring_ui.observability.metrics import metrics_text
+from boring_ui.observability.middleware import (
+    MetricsMiddleware,
+    RequestIdMiddleware,
+    RequestLoggingMiddleware,
 )
 
 
@@ -110,6 +118,15 @@ def create_app(
         version='0.1.0',
     )
 
+    # Configure structured logging on first app creation.
+    configure_logging()
+    logger = get_logger("boring_ui.api")
+
+    # Observability middleware (outermost runs first: request-ID → metrics → logging).
+    app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(MetricsMiddleware)
+    app.add_middleware(RequestIdMiddleware)
+
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -150,6 +167,13 @@ def create_app(
         create_capabilities_router(enabled_features, registry),
         prefix='/api',
     )
+
+    # Prometheus metrics endpoint
+    @app.get('/metrics')
+    async def prometheus_metrics():
+        """Prometheus metrics exposition endpoint."""
+        body, content_type = metrics_text()
+        return Response(content=body, media_type=content_type)
 
     # Health check
     @app.get('/health')
@@ -216,5 +240,11 @@ def create_app(
         """Create a new session ID (client will connect via WebSocket)."""
         import uuid
         return {'session_id': str(uuid.uuid4())}
+
+    logger.info(
+        "app_created",
+        workspace=str(config.workspace_root),
+        enabled_features={k: v for k, v in enabled_features.items() if v},
+    )
 
     return app
