@@ -1,0 +1,14 @@
+{
+  "comment": "App identity resolver config for E2E example app (bd-223o.16.2 K2).",
+  "host_mapping": {
+    "*": "e2e-example"
+  },
+  "apps": {
+    "e2e-example": {
+      "app_id": "e2e-example",
+      "name": "Boring UI E2E",
+      "logo": "B",
+      "default_release_id": ""
+    }
+  }
+}
