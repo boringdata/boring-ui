@@ -26,9 +26,9 @@ class RouterRegistry:
 
     Example:
         registry = RouterRegistry()
-        registry.register('files', '/api/v1/files', create_file_router,
+        registry.register('files', '/api', create_file_router,
                          description='File operations')
-        registry.register('git', '/api/v1/git', create_git_router,
+        registry.register('git', '/api/git', create_git_router,
                          description='Git operations')
 
         # Get all registered routers
@@ -52,7 +52,7 @@ class RouterRegistry:
 
         Args:
             name: Unique identifier for this router
-            prefix: URL prefix (e.g., '/api/v1/git')
+            prefix: URL prefix (e.g., '/api/git')
             factory: Function that creates the router
             description: Human-readable description
             tags: OpenAPI tags for grouping
@@ -101,14 +101,14 @@ def create_default_registry() -> RouterRegistry:
     # Core routers (always included in default setup)
     registry.register(
         'files',
-        '/api/v1/files',
+        '/api',
         create_file_router,
         description='File system operations (read, write, rename, delete)',
         tags=['files'],
     )
     registry.register(
         'git',
-        '/api/v1/git',
+        '/api/git',
         create_git_router,
         description='Git operations (status, diff, show)',
         tags=['git'],
