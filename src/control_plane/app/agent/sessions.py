@@ -150,6 +150,63 @@ class CreateSessionRequest(BaseModel):
     model: str | None = Field(default=None, description='Agent model name')
 
 
+class SessionInputRequest(BaseModel):
+    """User input sent to an active agent session."""
+
+    content: str = Field(..., min_length=1)
+
+
+# ── Shared validation helpers ────────────────────────────────────────
+
+
+async def _check_membership(
+    membership: MembershipChecker,
+    workspace_id: str,
+    user_id: str,
+) -> JSONResponse | None:
+    """Return 403 JSONResponse if user is not an active member, else None."""
+    if not await membership.is_active_member(workspace_id, user_id):
+        return JSONResponse(
+            status_code=403,
+            content={
+                'error': 'forbidden',
+                'detail': 'Not an active member of this workspace.',
+            },
+        )
+    return None
+
+
+async def _validate_session(
+    session_repo: AgentSessionRepository,
+    session_id: str,
+    workspace_id: str,
+    *,
+    require_active: bool = False,
+) -> AgentSession | JSONResponse:
+    """Validate session exists and belongs to workspace.
+
+    Returns the AgentSession or a JSONResponse error.
+    """
+    session = await session_repo.get(session_id)
+    if session is None or session.workspace_id != workspace_id:
+        return JSONResponse(
+            status_code=404,
+            content={
+                'error': 'session_not_found',
+                'detail': f'Session {session_id!r} not found.',
+            },
+        )
+    if require_active and not session.is_active:
+        return JSONResponse(
+            status_code=409,
+            content={
+                'error': 'session_stopped',
+                'detail': f'Session {session_id!r} is already stopped.',
+            },
+        )
+    return session
+
+
 # ── Route factory ────────────────────────────────────────────────────
 
 
@@ -182,17 +239,9 @@ def create_agent_session_router(
         Requires active workspace membership.
         Returns 201 with session metadata.
         """
-        # Membership gate.
-        if not await membership.is_active_member(
-            workspace_id, identity.user_id,
-        ):
-            return JSONResponse(
-                status_code=403,
-                content={
-                    'error': 'forbidden',
-                    'detail': 'Not an active member of this workspace.',
-                },
-            )
+        deny = await _check_membership(membership, workspace_id, identity.user_id)
+        if deny:
+            return deny
 
         session_id = f'sess_{uuid.uuid4().hex[:16]}'
         session = AgentSession(
@@ -215,16 +264,9 @@ def create_agent_session_router(
         identity: AuthIdentity = Depends(get_auth_identity),
     ):
         """List agent sessions for a workspace."""
-        if not await membership.is_active_member(
-            workspace_id, identity.user_id,
-        ):
-            return JSONResponse(
-                status_code=403,
-                content={
-                    'error': 'forbidden',
-                    'detail': 'Not an active member of this workspace.',
-                },
-            )
+        deny = await _check_membership(membership, workspace_id, identity.user_id)
+        if deny:
+            return deny
 
         sessions = await session_repo.list_for_workspace(workspace_id)
         return {
@@ -240,6 +282,60 @@ def create_agent_session_router(
             ],
         }
 
+    @router.get('/w/{workspace_id}/api/v1/agent/sessions/{session_id}/stream')
+    async def stream_session(
+        workspace_id: str,
+        session_id: str,
+        identity: AuthIdentity = Depends(get_auth_identity),
+    ):
+        """Start streaming from an agent session.
+
+        Requires active membership and a valid active session.
+        In production this returns SSE; here we return the stream
+        metadata for contract validation.
+        """
+        deny = await _check_membership(membership, workspace_id, identity.user_id)
+        if deny:
+            return deny
+
+        result = await _validate_session(
+            session_repo, session_id, workspace_id, require_active=True,
+        )
+        if isinstance(result, JSONResponse):
+            return result
+
+        return {
+            'session_id': result.id,
+            'workspace_id': result.workspace_id,
+            'stream': 'connected',
+        }
+
+    @router.post('/w/{workspace_id}/api/v1/agent/sessions/{session_id}/input')
+    async def send_input(
+        workspace_id: str,
+        session_id: str,
+        body: SessionInputRequest,
+        identity: AuthIdentity = Depends(get_auth_identity),
+    ):
+        """Send user input to an active agent session.
+
+        Requires active membership and a valid active session.
+        """
+        deny = await _check_membership(membership, workspace_id, identity.user_id)
+        if deny:
+            return deny
+
+        result = await _validate_session(
+            session_repo, session_id, workspace_id, require_active=True,
+        )
+        if isinstance(result, JSONResponse):
+            return result
+
+        return {
+            'session_id': result.id,
+            'accepted': True,
+        }
+
     @router.post('/w/{workspace_id}/api/v1/agent/sessions/{session_id}/stop')
     async def stop_session(
         workspace_id: str,
@@ -247,26 +343,15 @@ def create_agent_session_router(
         identity: AuthIdentity = Depends(get_auth_identity),
     ):
         """Stop an agent session. Idempotent."""
-        if not await membership.is_active_member(
-            workspace_id, identity.user_id,
-        ):
-            return JSONResponse(
-                status_code=403,
-                content={
-                    'error': 'forbidden',
-                    'detail': 'Not an active member of this workspace.',
-                },
-            )
+        deny = await _check_membership(membership, workspace_id, identity.user_id)
+        if deny:
+            return deny
 
-        session = await session_repo.get(session_id)
-        if session is None or session.workspace_id != workspace_id:
-            return JSONResponse(
-                status_code=404,
-                content={
-                    'error': 'session_not_found',
-                    'detail': f'Session {session_id!r} not found.',
-                },
-            )
+        result = await _validate_session(
+            session_repo, session_id, workspace_id,
+        )
+        if isinstance(result, JSONResponse):
+            return result
 
         stopped = await session_repo.stop(session_id)
         return {

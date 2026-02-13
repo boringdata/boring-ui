@@ -219,3 +219,116 @@ class TestStopSession:
             sid = create_r.json()['session_id']
             r = await c.post(f'/w/ws_2/api/v1/agent/sessions/{sid}/stop')
             assert r.status_code == 404
+
+
+# =====================================================================
+# Stream endpoint (G2)
+# =====================================================================
+
+
+class TestStreamSession:
+    """GET /w/{workspace_id}/api/v1/agent/sessions/{session_id}/stream."""
+
+    @pytest.mark.asyncio
+    async def test_stream_active_session(self, member_app):
+        transport = ASGITransport(app=member_app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            cr = await c.post('/w/ws_1/api/v1/agent/sessions')
+            sid = cr.json()['session_id']
+            r = await c.get(f'/w/ws_1/api/v1/agent/sessions/{sid}/stream')
+            assert r.status_code == 200
+            data = r.json()
+            assert data['session_id'] == sid
+            assert data['stream'] == 'connected'
+
+    @pytest.mark.asyncio
+    async def test_stream_non_member_gets_403(self, no_member_app):
+        transport = ASGITransport(app=no_member_app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            r = await c.get('/w/ws_1/api/v1/agent/sessions/sess_any/stream')
+            assert r.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_stream_missing_session_returns_404(self, member_app):
+        transport = ASGITransport(app=member_app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            r = await c.get('/w/ws_1/api/v1/agent/sessions/sess_nope/stream')
+            assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_stream_stopped_session_returns_409(self, member_app):
+        transport = ASGITransport(app=member_app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            cr = await c.post('/w/ws_1/api/v1/agent/sessions')
+            sid = cr.json()['session_id']
+            await c.post(f'/w/ws_1/api/v1/agent/sessions/{sid}/stop')
+            r = await c.get(f'/w/ws_1/api/v1/agent/sessions/{sid}/stream')
+            assert r.status_code == 409
+            assert r.json()['error'] == 'session_stopped'
+
+
+# =====================================================================
+# Input endpoint (G2)
+# =====================================================================
+
+
+class TestSendInput:
+    """POST /w/{workspace_id}/api/v1/agent/sessions/{session_id}/input."""
+
+    @pytest.mark.asyncio
+    async def test_input_active_session(self, member_app):
+        transport = ASGITransport(app=member_app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            cr = await c.post('/w/ws_1/api/v1/agent/sessions')
+            sid = cr.json()['session_id']
+            r = await c.post(
+                f'/w/ws_1/api/v1/agent/sessions/{sid}/input',
+                json={'content': 'hello agent'},
+            )
+            assert r.status_code == 200
+            assert r.json()['accepted'] is True
+
+    @pytest.mark.asyncio
+    async def test_input_non_member_gets_403(self, no_member_app):
+        transport = ASGITransport(app=no_member_app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            r = await c.post(
+                '/w/ws_1/api/v1/agent/sessions/sess_any/input',
+                json={'content': 'test'},
+            )
+            assert r.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_input_missing_session_returns_404(self, member_app):
+        transport = ASGITransport(app=member_app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            r = await c.post(
+                '/w/ws_1/api/v1/agent/sessions/sess_nope/input',
+                json={'content': 'test'},
+            )
+            assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_input_stopped_session_returns_409(self, member_app):
+        transport = ASGITransport(app=member_app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            cr = await c.post('/w/ws_1/api/v1/agent/sessions')
+            sid = cr.json()['session_id']
+            await c.post(f'/w/ws_1/api/v1/agent/sessions/{sid}/stop')
+            r = await c.post(
+                f'/w/ws_1/api/v1/agent/sessions/{sid}/input',
+                json={'content': 'too late'},
+            )
+            assert r.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_input_empty_content_rejected(self, member_app):
+        transport = ASGITransport(app=member_app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            cr = await c.post('/w/ws_1/api/v1/agent/sessions')
+            sid = cr.json()['session_id']
+            r = await c.post(
+                f'/w/ws_1/api/v1/agent/sessions/{sid}/input',
+                json={'content': ''},
+            )
+            assert r.status_code == 422  # Pydantic validation
