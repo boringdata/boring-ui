@@ -21,7 +21,9 @@ steps, expected signals, and required evidence artifacts.
 
 ## Scenario Template
 
-Each scenario file follows this structure:
+See [TEMPLATE.md](TEMPLATE.md) for the full scenario spec template with
+field descriptions and conventions. Each scenario file must follow this
+structure:
 
 ```
 # S-XXX: <Title>
@@ -31,3 +33,12 @@ Each scenario file follows this structure:
 ## Evidence Artifacts
 ## Failure Modes
 ```
+
+### Conventions
+
+- **File naming**: `sNNN_short_name.md` where NNN is the scenario ID zero-padded.
+- **Metadata**: HTML comment block at top with machine-parseable YAML fields.
+- **Steps**: Numbered, atomic, observable, and reproducible.
+- **API signals**: Markdown table with Step, Endpoint, Status, Key Fields columns.
+- **Evidence**: Concrete artifacts collectible by the scenario runner (K3).
+- **Failure modes**: Each row must include a specific error code or HTTP status.
