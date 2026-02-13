@@ -61,6 +61,43 @@ class StepResult:
     def passed(self) -> bool:
         return self.outcome == StepOutcome.PASS
 
+    def to_dict(self, *, include_body: bool = False) -> dict[str, Any]:
+        """Serialize to a JSON-compatible dict with expected vs observed.
+
+        Args:
+            include_body: If True, include the full response body.
+
+        Returns:
+            Dict with step metadata, expected, observed, and verdict.
+        """
+        result: dict[str, Any] = {
+            'step': self.step_number,
+            'method': self.method,
+            'path': self.path,
+            'outcome': self.outcome.value,
+            'timestamp': self.timestamp,
+            'duration_ms': round(self.duration_ms, 2),
+            'request_id': self.request_id,
+            'expected': {
+                'status': self.expected_status,
+            },
+            'observed': {
+                'status': self.actual_status,
+            },
+        }
+
+        if self.missing_fields:
+            result['expected']['key_fields'] = list(self.missing_fields)
+            result['observed']['missing_fields'] = list(self.missing_fields)
+
+        if self.error_detail:
+            result['error_detail'] = self.error_detail
+
+        if include_body and self.response_body is not None:
+            result['observed']['body'] = self.response_body
+
+        return result
+
 
 @dataclass(frozen=True, slots=True)
 class ScenarioResult:
@@ -112,6 +149,41 @@ class ScenarioResult:
             'duration_ms': round(self.total_duration_ms, 1),
             'started_at': self.started_at,
             'finished_at': self.finished_at,
+        }
+
+    def to_run_log(self, *, include_bodies: bool = False) -> dict[str, Any]:
+        """Return a machine-readable run log with per-step evidence.
+
+        Ties each scenario step to its expected and observed behavior.
+        Suitable for downstream evidence collection and reporting.
+
+        Args:
+            include_bodies: If True, include full response bodies.
+
+        Returns:
+            Dict with scenario metadata, per-step results, and verdict.
+        """
+        return {
+            'scenario_id': self.scenario_id,
+            'title': self.title,
+            'started_at': self.started_at,
+            'finished_at': self.finished_at,
+            'duration_ms': round(self.total_duration_ms, 2),
+            'verdict': 'pass' if self.passed else 'fail',
+            'counts': {
+                'total': self.total_steps,
+                'pass': self.pass_count,
+                'fail': self.fail_count,
+                'error': self.error_count,
+                'skip': sum(
+                    1 for r in self.step_results
+                    if r.outcome == StepOutcome.SKIP
+                ),
+            },
+            'steps': [
+                r.to_dict(include_body=include_bodies)
+                for r in self.step_results
+            ],
         }
 
 
