@@ -1,0 +1,55 @@
+# Observability stack for boring-ui: Prometheus + Alertmanager + Grafana.
+#
+# Bead: bd-223o.4 (P4)
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.observability.yml up -d
+#
+# Endpoints:
+#   Prometheus:   http://localhost:9090
+#   Alertmanager: http://localhost:9093
+#   Grafana:      http://localhost:3001 (admin/admin)
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: boring-ui-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules.yaml:/etc/prometheus/rules.yaml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: boring-ui-alertmanager
+    volumes:
+      - ./alertmanager/config.yaml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: boring-ui-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/control-plane-reliability.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
