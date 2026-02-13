@@ -155,8 +155,13 @@ class TestUnmatchedRoutes:
         '/',
         '/health',
         '/api/v1/unknown',
+        '/api/v1/workspaceships',
+        '/api/v1/workspaceship/crew',
         '/random/path',
         '/w/',
+        '/w/ws_123/application',
+        '/w/ws_123/api/v1/filesystem',
+        '/w/ws_123/api/v1/gitops',
         '/workspace/ws_123/app',
     ])
     def test_unmatched_paths_return_none(self, path):

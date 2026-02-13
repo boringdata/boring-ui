@@ -132,9 +132,20 @@ def _build_pattern_regex(pattern: str) -> re.Pattern[str]:
             parts.append('(?P<workspace_id>[^/]+)')
             rest = rest[ws_start + len('{workspace_id}'):]
         elif star_pos >= 0:
-            # Literal before the star, then wildcard.
-            parts.append(re.escape(rest[:star_pos]))
-            parts.append('.*')
+            # We only support trailing '*' patterns in the dispatch table.
+            if star_pos != len(rest) - 1:
+                raise ValueError(f"Unsupported '*' placement in pattern: {pattern}")
+
+            literal = rest[:star_pos]
+            parts.append(re.escape(literal))
+
+            # Segment-boundary wildcard:
+            # - '/auth/*' keeps classic prefix semantics.
+            # - '...workspaces*' and '.../app*' only match exact segment or nested path.
+            if literal.endswith('/'):
+                parts.append('.*')
+            else:
+                parts.append('(?:$|/.*)')
             rest = ''
         else:
             # Remaining literal.
