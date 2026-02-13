@@ -20,6 +20,7 @@ from .artifacts import (
     verify_checksum,
 )
 from .state_machine import (
+    ARTIFACT_CHECKSUM_MISMATCH_CODE,
     DEFAULT_STEP_TIMEOUT_SECONDS,
     PROVISIONING_SEQUENCE,
     STEP_TIMEOUT_CODE,
@@ -28,11 +29,15 @@ from .state_machine import (
     advance_state,
     apply_step_timeout,
     create_queued_job,
+    format_checksum_mismatch_detail,
+    format_step_timeout_detail,
     retry_from_error,
+    transition_to_checksum_mismatch,
     transition_to_error,
 )
 
 __all__ = [
+    'ARTIFACT_CHECKSUM_MISMATCH_CODE',
     'BUNDLE_FILENAME',
     'CHECKSUM_FILENAME',
     'DEFAULT_STEP_TIMEOUT_SECONDS',
@@ -52,10 +57,13 @@ __all__ = [
     'build_sandbox_name',
     'compute_sha256',
     'create_queued_job',
+    'format_checksum_mismatch_detail',
+    'format_step_timeout_detail',
     'normalize_sandbox_token',
     'release_unavailable_payload',
     'resolve_provisioning_target',
     'retry_from_error',
+    'transition_to_checksum_mismatch',
     'transition_to_error',
     'verify_checksum',
 ]

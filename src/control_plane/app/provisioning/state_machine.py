@@ -19,6 +19,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 STEP_TIMEOUT_CODE = 'STEP_TIMEOUT'
+ARTIFACT_CHECKSUM_MISMATCH_CODE = 'ARTIFACT_CHECKSUM_MISMATCH'
 
 PROVISIONING_SEQUENCE = (
     'queued',
@@ -197,6 +198,55 @@ def apply_step_timeout(
             f'step {job.state!r} exceeded timeout '
             f'({int(elapsed_seconds)}s > {timeout_seconds}s)'
         ),
+    )
+
+
+def transition_to_checksum_mismatch(
+    job: ProvisioningJobState,
+    *,
+    now: datetime,
+    expected_sha256: str,
+    actual_sha256: str,
+) -> ProvisioningJobState:
+    """Move to ``error`` when bundle checksum verification fails.
+
+    Bead: bd-223o.10.2.1 (D2a)
+    """
+    _require_aware_datetime(now)
+    return transition_to_error(
+        job,
+        now=now,
+        error_code=ARTIFACT_CHECKSUM_MISMATCH_CODE,
+        error_detail=format_checksum_mismatch_detail(
+            expected_sha256=expected_sha256,
+            actual_sha256=actual_sha256,
+        ),
+    )
+
+
+def format_checksum_mismatch_detail(
+    *,
+    expected_sha256: str,
+    actual_sha256: str,
+) -> str:
+    """Build actionable error detail for a checksum mismatch."""
+    return (
+        f'bundle SHA-256 mismatch: expected {expected_sha256[:16]}… '
+        f'got {actual_sha256[:16]}…; '
+        f'release artifact may need to be republished'
+    )
+
+
+def format_step_timeout_detail(
+    *,
+    step: str,
+    elapsed_seconds: int,
+    timeout_seconds: int,
+) -> str:
+    """Build actionable error detail for a step timeout."""
+    return (
+        f'step {step!r} exceeded timeout '
+        f'({elapsed_seconds}s > {timeout_seconds}s)'
     )
 
 
