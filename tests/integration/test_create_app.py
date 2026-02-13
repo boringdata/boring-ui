@@ -9,6 +9,9 @@ from httpx import AsyncClient, ASGITransport
 
 from boring_ui.api.app import create_app
 from boring_ui.api.config import APIConfig
+from boring_ui.api.storage import LocalStorage
+from boring_ui.api.modules.files import create_file_router
+from boring_ui.api.modules.git import create_git_router
 
 
 @pytest.fixture
@@ -25,7 +28,11 @@ def workspace(tmp_path):
 def app(workspace):
     """Create a full application with all routers enabled."""
     config = APIConfig(workspace_root=workspace)
-    return create_app(config)
+    app = create_app(config)
+    storage = LocalStorage(workspace)
+    app.include_router(create_file_router(config, storage), prefix='/api/v1/files')
+    app.include_router(create_git_router(config), prefix='/api/v1/git')
+    return app
 
 
 @pytest.fixture
@@ -156,10 +163,10 @@ class TestFileRoutes:
 
     @pytest.mark.asyncio
     async def test_tree_endpoint(self, app, workspace):
-        """Test /api/tree returns directory listing."""
+        """Test /api/v1/files/list returns directory listing."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/tree?path=.')
+            response = await client.get('/api/v1/files/list?path=.')
             assert response.status_code == 200
             data = response.json()
             names = [e['name'] for e in data['entries']]
@@ -168,21 +175,21 @@ class TestFileRoutes:
 
     @pytest.mark.asyncio
     async def test_file_read_endpoint(self, app, workspace):
-        """Test /api/file returns file contents."""
+        """Test /api/v1/files/read returns file contents."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/file?path=README.md')
+            response = await client.get('/api/v1/files/read?path=README.md')
             assert response.status_code == 200
             data = response.json()
             assert data['content'] == '# Test Project'
 
     @pytest.mark.asyncio
     async def test_file_write_endpoint(self, app, workspace):
-        """Test PUT /api/file writes file contents."""
+        """Test PUT /api/v1/files/write writes file contents."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
             response = await client.put(
-                '/api/file?path=new.txt',
+                '/api/v1/files/write?path=new.txt',
                 json={'content': 'new content'}
             )
             assert response.status_code == 200
