@@ -22,6 +22,7 @@ import {
   getFileName,
 } from './layout'
 import ThemeToggle from './components/ThemeToggle'
+import WorkspaceSwitcher from './components/WorkspaceSwitcher'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 import OnboardingStateGate from './components/OnboardingStateGate'
 import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
@@ -1562,6 +1563,14 @@ export default function App() {
             <div className="app-header-title">
               {projectRoot?.split('/').pop() || config.branding?.name || 'Workspace'}
             </div>
+            {onboardingEnabled && onboarding.workspaces?.length > 0 && (
+              <WorkspaceSwitcher
+                workspaces={onboarding.workspaces}
+                selectedWorkspaceId={onboarding.selectedWorkspaceId}
+                onSwitchWorkspace={onboarding.openWorkspaceApp}
+                onCreateWorkspace={onboarding.startCreateWorkspace}
+              />
+            )}
           </div>
           <div className="app-header-controls">
             <ThemeToggle />

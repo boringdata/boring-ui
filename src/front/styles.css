@@ -421,6 +421,122 @@ html {
   min-height: 0;
 }
 
+/* Workspace Switcher (H2) */
+.ws-switcher {
+  position: relative;
+  margin-left: var(--space-3);
+}
+
+.ws-switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  max-width: 200px;
+}
+
+.ws-switcher-trigger:hover {
+  background-color: var(--color-bg-hover, rgba(128, 128, 128, 0.1));
+  border-color: var(--color-text-tertiary, var(--color-border));
+}
+
+.ws-switcher-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-switcher-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.ws-switcher-chevron-open {
+  transform: rotate(180deg);
+}
+
+.ws-switcher-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  min-width: 220px;
+  max-width: 300px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+  z-index: 50;
+  padding: var(--space-1) 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.ws-switcher-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: default;
+}
+
+.ws-switcher-item-selectable {
+  cursor: pointer;
+}
+
+.ws-switcher-item-selectable:hover {
+  background-color: var(--color-bg-hover, rgba(128, 128, 128, 0.1));
+}
+
+.ws-switcher-item-active {
+  color: var(--color-text-secondary);
+}
+
+.ws-switcher-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.ws-switcher-item-badge {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+  padding: 1px var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+}
+
+.ws-switcher-item-create {
+  cursor: pointer;
+  color: var(--color-accent);
+}
+
+.ws-switcher-item-create:hover {
+  background-color: var(--color-bg-hover, rgba(128, 128, 128, 0.1));
+}
+
+.ws-switcher-divider {
+  height: 1px;
+  background-color: var(--color-border);
+  margin: var(--space-1) 0;
+}
+
 /* Capability Warning Banner */
 .capability-warning {
   padding: var(--space-2) var(--space-4);
