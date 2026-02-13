@@ -26,4 +26,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/back/boring_ui"]
+packages = ["src/back/boring_ui", "src/control_plane"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src/back", "src"]
