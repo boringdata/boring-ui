@@ -1,6 +1,7 @@
 import { AlertTriangle, Loader2, LogIn, RefreshCw, Rocket } from 'lucide-react'
 import { ONBOARDING_STATES } from '../onboarding/stateMachine'
 import ProvisioningError from './ProvisioningError'
+import useLoginBranding from '../hooks/useLoginBranding'
 
 const getWorkspaceName = (workspace) =>
   workspace?.name || workspace?.workspace_name || workspace?.slug || workspace?.id || 'workspace'
@@ -57,7 +58,8 @@ const STATE_COPY = {
   },
 }
 
-export default function OnboardingStateGate({ machine }) {
+export default function OnboardingStateGate({ machine, workspaceBranding }) {
+  const branding = useLoginBranding({ workspaceBranding })
   const copy = STATE_COPY[machine.state] || STATE_COPY[ONBOARDING_STATES.UNAUTHENTICATED]
   const workspaceName = getWorkspaceName(machine.selectedWorkspace)
   const runtimeErrorCode = getRuntimeErrorCode(machine)
@@ -68,6 +70,25 @@ export default function OnboardingStateGate({ machine }) {
   return (
     <div className="onboarding-gate" data-testid="onboarding-gate">
       <div className="onboarding-card">
+        {!branding.loading && (
+          <div className="onboarding-branding" data-testid="onboarding-branding">
+            {branding.logo && (
+              <img
+                className="onboarding-branding-logo"
+                src={branding.logo}
+                alt={`${branding.name} logo`}
+                data-testid="onboarding-branding-logo"
+              />
+            )}
+            <span
+              className="onboarding-branding-name"
+              data-testid="onboarding-branding-name"
+            >
+              {branding.name}
+            </span>
+          </div>
+        )}
+
         <div className="onboarding-card-header">
           <h1>{copy.title}</h1>
           <p>{copy.description}</p>
