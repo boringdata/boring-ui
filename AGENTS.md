@@ -65,4 +65,59 @@ git push                # Push to remote
 - Use descriptive titles and set appropriate priority/type
 - Always sync before ending session
 
+### Definition Of Done (DoD Template, Required)
+
+All new issues created on/after `2026-02-13T22:00:00Z` must include the DoD sections below in the issue **description**. New issues are blocked from being merged/closed without these sections being present.
+
+Template (copy into every new bead description and fill it in as you work):
+
+````md
+## Acceptance Criteria
+- [ ] User-visible behaviors (what should happen, status codes, UI state, etc.)
+
+## Evidence
+- Commit(s): <git sha(s)> (or PR: <link>)
+- If UI changed: screenshots or screen recording path(s)
+- If bug: exact repro steps + input + expected vs actual
+
+## Verification
+Commands:
+```bash
+# paste exact commands run (tests/lints/builds)
+```
+Expected:
+- What "success" looks like (exit code, key output lines, URLs, screenshots, etc.)
+
+## Rollback
+- If this breaks: revert commit(s) <sha> (or PR) and/or revert files:
+- Risk notes (what might regress / what to watch)
+````
+
+Automated check:
+- `python3 scripts/validate_beads_dod.py`
+
+### Supabase Credentials (How To Get)
+
+Fetch credentials from the agent secret store using these paths:
+
+- `Project URL`: `secret/agent/boring-ui-supabase-project-url`
+- `Publishable key`: `secret/agent/boring-ui-supabase-publishable-key`
+- `Service role key`: `secret/agent/boring-ui-supabase-service-role-key`
+- `DB password`: `secret/agent/boring-ui-supabase`
+- `DB connection URL`: `secret/agent/boring-ui-supabase-db-url`
+
+Recommended env var mapping:
+
+- `SUPABASE_URL` <= `secret/agent/boring-ui-supabase-project-url`
+- `SUPABASE_PUBLISHABLE_KEY` <= `secret/agent/boring-ui-supabase-publishable-key`
+- `SUPABASE_SERVICE_ROLE_KEY` <= `secret/agent/boring-ui-supabase-service-role-key`
+- `SUPABASE_DB_PASSWORD` <= `secret/agent/boring-ui-supabase`
+- `DATABASE_URL` <= `secret/agent/boring-ui-supabase-db-url`
+
+Security notes:
+
+- Never commit secret values to git, issue comments, logs, or screenshots.
+- Keep values in environment variables or local untracked `.env` files only.
+- Rotate and re-fetch secrets if exposure is suspected.
+
 <!-- end-br-agent-instructions -->

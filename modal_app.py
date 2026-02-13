@@ -1,15 +1,10 @@
-"""
-Modal Deployment Configuration for Boring UI.
+"""Modal deployment entrypoint for control plane.
 
-This module configures the Modal deployment with:
-- FastAPI backend (boring-ui API)
-- Static frontend files (Vite build)
-- Secrets for external services
-- Resource limits and scaling
-
-Deploy with: modal deploy modal_app.py
-Run locally: modal serve modal_app.py
+Deploy with: ``modal deploy modal_app.py``
+Run locally: ``modal serve modal_app.py``
 """
+
+from __future__ import annotations
 
 import modal
 
@@ -23,55 +18,168 @@ app = modal.App(
         modal.Secret.from_name("supabase-creds", required_keys=[
             "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SERVICE_ROLE_KEY",
         ]),
-        modal.Secret.from_name("jwt-secret", required_keys=["SUPABASE_JWT_SECRET"]),
+        # Optional HS256 local-dev fallback; RS256 JWKS mode only needs SUPABASE_URL.
+        modal.Secret.from_name("jwt-secret"),
         modal.Secret.from_name("session-config", required_keys=["SESSION_SECRET"]),
     ],
 )
 
 # --- Container Image ---
 
-# Build frontend assets during image build
 image = (
     modal.Image.debian_slim(python_version="3.11")
-    # Install Node.js for frontend build
-    .apt_install("curl")
-    .run_commands(
-        "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -",
-        "apt-get install -y nodejs",
-    )
-    # Copy frontend source and build
-    .copy_local_dir("src/front", "/app/src/front")
-    .copy_local_file("package.json", "/app/package.json")
-    .copy_local_file("package-lock.json", "/app/package-lock.json", dest="/app/package-lock.json")
-    .copy_local_file("vite.config.ts", "/app/vite.config.ts")
-    .copy_local_file("index.html", "/app/index.html")
-    .copy_local_file("tailwind.config.js", "/app/tailwind.config.js")
-    .run_commands(
-        "cd /app && npm ci",
-        "cd /app && npm run build",
-    )
-    # Install Python dependencies
     .pip_install(
         "fastapi>=0.100.0",
         "uvicorn[standard]>=0.23.0",
         "ptyprocess>=0.7.0",
         "websockets>=11.0",
         "aiofiles>=23.0.0",
+        "PyJWT[crypto]>=2.8.0",
+        "structlog>=24.1.0",
+        "prometheus-client>=0.20.0",
+        "httpx>=0.24.0",
     )
-    # Copy Python backend
-    .copy_local_dir("src/back", "/app/src/back")
+    .env({"PYTHONPATH": "/app/src"})
+    # Keep local code mount last (Modal requirement) to avoid rebuild loops.
+    .add_local_dir("src/control_plane", "/app/src/control_plane")
 )
 
-# --- Volume for Workspace Data ---
 
-workspace_volume = modal.Volume.from_name("boring-ui-workspace", create_if_missing=True)
+def _build_control_plane_app():
+    """Build control-plane app for auth/workspace APIs."""
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+
+    from control_plane.app.agent.sessions import (
+        InMemoryAgentSessionRepository,
+        create_agent_session_router,
+    )
+    from control_plane.app.config.environment import load_environment_config
+    from control_plane.app.identity.loader import IdentityConfigError, load_identity_config
+    from control_plane.app.identity.resolver import AppConfig, AppIdentityResolver
+    from control_plane.app.provisioning.job_service import (
+        InMemoryProvisioningJobRepository,
+        ProvisioningService,
+    )
+    from control_plane.app.routes.app_config import create_app_config_router
+    from control_plane.app.routes.auth import SessionConfig, create_auth_router
+    from control_plane.app.routes.me import router as me_router
+    from control_plane.app.routes.members import (
+        InMemoryMemberRepository,
+        create_member_router,
+    )
+    from control_plane.app.routes.provisioning import (
+        InMemoryProvisioningEventRepository,
+        create_provisioning_router,
+    )
+    from control_plane.app.routes.session import (
+        InMemorySessionRepository,
+        create_session_router,
+    )
+    from control_plane.app.routes.workspaces import (
+        InMemoryWorkspaceRepository,
+        create_workspace_router,
+    )
+    from control_plane.app.routing.dispatcher import RouteDispatchMiddleware
+    from control_plane.app.security.auth_guard import AuthGuardMiddleware
+    from control_plane.app.security.secrets import load_control_plane_secrets
+    from control_plane.app.security.token_verify import create_token_verifier
+    from control_plane.app.sharing.access import create_share_access_router
+    from control_plane.app.sharing.model import InMemoryShareLinkRepository
+    from control_plane.app.sharing.routes import create_share_router
+
+    class _MemberRepoMembershipChecker:
+        def __init__(self, member_repo: InMemoryMemberRepository) -> None:
+            self._member_repo = member_repo
+
+        async def is_active_member(self, workspace_id: str, user_id: str) -> bool:
+            return await self._member_repo.is_member(workspace_id, user_id)
+
+    env_cfg = load_environment_config()
+    secrets = load_control_plane_secrets(require_sprite_bearer=False)
+    token_verifier = create_token_verifier(
+        supabase_url=secrets.supabase_url or None,
+        jwt_secret=secrets.supabase_jwt_secret or None,
+    )
+
+    session_cfg = SessionConfig(
+        session_secret=secrets.session_secret,
+        cookie_secure=env_cfg.cookie_secure,
+    )
+
+    ws_repo = InMemoryWorkspaceRepository()
+    member_repo = InMemoryMemberRepository()
+    session_repo = InMemorySessionRepository()
+    job_repo = InMemoryProvisioningJobRepository()
+    event_repo = InMemoryProvisioningEventRepository()
+    provisioning_service = ProvisioningService(job_repo)
+    share_repo = InMemoryShareLinkRepository()
+    agent_session_repo = InMemoryAgentSessionRepository()
+    membership = _MemberRepoMembershipChecker(member_repo)
+
+    try:
+        identity_resolver = load_identity_config()
+    except IdentityConfigError:
+        identity_resolver = AppIdentityResolver(
+            host_map={"*": "boring-ui"},
+            app_configs={
+                "boring-ui": AppConfig(
+                    app_id="boring-ui",
+                    name="Boring UI",
+                    logo="",
+                    default_release_id="",
+                )
+            },
+            default_app_id="boring-ui",
+        )
+
+    app = FastAPI(
+        title="Boring UI Control Plane API",
+        version="0.1.0",
+    )
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "plane": "control"}
+
+    app.include_router(create_auth_router(token_verifier, session_cfg))
+    app.include_router(me_router)
+    app.include_router(create_app_config_router(identity_resolver))
+    app.include_router(create_workspace_router(ws_repo, member_repo=member_repo))
+    app.include_router(create_member_router(member_repo, workspace_exists_fn=ws_repo.get))
+    app.include_router(create_session_router(session_repo))
+    app.include_router(
+        create_provisioning_router(
+            job_repo=job_repo,
+            provisioning_service=provisioning_service,
+            event_repo=event_repo,
+        )
+    )
+    app.include_router(create_share_router(share_repo, membership))
+    app.include_router(create_share_access_router(share_repo))
+    app.include_router(create_agent_session_router(agent_session_repo, membership))
+
+    app.add_middleware(
+        AuthGuardMiddleware,
+        token_verifier=token_verifier,
+        session_secret=secrets.session_secret,
+    )
+    app.add_middleware(RouteDispatchMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(env_cfg.cors_origins),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    return app
 
 # --- FastAPI ASGI App ---
 
 
 @app.function(
     image=image,
-    volumes={"/workspace": workspace_volume},
     cpu=2.0,
     memory=1024,
     timeout=600,
@@ -80,33 +188,9 @@ workspace_volume = modal.Volume.from_name("boring-ui-workspace", create_if_missi
 )
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
-def web_app():
-    """
-    Modal ASGI entry point for the Boring UI application.
-
-    Serves both the FastAPI backend and static frontend files.
-    """
-    from fastapi.staticfiles import StaticFiles
-    from boring_ui.api.app import create_app
-    from boring_ui.api.config import APIConfig
-
-    # Create backend API with workspace volume
-    config = APIConfig(workspace_path="/workspace")
-    backend = create_app(config=config)
-
-    # Mount static frontend files
-    backend.mount("/assets", StaticFiles(directory="/app/dist/assets"), name="assets")
-
-    # Serve index.html for all non-API routes (SPA routing)
-    @backend.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        from fastapi.responses import FileResponse
-        # API routes are already handled by FastAPI routers
-        if full_path.startswith("api/"):
-            return {"error": "Not found"}, 404
-        return FileResponse("/app/dist/index.html")
-
-    return backend
+def control_plane_web_app():
+    """Modal ASGI entry point for control-plane APIs."""
+    return _build_control_plane_app()
 
 
 # --- CLI Commands ---
@@ -118,17 +202,12 @@ def main():
     print("=" * 50)
     print()
     print("Commands:")
-    print("  modal deploy modal_app.py    - Deploy to Modal")
-    print("  modal serve modal_app.py     - Run locally with hot reload")
+    print("  modal deploy modal_app.py      - Deploy control-plane endpoint")
+    print("  modal serve modal_app.py       - Run locally with hot reload")
     print()
-    print("Features:")
-    print("  - FastAPI backend with file/git/pty/stream APIs")
-    print("  - React frontend (Vite build)")
-    print("  - WebSocket support for terminals and streaming")
-    print("  - Persistent workspace storage")
+    print("ASGI Endpoints:")
+    print("  - control_plane_web_app: auth/workspace/member/session/control-plane APIs")
     print()
     print("Environment:")
-    print("  - Workspace: /workspace (persistent volume)")
-    print("  - Frontend: /app/dist (static build)")
-    print("  - Backend: /app/src/back")
+    print("  - Python path: /app/src")
     print()

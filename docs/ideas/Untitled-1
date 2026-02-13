@@ -1,0 +1,47 @@
+
+  First read ALL of the AGENTS.md file and README.md file super carefully and
+  understand ALL of both. Then use your code investigation mode to fully
+  understand the codebase, technical architecture, and project purpose. Then
+  register with MCP Agent Mail and introduce yourself to the other active agents.
+
+  Be sure to check your agent mail and promptly respond to any messages. Then
+  proceed meticulously with your next assigned bead, working systematically and
+  tracking progress via beads + Agent Mail updates.
+
+  Do not get stuck in communication purgatory where nothing gets done. Be
+  proactive about starting needed tasks, but always inform fellow agents when you
+  start work and mark beads appropriately.
+
+  When unsure what to do next, use bv robot commands to prioritize impactful
+  ready work and start immediately.
+
+  Execution loop (repeat):
+  1) `bv --robot-next` to select next actionable bead.
+  2) `bd show <bead-id>` and confirm acceptance criteria + dependencies.
+  3) Claim ownership (`bd update <bead-id> --claim --actor <your_name>`),
+  announce claim in Agent Mail.
+  4) Implement only the scoped bead.
+  5) Fresh-eyes self-review of changed code and fix obvious issues.
+  6) Commit ONLY your changes for this bead (no unrelated files, no teammate
+  changes, no mixed beads).
+  7) After each bead-level commit, run a Codex CLI review on the committed diff
+  and fix critical/high findings.
+  8) Repeat review/fix cycle up to 3 iterations max.
+  9) Mark bead complete and send concise Agent Mail status update.
+  10) Loop back to `bv --robot-next`.
+
+  Rules:
+  - Commit hygiene is strict: only files relevant to current bead.
+  - If staged scope is mixed, split commits by bead.
+  - Acknowledge all contact requests/messages from other agents.
+  - Keep bead statuses accurate (in_progress, blocked, done).
+
+  Blocked protocol:
+  - If blocked for >10 minutes or repeating same failure 3 times:
+    1. Send urgent Agent Mail: `BLOCKED: <bead-id>` with exact blocker + decision
+  needed.
+    2. Mark bead blocked with notes.
+    3. Move to next ready bead via `bv --robot-next` while waiting.
+  - If session compacts/restarts, reread AGENTS.md and continue loop.
+
+  Use ultrathink.
