@@ -1,5 +1,9 @@
 """Security middleware and utilities for the control plane."""
 
+from .auth_guard import (
+    AuthGuardMiddleware,
+    get_auth_identity,
+)
 from .csrf import (
     CSRFError,
     CSRFMiddleware,
@@ -15,6 +19,7 @@ from .token_verify import (
 )
 
 __all__ = [
+    'AuthGuardMiddleware',
     'AuthIdentity',
     'CSRFError',
     'CSRFMiddleware',
@@ -23,5 +28,6 @@ __all__ = [
     'create_token_verifier',
     'extract_bearer_token',
     'generate_csrf_token',
+    'get_auth_identity',
     'validate_csrf_token',
 ]
