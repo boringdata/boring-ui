@@ -25,6 +25,8 @@ import {
   X,
 } from 'lucide-react'
 import { buildApiUrl } from '../utils/apiBase'
+import { resolveFromError } from '../utils/apiErrors'
+import ApiErrorBanner from './ApiErrorBanner'
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -206,7 +208,8 @@ function MembersSection({ workspaceId }) {
   const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
-  const [inviteError, setInviteError] = useState('')
+  const [inviteError, setInviteError] = useState(null)
+  const [removeError, setRemoveError] = useState(null)
   const [showInvite, setShowInvite] = useState(false)
 
   const loadMembers = useCallback(async () => {
@@ -232,7 +235,7 @@ function MembersSection({ workspaceId }) {
     const email = inviteEmail.trim()
     if (!email) return
     setInviting(true)
-    setInviteError('')
+    setInviteError(null)
     try {
       await fetchJson(
         `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/members`,
@@ -246,21 +249,22 @@ function MembersSection({ workspaceId }) {
       setShowInvite(false)
       await loadMembers()
     } catch (err) {
-      setInviteError(err?.data?.detail || err.message || 'Invite failed')
+      setInviteError(resolveFromError(err))
     } finally {
       setInviting(false)
     }
   }
 
   const handleRemove = async (memberId) => {
+    setRemoveError(null)
     try {
       await fetchJson(
         `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/members/${memberId}`,
         { method: 'DELETE' },
       )
       await loadMembers()
-    } catch {
-      // Silently fail — UI will reflect stale state until refresh.
+    } catch (err) {
+      setRemoveError(resolveFromError(err))
     }
   }
 
@@ -268,7 +272,7 @@ function MembersSection({ workspaceId }) {
     if (e.key === 'Enter') handleInvite()
     if (e.key === 'Escape') {
       setShowInvite(false)
-      setInviteError('')
+      setInviteError(null)
     }
   }
 
@@ -309,11 +313,22 @@ function MembersSection({ workspaceId }) {
             <span>Send invite</span>
           </button>
           {inviteError && (
-            <span className="ws-settings-error" data-testid="invite-error">
-              {inviteError}
-            </span>
+            <ApiErrorBanner
+              error={inviteError}
+              onDismiss={() => setInviteError(null)}
+              onRetry={inviteError.retryable ? handleInvite : undefined}
+              data-testid="invite-error"
+            />
           )}
         </div>
+      )}
+
+      {removeError && (
+        <ApiErrorBanner
+          error={removeError}
+          onDismiss={() => setRemoveError(null)}
+          onRetry={removeError.retryable ? loadMembers : undefined}
+        />
       )}
 
       {loading ? (
