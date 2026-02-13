@@ -10,6 +10,12 @@ from .csrf import (
     generate_csrf_token,
     validate_csrf_token,
 )
+from .secrets import (
+    ControlPlaneSecrets,
+    SecretValidationError,
+    load_control_plane_secrets,
+    validate_secrets,
+)
 from .token_verify import (
     AuthIdentity,
     TokenVerificationError,
@@ -23,11 +29,15 @@ __all__ = [
     'AuthIdentity',
     'CSRFError',
     'CSRFMiddleware',
+    'ControlPlaneSecrets',
+    'SecretValidationError',
     'TokenVerificationError',
     'TokenVerifier',
     'create_token_verifier',
     'extract_bearer_token',
     'generate_csrf_token',
     'get_auth_identity',
+    'load_control_plane_secrets',
     'validate_csrf_token',
+    'validate_secrets',
 ]
