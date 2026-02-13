@@ -52,11 +52,6 @@ LEGACY_ROUTE_RE = re.compile(
 # Files with known legacy references (pre-existing, tracked for cleanup).
 # When a file is migrated, remove it from this allowlist.
 LEGACY_ALLOWLIST: dict[str, str] = {
-    # Frontend components not yet migrated to v1 paths
-    "src/front/panels/EditorPanel.jsx": "bd-20u3: pending migration to /api/v1",
-    "src/front/components/GitChangesView.jsx": "bd-20u3: pending migration to /api/v1",
-    "src/front/components/chat/ClaudeStreamChat.jsx": "bd-20u3: pending migration to /api/v1",
-    "src/front/App.jsx": "bd-20u3: pending migration to /api/v1",
     # Backend observability examples/patterns (not actual route handlers)
     "src/back/boring_ui/observability/middleware.py": "route normalization pattern",
     "src/back/boring_ui/observability/metrics.py": "metric label example",

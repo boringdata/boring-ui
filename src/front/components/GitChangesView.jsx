@@ -16,7 +16,7 @@ export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
   const [error, setError] = useState(null)
 
   const fetchGitStatus = useCallback(() => {
-    fetch(buildApiUrl('/api/git/status'))
+    fetch(buildApiUrl('/api/v1/git/status'))
       .then((r) => r.json())
       .then((data) => {
         if (data.available && data.files) {
