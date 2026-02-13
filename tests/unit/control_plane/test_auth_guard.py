@@ -65,12 +65,30 @@ def _create_verifier() -> TokenVerifier:
 # ── App factory ──────────────────────────────────────────────────────
 
 
+SESSION_SECRET = 'test-session-secret-for-guard'
+
+
+def _make_session_cookie(**overrides) -> str:
+    """Create a session cookie JWT."""
+    payload = {
+        'sub': 'user-uuid-session',
+        'email': 'session@example.com',
+        'role': 'authenticated',
+        'type': 'session',
+        'exp': int(time.time()) + 3600,
+        'iat': int(time.time()),
+    }
+    payload.update(overrides)
+    return jwt.encode(payload, SESSION_SECRET, algorithm='HS256')
+
+
 def _create_test_app(require_auth: bool = True) -> FastAPI:
     app = FastAPI()
     app.add_middleware(
         AuthGuardMiddleware,
         token_verifier=_create_verifier(),
         require_auth=require_auth,
+        session_secret=SESSION_SECRET,
     )
     app.include_router(me_router)
 
@@ -391,3 +409,111 @@ class TestGetAuthIdentityDependency:
         async with AsyncClient(transport=transport, base_url='http://test') as client:
             r = await client.get('/api/v1/me')
             assert r.status_code == 401
+
+
+# =====================================================================
+# 8. Session cookie authentication
+# =====================================================================
+
+
+class TestSessionCookieAuth:
+
+    @pytest.mark.asyncio
+    async def test_valid_session_cookie_authenticates(self, app):
+        cookie = _make_session_cookie()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            r = await client.get(
+                '/api/v1/protected',
+                cookies={'boring_session': cookie},
+            )
+            assert r.status_code == 200
+            data = r.json()
+            assert data['user_id'] == 'user-uuid-session'
+            assert data['email'] == 'session@example.com'
+
+    @pytest.mark.asyncio
+    async def test_expired_session_cookie_returns_401(self, app):
+        cookie = _make_session_cookie(exp=int(time.time()) - 100)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            r = await client.get(
+                '/api/v1/workspaces',
+                cookies={'boring_session': cookie},
+            )
+            assert r.status_code == 401
+            assert r.json()['code'] == 'session_expired'
+
+    @pytest.mark.asyncio
+    async def test_invalid_session_cookie_returns_401(self, app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            r = await client.get(
+                '/api/v1/workspaces',
+                cookies={'boring_session': 'not.a.valid.cookie'},
+            )
+            assert r.status_code == 401
+            assert r.json()['code'] == 'invalid_session'
+
+    @pytest.mark.asyncio
+    async def test_bearer_takes_precedence_over_cookie(self, app):
+        """When both Bearer and session cookie are present,
+        Bearer token identity should be used."""
+        bearer_token = _make_token()
+        session_cookie = _make_session_cookie()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            r = await client.get(
+                '/api/v1/protected',
+                headers={'Authorization': f'Bearer {bearer_token}'},
+                cookies={'boring_session': session_cookie},
+            )
+            assert r.status_code == 200
+            # Bearer identity should win (user-uuid-100, not user-uuid-session)
+            assert r.json()['user_id'] == 'user-uuid-100'
+
+    @pytest.mark.asyncio
+    async def test_session_cookie_missing_type_claim_returns_401(self, app):
+        """Session cookie without 'type' claim should be rejected."""
+        payload = {
+            'sub': 'user-uuid-session',
+            'email': 'session@example.com',
+            'exp': int(time.time()) + 3600,
+            'iat': int(time.time()),
+            # 'type' is missing — required by session token validation
+        }
+        cookie = jwt.encode(payload, SESSION_SECRET, algorithm='HS256')
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            r = await client.get(
+                '/api/v1/workspaces',
+                cookies={'boring_session': cookie},
+            )
+            assert r.status_code == 401
+            assert r.json()['code'] == 'invalid_session'
+
+    @pytest.mark.asyncio
+    async def test_no_session_secret_disables_cookie_auth(self):
+        """When session_secret is not provided, session cookies are ignored."""
+        app = FastAPI()
+        app.add_middleware(
+            AuthGuardMiddleware,
+            token_verifier=_create_verifier(),
+            require_auth=True,
+            # No session_secret
+        )
+
+        @app.get('/api/v1/test')
+        async def test_route(request: Request):
+            return {'ok': True}
+
+        cookie = _make_session_cookie()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            r = await client.get(
+                '/api/v1/test',
+                cookies={'boring_session': cookie},
+            )
+            # Should return 401 because session cookie auth is disabled
+            assert r.status_code == 401
+            assert r.json()['code'] == 'no_credentials'

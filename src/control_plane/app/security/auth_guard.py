@@ -1,6 +1,6 @@
 """Auth guard middleware for the control plane.
 
-Bead: bd-223o.7.3 (B3)
+Bead: bd-223o.7.3 (B3), updated by bd-223o.7.2 (B2)
 
 Extracts and verifies authentication credentials from incoming requests,
 setting ``request.state.auth_identity`` on success. Protected routes
@@ -8,8 +8,9 @@ receive a 401 response when no valid credentials are present.
 
 Auth transports (design doc section 13.1):
   - Bearer: ``Authorization: Bearer <supabase_access_token>``
-  - Session cookie: read from app session (set by B2 auth callback).
-    Not yet implemented — session cookie support will be added by B2.
+  - Session cookie: read from app session cookie (set by B2 auth callback).
+
+Transport precedence: Bearer token > session cookie.
 
 Exempt paths (never require auth):
   - ``/auth/*`` — login/callback flows
@@ -19,6 +20,7 @@ Exempt paths (never require auth):
 
 from __future__ import annotations
 
+import jwt as pyjwt
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -70,11 +72,15 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         token_verifier: TokenVerifier,
         exempt_prefixes: tuple[str, ...] = DEFAULT_EXEMPT_PREFIXES,
         require_auth: bool = True,
+        session_secret: str | None = None,
+        session_cookie_name: str = 'boring_session',
     ) -> None:
         super().__init__(app)
         self._verifier = token_verifier
         self._exempt_prefixes = exempt_prefixes
         self._require_auth = require_auth
+        self._session_secret = session_secret
+        self._session_cookie_name = session_cookie_name
 
     def _is_exempt(self, path: str) -> bool:
         """Check if the path is exempt from authentication."""
@@ -93,10 +99,8 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         if self._is_exempt(request.url.path):
             return await call_next(request)
 
-        # Attempt Bearer token extraction.
+        # Attempt Bearer token extraction (preferred transport).
         token = extract_bearer_token(request)
-
-        # Future: attempt session cookie extraction here (B2).
 
         if token:
             try:
@@ -113,6 +117,47 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
                     },
                     headers={'WWW-Authenticate': 'Bearer'},
                 )
+
+        # Attempt session cookie extraction (fallback transport).
+        if self._session_secret:
+            session_cookie = request.cookies.get(self._session_cookie_name)
+            if session_cookie:
+                try:
+                    claims = pyjwt.decode(
+                        session_cookie,
+                        self._session_secret,
+                        algorithms=['HS256'],
+                        options={
+                            'require': ['sub', 'exp', 'type'],
+                            'verify_exp': True,
+                        },
+                    )
+                    identity = AuthIdentity(
+                        user_id=claims['sub'],
+                        email=claims.get('email', ''),
+                        role=claims.get('role', 'authenticated'),
+                        raw_claims=claims,
+                    )
+                    request.state.auth_identity = identity
+                    return await call_next(request)
+                except pyjwt.ExpiredSignatureError:
+                    return JSONResponse(
+                        status_code=401,
+                        content={
+                            'error': 'unauthorized',
+                            'code': 'session_expired',
+                            'detail': 'Session has expired',
+                        },
+                    )
+                except pyjwt.InvalidTokenError:
+                    return JSONResponse(
+                        status_code=401,
+                        content={
+                            'error': 'unauthorized',
+                            'code': 'invalid_session',
+                            'detail': 'Session cookie is invalid',
+                        },
+                    )
 
         # No credentials found.
         if self._require_auth:
