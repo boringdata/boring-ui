@@ -12,13 +12,18 @@ Validates paging, ownership, and response expectations are correctly wired:
   - Dashboard panels reference existing alert/SLO queries
   - Validation rejects catalogs with missing or misconfigured entries
   - Frozen dataclass invariants hold
+  - Alertmanager config routes severities to correct receivers
+  - Prometheus rules.yaml matches catalog-generated rules
+  - Inhibition rules suppress lower severity correctly
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 
 import pytest
+import yaml
 
 from control_plane.app.operations.slo_alerts import (
     AlertSpec,
@@ -35,6 +40,10 @@ from control_plane.app.operations.slo_alerts import (
     build_prometheus_rule_groups,
     validate_operational_catalog,
 )
+
+DEPLOY_DIR = Path(__file__).resolve().parents[3] / "deploy"
+ALERTMANAGER_CONFIG_PATH = DEPLOY_DIR / "alertmanager" / "config.yaml"
+PROMETHEUS_RULES_PATH = DEPLOY_DIR / "prometheus" / "rules.yaml"
 
 
 @pytest.fixture
@@ -378,3 +387,235 @@ class TestCatalogIdempotency:
     def test_default_singleton_matches_build(self):
         fresh = build_default_operational_catalog()
         assert asdict(DEFAULT_OPERATIONAL_CATALOG) == asdict(fresh)
+
+
+# =====================================================================
+# 10. Alertmanager severity → receiver routing
+# =====================================================================
+
+
+@pytest.fixture(scope="module")
+def alertmanager_config():
+    return yaml.safe_load(ALERTMANAGER_CONFIG_PATH.read_text())
+
+
+@pytest.fixture(scope="module")
+def prometheus_rules():
+    return yaml.safe_load(PROMETHEUS_RULES_PATH.read_text())
+
+
+class TestAlertmanagerSeverityRouting:
+    """Cross-validate catalog alert severities against Alertmanager routes."""
+
+    def test_sev1_routes_to_pager(self, alertmanager_config):
+        routes = alertmanager_config["route"]["routes"]
+        sev1_route = next(
+            (r for r in routes if r.get("match", {}).get("severity") == "sev1"),
+            None,
+        )
+        assert sev1_route is not None, "No route for severity=sev1"
+        assert sev1_route["receiver"] == "sev1-pager"
+
+    def test_critical_routes_to_oncall(self, alertmanager_config):
+        routes = alertmanager_config["route"]["routes"]
+        critical_route = next(
+            (r for r in routes if r.get("match", {}).get("severity") == "critical"),
+            None,
+        )
+        assert critical_route is not None
+        assert critical_route["receiver"] == "critical-oncall"
+
+    def test_warning_routes_to_slack(self, alertmanager_config):
+        routes = alertmanager_config["route"]["routes"]
+        warning_route = next(
+            (r for r in routes if r.get("match", {}).get("severity") == "warning"),
+            None,
+        )
+        assert warning_route is not None
+        assert warning_route["receiver"] == "warning-slack"
+
+    def test_all_catalog_severities_have_routes(self, catalog, alertmanager_config):
+        catalog_severities = {alert.severity for alert in catalog.alerts}
+        routed_severities = {
+            r["match"]["severity"]
+            for r in alertmanager_config["route"]["routes"]
+            if "match" in r and "severity" in r.get("match", {})
+        }
+        missing = catalog_severities - routed_severities
+        assert not missing, f"Catalog severities without routes: {missing}"
+
+    def test_default_receiver_exists(self, alertmanager_config):
+        receiver_names = {r["name"] for r in alertmanager_config["receivers"]}
+        assert alertmanager_config["route"]["receiver"] in receiver_names
+
+
+# =====================================================================
+# 11. SEV-1 immediate paging wiring
+# =====================================================================
+
+
+class TestSev1PagingWiring:
+    """SEV-1 alerts get zero-delay paging in Alertmanager."""
+
+    def test_sev1_group_wait_is_zero(self, alertmanager_config):
+        routes = alertmanager_config["route"]["routes"]
+        sev1_route = next(
+            r for r in routes if r.get("match", {}).get("severity") == "sev1"
+        )
+        assert sev1_route["group_wait"] == "0s"
+
+    def test_sev1_repeat_interval_is_short(self, alertmanager_config):
+        routes = alertmanager_config["route"]["routes"]
+        sev1_route = next(
+            r for r in routes if r.get("match", {}).get("severity") == "sev1"
+        )
+        assert sev1_route["repeat_interval"] == "15m"
+
+    def test_sev1_does_not_continue(self, alertmanager_config):
+        routes = alertmanager_config["route"]["routes"]
+        sev1_route = next(
+            r for r in routes if r.get("match", {}).get("severity") == "sev1"
+        )
+        assert sev1_route.get("continue", False) is False
+
+
+# =====================================================================
+# 12. Alertmanager inhibition rules
+# =====================================================================
+
+
+class TestInhibitionRules:
+    """Severity-based inhibition suppresses lower severity alerts."""
+
+    def test_sev1_inhibits_critical(self, alertmanager_config):
+        inhibit_rules = alertmanager_config.get("inhibit_rules", [])
+        found = any(
+            r.get("source_match", {}).get("severity") == "sev1"
+            and r.get("target_match", {}).get("severity") == "critical"
+            and "owner" in r.get("equal", [])
+            for r in inhibit_rules
+        )
+        assert found, "Missing inhibition: sev1 should suppress critical"
+
+    def test_critical_inhibits_warning(self, alertmanager_config):
+        inhibit_rules = alertmanager_config.get("inhibit_rules", [])
+        found = any(
+            r.get("source_match", {}).get("severity") == "critical"
+            and r.get("target_match", {}).get("severity") == "warning"
+            and "owner" in r.get("equal", [])
+            for r in inhibit_rules
+        )
+        assert found, "Missing inhibition: critical should suppress warning"
+
+    def test_inhibition_scoped_by_owner(self, alertmanager_config):
+        for rule in alertmanager_config.get("inhibit_rules", []):
+            assert "owner" in rule.get("equal", [])
+
+
+# =====================================================================
+# 13. Prometheus rules.yaml matches catalog
+# =====================================================================
+
+
+class TestPrometheusRulesMatchCatalog:
+    """Deployed rules.yaml matches catalog-generated alert definitions."""
+
+    def test_rule_group_name_matches(self, prometheus_rules):
+        groups = prometheus_rules["groups"]
+        assert groups[0]["name"] == "feature3-control-plane-operations"
+
+    def test_all_catalog_alerts_in_rules_yaml(self, catalog, prometheus_rules):
+        rule_names = {
+            r["alert"]
+            for group in prometheus_rules["groups"]
+            for r in group["rules"]
+        }
+        catalog_keys = {a.key for a in catalog.alerts}
+        missing = catalog_keys - rule_names
+        assert not missing, f"Catalog alerts missing from rules.yaml: {missing}"
+
+    def test_severity_labels_match(self, catalog, prometheus_rules):
+        rule_map = {
+            r["alert"]: r
+            for group in prometheus_rules["groups"]
+            for r in group["rules"]
+        }
+        for alert in catalog.alerts:
+            assert rule_map[alert.key]["labels"]["severity"] == alert.severity
+
+    def test_owner_labels_match(self, catalog, prometheus_rules):
+        rule_map = {
+            r["alert"]: r
+            for group in prometheus_rules["groups"]
+            for r in group["rules"]
+        }
+        for alert in catalog.alerts:
+            assert rule_map[alert.key]["labels"]["owner"] == alert.owner
+
+    def test_sev1_has_page_immediate_label(self, prometheus_rules):
+        rule_map = {
+            r["alert"]: r
+            for group in prometheus_rules["groups"]
+            for r in group["rules"]
+        }
+        assert rule_map["tenant_isolation_violation"]["labels"]["page"] == "immediate"
+
+    def test_mandatory_actions_annotation(self, prometheus_rules):
+        rule_map = {
+            r["alert"]: r
+            for group in prometheus_rules["groups"]
+            for r in group["rules"]
+        }
+        actions = rule_map["tenant_isolation_violation"]["annotations"]["mandatory_actions"]
+        assert "freeze_rollout" in actions
+
+    def test_no_extra_rules_beyond_catalog(self, catalog, prometheus_rules):
+        rule_names = {
+            r["alert"]
+            for group in prometheus_rules["groups"]
+            for r in group["rules"]
+        }
+        catalog_keys = {a.key for a in catalog.alerts}
+        extra = rule_names - catalog_keys
+        assert not extra, f"Extra rules in rules.yaml not in catalog: {extra}"
+
+
+# =====================================================================
+# 14. Receiver configuration completeness
+# =====================================================================
+
+
+class TestReceiverConfiguration:
+    """Receivers are defined and have notification configs."""
+
+    def test_all_route_receivers_defined(self, alertmanager_config):
+        receiver_names = {r["name"] for r in alertmanager_config["receivers"]}
+        assert alertmanager_config["route"]["receiver"] in receiver_names
+        for route in alertmanager_config["route"]["routes"]:
+            assert route["receiver"] in receiver_names
+
+    def test_receivers_have_webhook_configs(self, alertmanager_config):
+        for receiver in alertmanager_config["receivers"]:
+            assert receiver.get("webhook_configs"), (
+                f"Receiver {receiver['name']!r} has no webhook config"
+            )
+
+    def test_receivers_send_resolved(self, alertmanager_config):
+        for receiver in alertmanager_config["receivers"]:
+            for wh in receiver.get("webhook_configs", []):
+                assert wh.get("send_resolved") is True
+
+
+# =====================================================================
+# 15. Default grouping
+# =====================================================================
+
+
+class TestDefaultGrouping:
+    """Alertmanager default route groups by alertname and owner."""
+
+    def test_groups_by_alertname(self, alertmanager_config):
+        assert "alertname" in alertmanager_config["route"]["group_by"]
+
+    def test_groups_by_owner(self, alertmanager_config):
+        assert "owner" in alertmanager_config["route"]["group_by"]
