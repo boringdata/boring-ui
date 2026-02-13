@@ -1,41 +1,45 @@
 # S-003: Workspace Selection and Switch
 
 ## Preconditions
-- User authenticated with active membership in 2+ workspaces.
-- Both workspaces in `ready` state.
-- Current workspace context set to workspace A.
+- User authenticated (session cookie active).
+- User is a member of at least two workspaces, both in `ready` state.
+- User is currently in workspace A (`/w/{workspace_a_id}/app`).
 
 ## Steps
 1. User opens workspace switcher UI.
-2. Frontend calls `GET /api/v1/workspaces` → list of user's workspaces.
-3. User selects workspace B.
-4. Frontend calls `POST /api/v1/session/workspace` with workspace B ID.
-5. Frontend navigates to `/w/{workspace_b_id}/app`.
-6. Workspace B assets/files load via proxy.
+2. App calls `GET /api/v1/workspaces` → returns workspace list.
+3. User selects workspace B from the list.
+4. Browser navigates to `/w/{workspace_b_id}/app`.
+5. App resolves workspace context from URL path.
+6. App calls `GET /w/{workspace_b_id}/api/v1/files/` to load file tree.
+7. Workspace B content loads in the panel layout.
 
 ## Expected Signals
 
 ### API
 | Step | Endpoint | Status | Key Fields |
 |---|---|---|---|
-| 2 | `GET /api/v1/workspaces` | 200 | Array of workspaces with `id`, `name`, `runtime.state` |
-| 4 | `POST /api/v1/session/workspace` | 200 | `workspace_id` updated |
-| 6 | `GET /w/{id}/app` | 200 | Proxied workspace content |
+| 2 | `GET /api/v1/workspaces` | 200 | Array with workspace A and B |
+| 5 | Routing resolves workspace context | — | `workspace_id` matches URL segment |
+| 6 | `GET /w/{id}/api/v1/files/` | 200 | File tree for workspace B |
 
 ### UI
-- Workspace switcher shows all accessible workspaces.
-- Selected workspace highlighted.
-- Hard navigation to new workspace (full page transition).
-- File tree reflects workspace B's filesystem.
+- Workspace switcher shows list of available workspaces.
+- Current workspace highlighted/indicated.
+- After switch, file tree and panels reflect workspace B content.
+- No stale workspace A data visible.
 
 ## Evidence Artifacts
-- API response: Workspace list.
-- Screenshot: Workspace switcher with multiple entries.
-- Screenshot: Workspace B loaded with correct file tree.
+- Screenshot: workspace switcher showing multiple workspaces.
+- Screenshot: workspace B loaded after switch.
+- API response: `/api/v1/workspaces` showing both workspaces.
+- API response: file tree call returning workspace B files.
 
 ## Failure Modes
 | Failure | Expected Behavior |
 |---|---|
-| User not member of workspace B | Workspace not in list (RLS filters it) |
-| Workspace B runtime not ready | UI shows provisioning state, blocks navigation |
-| app_context_mismatch (different app_id) | 400 `app_context_mismatch` |
+| Workspace B in `error` state | UI shows error state, retry option |
+| User not a member of workspace B | 403 `forbidden` |
+| Workspace B does not exist | 404 |
+| Workspace context mismatch (URL vs header) | 400 `workspace_context_mismatch` |
+| Stale WebSocket from workspace A | Connection closed, new WS for workspace B |

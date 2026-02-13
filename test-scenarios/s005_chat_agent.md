@@ -1,46 +1,53 @@
 # S-005: Chat with Agent
 
 ## Preconditions
-- User authenticated, workspace selected and in `ready` state.
-- Workspace runtime supports agent sessions.
-- Anthropic API key configured in workspace runtime.
+- User authenticated and inside a `ready` workspace.
+- Chat panel open or available to open.
+- Agent (Claude) API key configured for the workspace runtime.
+- MCP tools registered and available.
 
 ## Steps
-1. User opens chat panel.
-2. Frontend creates agent session via `POST /w/{id}/api/v1/agent/sessions`.
-3. User types a message and sends.
-4. Frontend sends input via `POST /w/{id}/api/v1/agent/sessions/{sid}/input`.
-5. Frontend streams response via `GET /w/{id}/api/v1/agent/sessions/{sid}/stream` (SSE/WebSocket).
-6. Agent response appears in chat panel.
-7. User sends follow-up → repeat steps 4-6.
-8. User stops session via `POST /w/{id}/api/v1/agent/sessions/{sid}/stop`.
+1. User opens chat panel (or it is already visible in default layout).
+2. Chat panel shows empty conversation or previous session.
+3. User types a message and sends it.
+4. App calls `POST /w/{workspace_id}/api/v1/sessions` to create or resume session.
+5. App initiates streaming via SSE or WebSocket to `/w/{workspace_id}/api/v1/stream`.
+6. Agent response streams in, token by token.
+7. If agent uses MCP tool (e.g., file read), tool call is visible in chat.
+8. Agent response completes.
+9. User sends follow-up message.
+10. Conversation context maintained across turns.
 
 ## Expected Signals
 
 ### API
 | Step | Endpoint | Status | Key Fields |
 |---|---|---|---|
-| 2 | `POST /w/{id}/api/v1/agent/sessions` | 201 | `session_id` |
-| 4 | `POST /w/{id}/api/v1/agent/sessions/{sid}/input` | 200 | Acknowledged |
-| 5 | `GET /w/{id}/api/v1/agent/sessions/{sid}/stream` | 200 (SSE) | Streaming tokens |
-| 8 | `POST /w/{id}/api/v1/agent/sessions/{sid}/stop` | 200 | Session stopped |
+| 4 | `POST /w/{id}/api/v1/sessions` | 200/201 | `session_id` |
+| 5 | `POST /w/{id}/api/v1/stream` | 200 (SSE) | Streaming chunks with `session_id` |
+| 7 | Tool call event | — | `tool_name`, `tool_input`, `tool_result` in stream |
+| 8 | Stream end event | — | `stop_reason: end_turn` |
 
 ### UI
-- Chat panel with message input.
-- Streaming response display (tokens appear incrementally).
-- Session indicator (active/stopped).
-- Message history preserved within session.
+- Chat panel displays user message immediately.
+- Agent response streams in progressively.
+- Tool calls shown as expandable blocks (tool name + result).
+- Typing/streaming indicator while response is in progress.
+- Conversation history scrollable.
 
 ## Evidence Artifacts
-- Screenshot: Chat panel with user message and agent response.
-- API response: Session creation.
-- SSE/WS trace: Streaming response tokens.
-- Screenshot: Stopped session state.
+- Screenshot: chat panel with user message and streamed agent response.
+- Screenshot: tool call expansion showing MCP tool usage.
+- API response: session creation response.
+- SSE/WS stream capture showing chunk-by-chunk response.
+- `X-Request-ID` header present and consistent across stream.
 
 ## Failure Modes
 | Failure | Expected Behavior |
 |---|---|
-| API key not configured | 500 or agent error message in chat |
-| Session not found | 404 |
-| Runtime down during stream | Stream error event, UI shows reconnection |
-| CSRF token missing on POST | 403 `csrf_validation_failed` |
+| No session_id on stream call | 400 `session_id_required` |
+| Non-member access to session | 403 `forbidden` |
+| Agent API key missing/invalid | Error message in chat, not unhandled crash |
+| Stream connection drops mid-response | Reconnection attempt or error shown |
+| Duplicate stop calls | Idempotent (no error) |
+| MCP tool denied by sandbox policy | Tool error returned in stream, agent adapts |

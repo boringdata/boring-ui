@@ -1,44 +1,49 @@
 # S-006: Provisioning Failure and Retry
 
 ## Preconditions
-- User authenticated with admin role on workspace.
-- Workspace in `error` state after failed provisioning.
-- `workspace_provision_jobs` has a completed `error` job.
+- User authenticated.
+- At least one scenario where provisioning can fail (e.g., release artifact missing, checksum mismatch, or runtime timeout).
+- User has permission to create workspaces.
 
 ## Steps
-1. Frontend loads workspace runtime status → `state=error`.
-2. UI displays error details (`last_error_code`, `last_error_detail`).
-3. User clicks retry button.
-4. Frontend calls `POST /api/v1/workspaces/{id}/retry` with CSRF token.
-5. New provision job created (state: `queued`).
-6. Provisioning progresses through lifecycle states.
-7. Runtime reaches `ready` → workspace usable.
+1. User creates a new workspace via `POST /api/v1/workspaces`.
+2. Control plane returns 202 with `status: provisioning`.
+3. Provisioning encounters a failure (timeout, checksum mismatch, or artifact unavailable).
+4. Workspace transitions to `status: error` with an actionable error code.
+5. User sees error state in the UI with a retry option.
+6. User clicks retry.
+7. App calls `POST /api/v1/workspaces/{id}/retry` (or equivalent retry endpoint).
+8. New provisioning attempt starts → `status: provisioning`.
+9. Provisioning succeeds → `status: ready`.
 
 ## Expected Signals
 
 ### API
 | Step | Endpoint | Status | Key Fields |
 |---|---|---|---|
-| 1 | `GET /api/v1/workspaces/{id}/runtime` | 200 | `state=error`, `last_error_code` |
-| 4 | `POST /api/v1/workspaces/{id}/retry` | 200 | New job ID |
-| 4 | (Side effect) | — | Previous job `state=error`, new job `state=queued` |
-| 6 | `GET /api/v1/workspaces/{id}/runtime` | 200 | `state=provisioning` |
-| 7 | `GET /api/v1/workspaces/{id}/runtime` | 200 | `state=ready` |
+| 1 | `POST /api/v1/workspaces` | 202 | `workspace_id`, `status: provisioning` |
+| 4 | `GET /api/v1/workspaces/{id}` | 200 | `status: error`, `error_code`, `error_detail` |
+| 7 | `POST /api/v1/workspaces/{id}/retry` | 202 | New provisioning attempt started |
+| 9 | `GET /api/v1/workspaces/{id}` | 200 | `status: ready` |
 
 ### UI
-- Error state with clear error message and retry button.
-- Provisioning progress after retry.
-- Transition to ready state.
+- Provisioning progress indicator initially shown.
+- Error state displayed with actionable error message.
+- Retry button visible and clickable.
+- After retry, provisioning progress shown again.
+- Successful provisioning leads to workspace ready state.
 
 ## Evidence Artifacts
-- Screenshot: Error state with retry button.
-- API response: Error runtime status.
-- API response: Retry response with new job.
-- Screenshot: Successful recovery to ready state.
+- API response: workspace in `error` state with error code.
+- API response: retry call returning 202.
+- API response: workspace transitioning to `ready` after retry.
+- Screenshot: error state UI with retry button.
+- Screenshot: workspace ready after successful retry.
 
 ## Failure Modes
 | Failure | Expected Behavior |
 |---|---|
-| Retry also fails | `state=error` with new `last_error_code`, `attempt` incremented |
-| Active job already exists | Retry blocked by `ux_workspace_jobs_active` unique index |
-| Non-admin tries retry | 403 (insufficient permissions) |
+| Multiple rapid retry clicks | Single-active-job invariant; extra retries rejected or queued |
+| Retry on workspace that is already provisioning | 409 or appropriate conflict response |
+| Persistent failure after retry | Workspace stays in `error` with updated error details |
+| Missing release on retry (still unavailable) | 503 `release_unavailable` again |
