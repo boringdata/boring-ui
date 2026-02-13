@@ -35,17 +35,33 @@ from .state_machine import (
     transition_to_checksum_mismatch,
     transition_to_error,
 )
+from .job_service import (
+    ActiveJobConflict,
+    CreateJobResult,
+    IdempotencyKeyRequired,
+    InMemoryProvisioningJobRepository,
+    ProvisioningJobRecord,
+    ProvisioningJobRepository,
+    ProvisioningService,
+)
 
 __all__ = [
     'ARTIFACT_CHECKSUM_MISMATCH_CODE',
+    'ActiveJobConflict',
     'BUNDLE_FILENAME',
     'CHECKSUM_FILENAME',
+    'CreateJobResult',
     'DEFAULT_STEP_TIMEOUT_SECONDS',
     'FileSystemArtifactStore',
+    'IdempotencyKeyRequired',
+    'InMemoryProvisioningJobRepository',
     'InvalidStateTransition',
     'MANIFEST_FILENAME',
     'PROVISIONING_SEQUENCE',
+    'ProvisioningJobRecord',
+    'ProvisioningJobRepository',
     'ProvisioningJobState',
+    'ProvisioningService',
     'ProvisioningTarget',
     'ReleaseArtifactLookup',
     'ReleaseManifest',
