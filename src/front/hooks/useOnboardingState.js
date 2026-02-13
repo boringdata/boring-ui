@@ -235,7 +235,7 @@ export const useOnboardingState = ({ enabled = false } = {}) => {
     if (!workspaceId) return { ok: false, reason: 'missing_workspace_id' }
 
     try {
-      await requestJson(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/runtime/retry`, {
+      await requestJson(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/retry`, {
         method: 'POST',
       })
       await loadState()
