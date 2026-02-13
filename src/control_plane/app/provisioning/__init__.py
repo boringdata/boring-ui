@@ -44,6 +44,10 @@ from .job_service import (
     ProvisioningJobRepository,
     ProvisioningService,
 )
+from .job_executor import (
+    ExecutionResult,
+    ProvisioningJobExecutor,
+)
 
 __all__ = [
     'ARTIFACT_CHECKSUM_MISMATCH_CODE',
@@ -52,12 +56,14 @@ __all__ = [
     'CHECKSUM_FILENAME',
     'CreateJobResult',
     'DEFAULT_STEP_TIMEOUT_SECONDS',
+    'ExecutionResult',
     'FileSystemArtifactStore',
     'IdempotencyKeyRequired',
     'InMemoryProvisioningJobRepository',
     'InvalidStateTransition',
     'MANIFEST_FILENAME',
     'PROVISIONING_SEQUENCE',
+    'ProvisioningJobExecutor',
     'ProvisioningJobRecord',
     'ProvisioningJobRepository',
     'ProvisioningJobState',
