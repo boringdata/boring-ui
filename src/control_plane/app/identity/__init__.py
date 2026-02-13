@@ -5,6 +5,10 @@ from .app_context import (
     AppContextMismatch,
     validate_app_context,
 )
+from .loader import (
+    IdentityConfigError,
+    load_identity_config,
+)
 from .resolver import (
     AppConfig,
     AppIdentityResolver,
@@ -17,5 +21,7 @@ __all__ = [
     'AppContextMismatch',
     'AppIdentityResolver',
     'AppResolution',
+    'IdentityConfigError',
+    'load_identity_config',
     'validate_app_context',
 ]
