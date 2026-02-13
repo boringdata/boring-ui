@@ -157,6 +157,24 @@ def create_app(
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 
+    # Mount canonical /api/v1 routes alongside legacy /api routes.
+    # The modular routers define both legacy names (/tree, /file) and
+    # canonical names (/list, /read, /write, /delete, /rename, /move).
+    # Mounting at /api/v1/files and /api/v1/git makes the canonical v1
+    # contract available at runtime while legacy /api/* paths keep working.
+    if 'files' in enabled_routers:
+        from .modules.files import create_file_router
+        app.include_router(
+            create_file_router(config, storage),
+            prefix='/api/v1/files',
+        )
+    if 'git' in enabled_routers:
+        from .modules.git import create_git_router
+        app.include_router(
+            create_git_router(config),
+            prefix='/api/v1/git',
+        )
+
     # Always include capabilities router
     app.include_router(
         create_capabilities_router(enabled_features, registry),
