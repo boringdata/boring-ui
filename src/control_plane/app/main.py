@@ -258,13 +258,6 @@ def _register_stub_routes(app: FastAPI, settings: ControlPlaneSettings) -> None:
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on DB2"},
         )
 
-    @api_router.post("/session/workspace")
-    async def set_session_workspace(request: Request):
-        return JSONResponse(
-            status_code=501,
-            content={"code": "NOT_IMPLEMENTED", "message": "Depends on SESS0"},
-        )
-
     @api_router.get("/workspaces/{workspace_id}/runtime")
     async def get_runtime(workspace_id: str):
         return JSONResponse(
@@ -451,6 +444,10 @@ def create_app(
 
     # Register section 5.3 route contract stubs
     _register_stub_routes(app, settings)
+
+    # Real route modules (replace stubs as beads are completed)
+    from .routes.session import create_session_router
+    app.include_router(create_session_router())
 
     return app
 
