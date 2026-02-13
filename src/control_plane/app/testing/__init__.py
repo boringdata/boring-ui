@@ -32,6 +32,10 @@ from .evidence_store import (
     EvidenceStore,
     format_beads_comment,
 )
+from .validation_report import (
+    ResidualRisk,
+    ValidationReport,
+)
 
 __all__ = [
     'ApiSignal',
@@ -44,6 +48,7 @@ __all__ = [
     'FailureMode',
     'ProofReportBuilder',
     'ProofSession',
+    'ResidualRisk',
     'RunConfig',
     'RunLog',
     'ScenarioResult',
@@ -51,6 +56,7 @@ __all__ = [
     'ScenarioSpec',
     'StepOutcome',
     'StepResult',
+    'ValidationReport',
     'build_proof_report',
     'format_beads_comment',
     'parse_scenario',
