@@ -72,6 +72,9 @@ class WorkspaceRepository(Protocol):
     async def exists_name(
         self, name: str, app_id: str,
     ) -> bool: ...
+    async def add_member(
+        self, workspace_id: str, user_id: str,
+    ) -> None: ...
 
 
 # ── In-memory implementation (for testing) ────────────────────────────
@@ -125,6 +128,12 @@ class InMemoryWorkspaceRepository:
             for ws in self._workspaces.values()
         )
 
+    async def add_member(
+        self, workspace_id: str, user_id: str,
+    ) -> None:
+        """Register a user as a member of a workspace."""
+        self._members.setdefault(workspace_id, set()).add(user_id)
+
 
 # ── Request/response schemas ──────────────────────────────────────────
 
@@ -144,12 +153,16 @@ class PatchWorkspaceRequest(BaseModel):
 def create_workspace_router(
     repo: WorkspaceRepository,
     default_app_id: str = 'boring-ui',
+    member_repo=None,
 ) -> APIRouter:
     """Create workspace CRUD router with injected repository.
 
     Args:
         repo: Workspace repository implementation.
         default_app_id: Default app_id for workspace listing.
+        member_repo: Optional MemberRepository for auto-accept on list.
+            If provided, pending invites matching the user's email are
+            auto-accepted on first workspace list load (C3).
 
     Returns:
         FastAPI router with workspace CRUD routes.
@@ -202,7 +215,21 @@ def create_workspace_router(
         identity: AuthIdentity = Depends(get_auth_identity),
         app_id: str = default_app_id,
     ):
-        """List workspaces the authenticated user is a member of."""
+        """List workspaces the authenticated user is a member of.
+
+        On first load, auto-accepts any pending invites matching the
+        user's email (design doc section 18.2.2).
+        """
+        # Auto-accept pending invites matching this user's email.
+        accepted = []
+        if member_repo is not None and identity.email:
+            accepted = await member_repo.auto_accept_pending(
+                identity.email, identity.user_id,
+            )
+            # Register accepted memberships in workspace repo.
+            for m in accepted:
+                await repo.add_member(m.workspace_id, identity.user_id)
+
         workspaces = await repo.list_for_user(
             identity.user_id, app_id,
         )

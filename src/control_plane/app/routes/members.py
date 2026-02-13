@@ -70,6 +70,9 @@ class MemberRepository(Protocol):
     async def is_member(
         self, workspace_id: str, user_id: str,
     ) -> bool: ...
+    async def auto_accept_pending(
+        self, email: str, user_id: str,
+    ) -> list[Member]: ...
 
 
 # ── In-memory implementation ──────────────────────────────────────────
@@ -131,6 +134,27 @@ class InMemoryMemberRepository:
             and m.status == 'active'
             for m in self._members.values()
         )
+
+    async def auto_accept_pending(
+        self, email: str, user_id: str,
+    ) -> list[Member]:
+        """Auto-accept all pending invites matching email.
+
+        Transitions pending → active, sets user_id on the member record.
+        Returns the list of newly-accepted memberships.
+        """
+        normalized = email.lower()
+        accepted: list[Member] = []
+        for m in self._members.values():
+            if (
+                m.email.lower() == normalized
+                and m.status == 'pending'
+            ):
+                m.status = 'active'
+                m.user_id = user_id
+                m.updated_at = datetime.now(timezone.utc)
+                accepted.append(m)
+        return accepted
 
 
 # ── Request/response schemas ──────────────────────────────────────────
