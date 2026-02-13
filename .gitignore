@@ -30,3 +30,6 @@ coverage/
 .bv/
 *.pyc
 __pycache__/
+
+# Release artifact store (local build output)
+.release-store/

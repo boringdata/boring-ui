@@ -9,6 +9,16 @@ from .release_contract import (
     release_unavailable_payload,
     resolve_provisioning_target,
 )
+from .artifacts import (
+    BUNDLE_FILENAME,
+    CHECKSUM_FILENAME,
+    MANIFEST_FILENAME,
+    FileSystemArtifactStore,
+    ReleaseManifest,
+    build_manifest,
+    compute_sha256,
+    verify_checksum,
+)
 from .state_machine import (
     DEFAULT_STEP_TIMEOUT_SECONDS,
     PROVISIONING_SEQUENCE,
@@ -23,21 +33,29 @@ from .state_machine import (
 )
 
 __all__ = [
+    'BUNDLE_FILENAME',
+    'CHECKSUM_FILENAME',
+    'DEFAULT_STEP_TIMEOUT_SECONDS',
+    'FileSystemArtifactStore',
+    'InvalidStateTransition',
+    'MANIFEST_FILENAME',
+    'PROVISIONING_SEQUENCE',
+    'ProvisioningJobState',
     'ProvisioningTarget',
     'ReleaseArtifactLookup',
+    'ReleaseManifest',
     'ReleaseUnavailableError',
     'STEP_TIMEOUT_CODE',
-    'PROVISIONING_SEQUENCE',
-    'DEFAULT_STEP_TIMEOUT_SECONDS',
-    'InvalidStateTransition',
-    'ProvisioningJobState',
     'advance_state',
     'apply_step_timeout',
+    'build_manifest',
     'build_sandbox_name',
+    'compute_sha256',
     'create_queued_job',
     'normalize_sandbox_token',
-    'retry_from_error',
     'release_unavailable_payload',
     'resolve_provisioning_target',
+    'retry_from_error',
     'transition_to_error',
+    'verify_checksum',
 ]
