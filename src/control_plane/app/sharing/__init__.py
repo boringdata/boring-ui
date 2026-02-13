@@ -10,14 +10,22 @@ from .model import (
     hash_token,
     generate_share_token,
 )
+from .routes import (
+    CreateShareRequest,
+    create_share_router,
+    normalize_share_path,
+)
 
 __all__ = [
+    'CreateShareRequest',
     'ShareLink',
     'ShareLinkRepository',
     'InMemoryShareLinkRepository',
     'ShareLinkNotFound',
     'ShareLinkExpired',
     'ShareLinkRevoked',
+    'create_share_router',
     'hash_token',
     'generate_share_token',
+    'normalize_share_path',
 ]
