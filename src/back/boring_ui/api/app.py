@@ -2,22 +2,17 @@
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import Response
 
 from .config import APIConfig
 from .storage import Storage, LocalStorage
-from .modules.files import create_file_router
-from .modules.git import create_git_router
-from .modules.pty import create_pty_router
-from .modules.stream import create_stream_router
-from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
+from .approval import ApprovalStore, InMemoryApprovalStore
 from .capabilities import (
     RouterRegistry,
     create_default_registry,
     create_capabilities_router,
 )
+from .utility_routes import create_utility_router
 from boring_ui.observability import configure_logging, get_logger
-from boring_ui.observability.metrics import metrics_text
 from boring_ui.observability.middleware import (
     MetricsMiddleware,
     RequestIdMiddleware,
@@ -168,78 +163,8 @@ def create_app(
         prefix='/api',
     )
 
-    # Prometheus metrics endpoint
-    @app.get('/metrics')
-    async def prometheus_metrics():
-        """Prometheus metrics exposition endpoint."""
-        body, content_type = metrics_text()
-        return Response(content=body, media_type=content_type)
-
-    # Health check
-    @app.get('/health')
-    async def health():
-        """Health check endpoint."""
-        return {
-            'status': 'ok',
-            'workspace': str(config.workspace_root),
-            'features': enabled_features,
-        }
-
-    # API info
-    @app.get('/api/config')
-    async def get_config():
-        """Get API configuration info."""
-        return {
-            'workspace_root': str(config.workspace_root),
-            'pty_providers': list(config.pty_providers.keys()),
-            'paths': {
-                'files': '.',
-            },
-        }
-
-    # Project endpoint (expected by frontend)
-    @app.get('/api/project')
-    async def get_project():
-        """Get project root for the frontend."""
-        return {
-            'root': str(config.workspace_root),
-        }
-
-    # Claude session endpoints (aligned with kurt-core)
-    @app.get('/api/sessions')
-    async def list_sessions():
-        """List active Claude stream sessions."""
-        from .modules.stream import get_session_registry as get_stream_registry
-        from .modules.pty import get_session_registry as get_pty_registry
-
-        # Combine PTY and stream sessions
-        pty_sessions = [
-            {
-                'id': session_id,
-                'type': 'pty',
-                'alive': session.is_alive(),
-                'clients': len(session.clients),
-                'history_count': len(session.history),
-            }
-            for session_id, session in get_pty_registry().items()
-        ]
-        stream_sessions = [
-            {
-                'id': session_id,
-                'type': 'stream',
-                'alive': session.is_alive(),
-                'clients': len(session.clients),
-                'history_count': len(session.history),
-            }
-            for session_id, session in get_stream_registry().items()
-        ]
-        return {'sessions': pty_sessions + stream_sessions}
-
-    @app.post('/api/sessions')
-    async def create_session():
-        """Create a new session ID (client will connect via WebSocket)."""
-        import uuid
-        return {'session_id': str(uuid.uuid4())}
+    # Utility routes: health, config, project, sessions, metrics
+    app.include_router(create_utility_router(config, enabled_features))
 
     logger.info(
         "app_created",
