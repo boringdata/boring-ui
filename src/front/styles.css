@@ -4153,3 +4153,119 @@ html {
     padding: var(--space-6);
   }
 }
+
+/* ==========================================================================
+   Provisioning Error / Retry UX  (bd-223o.14.4 / H4)
+   ========================================================================== */
+
+.prov-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border-error, #dc2626);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-error, rgba(220, 38, 38, 0.06));
+}
+
+.prov-error-icon {
+  color: var(--color-text-error, #dc2626);
+  flex-shrink: 0;
+}
+
+.prov-error-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.prov-error-title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.prov-error-code {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.prov-error-code code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.prov-error-detail {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+}
+
+.prov-error-guidance {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  line-height: var(--leading-normal);
+}
+
+.prov-error-meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.prov-error-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.prov-error-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: fit-content;
+}
+
+.prov-error-retry-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.prov-error-retry-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.prov-error-retry-failed {
+  font-size: var(--text-xs);
+  color: var(--color-text-error, #dc2626);
+}
+
+.prov-spin {
+  animation: prov-spin 1s linear infinite;
+}
+
+@keyframes prov-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

@@ -1,5 +1,6 @@
 import { AlertTriangle, Loader2, LogIn, RefreshCw, Rocket } from 'lucide-react'
 import { ONBOARDING_STATES } from '../onboarding/stateMachine'
+import ProvisioningError from './ProvisioningError'
 
 const getWorkspaceName = (workspace) =>
   workspace?.name || workspace?.workspace_name || workspace?.slug || workspace?.id || 'workspace'
@@ -82,17 +83,13 @@ export default function OnboardingStateGate({ machine }) {
         )}
 
         {machine.state === ONBOARDING_STATES.WORKSPACE_SELECTED_ERROR && (
-          <div className="onboarding-error" role="alert">
-            <AlertTriangle size={16} />
-            <div>
-              <div className="onboarding-error-code">
-                Error code: {runtimeErrorCode || 'provisioning_failed'}
-              </div>
-              {runtimeErrorDetail && (
-                <div className="onboarding-error-detail">{runtimeErrorDetail}</div>
-              )}
-            </div>
-          </div>
+          <ProvisioningError
+            errorCode={runtimeErrorCode || 'provision_failed'}
+            errorDetail={runtimeErrorDetail}
+            attempt={machine.runtime?.attempt}
+            workspaceName={workspaceName}
+            onRetry={() => machine.retryProvisioning()}
+          />
         )}
 
         {machine.selectedWorkspaceId && (
