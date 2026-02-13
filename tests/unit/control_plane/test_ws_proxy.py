@@ -36,9 +36,27 @@ class FakeRuntimeStore:
         return self._runtimes.get(workspace_id)
 
 
+class FakeWorkspaceRepo:
+    def __init__(self, workspaces: dict[str, dict[str, Any]] | None = None):
+        self._workspaces = workspaces or {}
+
+    async def get(self, workspace_id: str) -> dict[str, Any] | None:
+        return self._workspaces.get(workspace_id)
+
+
+class FakeMemberRepo:
+    def __init__(self, memberships: dict[tuple[str, str], dict[str, Any]] | None = None):
+        self._memberships = memberships or {}
+
+    async def get_membership(self, workspace_id: str, user_id: str) -> dict[str, Any] | None:
+        return self._memberships.get((workspace_id, user_id))
+
+
 @dataclass
 class FakeDeps:
     runtime_store: Any
+    workspace_repo: Any = None
+    member_repo: Any = None
 
 
 READY_RUNTIME = {
@@ -48,13 +66,31 @@ READY_RUNTIME = {
     "app_id": "boring-ui",
 }
 
+TEST_USER_ID = "test-user-1"
+WS_AUTH_HEADERS = {"x-user-id": TEST_USER_ID}
+
 
 def _create_test_app(
     runtimes: dict[str, dict[str, Any]] | None = None,
     sprite_bearer_token: str = "sprite-secret-token",
 ) -> FastAPI:
     app = FastAPI()
-    app.state.deps = FakeDeps(runtime_store=FakeRuntimeStore(runtimes or {}))
+
+    workspaces = {}
+    memberships = {}
+    for ws_id in (runtimes or {}):
+        workspaces[ws_id] = {"id": ws_id, "name": "Test"}
+        memberships[(ws_id, TEST_USER_ID)] = {
+            "user_id": TEST_USER_ID,
+            "role": "admin",
+            "status": "active",
+        }
+
+    app.state.deps = FakeDeps(
+        runtime_store=FakeRuntimeStore(runtimes or {}),
+        workspace_repo=FakeWorkspaceRepo(workspaces),
+        member_repo=FakeMemberRepo(memberships),
+    )
     app.state.settings = FakeSettings(sprite_bearer_token=sprite_bearer_token)
     app.include_router(create_ws_proxy_router())
     return app
@@ -80,7 +116,7 @@ def test_ws_upstream_text_forwarded_to_browser():
         mock_websockets.ConnectionClosed = Exception
 
         with TestClient(app) as client:
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 msg = ws.receive_text()
                 assert msg == "upstream-hello"
 
@@ -105,7 +141,7 @@ def test_ws_upstream_binary_forwarded_to_browser():
         mock_websockets.ConnectionClosed = Exception
 
         with TestClient(app) as client:
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 msg = ws.receive_bytes()
                 assert msg == b"\x00\x01\x02"
 
@@ -133,7 +169,7 @@ def test_browser_close_closes_upstream():
         mock_websockets.ConnectionClosed = Exception
 
         with TestClient(app) as client:
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 pass  # Immediately close.
 
     # Upstream close should be called.
@@ -150,7 +186,7 @@ def test_ws_workspace_not_ready_closes_1008():
 
     with TestClient(app) as client:
         with pytest.raises(Exception):
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 ws.receive_text()
 
 
@@ -162,7 +198,7 @@ def test_ws_workspace_not_found_closes_1008():
 
     with TestClient(app) as client:
         with pytest.raises(Exception):
-            with client.websocket_connect("/w/ws_unknown/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_unknown/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 ws.receive_text()
 
 
@@ -175,7 +211,7 @@ def test_ws_invalid_sandbox_name_closes_1008():
 
     with TestClient(app) as client:
         with pytest.raises(Exception):
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 ws.receive_text()
 
 
@@ -190,7 +226,7 @@ def test_ws_missing_sprite_token_closes_1008():
 
     with TestClient(app) as client:
         with pytest.raises(Exception):
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 ws.receive_text()
 
 
@@ -215,7 +251,7 @@ def test_sprite_bearer_injected_in_ws_connect():
         mock_websockets.ConnectionClosed = Exception
 
         with TestClient(app) as client:
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 pass
 
     connect_call = mock_websockets.connect.call_args
@@ -244,7 +280,7 @@ def test_x_request_id_propagated_to_ws_upstream():
         mock_websockets.ConnectionClosed = Exception
 
         with TestClient(app) as client:
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 pass
 
     connect_call = mock_websockets.connect.call_args
@@ -272,7 +308,7 @@ def test_upstream_ws_url_uses_wss_scheme():
         mock_websockets.ConnectionClosed = Exception
 
         with TestClient(app) as client:
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 pass
 
     connect_call = mock_websockets.connect.call_args
@@ -302,7 +338,7 @@ def test_max_message_size_passed_to_upstream():
         mock_websockets.ConnectionClosed = Exception
 
         with TestClient(app) as client:
-            with client.websocket_connect("/w/ws_1/api/v1/pty/session") as ws:
+            with client.websocket_connect("/w/ws_1/api/v1/pty/session", headers=WS_AUTH_HEADERS) as ws:
                 pass
 
     connect_call = mock_websockets.connect.call_args

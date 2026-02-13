@@ -152,9 +152,15 @@ def create_workspace_proxy_router() -> APIRouter:
         """Proxy a request to the workspace's Sprite runtime."""
         request_id = getattr(request.state, "request_id", None)
 
-        # ── 1. Resolve runtime metadata ──────────────────────────
+        # ── 0. Workspace membership authz (AUTHZ0) ───────────────
         deps = request.app.state.deps
         settings = request.app.state.settings
+
+        from ..security.workspace_authz import get_request_user_id, require_workspace_membership
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, deps)
+
+        # ── 1. Resolve runtime metadata ──────────────────────────
 
         runtime = await deps.runtime_store.get_runtime(workspace_id)
         if runtime is None:

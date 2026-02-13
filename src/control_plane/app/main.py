@@ -172,6 +172,8 @@ def _register_stub_routes(app: FastAPI, settings: ControlPlaneSettings) -> None:
     """
     from fastapi import APIRouter
 
+    from .security.workspace_authz import get_request_user_id, require_workspace_membership
+
     # Auth routes (allowlisted — no auth guard)
     auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -224,63 +226,81 @@ def _register_stub_routes(app: FastAPI, settings: ControlPlaneSettings) -> None:
         )
 
     @api_router.get("/workspaces/{workspace_id}")
-    async def get_workspace(workspace_id: str):
+    async def get_workspace(workspace_id: str, request: Request):
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, request.app.state.deps)
         return JSONResponse(
             status_code=501,
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on DB1"},
         )
 
     @api_router.patch("/workspaces/{workspace_id}")
-    async def update_workspace(workspace_id: str):
+    async def update_workspace(workspace_id: str, request: Request):
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, request.app.state.deps)
         return JSONResponse(
             status_code=501,
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on DB1"},
         )
 
     @api_router.post("/workspaces/{workspace_id}/members")
-    async def add_member(workspace_id: str):
+    async def add_member(workspace_id: str, request: Request):
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, request.app.state.deps)
         return JSONResponse(
             status_code=501,
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on DB2"},
         )
 
     @api_router.get("/workspaces/{workspace_id}/members")
-    async def list_members(workspace_id: str):
+    async def list_members(workspace_id: str, request: Request):
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, request.app.state.deps)
         return JSONResponse(
             status_code=501,
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on DB2"},
         )
 
     @api_router.delete("/workspaces/{workspace_id}/members/{member_id}")
-    async def remove_member(workspace_id: str, member_id: str):
+    async def remove_member(workspace_id: str, member_id: str, request: Request):
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, request.app.state.deps)
         return JSONResponse(
             status_code=501,
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on DB2"},
         )
 
     @api_router.get("/workspaces/{workspace_id}/runtime")
-    async def get_runtime(workspace_id: str):
+    async def get_runtime(workspace_id: str, request: Request):
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, request.app.state.deps)
         return JSONResponse(
             status_code=501,
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on DB6"},
         )
 
     @api_router.post("/workspaces/{workspace_id}/retry")
-    async def retry_provisioning(workspace_id: str):
+    async def retry_provisioning(workspace_id: str, request: Request):
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, request.app.state.deps)
         return JSONResponse(
             status_code=501,
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on PROV0"},
         )
 
     @api_router.post("/workspaces/{workspace_id}/shares")
-    async def create_share(workspace_id: str):
+    async def create_share(workspace_id: str, request: Request):
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, request.app.state.deps)
         return JSONResponse(
             status_code=501,
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on DB4"},
         )
 
     @api_router.delete("/workspaces/{workspace_id}/shares/{share_id}")
-    async def delete_share(workspace_id: str, share_id: str):
+    async def delete_share(workspace_id: str, share_id: str, request: Request):
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, request.app.state.deps)
         return JSONResponse(
             status_code=501,
             content={"code": "NOT_IMPLEMENTED", "message": "Depends on DB4"},

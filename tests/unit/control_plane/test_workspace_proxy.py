@@ -43,9 +43,34 @@ class FakeRuntimeStore:
         return self._runtimes[workspace_id]
 
 
+class FakeWorkspaceRepo:
+    def __init__(self, workspaces: dict[str, dict[str, Any]] | None = None):
+        self._workspaces = workspaces or {}
+
+    async def get(self, workspace_id: str) -> dict[str, Any] | None:
+        return self._workspaces.get(workspace_id)
+
+
+class FakeMemberRepo:
+    def __init__(self, memberships: dict[tuple[str, str], dict[str, Any]] | None = None):
+        self._memberships = memberships or {}
+
+    async def get_membership(self, workspace_id: str, user_id: str) -> dict[str, Any] | None:
+        return self._memberships.get((workspace_id, user_id))
+
+
 @dataclass
 class FakeDeps:
     runtime_store: Any
+    workspace_repo: Any = None
+    member_repo: Any = None
+
+
+# Default test user used across proxy tests.
+TEST_USER_ID = "test-user-1"
+
+# Headers that include auth for the default test user.
+AUTH_HEADERS: dict[str, str] = {"X-User-ID": TEST_USER_ID}
 
 
 def _create_test_app(
@@ -53,7 +78,23 @@ def _create_test_app(
     sprite_bearer_token: str = "sprite-secret-token",
 ) -> FastAPI:
     app = FastAPI()
-    app.state.deps = FakeDeps(runtime_store=FakeRuntimeStore(runtimes or {}))
+
+    # Build workspace/member repos seeded for the default test user.
+    workspaces = {}
+    memberships = {}
+    for ws_id in (runtimes or {}):
+        workspaces[ws_id] = {"id": ws_id, "name": "Test"}
+        memberships[(ws_id, TEST_USER_ID)] = {
+            "user_id": TEST_USER_ID,
+            "role": "admin",
+            "status": "active",
+        }
+
+    app.state.deps = FakeDeps(
+        runtime_store=FakeRuntimeStore(runtimes or {}),
+        workspace_repo=FakeWorkspaceRepo(workspaces),
+        member_repo=FakeMemberRepo(memberships),
+    )
     app.state.settings = FakeSettings(sprite_bearer_token=sprite_bearer_token)
 
     # Add request-ID middleware stub.
@@ -96,7 +137,7 @@ def test_proxy_resolves_runtime_url_from_metadata_store():
         MockClient.return_value = mock_client_instance
 
         client = TestClient(app)
-        resp = client.get("/w/ws_1/api/v1/files/list")
+        resp = client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     assert resp.status_code == 200
     # Verify the request was forwarded to the correct URL.
@@ -112,7 +153,7 @@ def test_proxy_returns_503_if_runtime_state_not_ready():
     app = _create_test_app(runtimes={"ws_1": provisioning_runtime})
 
     client = TestClient(app)
-    resp = client.get("/w/ws_1/api/v1/files/list")
+    resp = client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     assert resp.status_code == 503
     body = resp.json()
@@ -125,7 +166,7 @@ def test_proxy_returns_503_if_runtime_state_error():
     app = _create_test_app(runtimes={"ws_1": error_runtime})
 
     client = TestClient(app)
-    resp = client.get("/w/ws_1/api/v1/files/list")
+    resp = client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     assert resp.status_code == 503
     assert resp.json()["state"] == "error"
@@ -146,7 +187,7 @@ def test_proxy_strips_workspace_prefix_from_path():
         MockClient.return_value = mock_client_instance
 
         client = TestClient(app)
-        client.get("/w/ws_1/api/v1/files/list")
+        client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     call_kwargs = mock_client_instance.request.call_args
     url = call_kwargs.kwargs["url"]
@@ -170,7 +211,7 @@ def test_proxy_injects_sprite_bearer_token():
         MockClient.return_value = mock_client_instance
 
         client = TestClient(app)
-        client.get("/w/ws_1/api/v1/files/list")
+        client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     call_kwargs = mock_client_instance.request.call_args
     forwarded_headers = call_kwargs.kwargs["headers"]
@@ -192,7 +233,7 @@ def test_proxy_propagates_x_request_id():
         MockClient.return_value = mock_client_instance
 
         client = TestClient(app)
-        client.get("/w/ws_1/api/v1/files/list")
+        client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     call_kwargs = mock_client_instance.request.call_args
     forwarded_headers = call_kwargs.kwargs["headers"]
@@ -216,7 +257,7 @@ def test_proxy_propagates_x_session_id_when_present():
         client = TestClient(app)
         client.get(
             "/w/ws_1/api/v1/files/list",
-            headers={"X-Session-ID": "sess_abc"},
+            headers={**AUTH_HEADERS, "X-Session-ID": "sess_abc"},
         )
 
     call_kwargs = mock_client_instance.request.call_args
@@ -242,6 +283,7 @@ def test_proxy_strips_internal_auth_headers_from_browser_request():
         client.get(
             "/w/ws_1/api/v1/files/list",
             headers={
+                **AUTH_HEADERS,
                 "Authorization": "Bearer spoofed-token",
                 "X-Sprite-Token": "spoofed",
                 "X-Service-Token": "spoofed",
@@ -280,7 +322,7 @@ def test_proxy_strips_internal_headers_from_response():
         MockClient.return_value = mock_client_instance
 
         client = TestClient(app)
-        resp = client.get("/w/ws_1/api/v1/files/list")
+        resp = client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     assert resp.status_code == 200
     assert "x-sprite-token" not in resp.headers
@@ -307,7 +349,7 @@ def test_proxy_returns_runtime_response_status_headers_body():
         MockClient.return_value = mock_client_instance
 
         client = TestClient(app)
-        resp = client.get("/w/ws_1/api/v1/files/list")
+        resp = client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     assert resp.status_code == 201
     assert resp.json() == {"created": True}
@@ -351,7 +393,7 @@ def test_all_section_53_routes_are_proxied():
             MockClient.return_value = mock_client_instance
 
             client = TestClient(app)
-            resp = client.get(path)
+            resp = client.get(path, headers=AUTH_HEADERS)
 
         assert resp.status_code == 200, f"Expected 200 for {path}, got {resp.status_code}"
 
@@ -370,7 +412,7 @@ def test_non_workspace_routes_are_not_proxied():
 
     client = TestClient(app)
     for path in non_proxy_paths:
-        resp = client.get(path)
+        resp = client.get(path, headers=AUTH_HEADERS)
         assert resp.status_code == 404, f"Expected 404 for {path}, got {resp.status_code}"
         assert resp.json()["code"] == "ROUTE_NOT_FOUND"
 
@@ -382,10 +424,10 @@ def test_proxy_returns_404_for_unknown_workspace():
     app = _create_test_app(runtimes={})
 
     client = TestClient(app)
-    resp = client.get("/w/ws_unknown/api/v1/files/list")
+    resp = client.get("/w/ws_unknown/api/v1/files/list", headers=AUTH_HEADERS)
 
     assert resp.status_code == 404
-    assert resp.json()["code"] == "WORKSPACE_NOT_FOUND"
+    assert resp.json()["detail"]["code"] == "WORKSPACE_NOT_FOUND"
 
 
 # ── Test: 502 when sprite_bearer_token not configured ─────────────
@@ -398,7 +440,7 @@ def test_proxy_returns_502_when_sprite_token_missing():
     )
 
     client = TestClient(app)
-    resp = client.get("/w/ws_1/api/v1/files/list")
+    resp = client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     assert resp.status_code == 502
     assert resp.json()["code"] == "PROXY_CONFIG_ERROR"
@@ -422,7 +464,7 @@ def test_proxy_rejects_path_traversal():
         "/w/ws_1/app/../../../secret",
     ]
     for path in starlette_normalized_paths:
-        resp = client.get(path)
+        resp = client.get(path, headers=AUTH_HEADERS)
         assert resp.status_code in (400, 404), (
             f"Expected 400 or 404 for {path}, got {resp.status_code}"
         )
@@ -436,7 +478,7 @@ def test_proxy_rejects_path_traversal():
         "/w/ws_1/secret",
     ]
     for path in non_workspace_resolved:
-        resp = client.get(path)
+        resp = client.get(path, headers=AUTH_HEADERS)
         assert resp.status_code == 404, f"Expected 404 for {path}, got {resp.status_code}"
 
 
@@ -463,7 +505,7 @@ def test_proxy_rejects_invalid_sandbox_name():
     app = _create_test_app(runtimes={"ws_1": bad_runtime})
 
     client = TestClient(app)
-    resp = client.get("/w/ws_1/api/v1/files/list")
+    resp = client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     assert resp.status_code == 502
     assert resp.json()["code"] == "RUNTIME_CONFIG_ERROR"
@@ -492,7 +534,7 @@ def test_proxy_strips_set_cookie_from_response():
         MockClient.return_value = mock_client_instance
 
         client = TestClient(app)
-        resp = client.get("/w/ws_1/api/v1/files/list")
+        resp = client.get("/w/ws_1/api/v1/files/list", headers=AUTH_HEADERS)
 
     assert resp.status_code == 200
     assert "set-cookie" not in resp.headers

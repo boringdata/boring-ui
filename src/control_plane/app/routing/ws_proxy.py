@@ -111,6 +111,15 @@ def create_ws_proxy_router() -> APIRouter:
         deps = websocket.app.state.deps
         settings = websocket.app.state.settings
 
+        # ── Workspace membership authz (AUTHZ0) ──────────────────
+        from ..security.workspace_authz import require_workspace_membership
+        user_id = websocket.headers.get("x-user-id")
+        try:
+            await require_workspace_membership(workspace_id, user_id, deps)
+        except Exception:
+            await websocket.close(code=1008, reason="forbidden")
+            return
+
         # Resolve runtime.
         runtime = await deps.runtime_store.get_runtime(workspace_id)
         if runtime is None or runtime.get("state") != "ready":
