@@ -6,6 +6,8 @@ from .errors import (
     SupabaseError,
     SupabaseNotFoundError,
 )
+from .provisioning_repo import SupabaseProvisioningJobRepository
+from .runtime_store import SupabaseRuntimeMetadataStore
 from .supabase_client import PostgrestFilter, SupabaseClient
 
 __all__ = [
@@ -15,5 +17,7 @@ __all__ = [
     "SupabaseConflictError",
     "SupabaseError",
     "SupabaseNotFoundError",
+    "SupabaseProvisioningJobRepository",
+    "SupabaseRuntimeMetadataStore",
 ]
 
