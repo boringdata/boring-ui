@@ -1,0 +1,19 @@
+.provider-companion {
+  --color-cc-bg: var(--color-bg-primary);
+  --color-cc-fg: var(--color-text-primary);
+  --color-cc-card: var(--color-bg-secondary);
+  --color-cc-primary: var(--color-accent, #ae5630);
+  --color-cc-primary-hover: var(--color-accent-hover, #c4643a);
+  --color-cc-user-bubble: var(--color-bg-tertiary, #DDD9CE);
+  --color-cc-border: var(--color-border);
+  --color-cc-muted: var(--color-text-tertiary);
+  --color-cc-sidebar: var(--color-bg-secondary);
+  --color-cc-input-bg: var(--color-bg-secondary);
+  --color-cc-code-bg: var(--color-code-bg, #1e1e1e);
+  --color-cc-code-fg: var(--color-code-fg, #d4d4d4);
+  --color-cc-hover: var(--color-hover, rgba(0,0,0,0.04));
+  --color-cc-active: var(--color-active, rgba(0,0,0,0.07));
+  --color-cc-success: var(--color-success, #2d7d46);
+  --color-cc-error: var(--color-error, #c53030);
+  --color-cc-warning: var(--color-warning, #b7791f);
+}
