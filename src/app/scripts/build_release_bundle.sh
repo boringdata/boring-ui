@@ -150,6 +150,8 @@ rm -f \
   "${STAGING_DIR}/dist/bundle.tar.gz.sha256" \
   "${STAGING_DIR}/dist/manifest.json" \
   "${STAGING_DIR}/dist/"boring_ui-*.whl 2>/dev/null || true
+# Remove stale hidden directories (e.g. .wheels/, .bundle_staging/ from prior builds).
+find "${STAGING_DIR}/dist" -mindepth 1 -maxdepth 1 -name '.*' -type d -exec rm -rf {} + 2>/dev/null || true
 
 cp "${WHEEL_PATH}" "${STAGING_DIR}/"
 cp "${SPRITE_DEPLOY_DIR}/bootstrap.sh" "${STAGING_DIR}/deploy/sprite/bootstrap.sh"
