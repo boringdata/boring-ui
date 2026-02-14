@@ -32,6 +32,7 @@ async def require_workspace_membership(
     workspace_id: str,
     user_id: str | None,
     deps: Any,
+    required_role: str | None = None,
 ) -> dict[str, Any]:
     """Verify user has active membership in workspace.
 
@@ -68,6 +69,14 @@ async def require_workspace_membership(
         raise HTTPException(
             status_code=403,
             detail={"code": "FORBIDDEN", "message": "Membership is not active"},
+        )
+
+    # V0 role model: single-role admin. Treat any active member as admin.
+    role = membership.get("role") or "admin"
+    if required_role and role != required_role:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Insufficient role for this operation"},
         )
 
     return membership

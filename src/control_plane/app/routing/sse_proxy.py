@@ -121,6 +121,13 @@ def create_sse_proxy_router() -> APIRouter:
         deps = request.app.state.deps
         settings = request.app.state.settings
 
+        # Workspace membership authz (AUTHZ0): require active membership before
+        # exposing runtime readiness state or streaming data.
+        from ..security.workspace_authz import get_request_user_id, require_workspace_membership
+
+        user_id = get_request_user_id(request)
+        await require_workspace_membership(workspace_id, user_id, deps)
+
         # Resolve runtime.
         runtime = await deps.runtime_store.get_runtime(workspace_id)
         if runtime is None:

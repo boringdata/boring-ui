@@ -9,13 +9,9 @@ via HTTP requests against the test app with InMemory repos.
 from __future__ import annotations
 
 import asyncio
-import sys
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 
 from control_plane.app.main import create_app
 from control_plane.app.settings import ControlPlaneSettings

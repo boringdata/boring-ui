@@ -36,9 +36,27 @@ class FakeRuntimeStore:
         return self._runtimes.get(workspace_id)
 
 
+class FakeWorkspaceRepo:
+    def __init__(self, workspaces: dict[str, dict[str, Any]] | None = None):
+        self._workspaces = workspaces or {}
+
+    async def get(self, workspace_id: str) -> dict[str, Any] | None:
+        return self._workspaces.get(workspace_id)
+
+
+class FakeMemberRepo:
+    def __init__(self, memberships: dict[tuple[str, str], dict[str, Any]] | None = None):
+        self._memberships = memberships or {}
+
+    async def get_membership(self, workspace_id: str, user_id: str) -> dict[str, Any] | None:
+        return self._memberships.get((workspace_id, user_id))
+
+
 @dataclass
 class FakeDeps:
     runtime_store: Any
+    workspace_repo: Any = None
+    member_repo: Any = None
 
 
 READY_RUNTIME = {
@@ -48,13 +66,32 @@ READY_RUNTIME = {
     "app_id": "boring-ui",
 }
 
+# Default test user used across SSE proxy tests.
+TEST_USER_ID = "test-user-1"
+AUTH_HEADERS: dict[str, str] = {"X-User-ID": TEST_USER_ID}
+
 
 def _create_test_app(
     runtimes: dict[str, dict[str, Any]] | None = None,
     sprite_bearer_token: str = "sprite-secret-token",
 ) -> FastAPI:
     app = FastAPI()
-    app.state.deps = FakeDeps(runtime_store=FakeRuntimeStore(runtimes or {}))
+
+    workspaces: dict[str, dict[str, Any]] = {}
+    memberships: dict[tuple[str, str], dict[str, Any]] = {}
+    for ws_id in (runtimes or {}):
+        workspaces[ws_id] = {"id": ws_id, "name": "Test"}
+        memberships[(ws_id, TEST_USER_ID)] = {
+            "user_id": TEST_USER_ID,
+            "role": "admin",
+            "status": "active",
+        }
+
+    app.state.deps = FakeDeps(
+        runtime_store=FakeRuntimeStore(runtimes or {}),
+        workspace_repo=FakeWorkspaceRepo(workspaces),
+        member_repo=FakeMemberRepo(memberships),
+    )
     app.state.settings = FakeSettings(sprite_bearer_token=sprite_bearer_token)
 
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -96,7 +133,7 @@ def test_sse_events_forwarded_from_upstream():
         client = TestClient(app)
         resp = client.get(
             "/w/ws_1/api/v1/agent/sessions/s1/stream",
-            headers={"Accept": "text/event-stream"},
+            headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
         )
 
     assert resp.status_code == 200
@@ -132,7 +169,7 @@ def test_upstream_close_sends_final_close_event():
         client = TestClient(app)
         resp = client.get(
             "/w/ws_1/api/v1/agent/sessions/s1/stream",
-            headers={"Accept": "text/event-stream"},
+            headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
         )
 
     body = resp.content
@@ -150,7 +187,7 @@ def test_non_sse_request_returns_406():
 
     resp = client.get(
         "/w/ws_1/api/v1/agent/sessions/s1/stream",
-        headers={"Accept": "application/json"},
+        headers={**AUTH_HEADERS, "Accept": "application/json"},
     )
 
     assert resp.status_code == 406
@@ -166,11 +203,11 @@ def test_workspace_not_found_returns_404():
 
     resp = client.get(
         "/w/ws_unknown/api/v1/agent/sessions/s1/stream",
-        headers={"Accept": "text/event-stream"},
+        headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
     )
 
     assert resp.status_code == 404
-    assert resp.json()["code"] == "WORKSPACE_NOT_FOUND"
+    assert resp.json()["detail"]["code"] == "WORKSPACE_NOT_FOUND"
 
 
 # ── Test: workspace not ready returns 503 ────────────────────────
@@ -183,7 +220,7 @@ def test_workspace_not_ready_returns_503():
 
     resp = client.get(
         "/w/ws_1/api/v1/agent/sessions/s1/stream",
-        headers={"Accept": "text/event-stream"},
+        headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
     )
 
     assert resp.status_code == 503
@@ -200,7 +237,7 @@ def test_invalid_sandbox_name_returns_502():
 
     resp = client.get(
         "/w/ws_1/api/v1/agent/sessions/s1/stream",
-        headers={"Accept": "text/event-stream"},
+        headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
     )
 
     assert resp.status_code == 502
@@ -219,7 +256,7 @@ def test_missing_sprite_token_returns_502():
 
     resp = client.get(
         "/w/ws_1/api/v1/agent/sessions/s1/stream",
-        headers={"Accept": "text/event-stream"},
+        headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
     )
 
     assert resp.status_code == 502
@@ -247,7 +284,7 @@ def test_sprite_bearer_injected_in_upstream_request():
         client = TestClient(app)
         client.get(
             "/w/ws_1/api/v1/agent/sessions/s1/stream",
-            headers={"Accept": "text/event-stream"},
+            headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
         )
 
     # Check the headers passed to build_request.
@@ -277,7 +314,7 @@ def test_x_request_id_propagated_to_upstream():
         client = TestClient(app)
         client.get(
             "/w/ws_1/api/v1/agent/sessions/s1/stream",
-            headers={"Accept": "text/event-stream"},
+            headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
         )
 
     build_call = mock_client.build_request.call_args
@@ -306,7 +343,7 @@ def test_x_request_id_in_response_headers():
         client = TestClient(app)
         resp = client.get(
             "/w/ws_1/api/v1/agent/sessions/s1/stream",
-            headers={"Accept": "text/event-stream"},
+            headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
         )
 
     assert resp.headers.get("x-request-id") == "test-req-id"
@@ -328,7 +365,7 @@ def test_upstream_connect_error_returns_502():
         client = TestClient(app)
         resp = client.get(
             "/w/ws_1/api/v1/agent/sessions/s1/stream",
-            headers={"Accept": "text/event-stream"},
+            headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
         )
 
     assert resp.status_code == 502
@@ -351,7 +388,7 @@ def test_upstream_timeout_returns_504():
         client = TestClient(app)
         resp = client.get(
             "/w/ws_1/api/v1/agent/sessions/s1/stream",
-            headers={"Accept": "text/event-stream"},
+            headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
         )
 
     assert resp.status_code == 504
@@ -379,7 +416,7 @@ def test_upstream_non_200_returns_upstream_error():
         client = TestClient(app)
         resp = client.get(
             "/w/ws_1/api/v1/agent/sessions/s1/stream",
-            headers={"Accept": "text/event-stream"},
+            headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
         )
 
     assert resp.status_code == 500
@@ -407,7 +444,7 @@ def test_response_has_cache_control_and_connection_headers():
         client = TestClient(app)
         resp = client.get(
             "/w/ws_1/api/v1/agent/sessions/s1/stream",
-            headers={"Accept": "text/event-stream"},
+            headers={**AUTH_HEADERS, "Accept": "text/event-stream"},
         )
 
     assert resp.headers.get("cache-control") == "no-cache"
