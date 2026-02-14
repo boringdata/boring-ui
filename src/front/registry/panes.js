@@ -52,6 +52,7 @@ import TerminalPanel from '../panels/TerminalPanel'
 import ShellTerminalPanel from '../panels/ShellTerminalPanel'
 import EmptyPanel from '../panels/EmptyPanel'
 import ReviewPanel from '../panels/ReviewPanel'
+import CompanionPanel from '../panels/CompanionPanel'
 
 /**
  * @typedef {Object} PaneConfig
@@ -267,6 +268,7 @@ class PaneRegistry {
  * | shell     | yes       | bottom    | pty router             |
  * | empty     | no        | center    | none                   |
  * | review    | no        | center    | approval router        |
+ * | companion | no        | right     | companion feature      |
  *
  * @returns {PaneRegistry} Configured registry instance
  */
@@ -348,6 +350,21 @@ const createDefaultRegistry = () => {
     placement: 'center',
     essential: false,
     requiresRouters: ['approval'],
+  })
+
+  // Companion - alternative Claude chat panel (Direct Connect)
+  registry.register({
+    id: 'companion',
+    component: CompanionPanel,
+    title: 'Companion',
+    placement: 'right',
+    essential: false,
+    locked: false,
+    hideHeader: true,
+    constraints: {
+      minWidth: 250,
+    },
+    requiresFeatures: ['companion'],
   })
 
   return registry
