@@ -1,7 +1,11 @@
 """Tests for the capabilities endpoint and router registry."""
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import FastAPI
 from boring_ui.api import create_app, RouterRegistry, create_default_registry
+from boring_ui.api.capabilities import create_capabilities_router
+from boring_ui.api.config import APIConfig
 
 
 class TestRouterRegistry:
@@ -150,6 +154,25 @@ class TestCapabilitiesEndpoint:
         assert features['pty'] is False
         assert features['stream'] is False
         assert features['approval'] is True
+
+    def test_capabilities_includes_companion_service(self, monkeypatch):
+        """Companion service metadata should appear when configured."""
+        monkeypatch.setenv('COMPANION_URL', 'http://localhost:3456')
+        config = APIConfig(workspace_root=Path.cwd())
+        registry = create_default_registry()
+        enabled_features = {'companion': True}
+
+        app = FastAPI()
+        app.include_router(
+            create_capabilities_router(enabled_features, registry, config),
+            prefix='/api',
+        )
+        client = TestClient(app)
+
+        response = client.get('/api/capabilities')
+        data = response.json()
+
+        assert data['services']['companion']['url'] == 'http://localhost:3456'
 
 
 class TestHealthEndpointFeatures:
