@@ -174,6 +174,25 @@ class TestCapabilitiesEndpoint:
 
         assert data['services']['companion']['url'] == 'http://localhost:3456'
 
+    def test_capabilities_omits_services_without_companion_url(self, monkeypatch):
+        """Services block should be absent when companion URL is unset."""
+        monkeypatch.delenv('COMPANION_URL', raising=False)
+        config = APIConfig(workspace_root=Path.cwd())
+        registry = create_default_registry()
+        enabled_features = {'companion': False}
+
+        app = FastAPI()
+        app.include_router(
+            create_capabilities_router(enabled_features, registry, config),
+            prefix='/api',
+        )
+        client = TestClient(app)
+
+        response = client.get('/api/capabilities')
+        data = response.json()
+
+        assert 'services' not in data
+
 
 class TestHealthEndpointFeatures:
     """Test that /health endpoint also reports features correctly."""
