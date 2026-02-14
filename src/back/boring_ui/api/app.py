@@ -101,6 +101,7 @@ def create_app(
         'chat_claude_code': chat_enabled,
         'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
+        'companion': bool(config.companion_url),
     }
 
     # Create app
@@ -147,7 +148,7 @@ def create_app(
 
     # Always include capabilities router
     app.include_router(
-        create_capabilities_router(enabled_features, registry),
+        create_capabilities_router(enabled_features, registry, config),
         prefix='/api',
     )
 
