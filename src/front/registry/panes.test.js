@@ -330,4 +330,26 @@ describe('createDefaultRegistry', () => {
     expect(registry.getRequiredRouters('terminal')).toContain('chat_claude_code')
     expect(registry.getRequiredRouters('shell')).toContain('pty')
   })
+
+  it('includes companion pane with correct config', () => {
+    const registry = createDefaultRegistry()
+
+    expect(registry.has('companion')).toBe(true)
+    const pane = registry.get('companion')
+    expect(pane.requiresFeatures).toContain('companion')
+    expect(pane.essential).toBe(false)
+    expect(pane.placement).toBe('right')
+    expect(pane.hideHeader).toBe(true)
+  })
+
+  it('gates companion pane on companion feature', () => {
+    const registry = createDefaultRegistry()
+
+    // Without companion feature
+    expect(registry.checkRequirements('companion', { features: {} })).toBe(false)
+    expect(registry.checkRequirements('companion', { features: { companion: false } })).toBe(false)
+
+    // With companion feature
+    expect(registry.checkRequirements('companion', { features: { companion: true } })).toBe(true)
+  })
 })
