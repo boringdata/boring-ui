@@ -42,6 +42,18 @@ class TestAPIConfig:
         config = APIConfig(workspace_root=tmp_path, pty_providers=providers)
         assert config.pty_providers == providers
 
+    def test_companion_url_from_env(self, tmp_path, monkeypatch):
+        """Test companion_url reads from COMPANION_URL env var."""
+        monkeypatch.setenv('COMPANION_URL', 'http://localhost:3456')
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.companion_url == 'http://localhost:3456'
+
+    def test_companion_url_none_when_unset(self, tmp_path, monkeypatch):
+        """Test companion_url is None when COMPANION_URL is not set."""
+        monkeypatch.delenv('COMPANION_URL', raising=False)
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.companion_url is None
+
 
 class TestValidatePath:
     """Tests for APIConfig.validate_path method."""
