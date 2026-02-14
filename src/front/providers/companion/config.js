@@ -2,9 +2,9 @@ let _baseUrl = ''
 let _authToken = ''
 
 export function setCompanionConfig(baseUrl, authToken) {
-  const normalized = (baseUrl || '').replace(/\/+$/, '')
+  const normalized = String(baseUrl || '').replace(/\/+$/, '')
   _baseUrl = normalized
-  _authToken = authToken || ''
+  _authToken = String(authToken || '').trim()
 }
 
 export function getCompanionBaseUrl() {
@@ -19,3 +19,4 @@ export function getAuthHeaders() {
   if (!_authToken) return {}
   return { Authorization: `Bearer ${_authToken}` }
 }
+
