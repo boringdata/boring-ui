@@ -6,6 +6,8 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_API_URL || 'http://localhost:8000'
+  // When using boring-sandbox gateway, set VITE_GATEWAY_URL=http://localhost:8080
+  const gatewayTarget = env.VITE_GATEWAY_URL || apiTarget
 
   // Library build mode (npm run build:lib)
   const isLibMode = mode === 'lib'
@@ -66,6 +68,12 @@ export default defineConfig(({ mode }) => {
         },
         '/ws': {
           target: apiTarget,
+          changeOrigin: true,
+          ws: true,
+        },
+        // Gateway workspace-prefixed routes (validates base-path behavior early)
+        '/w/dev': {
+          target: gatewayTarget,
           changeOrigin: true,
           ws: true,
         },
