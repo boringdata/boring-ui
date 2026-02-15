@@ -1232,16 +1232,23 @@ export default function App() {
           }
         }
 
-        // Apply constraints to companion panel if restored from saved layout
+        // Handle companion panel restored from saved layout
         const companionPanel = dockApi.getPanel('companion')
-        const companionGroup = companionPanel?.group
-        if (companionGroup) {
-          companionGroup.locked = true
-          companionGroup.header.hidden = true
-          companionGroup.api.setConstraints({
-            minimumWidth: 250,
-            maximumWidth: Infinity,
-          })
+        if (companionPanel) {
+          // Remove companion panel if feature is not enabled (e.g., COMPANION_URL unset)
+          if (!capabilities?.features?.companion) {
+            companionPanel.api.close()
+          } else {
+            const companionGroup = companionPanel.group
+            if (companionGroup) {
+              companionGroup.locked = true
+              companionGroup.header.hidden = true
+              companionGroup.api.setConstraints({
+                minimumWidth: 250,
+                maximumWidth: Infinity,
+              })
+            }
+          }
         }
 
         // If layout has editor panels, set constraints and close empty-center
@@ -1459,9 +1466,16 @@ export default function App() {
     if (dockApi.getPanel('companion')) return
 
     const terminalPanel = dockApi.getPanel('terminal')
-    const position = terminalPanel
-      ? { direction: 'right', referencePanel: 'terminal' }
-      : { direction: 'right', referencePanel: 'filetree' }
+    const filetreePanel = dockApi.getPanel('filetree')
+    let position
+    if (terminalPanel) {
+      position = { direction: 'right', referencePanel: 'terminal' }
+    } else if (filetreePanel) {
+      position = { direction: 'right', referencePanel: 'filetree' }
+    } else {
+      // No reference panel available; skip adding companion
+      return
+    }
 
     const panel = dockApi.addPanel({
       id: 'companion',
