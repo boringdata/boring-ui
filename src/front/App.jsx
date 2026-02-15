@@ -1228,18 +1228,24 @@ export default function App() {
           }
         }
 
-        // Apply constraints to companion panel if restored from saved layout.
-        // Removal when feature is disabled is handled by the companion useEffect
-        // (which waits for capabilities to be fully loaded before deciding).
+        // Handle companion panel restored from saved layout.
+        // If capabilities are already loaded and companion is disabled, remove now.
+        // Otherwise apply constraints; the companion useEffect will handle removal later.
         const companionPanel = dockApi.getPanel('companion')
-        const companionGroup = companionPanel?.group
-        if (companionGroup) {
-          companionGroup.locked = true
-          companionGroup.header.hidden = true
-          companionGroup.api.setConstraints({
-            minimumWidth: 250,
-            maximumWidth: Infinity,
-          })
+        if (companionPanel) {
+          if (!capabilitiesLoading && !capabilities?.features?.companion) {
+            companionPanel.api.close()
+          } else {
+            const companionGroup = companionPanel.group
+            if (companionGroup) {
+              companionGroup.locked = true
+              companionGroup.header.hidden = true
+              companionGroup.api.setConstraints({
+                minimumWidth: 250,
+                maximumWidth: Infinity,
+              })
+            }
+          }
         }
 
         // If layout has editor panels, set constraints and close empty-center
