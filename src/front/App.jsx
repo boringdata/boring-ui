@@ -1232,6 +1232,18 @@ export default function App() {
           }
         }
 
+        // Apply constraints to companion panel if restored from saved layout
+        const companionPanel = dockApi.getPanel('companion')
+        const companionGroup = companionPanel?.group
+        if (companionGroup) {
+          companionGroup.locked = true
+          companionGroup.header.hidden = true
+          companionGroup.api.setConstraints({
+            minimumWidth: 250,
+            maximumWidth: Infinity,
+          })
+        }
+
         // If layout has editor panels, set constraints and close empty-center
         const panels = Array.isArray(dockApi.panels)
           ? dockApi.panels
@@ -1438,6 +1450,36 @@ export default function App() {
       })
     }
   }, [dockApi, collapsed.shell, toggleShell, projectRoot])
+
+  // Add companion panel when companion feature becomes available
+  useEffect(() => {
+    if (!dockApi || !capabilities?.features?.companion) return
+
+    // Don't add if already exists (e.g., restored from saved layout)
+    if (dockApi.getPanel('companion')) return
+
+    const terminalPanel = dockApi.getPanel('terminal')
+    const position = terminalPanel
+      ? { direction: 'right', referencePanel: 'terminal' }
+      : { direction: 'right', referencePanel: 'filetree' }
+
+    const panel = dockApi.addPanel({
+      id: 'companion',
+      component: 'companion',
+      title: 'Companion',
+      position,
+      params: {},
+    })
+
+    if (panel?.group) {
+      panel.group.locked = true
+      panel.group.header.hidden = true
+      panel.group.api.setConstraints({
+        minimumWidth: 250,
+        maximumWidth: Infinity,
+      })
+    }
+  }, [dockApi, capabilities])
 
   // Restore saved tabs when dockApi and projectRoot become available
   const hasRestoredTabs = useRef(false)
