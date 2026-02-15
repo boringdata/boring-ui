@@ -1232,23 +1232,18 @@ export default function App() {
           }
         }
 
-        // Handle companion panel restored from saved layout
+        // Apply constraints to companion panel if restored from saved layout.
+        // Removal when feature is disabled is handled by the companion useEffect
+        // (which waits for capabilities to be fully loaded before deciding).
         const companionPanel = dockApi.getPanel('companion')
-        if (companionPanel) {
-          // Remove companion panel if feature is not enabled (e.g., COMPANION_URL unset)
-          if (!capabilities?.features?.companion) {
-            companionPanel.api.close()
-          } else {
-            const companionGroup = companionPanel.group
-            if (companionGroup) {
-              companionGroup.locked = true
-              companionGroup.header.hidden = true
-              companionGroup.api.setConstraints({
-                minimumWidth: 250,
-                maximumWidth: Infinity,
-              })
-            }
-          }
+        const companionGroup = companionPanel?.group
+        if (companionGroup) {
+          companionGroup.locked = true
+          companionGroup.header.hidden = true
+          companionGroup.api.setConstraints({
+            minimumWidth: 250,
+            maximumWidth: Infinity,
+          })
         }
 
         // If layout has editor panels, set constraints and close empty-center
@@ -1458,42 +1453,49 @@ export default function App() {
     }
   }, [dockApi, collapsed.shell, toggleShell, projectRoot])
 
-  // Add companion panel when companion feature becomes available
+  // Add or remove companion panel based on companion feature availability.
+  // Waits for capabilities to finish loading before making decisions to avoid
+  // prematurely removing a panel restored from a saved layout.
   useEffect(() => {
-    if (!dockApi || !capabilities?.features?.companion) return
+    if (!dockApi || capabilitiesLoading) return
 
-    // Don't add if already exists (e.g., restored from saved layout)
-    if (dockApi.getPanel('companion')) return
+    const companionEnabled = capabilities?.features?.companion === true
+    const existingPanel = dockApi.getPanel('companion')
 
-    const terminalPanel = dockApi.getPanel('terminal')
-    const filetreePanel = dockApi.getPanel('filetree')
-    let position
-    if (terminalPanel) {
-      position = { direction: 'right', referencePanel: 'terminal' }
-    } else if (filetreePanel) {
-      position = { direction: 'right', referencePanel: 'filetree' }
-    } else {
-      // No reference panel available; skip adding companion
-      return
-    }
+    if (companionEnabled && !existingPanel) {
+      // Add companion panel to the right of terminal
+      const terminalPanel = dockApi.getPanel('terminal')
+      const filetreePanel = dockApi.getPanel('filetree')
+      let position
+      if (terminalPanel) {
+        position = { direction: 'right', referencePanel: 'terminal' }
+      } else if (filetreePanel) {
+        position = { direction: 'right', referencePanel: 'filetree' }
+      } else {
+        return
+      }
 
-    const panel = dockApi.addPanel({
-      id: 'companion',
-      component: 'companion',
-      title: 'Companion',
-      position,
-      params: {},
-    })
-
-    if (panel?.group) {
-      panel.group.locked = true
-      panel.group.header.hidden = true
-      panel.group.api.setConstraints({
-        minimumWidth: 250,
-        maximumWidth: Infinity,
+      const panel = dockApi.addPanel({
+        id: 'companion',
+        component: 'companion',
+        title: 'Companion',
+        position,
+        params: {},
       })
+
+      if (panel?.group) {
+        panel.group.locked = true
+        panel.group.header.hidden = true
+        panel.group.api.setConstraints({
+          minimumWidth: 250,
+          maximumWidth: Infinity,
+        })
+      }
+    } else if (!companionEnabled && existingPanel) {
+      // Remove companion panel restored from saved layout when feature is disabled
+      existingPanel.api.close()
     }
-  }, [dockApi, capabilities])
+  }, [dockApi, capabilities, capabilitiesLoading])
 
   // Restore saved tabs when dockApi and projectRoot become available
   const hasRestoredTabs = useRef(false)
