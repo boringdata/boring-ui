@@ -1,8 +1,13 @@
 const normalizeBase = (value) => (value ? value.replace(/\/$/, '') : '')
 
 const isDevPort = (port) => {
-  const devPorts = new Set(['3000', '3001', '4173', '4174', '5173', '5174', '5175', '5176'])
-  return devPorts.has(port)
+  const portNumber = Number.parseInt(port, 10)
+  if (!Number.isFinite(portNumber)) return false
+  return (
+    (portNumber >= 3000 && portNumber <= 3010)
+    || (portNumber >= 4173 && portNumber <= 4179)
+    || (portNumber >= 5173 && portNumber <= 5199)
+  )
 }
 
 const resolveApiBase = () => {
