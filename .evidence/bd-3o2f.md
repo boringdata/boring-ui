@@ -17,3 +17,15 @@ python3 -c "import subprocess,sys; r=subprocess.run(['python3','-m','pytest','te
 ```output
 pytest exit 0
 ```
+
+```bash {image}
+![Companion collapsed](.evidence/bd-3o2f-ui-collapsed.png)
+```
+
+![Companion collapsed](6a0b0846-2026-02-16.png)
+
+```bash {image}
+![Companion expanded](.evidence/bd-3o2f-ui-expanded.png)
+```
+
+![Companion expanded](91cd4bfc-2026-02-16.png)
