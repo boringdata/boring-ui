@@ -51,7 +51,7 @@ export default function CompanionAdapter() {
             }
           })
           const knownIds = new Set([
-            ...sessionsMap.keys(),
+            ...useStore.getState().sessions.keys(),
             ...list.map((session) => session.sessionId),
           ])
           knownIds.forEach((id) => {
@@ -71,7 +71,7 @@ export default function CompanionAdapter() {
       active = false
       clearInterval(interval)
     }
-  }, [setSdkSessions, sessionsMap, setCliConnected])
+  }, [setSdkSessions, setCliConnected])
 
   const sessions = useMemo(() => {
     const all = new Map()
@@ -133,6 +133,10 @@ export default function CompanionAdapter() {
       setCurrentSession(null)
     }
   }, [currentSessionId, sessions, setCurrentSession])
+
+  useEffect(() => {
+    missingCountsRef.current.clear()
+  }, [currentSessionId])
 
   useEffect(() => {
     if (currentSessionId) return
