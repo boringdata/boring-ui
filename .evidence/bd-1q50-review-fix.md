@@ -49,3 +49,12 @@ dist/assets/index-Dba_ciOb.js   2,210.16 kB │ gzip: 648.10 kB
 ```
 
 ![23cd0899-2026-02-16](23cd0899-2026-02-16.png)
+
+```bash
+set -o pipefail; python3 -m pytest tests/unit/test_workspace_plugins.py -q | sed -E 's/in [0-9.]+s/in <time>/'
+```
+
+```output
+..                                                                       [100%]
+2 passed in <time>
+```
