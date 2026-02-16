@@ -1,34 +1,17 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useStore } from './upstream/store'
-import { connectSession, disconnectSession } from './upstream/ws'
+import { connectSession } from './upstream/ws'
 import CompanionApp from './upstream/App'
 import { api } from './upstream/api'
 import './overrides.css'
 
-const buildSessionLabel = (session, sessionNames) => {
-  if (!session) return 'Session'
-  const id = session.session_id || session.sessionId
-  const name = sessionNames?.get?.(id)
-  const repo = session.repo_root ? session.repo_root.split('/').pop() : ''
-  const cwd = session.cwd ? session.cwd.split('/').pop() : ''
-  const model = session.model || ''
-  const base = name || repo || cwd || model || id.slice(0, 8)
-  const branch = session.git_branch || session.gitBranch
-  const branchLabel = branch && branch !== 'main'
-    ? ` • ${branch}`
-    : ''
-  return `${base}${branchLabel}`
-}
-
 export default function CompanionAdapter() {
   const sessionsMap = useStore((s) => s.sessions)
   const sdkSessions = useStore((s) => s.sdkSessions)
-  const sessionNames = useStore((s) => s.sessionNames)
   const currentSessionId = useStore((s) => s.currentSessionId)
   const setCurrentSession = useStore((s) => s.setCurrentSession)
   const setSdkSessions = useStore((s) => s.setSdkSessions)
   const setCliConnected = useStore((s) => s.setCliConnected)
-  const newSession = useStore((s) => s.newSession)
   const sidebarOpen = useStore((s) => s.sidebarOpen)
   const taskPanelOpen = useStore((s) => s.taskPanelOpen)
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
@@ -92,18 +75,6 @@ export default function CompanionAdapter() {
     return Array.from(all.values()).sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
   }, [sessionsMap, sdkSessions])
 
-  const handleSelect = (nextId) => {
-    if (!nextId || nextId === currentSessionId) return
-    if (currentSessionId) disconnectSession(currentSessionId)
-    setCurrentSession(nextId)
-    connectSession(nextId)
-  }
-
-  const handleNewSession = () => {
-    if (currentSessionId) disconnectSession(currentSessionId)
-    newSession()
-  }
-
   useEffect(() => {
     // Keep the upstream session list hidden by default in embedded mode.
     setSidebarOpen(false)
@@ -149,23 +120,6 @@ export default function CompanionAdapter() {
 
   return (
     <div className="companion-wrapper">
-      <div className="companion-toolbar">
-        <select
-          className="companion-select"
-          value={currentSessionId || ''}
-          onChange={(e) => handleSelect(e.target.value)}
-        >
-          {sessions.length === 0 && <option value="">No sessions</option>}
-          {sessions.map((session) => (
-            <option key={session.session_id} value={session.session_id}>
-              {buildSessionLabel(session, sessionNames)}
-            </option>
-          ))}
-        </select>
-        <button type="button" className="companion-new-session" onClick={handleNewSession}>
-          New session
-        </button>
-      </div>
       <CompanionApp />
     </div>
   )
