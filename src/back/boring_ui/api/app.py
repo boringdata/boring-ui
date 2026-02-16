@@ -12,6 +12,7 @@ from .capabilities import (
     create_capabilities_router,
 )
 from .utility_routes import create_utility_router
+from .workspace_plugins import WorkspacePluginManager
 from boring_ui.observability import configure_logging, get_logger
 from boring_ui.observability.middleware import (
     MetricsMiddleware,
@@ -105,6 +106,7 @@ def create_app(
         'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
         'companion': bool(config.companion_url),
+        'pi': bool(config.pi_url),
     }
 
     # Create app
@@ -176,14 +178,24 @@ def create_app(
             prefix='/api/v1/git',
         )
 
-    # Always include capabilities router
+    # Workspace plugin manager – scans kurt/api/*.py and kurt/panels/*/Panel.jsx
+    plugin_manager = WorkspacePluginManager(config.workspace_root)
+    app.mount("/api/x", plugin_manager.get_asgi_app())
+    app.include_router(plugin_manager.create_ws_router())
+
+    # Always include capabilities router (pass plugin_manager for workspace_panes)
     app.include_router(
-        create_capabilities_router(enabled_features, registry, config),
+        create_capabilities_router(enabled_features, registry, config, plugin_manager),
         prefix='/api',
     )
 
     # Utility routes: health, config, project, sessions, metrics
     app.include_router(create_utility_router(config, enabled_features))
+
+    # Start file watcher after startup
+    @app.on_event("startup")
+    async def _start_plugin_watcher() -> None:
+        plugin_manager.start_watcher()
 
     logger.info(
         "app_created",

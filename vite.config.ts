@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => {
   const companionTarget = env.VITE_COMPANION_PROXY_TARGET
   // When using boring-sandbox gateway, set VITE_GATEWAY_URL=http://localhost:8080
   const gatewayTarget = env.VITE_GATEWAY_URL || apiTarget
+  // Workspace root for workspace plugin panel loading
+  const workspaceRoot = env.BORING_UI_WORKSPACE_ROOT || env.WORKSPACE_ROOT || ''
 
   // Library build mode (npm run build:lib)
   const isLibMode = mode === 'lib'
@@ -18,6 +20,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src/front'),
+        ...(workspaceRoot ? { '@workspace': path.resolve(workspaceRoot, 'kurt/panels') } : {}),
       },
     },
     test: {
@@ -63,6 +66,9 @@ export default defineConfig(({ mode }) => {
     base: './',
     server: {
       port: 5173,
+      fs: {
+        allow: ['.', ...(workspaceRoot ? [workspaceRoot] : [])],
+      },
       proxy: {
         '/api': {
           target: apiTarget,

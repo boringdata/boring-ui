@@ -336,20 +336,24 @@ describe('createDefaultRegistry', () => {
 
     expect(registry.has('companion')).toBe(true)
     const pane = registry.get('companion')
-    expect(pane.requiresFeatures).toContain('companion')
+    expect(pane.requiresAnyFeatures).toContain('companion')
+    expect(pane.requiresAnyFeatures).toContain('pi')
     expect(pane.essential).toBe(false)
     expect(pane.placement).toBe('right')
     expect(pane.hideHeader).toBe(true)
   })
 
-  it('gates companion pane on companion feature', () => {
+  it('gates companion pane on companion OR pi feature', () => {
     const registry = createDefaultRegistry()
 
-    // Without companion feature
+    // Without companion or pi feature
     expect(registry.checkRequirements('companion', { features: {} })).toBe(false)
     expect(registry.checkRequirements('companion', { features: { companion: false } })).toBe(false)
+    expect(registry.checkRequirements('companion', { features: { pi: false } })).toBe(false)
 
     // With companion feature
     expect(registry.checkRequirements('companion', { features: { companion: true } })).toBe(true)
+    // With pi feature
+    expect(registry.checkRequirements('companion', { features: { pi: true } })).toBe(true)
   })
 })
