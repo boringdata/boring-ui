@@ -113,12 +113,11 @@ export default function App() {
   const [approvalsLoaded, setApprovalsLoaded] = useState(false)
   const [activeFile, setActiveFile] = useState(null)
   const [activeDiffFile, setActiveDiffFile] = useState(null)
-  const [collapsed, setCollapsed] = useState(() =>
-    loadCollapsedState(storagePrefix)
-  )
-  const panelSizesRef = useRef(
-    loadPanelSizes(storagePrefix) || panelDefaults
-  )
+  const [collapsed, setCollapsed] = useState(() => {
+    const saved = loadCollapsedState(storagePrefix)
+    return { filetree: false, terminal: false, shell: false, companion: false, ...saved }
+  })
+  const panelSizesRef = useRef(loadPanelSizes(storagePrefix) || panelDefaults)
   const collapsedEffectRan = useRef(false)
   const dismissedApprovalsRef = useRef(new Set())
   const centerGroupRef = useRef(null)
@@ -179,6 +178,25 @@ export default function App() {
       return next
     })
   }, [collapsed.terminal, dockApi, codeSessionsEnabled])
+
+  const toggleCompanion = useCallback(() => {
+    if (!collapsed.companion && dockApi) {
+      const companionPanel = dockApi.getPanel('companion')
+      const companionGroup = companionPanel?.group
+      if (companionGroup) {
+        const currentWidth = companionGroup.api.width
+        if (currentWidth > panelCollapsedRef.current.terminal) {
+          panelSizesRef.current = { ...panelSizesRef.current, terminal: currentWidth }
+          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
+        }
+      }
+    }
+    setCollapsed((prev) => {
+      const next = { ...prev, companion: !prev.companion }
+      saveCollapsedState(next, storagePrefixRef.current)
+      return next
+    })
+  }, [collapsed.companion, dockApi])
 
   const toggleShell = useCallback(() => {
     if (!collapsed.shell && dockApi) {
@@ -265,6 +283,7 @@ export default function App() {
 
     const filetreePanel = dockApi.getPanel('filetree')
     const terminalPanel = dockApi.getPanel('terminal')
+    const companionPanel = dockApi.getPanel('companion')
 
     const filetreeGroup = filetreePanel?.group
     if (filetreeGroup) {
@@ -303,6 +322,25 @@ export default function App() {
         })
         if (!isFirstRun) {
           terminalGroup.api.setSize({ width: panelSizesRef.current.terminal })
+        }
+      }
+    }
+
+    const companionGroup = companionPanel?.group
+    if (companionGroup) {
+      if (collapsed.companion) {
+        companionGroup.api.setConstraints({
+          minimumWidth: panelCollapsedRef.current.terminal,
+          maximumWidth: panelCollapsedRef.current.terminal,
+        })
+        companionGroup.api.setSize({ width: panelCollapsedRef.current.terminal })
+      } else {
+        companionGroup.api.setConstraints({
+          minimumWidth: panelMinRef.current.terminal,
+          maximumWidth: Infinity,
+        })
+        if (!isFirstRun) {
+          companionGroup.api.setSize({ width: panelSizesRef.current.terminal })
         }
       }
     }
@@ -1273,10 +1311,18 @@ export default function App() {
             if (companionGroup) {
               companionGroup.locked = true
               companionGroup.header.hidden = true
-              companionGroup.api.setConstraints({
-                minimumWidth: 250,
-                maximumWidth: Infinity,
-              })
+              if (collapsed.companion) {
+                companionGroup.api.setConstraints({
+                  minimumWidth: panelCollapsedRef.current.terminal,
+                  maximumWidth: panelCollapsedRef.current.terminal,
+                })
+                companionGroup.api.setSize({ width: panelCollapsedRef.current.terminal })
+              } else {
+                companionGroup.api.setConstraints({
+                  minimumWidth: panelMinRef.current.terminal,
+                  maximumWidth: Infinity,
+                })
+              }
             }
           }
         }
@@ -1402,7 +1448,7 @@ export default function App() {
         layoutRestored.current = false
       }
     }
-  }, [dockApi, projectRoot, storagePrefix, collapsed.filetree, collapsed.terminal, collapsed.shell, openFile, openFileToSide, openDiff, activeFile, activeDiffFile, toggleFiletree])
+  }, [dockApi, projectRoot, storagePrefix, collapsed.filetree, collapsed.terminal, collapsed.shell, collapsed.companion, openFile, openFileToSide, openDiff, activeFile, activeDiffFile, toggleFiletree])
 
   // Track active panel to highlight in file tree and sync URL
   useEffect(() => {
@@ -1488,6 +1534,18 @@ export default function App() {
     }
   }, [dockApi, collapsed.shell, toggleShell, projectRoot])
 
+  // Update companion panel params
+  useEffect(() => {
+    if (!dockApi) return
+    const companionPanel = dockApi.getPanel('companion')
+    if (companionPanel) {
+      companionPanel.api.updateParameters({
+        collapsed: collapsed.companion,
+        onToggleCollapse: toggleCompanion,
+      })
+    }
+  }, [dockApi, collapsed.companion, toggleCompanion])
+
   // Add or remove companion panel based on companion feature availability.
   // Waits for capabilities to finish loading before making decisions to avoid
   // prematurely removing a panel restored from a saved layout.
@@ -1535,7 +1593,10 @@ export default function App() {
         component: 'companion',
         title: 'Companion',
         position,
-        params: {},
+        params: {
+          collapsed: collapsed.companion,
+          onToggleCollapse: toggleCompanion,
+        },
       })
 
       if (panel?.group) {
