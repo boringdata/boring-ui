@@ -8,6 +8,7 @@ This script overwrites app.config.js from the [ui] table in the TOML.
 """
 import argparse
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -51,6 +52,20 @@ def write_app_config(path: Path, ui_cfg: dict):
     contents = "export default " + js_serialize(ui_cfg) + "\n"
     path.write_text(contents, encoding="utf-8")
 
+HOST_PATTERN = re.compile(r"^[A-Za-z0-9.\-:]+$")
+
+
+def validate_host(host: str) -> str:
+    if not HOST_PATTERN.fullmatch(host):
+        raise SystemExit(f"Invalid host value: {host!r}")
+    return host
+
+
+def validate_port(port: int) -> int:
+    if port < 1 or port > 65535:
+        raise SystemExit(f"Invalid port value: {port}")
+    return port
+
 
 def run():
     parser = argparse.ArgumentParser()
@@ -84,8 +99,8 @@ def run():
     include_stream = bool(server.get("include_stream", True))
     include_pty = bool(server.get("include_pty", True))
     include_approval = bool(server.get("include_approval", True))
-    host = server.get("host", "0.0.0.0")
-    port = int(server.get("port", 8000))
+    host = validate_host(server.get("host", "0.0.0.0"))
+    port = validate_port(int(server.get("port", 8000)))
 
     backend_cmd = [
         sys.executable,

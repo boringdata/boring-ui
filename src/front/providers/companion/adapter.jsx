@@ -34,6 +34,7 @@ export default function CompanionAdapter() {
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
   const setTaskPanelOpen = useStore((s) => s.setTaskPanelOpen)
   const hasLoadedSessions = useRef(false)
+  const missingCountsRef = useRef(new Map())
 
   useEffect(() => {
     let active = true
@@ -42,9 +43,20 @@ export default function CompanionAdapter() {
         const list = await api.listSessions()
         if (active) {
           setSdkSessions(list)
+          const connectedIds = new Set()
           list.forEach((session) => {
             if (session.state === 'connected' || session.state === 'running') {
+              connectedIds.add(session.sessionId)
               setCliConnected(session.sessionId, true)
+            }
+          })
+          const knownIds = new Set([
+            ...sessionsMap.keys(),
+            ...list.map((session) => session.sessionId),
+          ])
+          knownIds.forEach((id) => {
+            if (!connectedIds.has(id)) {
+              setCliConnected(id, false)
             }
           })
           hasLoadedSessions.current = true
@@ -59,7 +71,7 @@ export default function CompanionAdapter() {
       active = false
       clearInterval(interval)
     }
-  }, [setSdkSessions])
+  }, [setSdkSessions, sessionsMap, setCliConnected])
 
   const sessions = useMemo(() => {
     const all = new Map()
@@ -110,7 +122,14 @@ export default function CompanionAdapter() {
     if (!currentSessionId) return
     if (!hasLoadedSessions.current) return
     const knownIds = new Set(sessions.map((s) => s.session_id))
-    if (!knownIds.has(currentSessionId)) {
+    if (knownIds.has(currentSessionId)) {
+      missingCountsRef.current.delete(currentSessionId)
+      return
+    }
+    const nextCount = (missingCountsRef.current.get(currentSessionId) || 0) + 1
+    missingCountsRef.current.set(currentSessionId, nextCount)
+    if (nextCount >= 2) {
+      missingCountsRef.current.delete(currentSessionId)
       setCurrentSession(null)
     }
   }, [currentSessionId, sessions, setCurrentSession])
