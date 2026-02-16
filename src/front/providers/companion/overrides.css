@@ -4,6 +4,33 @@
   height: 100%;
 }
 
+.provider-companion .h-\[100dvh\] {
+  height: 100%;
+  min-height: 0;
+}
+
+.provider-companion .h-\[100dvh\] .flex-1 {
+  min-height: 0;
+}
+
+.provider-companion .terminal-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.provider-companion .terminal-instance {
+  position: relative;
+  inset: auto;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
 .provider-companion header {
   display: none;
 }
