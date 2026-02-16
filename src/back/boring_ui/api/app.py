@@ -15,6 +15,14 @@ from .capabilities import (
     create_default_registry,
     create_capabilities_router,
 )
+from .utility_routes import create_utility_router
+from .workspace_plugins import WorkspacePluginManager
+from boring_ui.observability import configure_logging, get_logger
+from boring_ui.observability.middleware import (
+    MetricsMiddleware,
+    RequestIdMiddleware,
+    RequestLoggingMiddleware,
+)
 
 
 def create_app(
@@ -102,6 +110,7 @@ def create_app(
         'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
         'companion': bool(config.companion_url),
+        'pi': bool(config.pi_url),
     }
 
     # Create app
@@ -146,9 +155,32 @@ def create_app(
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 
-    # Always include capabilities router
+    # Mount canonical /api/v1 routes alongside legacy /api routes.
+    # The modular routers define both legacy names (/tree, /file) and
+    # canonical names (/list, /read, /write, /delete, /rename, /move).
+    # Mounting at /api/v1/files and /api/v1/git makes the canonical v1
+    # contract available at runtime while legacy /api/* paths keep working.
+    if 'files' in enabled_routers:
+        from .modules.files import create_file_router
+        app.include_router(
+            create_file_router(config, storage),
+            prefix='/api/v1/files',
+        )
+    if 'git' in enabled_routers:
+        from .modules.git import create_git_router
+        app.include_router(
+            create_git_router(config),
+            prefix='/api/v1/git',
+        )
+
+    # Workspace plugin manager – scans kurt/api/*.py and kurt/panels/*/Panel.jsx
+    plugin_manager = WorkspacePluginManager(config.workspace_root)
+    app.mount("/api/x", plugin_manager.get_asgi_app())
+    app.include_router(plugin_manager.create_ws_router())
+
+    # Always include capabilities router (pass plugin_manager for workspace_panes)
     app.include_router(
-        create_capabilities_router(enabled_features, registry, config),
+        create_capabilities_router(enabled_features, registry, config, plugin_manager),
         prefix='/api',
     )
 
@@ -162,60 +194,15 @@ def create_app(
             'features': enabled_features,
         }
 
-    # API info
-    @app.get('/api/config')
-    async def get_config():
-        """Get API configuration info."""
-        return {
-            'workspace_root': str(config.workspace_root),
-            'pty_providers': list(config.pty_providers.keys()),
-            'paths': {
-                'files': '.',
-            },
-        }
+    # Start file watcher after startup
+    @app.on_event("startup")
+    async def _start_plugin_watcher() -> None:
+        plugin_manager.start_watcher()
 
-    # Project endpoint (expected by frontend)
-    @app.get('/api/project')
-    async def get_project():
-        """Get project root for the frontend."""
-        return {
-            'root': str(config.workspace_root),
-        }
-
-    # Claude session endpoints (aligned with kurt-core)
-    @app.get('/api/sessions')
-    async def list_sessions():
-        """List active Claude stream sessions."""
-        from .modules.stream import get_session_registry as get_stream_registry
-        from .modules.pty import get_session_registry as get_pty_registry
-
-        # Combine PTY and stream sessions
-        pty_sessions = [
-            {
-                'id': session_id,
-                'type': 'pty',
-                'alive': session.is_alive(),
-                'clients': len(session.clients),
-                'history_count': len(session.history),
-            }
-            for session_id, session in get_pty_registry().items()
-        ]
-        stream_sessions = [
-            {
-                'id': session_id,
-                'type': 'stream',
-                'alive': session.is_alive(),
-                'clients': len(session.clients),
-                'history_count': len(session.history),
-            }
-            for session_id, session in get_stream_registry().items()
-        ]
-        return {'sessions': pty_sessions + stream_sessions}
-
-    @app.post('/api/sessions')
-    async def create_session():
-        """Create a new session ID (client will connect via WebSocket)."""
-        import uuid
-        return {'session_id': str(uuid.uuid4())}
+    logger.info(
+        "app_created",
+        workspace=str(config.workspace_root),
+        enabled_features={k: v for k, v in enabled_features.items() if v},
+    )
 
     return app

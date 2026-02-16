@@ -45,9 +45,13 @@ export function createCapabilityGatedPane(paneId, Component) {
     }
 
     // Requirements not met - show error state
-    const missingFeatures = (paneConfig?.requiresFeatures || []).filter(
+    const missingRequiredFeatures = (paneConfig?.requiresFeatures || []).filter(
       (f) => !capabilities?.features?.[f]
     )
+    const requiresAny = paneConfig?.requiresAnyFeatures || []
+    const anySatisfied = requiresAny.some((f) => capabilities?.features?.[f])
+    const missingAnyFeatures = anySatisfied ? [] : requiresAny
+    const missingFeatures = [...missingRequiredFeatures, ...missingAnyFeatures]
     const missingRouters = (paneConfig?.requiresRouters || []).filter(
       (r) => !capabilities?.features?.[r]
     )

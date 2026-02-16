@@ -41,6 +41,9 @@ class APIConfig:
     companion_url: str | None = field(
         default_factory=lambda: os.environ.get('COMPANION_URL')
     )
+    pi_url: str | None = field(
+        default_factory=lambda: os.environ.get('PI_URL')
+    )
 
     def validate_path(self, path: Path | str) -> Path:
         """Validate that a path is within workspace_root.

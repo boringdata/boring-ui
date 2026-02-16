@@ -68,6 +68,10 @@ import CompanionPanel from '../panels/CompanionPanel'
  * @property {string[]} [requiresFeatures] - Backend features this pane requires.
  *   Checked against capabilities.features from /api/capabilities.
  *   Common values: 'files', 'git'. Default: [] (no feature requirements)
+ * @property {string[]} [requiresAnyFeatures] - Backend features where at least one must be enabled.
+ *   Useful for panes that can run against multiple backends (e.g. companion OR pi).
+ *   Checked against capabilities.features from /api/capabilities.
+ *   Default: [] (no OR feature requirements)
  * @property {string[]} [requiresRouters] - Backend routers this pane requires.
  *   Checked against capabilities.features (routers are exposed as features).
  *   Common values: 'pty', 'chat_claude_code', 'approval'. Default: [] (no router requirements)
@@ -172,7 +176,9 @@ class PaneRegistry {
     for (const [id, config] of this._panes) {
       // Only gate components that have requirements
       const hasRequirements =
-        (config.requiresFeatures?.length > 0) || (config.requiresRouters?.length > 0)
+        (config.requiresFeatures?.length > 0)
+        || (config.requiresAnyFeatures?.length > 0)
+        || (config.requiresRouters?.length > 0)
       components[id] = hasRequirements
         ? gateFactory(id, config.component)
         : config.component
@@ -196,6 +202,16 @@ class PaneRegistry {
   getRequiredFeatures(id) {
     const pane = this._panes.get(id)
     return pane?.requiresFeatures || []
+  }
+
+  /**
+   * Get OR-required features for a pane (at least one must be enabled).
+   * @param {string} id - Pane identifier
+   * @returns {string[]}
+   */
+  getRequiredAnyFeatures(id) {
+    const pane = this._panes.get(id)
+    return pane?.requiresAnyFeatures || []
   }
 
   /**
@@ -224,6 +240,13 @@ class PaneRegistry {
     const requiredFeatures = pane.requiresFeatures || []
     for (const feature of requiredFeatures) {
       if (!features[feature]) return false
+    }
+
+    // Check OR-required features (if configured, at least one must be enabled)
+    const requiredAnyFeatures = pane.requiresAnyFeatures || []
+    if (requiredAnyFeatures.length > 0) {
+      const hasAny = requiredAnyFeatures.some((feature) => !!features[feature])
+      if (!hasAny) return false
     }
 
     // Check required routers (routers are also exposed as features)
@@ -352,11 +375,11 @@ const createDefaultRegistry = () => {
     requiresRouters: ['approval'],
   })
 
-  // Companion - alternative Claude chat panel (Direct Connect)
+  // Agent (Companion backend) - alternative Claude chat panel (Direct Connect)
   registry.register({
     id: 'companion',
     component: CompanionPanel,
-    title: 'Companion',
+    title: 'Agent',
     placement: 'right',
     essential: false,
     locked: false,
@@ -364,7 +387,7 @@ const createDefaultRegistry = () => {
     constraints: {
       minWidth: 250,
     },
-    requiresFeatures: ['companion'],
+    requiresAnyFeatures: ['companion', 'pi'],
   })
 
   return registry
@@ -391,6 +414,7 @@ export const getComponents = () => defaultRegistry.getComponents()
 export const getGatedComponents = (gateFactory) => defaultRegistry.getGatedComponents(gateFactory)
 export const getKnownComponents = () => defaultRegistry.getKnownComponents()
 export const getRequiredFeatures = (id) => defaultRegistry.getRequiredFeatures(id)
+export const getRequiredAnyFeatures = (id) => defaultRegistry.getRequiredAnyFeatures(id)
 export const getRequiredRouters = (id) => defaultRegistry.getRequiredRouters(id)
 export const checkRequirements = (id, capabilities) =>
   defaultRegistry.checkRequirements(id, capabilities)

@@ -2022,6 +2022,56 @@ html {
   position: relative;
 }
 
+.companion-panel-content .companion-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.companion-panel-content .companion-instance {
+  position: relative;
+  inset: auto;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.companion-panel-content .provider-companion {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.companion-panel-content .provider-pi {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.companion-panel-content .pi-agent-frame {
+  flex: 1;
+  min-height: 0;
+}
+
+.companion-session-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.companion-session-select {
+  min-width: 140px;
+  max-width: 220px;
+}
+
 .terminal-empty {
   flex: 1;
   display: flex;
@@ -3445,6 +3495,12 @@ html {
 
 /* When terminal is collapsed, disable the sash to its left (last sash in horizontal splitview) */
 .terminal-is-collapsed > .dv-grid-view > .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash:last-child {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
+/* When companion is collapsed, disable the sash to its left (last sash in horizontal splitview) */
+.companion-is-collapsed > .dv-grid-view > .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash:last-child {
   pointer-events: none !important;
   cursor: default !important;
 }

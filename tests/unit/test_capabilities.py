@@ -193,6 +193,46 @@ class TestCapabilitiesEndpoint:
 
         assert 'services' not in data
 
+    def test_capabilities_includes_pi_service(self, monkeypatch):
+        """PI service metadata should appear when configured."""
+        monkeypatch.setenv('PI_URL', 'http://localhost:8787')
+        config = APIConfig(workspace_root=Path.cwd())
+        registry = create_default_registry()
+        enabled_features = {'pi': True}
+
+        app = FastAPI()
+        app.include_router(
+            create_capabilities_router(enabled_features, registry, config),
+            prefix='/api',
+        )
+        client = TestClient(app)
+
+        response = client.get('/api/capabilities')
+        data = response.json()
+
+        assert data['services']['pi']['url'] == 'http://localhost:8787'
+
+    def test_capabilities_includes_both_companion_and_pi_services(self, monkeypatch):
+        """Both service blocks should appear when both URLs are configured."""
+        monkeypatch.setenv('COMPANION_URL', 'http://localhost:3456')
+        monkeypatch.setenv('PI_URL', 'http://localhost:8787')
+        config = APIConfig(workspace_root=Path.cwd())
+        registry = create_default_registry()
+        enabled_features = {'companion': True, 'pi': True}
+
+        app = FastAPI()
+        app.include_router(
+            create_capabilities_router(enabled_features, registry, config),
+            prefix='/api',
+        )
+        client = TestClient(app)
+
+        response = client.get('/api/capabilities')
+        data = response.json()
+
+        assert data['services']['companion']['url'] == 'http://localhost:3456'
+        assert data['services']['pi']['url'] == 'http://localhost:8787'
+
 
 class TestHealthEndpointFeatures:
     """Test that /health endpoint also reports features correctly."""

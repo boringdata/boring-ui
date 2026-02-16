@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 
 // Mock the adapter component
 vi.mock('../providers/companion/adapter', () => ({
   default: () => <div data-testid="mock-companion-app">MockCompanionApp</div>,
+}))
+vi.mock('../providers/companion/EmbeddedSessionToolbar', () => ({
+  default: () => <div data-testid="mock-companion-toolbar">MockCompanionToolbar</div>,
+}))
+vi.mock('../providers/pi/adapter', () => ({
+  default: () => <div data-testid="mock-pi-app">MockPiApp</div>,
 }))
 
 // Mock CSS imports
@@ -41,6 +47,16 @@ describe('CompanionPanel', () => {
     expect(mockSetCompanionConfig).not.toHaveBeenCalled()
   })
 
+  it('shows connecting state when pi URL is not available', () => {
+    mockCapabilities.services = {}
+
+    render(<CompanionPanel params={{ provider: 'pi' }} />)
+
+    expect(screen.getByTestId('companion-connecting')).toBeTruthy()
+    expect(screen.queryByTestId('pi-app')).toBeNull()
+    expect(mockSetCompanionConfig).not.toHaveBeenCalled()
+  })
+
   it('renders CompanionApp when companion URL is available', () => {
     mockCapabilities.services = {
       companion: { url: 'http://localhost:3456' },
@@ -53,12 +69,37 @@ describe('CompanionPanel', () => {
     expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:3456', '')
   })
 
+  it('renders Pi adapter when provider is pi and URL is available', () => {
+    mockCapabilities.services = {
+      pi: { url: 'http://localhost:8787' },
+    }
+
+    render(<CompanionPanel params={{ provider: 'pi' }} />)
+
+    expect(screen.getByTestId('pi-app')).toBeTruthy()
+    expect(screen.getByTestId('mock-pi-app')).toBeTruthy()
+    expect(screen.queryByTestId('mock-companion-toolbar')).toBeNull()
+    expect(mockSetCompanionConfig).not.toHaveBeenCalled()
+  })
+
   it('renders collapsed state with correct test id', () => {
     render(<CompanionPanel params={{ collapsed: true, onToggleCollapse: vi.fn() }} />)
 
     expect(screen.getByTestId('companion-panel-collapsed')).toBeTruthy()
     expect(screen.queryByTestId('companion-app')).toBeNull()
     expect(screen.queryByTestId('companion-connecting')).toBeNull()
+  })
+
+  it('calls toggle callback in collapsed and expanded states', () => {
+    const onToggleCollapse = vi.fn()
+    const { rerender } = render(<CompanionPanel params={{ collapsed: true, onToggleCollapse }} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand agent panel' }))
+    expect(onToggleCollapse).toHaveBeenCalledTimes(1)
+
+    rerender(<CompanionPanel params={{ collapsed: false, onToggleCollapse }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse agent panel' }))
+    expect(onToggleCollapse).toHaveBeenCalledTimes(2)
   })
 
   it('calls setCompanionConfig before rendering CompanionApp', () => {

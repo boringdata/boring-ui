@@ -5,7 +5,10 @@ This module provides:
 - A capabilities endpoint for UI feature discovery
 """
 from dataclasses import dataclass, field
-from typing import Callable, Any
+from typing import Callable, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .workspace_plugins import WorkspacePluginManager
 from fastapi import APIRouter
 
 
@@ -152,6 +155,7 @@ def create_capabilities_router(
     enabled_features: dict[str, bool],
     registry: RouterRegistry | None = None,
     config: "APIConfig | None" = None,
+    plugin_manager: "Any | None" = None,
 ) -> APIRouter:
     """Create a router for the capabilities endpoint.
 
@@ -191,11 +195,21 @@ def create_capabilities_router(
                 for info, _ in registry.all()
             ]
 
+        # Workspace plugin panes
+        if plugin_manager is not None:
+            capabilities['workspace_panes'] = plugin_manager.list_workspace_panes()
+            capabilities['workspace_routes'] = plugin_manager.list_workspace_routes()
+
         # Service connection info for direct-connect panels
         if config and config.companion_url:
             services = capabilities.setdefault('services', {})
             services['companion'] = {
                 'url': config.companion_url,
+            }
+        if config and config.pi_url:
+            services = capabilities.setdefault('services', {})
+            services['pi'] = {
+                'url': config.pi_url,
             }
 
         return capabilities

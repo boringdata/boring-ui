@@ -3,7 +3,9 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
+import { ThemeProvider, useCapabilities, useKeyboardShortcuts, useOnboardingState } from './hooks'
+import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
+import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import {
@@ -26,6 +28,7 @@ import ThemeToggle from './components/ThemeToggle'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
 import {
+  registerPane,
   getGatedComponents,
   getKnownComponents,
   essentialPanes,
@@ -83,10 +86,13 @@ export default function App() {
   const codeSessionsEnabled = config.features?.codeSessions !== false
   const urlAgentMode = new URLSearchParams(window.location.search).get('agent_mode')
   const configAgentMode = config.features?.agentRailMode || 'both'
-  const agentRailMode = ['native', 'companion', 'both'].includes(urlAgentMode)
+  const validAgentModes = ['native', 'companion', 'pi', 'both']
+  const fallbackAgentMode = validAgentModes.includes(configAgentMode) ? configAgentMode : 'both'
+  const agentRailMode = validAgentModes.includes(urlAgentMode)
     ? urlAgentMode
-    : configAgentMode
-  const nativeAgentEnabled = codeSessionsEnabled && agentRailMode !== 'companion'
+    : fallbackAgentMode
+  const requestedEmbeddedAgentProvider = agentRailMode === 'pi' ? 'pi' : 'companion'
+  const nativeAgentEnabled = codeSessionsEnabled && agentRailMode !== 'companion' && agentRailMode !== 'pi'
   const companionAgentEnabled = agentRailMode !== 'native'
   const storagePrefix = config.storage?.prefix || 'kurt-web'
   const layoutVersion = config.storage?.layoutVersion || 1
@@ -105,15 +111,24 @@ export default function App() {
   }
 
   // Fetch backend capabilities for feature gating
-  const { capabilities, loading: capabilitiesLoading } = useCapabilities()
+  const { capabilities, loading: capabilitiesLoading, refetch: refetchCapabilities } = useCapabilities()
+  const embeddedAgentProvider = (
+    agentRailMode === 'both' && capabilities?.features?.companion !== true && capabilities?.features?.pi === true
+  )
+    ? 'pi'
+    : requestedEmbeddedAgentProvider
+
+  // Workspace plugin components loaded dynamically
+  const [workspaceComponents, setWorkspaceComponents] = useState({})
 
   const components = useMemo(() => {
     const gated = getGatedComponents(createCapabilityGatedPane)
-    if (nativeAgentEnabled) return gated
-    const next = { ...gated }
+    const merged = { ...gated, ...workspaceComponents }
+    if (nativeAgentEnabled) return merged
+    const next = { ...merged }
     delete next.terminal
     return next
-  }, [nativeAgentEnabled])
+  }, [nativeAgentEnabled, workspaceComponents])
 
   // Check for unavailable essential panes
   const unavailableEssentials = capabilities
@@ -826,7 +841,7 @@ export default function App() {
       //
       // Strategy: Create in order that establishes correct hierarchy
       // 1. filetree (left)
-      // 2. right-rail panel anchor (terminal for native, companion for companion-only)
+      // 2. right-rail panel anchor (terminal for native, agent for web-agent-only)
       // 3. empty-center (left of right rail) - center column for editors
       // 4. shell (below empty-center) - bottom of center
 
@@ -851,7 +866,7 @@ export default function App() {
         })
       }
 
-      // Companion-only mode still needs a dedicated right rail anchor so it doesn't end up in the middle.
+      // Web-agent-only mode still needs a dedicated right rail anchor so it doesn't end up in the middle.
       let companionPanel = api.getPanel('companion')
       if (!nativeAgentEnabled && companionAgentEnabled && !companionPanel) {
         companionPanel = api.addPanel({
@@ -862,6 +877,7 @@ export default function App() {
           params: {
             collapsed: collapsed.companion,
             onToggleCollapse: toggleCompanion,
+            provider: embeddedAgentProvider,
           },
         })
       }
@@ -1378,12 +1394,12 @@ export default function App() {
           }
         }
 
-        // Handle companion panel restored from saved layout.
-        // If capabilities are already loaded and companion is disabled, remove now.
+        // Handle agent panel restored from saved layout.
+        // If capabilities are already loaded and the selected provider is disabled, remove now.
         // Otherwise apply constraints; the companion useEffect will handle removal later.
         const companionPanel = dockApi.getPanel('companion')
         if (companionPanel) {
-          if (!capabilitiesLoading && !capabilities?.features?.companion) {
+          if (!capabilitiesLoading && capabilities?.features?.[embeddedAgentProvider] !== true) {
             companionPanel.api.close()
           } else {
             const companionGroup = companionPanel.group
@@ -1635,11 +1651,33 @@ export default function App() {
       companionPanel.api.updateParameters({
         collapsed: collapsed.companion,
         onToggleCollapse: toggleCompanion,
+        provider: embeddedAgentProvider,
       })
     }
-  }, [dockApi, collapsed.companion, toggleCompanion])
+  }, [dockApi, collapsed.companion, toggleCompanion, embeddedAgentProvider])
 
-  // Add or remove companion panel based on companion feature availability.
+  // Load workspace plugin panels when capabilities include them
+  const workspacePanesKey = JSON.stringify(capabilities?.workspace_panes || [])
+  useEffect(() => {
+    const panes = capabilities?.workspace_panes
+    if (!panes || panes.length === 0) return
+
+    loadWorkspacePanes(panes).then((loaded) => {
+      for (const [id, component] of Object.entries(loaded)) {
+        const name = id.replace('ws-', '')
+        registerPane({ id, component, title: name, placement: 'center' })
+      }
+      setWorkspaceComponents(loaded)
+    })
+  }, [workspacePanesKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // WebSocket for live workspace plugin hot-reload
+  useWorkspacePlugins({
+    onPluginChanged: refetchCapabilities,
+    enabled: true,
+  })
+
+  // Add or remove the right-rail agent panel based on provider feature availability.
   // Waits for capabilities to finish loading before making decisions to avoid
   // prematurely removing a panel restored from a saved layout.
   useEffect(() => {
@@ -1660,7 +1698,7 @@ export default function App() {
       }
     }
 
-    const companionEnabled = companionAgentEnabled && capabilities?.features?.companion === true
+    const companionEnabled = companionAgentEnabled && capabilities?.features?.[embeddedAgentProvider] === true
     let existingPanel = dockApi.getPanel('companion')
     const terminalPanel = dockApi.getPanel('terminal')
     const terminalGroup = terminalPanel?.group
@@ -1713,6 +1751,7 @@ export default function App() {
         params: {
           collapsed: collapsed.companion,
           onToggleCollapse: toggleCompanion,
+          provider: embeddedAgentProvider,
         },
       })
 
@@ -1731,7 +1770,7 @@ export default function App() {
       // Remove companion panel restored from saved layout when feature is disabled
       existingPanel.api.close()
     }
-  }, [dockApi, capabilities, capabilitiesLoading, companionAgentEnabled, nativeAgentEnabled])
+  }, [dockApi, capabilities, capabilitiesLoading, companionAgentEnabled, nativeAgentEnabled, embeddedAgentProvider])
 
   // Restore saved tabs when dockApi and projectRoot become available
   const hasRestoredTabs = useRef(false)

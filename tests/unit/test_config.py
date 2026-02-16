@@ -54,6 +54,18 @@ class TestAPIConfig:
         config = APIConfig(workspace_root=tmp_path)
         assert config.companion_url is None
 
+    def test_pi_url_from_env(self, tmp_path, monkeypatch):
+        """Test pi_url reads from PI_URL env var."""
+        monkeypatch.setenv('PI_URL', 'http://localhost:8787')
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.pi_url == 'http://localhost:8787'
+
+    def test_pi_url_none_when_unset(self, tmp_path, monkeypatch):
+        """Test pi_url is None when PI_URL is not set."""
+        monkeypatch.delenv('PI_URL', raising=False)
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.pi_url is None
+
 
 class TestValidatePath:
     """Tests for APIConfig.validate_path method."""
