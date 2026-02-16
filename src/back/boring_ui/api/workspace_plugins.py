@@ -63,6 +63,11 @@ class WorkspacePluginManager:
         # Build the initial inner app (may be empty if dirs don't exist yet)
         self._switchable = SwitchableApp(self._build_app())
 
+    def _is_plugin_allowed(self, name: str) -> bool:
+        if self.allowed_plugins is None:
+            return True
+        return name in self.allowed_plugins
+
     # -- public API --------------------------------------------------------
 
     def get_asgi_app(self) -> SwitchableApp:
@@ -99,7 +104,7 @@ class WorkspacePluginManager:
             if py_file.name.startswith("_"):
                 continue
             name = py_file.stem
-            if self.allowed_plugins and name not in self.allowed_plugins:
+            if not self._is_plugin_allowed(name):
                 continue
             routes.append({"name": name, "prefix": f"/api/x/{name}"})
         return routes
@@ -183,7 +188,7 @@ class WorkspacePluginManager:
             if py_file.name.startswith("_"):
                 continue
             name = py_file.stem
-            if self.allowed_plugins and name not in self.allowed_plugins:
+            if not self._is_plugin_allowed(name):
                 continue
             try:
                 mod = self._load_module(name, py_file)
