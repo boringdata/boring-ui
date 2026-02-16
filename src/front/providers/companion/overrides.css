@@ -1,48 +1,52 @@
-.provider-companion .companion-wrapper {
+.companion-panel-content .provider-companion .companion-wrapper {
   display: flex;
   flex-direction: column;
-  height: 100%;
-}
-
-.provider-companion .h-\[100dvh\] {
-  height: 100%;
-  min-height: 0;
-}
-
-.provider-companion .h-\[100dvh\] .flex-1 {
-  min-height: 0;
-}
-
-.provider-companion .terminal-body {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.provider-companion .terminal-instance {
-  position: relative;
-  inset: auto;
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
   flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
-.provider-companion header {
+.companion-panel-content .provider-companion .h-\[100dvh\] {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.companion-panel-content .provider-companion .h-\[100dvh\] > .flex-1,
+.companion-panel-content .provider-companion .h-\[100dvh\] .flex-1 {
+  min-height: 0;
+}
+
+.companion-panel-content .provider-companion header {
   display: none;
 }
 
-.provider-companion header > div:first-child > button {
+.companion-panel-content .provider-companion header > div:first-child > button {
   display: none;
 }
 
-.provider-companion header button[title="Toggle session panel"] {
+.companion-panel-content .provider-companion header button[title="Toggle session panel"] {
   display: none;
 }
 
-.provider-companion aside {
+.companion-panel-content .provider-companion aside {
   display: none;
+}
+
+.companion-panel-content .provider-companion .relative.bg-cc-input-bg.border.overflow-visible:focus-within {
+  border-color: #ae56304d !important;
+}
+
+.companion-panel-content .provider-companion .relative.bg-cc-input-bg.border.overflow-visible.border-cc-primary\/40 {
+  border-color: #ae563066 !important;
+}
+
+/* Prevent global boring-ui accent focus ring from painting orange around embedded composer inputs. */
+.companion-panel-content .provider-companion textarea:focus-visible,
+.companion-panel-content .provider-companion input:focus-visible,
+.companion-panel-content .provider-companion [contenteditable="true"]:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
 }
