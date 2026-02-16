@@ -6,6 +6,7 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_API_URL || 'http://localhost:8000'
+  const companionTarget = env.VITE_COMPANION_PROXY_TARGET
 
   // Library build mode (npm run build:lib)
   const isLibMode = mode === 'lib'
@@ -57,6 +58,7 @@ export default defineConfig(({ mode }) => {
   // Development/app build configuration
   return {
     ...baseConfig,
+    base: './',
     server: {
       port: 5173,
       proxy: {
@@ -69,6 +71,16 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true,
         },
+        ...(companionTarget
+          ? {
+              '/companion': {
+                target: companionTarget,
+                changeOrigin: true,
+                ws: true,
+                rewrite: (path: string) => path.replace(/^\/companion/, ''),
+              },
+            }
+          : {}),
       },
     },
   }

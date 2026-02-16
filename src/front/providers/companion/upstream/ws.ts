@@ -95,7 +95,8 @@ function getWsUrl(sessionId: string): string {
     const proto = url.protocol === "https:" ? "wss:" : "ws:";
     const token = getCompanionAuthToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `${proto}//${url.host}/ws/browser/${sessionId}${qs}`;
+    const basePath = url.pathname.replace(/\/$/, "");
+    return `${proto}//${url.host}${basePath}/ws/browser/${sessionId}${qs}`;
   }
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${location.host}/ws/browser/${sessionId}`;

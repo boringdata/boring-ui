@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
-// Mock the upstream App component
-vi.mock('../providers/companion/upstream/App', () => ({
+// Mock the adapter component
+vi.mock('../providers/companion/adapter', () => ({
   default: () => <div data-testid="mock-companion-app">MockCompanionApp</div>,
 }))
 
 // Mock CSS imports
 vi.mock('../providers/companion/upstream.css', () => ({}))
 vi.mock('../providers/companion/theme-bridge.css', () => ({}))
+vi.mock('../providers/companion/overrides.css', () => ({}))
 
 // Mock config module
 const mockSetCompanionConfig = vi.fn()

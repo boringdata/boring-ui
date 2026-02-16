@@ -1,0 +1,80 @@
+.provider-companion .companion-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.provider-companion .companion-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-cc-border);
+  background: var(--color-cc-card);
+}
+
+.provider-companion .companion-select {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-cc-border);
+  background: var(--color-cc-bg);
+  color: var(--color-cc-fg);
+  font-size: 12px;
+}
+
+.provider-companion .companion-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-cc-primary) 35%, transparent);
+}
+
+.provider-companion .companion-new-session {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-cc-border);
+  background: var(--color-cc-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.provider-companion .companion-new-session:hover {
+  background: var(--color-cc-primary-hover);
+}
+
+.provider-companion header {
+  display: none;
+}
+
+.provider-companion header > div:first-child > button {
+  display: none;
+}
+
+.provider-companion header button[title="Toggle session panel"] {
+  display: none;
+}
+
+.provider-companion aside {
+  display: none;
+}
+
+.provider-companion .companion-toggle-sidebar {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-cc-border);
+  background: var(--color-cc-bg);
+  color: var(--color-cc-fg);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.provider-companion .companion-toggle-sidebar[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-cc-primary) 16%, var(--color-cc-bg));
+  border-color: color-mix(in srgb, var(--color-cc-primary) 40%, var(--color-cc-border));
+}
