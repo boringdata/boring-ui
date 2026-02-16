@@ -52,10 +52,11 @@ class WorkspacePluginManager:
         Absolute path to the workspace (``BORING_UI_WORKSPACE_ROOT``).
     """
 
-    def __init__(self, workspace_root: Path) -> None:
+    def __init__(self, workspace_root: Path, allowed_plugins: set[str] | None = None) -> None:
         self.workspace_root = workspace_root
         self.api_dir = workspace_root / "kurt" / "api"
         self.panels_dir = workspace_root / "kurt" / "panels"
+        self.allowed_plugins = allowed_plugins
         self._ws_clients: set[WebSocket] = set()
         self._watcher_task: asyncio.Task | None = None
 
@@ -98,6 +99,8 @@ class WorkspacePluginManager:
             if py_file.name.startswith("_"):
                 continue
             name = py_file.stem
+            if self.allowed_plugins and name not in self.allowed_plugins:
+                continue
             routes.append({"name": name, "prefix": f"/api/x/{name}"})
         return routes
 
@@ -142,7 +145,7 @@ class WorkspacePluginManager:
 
     async def _watch_loop(self) -> None:
         try:
-            from watchfiles import awatch, Change
+            from watchfiles import awatch
         except ImportError:
             logger.warning("watchfiles not installed – workspace hot-reload disabled")
             return
@@ -152,12 +155,8 @@ class WorkspacePluginManager:
             if d.is_dir():
                 watch_paths.append(d)
         if not watch_paths:
-            # Neither directory exists yet – watch the workspace root instead
-            # so we can pick up plugin dirs when they're created.
-            watch_root = self.workspace_root / "kurt"
-            if not watch_root.is_dir():
-                watch_root = self.workspace_root
-            watch_paths = [watch_root]
+            logger.info("workspace_plugin_watcher_skip_no_dirs")
+            return
 
         logger.info("workspace_plugin_watcher_start", extra={"paths": [str(p) for p in watch_paths]})
 
@@ -184,6 +183,8 @@ class WorkspacePluginManager:
             if py_file.name.startswith("_"):
                 continue
             name = py_file.stem
+            if self.allowed_plugins and name not in self.allowed_plugins:
+                continue
             try:
                 mod = self._load_module(name, py_file)
                 router: APIRouter | None = getattr(mod, "router", None)

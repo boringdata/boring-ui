@@ -178,10 +178,14 @@ def create_app(
             prefix='/api/v1/git',
         )
 
-    # Workspace plugin manager – scans kurt/api/*.py and kurt/panels/*/Panel.jsx
-    plugin_manager = WorkspacePluginManager(config.workspace_root)
-    app.mount("/api/x", plugin_manager.get_asgi_app())
-    app.include_router(plugin_manager.create_ws_router())
+    # Workspace plugins are optional and disabled by default since they execute
+    # workspace-local Python modules in-process.
+    plugin_manager = None
+    if config.workspace_plugins_enabled:
+        allowlist = set(config.workspace_plugin_allowlist) if config.workspace_plugin_allowlist else None
+        plugin_manager = WorkspacePluginManager(config.workspace_root, allowed_plugins=allowlist)
+        app.mount('/api/x', plugin_manager.get_asgi_app())
+        app.include_router(plugin_manager.create_ws_router())
 
     # Always include capabilities router (pass plugin_manager for workspace_panes)
     app.include_router(
@@ -192,15 +196,18 @@ def create_app(
     # Utility routes: health, config, project, sessions, metrics
     app.include_router(create_utility_router(config, enabled_features))
 
-    # Start file watcher after startup
-    @app.on_event("startup")
-    async def _start_plugin_watcher() -> None:
-        plugin_manager.start_watcher()
+    if plugin_manager is not None:
+        # Start file watcher after startup.
+        @app.on_event('startup')
+        async def _start_plugin_watcher() -> None:
+            plugin_manager.start_watcher()
 
     logger.info(
         "app_created",
         workspace=str(config.workspace_root),
         enabled_features={k: v for k, v in enabled_features.items() if v},
+        workspace_plugins_enabled=config.workspace_plugins_enabled,
+        workspace_plugin_allowlist=config.workspace_plugin_allowlist,
     )
 
     return app

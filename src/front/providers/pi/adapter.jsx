@@ -19,7 +19,7 @@ export default function PiAdapter({ url }) {
       src={src}
       className="pi-agent-frame"
       style={{ width: '100%', height: '100%', border: 'none', background: 'transparent' }}
-      sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads"
+      sandbox="allow-scripts allow-forms allow-popups allow-downloads"
       allow="clipboard-read; clipboard-write"
       loading="lazy"
     />
