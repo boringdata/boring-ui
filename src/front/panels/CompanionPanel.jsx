@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCapabilitiesContext } from '../components/CapabilityGate'
 import { setCompanionConfig } from '../providers/companion/config'
-import CompanionApp from '../providers/companion/upstream/App'
+import CompanionAdapter from '../providers/companion/adapter'
 import '../providers/companion/upstream.css'
 import '../providers/companion/theme-bridge.css'
 
@@ -24,7 +24,7 @@ export default function CompanionPanel({ params }) {
   if (collapsed) {
     return (
       <div
-        className="panel-content terminal-panel-content terminal-collapsed"
+        className="panel-content terminal-panel-content right-rail-panel terminal-collapsed"
         data-testid="companion-panel-collapsed"
       >
         <button
@@ -42,7 +42,7 @@ export default function CompanionPanel({ params }) {
   }
 
   return (
-    <div className="panel-content terminal-panel-content" data-testid="companion-panel">
+    <div className="panel-content terminal-panel-content right-rail-panel" data-testid="companion-panel">
       <div className="terminal-header">
         <button
           type="button"
@@ -60,7 +60,7 @@ export default function CompanionPanel({ params }) {
         <div className="terminal-instance active">
           {ready ? (
             <div className="provider-companion" data-testid="companion-app">
-              <CompanionApp />
+              <CompanionAdapter />
             </div>
           ) : (
             <div

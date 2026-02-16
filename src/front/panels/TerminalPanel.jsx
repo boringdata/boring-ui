@@ -215,7 +215,7 @@ export default function TerminalPanel({ params }) {
 
   if (collapsed) {
     return (
-      <div className="panel-content terminal-panel-content terminal-collapsed">
+      <div className="panel-content terminal-panel-content right-rail-panel terminal-collapsed">
         <button
           type="button"
           className="sidebar-toggle-btn"
@@ -231,7 +231,7 @@ export default function TerminalPanel({ params }) {
   }
 
   return (
-    <div className="panel-content terminal-panel-content">
+    <div className="panel-content terminal-panel-content right-rail-panel">
       <div className="terminal-header">
         <button
           type="button"

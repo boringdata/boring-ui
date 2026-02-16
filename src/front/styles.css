@@ -1102,6 +1102,12 @@ html {
   box-shadow: inset 1px 0 0 var(--color-border);
 }
 
+/* Right rail panels (Code Sessions + Companion) */
+.right-rail-panel {
+  background: var(--color-bg-secondary);
+  box-shadow: inset 1px 0 0 var(--color-border);
+}
+
 /* Dockview theme customizations */
 .dockview-theme-abyss {
   --dv-tabs-and-actions-container-height: 36px;

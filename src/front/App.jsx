@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
@@ -18,6 +18,7 @@ import {
   loadPanelSizes,
   savePanelSizes,
   pruneEmptyGroups,
+  getStorageKey,
   checkForSavedLayout,
   getFileName,
 } from './layout'
@@ -66,7 +67,6 @@ const debounce = (fn, wait) => {
 
 // Get capability-gated components from pane registry
 // Components with requiresFeatures/requiresRouters will show error states when unavailable
-const components = getGatedComponents(createCapabilityGatedPane)
 const KNOWN_COMPONENTS = getKnownComponents()
 
 // Get essential panel IDs from pane registry
@@ -83,6 +83,7 @@ export default function App() {
   // Get config (defaults are used until async load completes)
   const config = useConfig()
   const onboardingEnabled = config.features?.controlPlaneOnboarding === true
+  const codeSessionsEnabled = config.features?.codeSessions !== false
   const onboarding = useOnboardingState({ enabled: onboardingEnabled })
   const storagePrefix = config.storage?.prefix || 'kurt-web'
   const layoutVersion = config.storage?.layoutVersion || 1
@@ -95,9 +96,19 @@ export default function App() {
   // Fetch backend capabilities for feature gating
   const { capabilities, loading: capabilitiesLoading } = useCapabilities()
 
+  const components = useMemo(() => {
+    const gated = getGatedComponents(createCapabilityGatedPane)
+    if (codeSessionsEnabled) return gated
+    const next = { ...gated }
+    delete next.terminal
+    return next
+  }, [codeSessionsEnabled])
+
   // Check for unavailable essential panes
   const unavailableEssentials = capabilities
-    ? getUnavailableEssentialPanes(capabilities)
+    ? getUnavailableEssentialPanes(capabilities).filter(
+        (pane) => codeSessionsEnabled || pane.id !== 'terminal',
+      )
     : []
 
   const [dockApi, setDockApi] = useState(null)
@@ -153,6 +164,7 @@ export default function App() {
   }, [collapsed.filetree, dockApi])
 
   const toggleTerminal = useCallback(() => {
+    if (!codeSessionsEnabled) return
     if (!collapsed.terminal && dockApi) {
       // Capture current size before collapsing
       const terminalPanel = dockApi.getPanel('terminal')
@@ -170,7 +182,7 @@ export default function App() {
       saveCollapsedState(next, storagePrefixRef.current)
       return next
     })
-  }, [collapsed.terminal, dockApi])
+  }, [collapsed.terminal, dockApi, codeSessionsEnabled])
 
   const toggleShell = useCallback(() => {
     if (!collapsed.shell && dockApi) {
@@ -720,14 +732,16 @@ export default function App() {
         })
       }
 
-      const terminalGroup = terminalPanel?.group
-      if (terminalGroup) {
-        terminalGroup.locked = true
-        terminalGroup.header.hidden = true
-        terminalGroup.api.setConstraints({
-          minimumWidth: panelMinRef.current.terminal,
-          maximumWidth: Infinity,
-        })
+      if (codeSessionsEnabled) {
+        const terminalGroup = terminalPanel?.group
+        if (terminalGroup) {
+          terminalGroup.locked = true
+          terminalGroup.header.hidden = true
+          terminalGroup.api.setConstraints({
+            minimumWidth: panelMinRef.current.terminal,
+            maximumWidth: Infinity,
+          })
+        }
       }
 
       const shellPanel = api.getPanel('shell')
@@ -742,7 +756,7 @@ export default function App() {
     }
 
     const ensureCorePanels = () => {
-      // Layout goal: [filetree | [editor / shell] | terminal]
+      // Layout goal: [filetree | [editor / shell] | terminal] (terminal optional)
       //
       // Strategy: Create in order that establishes correct hierarchy
       // 1. filetree (left)
@@ -762,7 +776,7 @@ export default function App() {
 
       // Add terminal (right of filetree) - establishes rightmost column
       let terminalPanel = api.getPanel('terminal')
-      if (!terminalPanel) {
+      if (codeSessionsEnabled && !terminalPanel) {
         terminalPanel = api.addPanel({
           id: 'terminal',
           component: 'terminal',
@@ -771,14 +785,16 @@ export default function App() {
         })
       }
 
-      // Add empty panel LEFT of terminal - creates center column
+      // Add empty panel LEFT of terminal (or right of filetree if no terminal) - creates center column
       let emptyPanel = api.getPanel('empty-center')
       if (!emptyPanel) {
         emptyPanel = api.addPanel({
           id: 'empty-center',
           component: 'empty',
           title: '',
-          position: { direction: 'left', referencePanel: 'terminal' },
+          position: terminalPanel
+            ? { direction: 'left', referencePanel: 'terminal' }
+            : { direction: 'right', referencePanel: 'filetree' },
         })
       }
       // Always set centerGroupRef from empty panel if it exists
@@ -836,7 +852,9 @@ export default function App() {
     // We check localStorage directly since projectRoot isn't available yet
     let hasSavedLayout = false
     let invalidLayoutFound = false
-    try {
+    if (!codeSessionsEnabled) {
+      invalidLayoutFound = true
+    } else try {
       // Use storagePrefix from config (available via closure from outer scope)
       const layoutKeyPrefix = `${storagePrefix}-`
       for (let i = 0; i < localStorage.length; i++) {
@@ -1119,6 +1137,19 @@ export default function App() {
     // projectRoot === null means not loaded yet
     if (!dockApi || projectRoot === null || layoutRestorationRan.current) return
     layoutRestorationRan.current = true
+
+    if (!codeSessionsEnabled) {
+      try {
+        localStorage.removeItem(getStorageKey(storagePrefix, projectRoot, 'layout'))
+      } catch {
+        // ignore storage cleanup errors
+      }
+      if (ensureCorePanelsRef.current) {
+        ensureCorePanelsRef.current()
+        layoutRestored.current = true
+      }
+      return
+    }
 
     const savedLayout = loadLayout(storagePrefix, projectRoot, KNOWN_COMPONENTS, layoutVersion)
     if (!savedLayout) {
@@ -1465,15 +1496,35 @@ export default function App() {
   useEffect(() => {
     if (!dockApi || capabilitiesLoading) return
 
+    // Remove Code Sessions panel when disabled via config.
+    if (!codeSessionsEnabled) {
+      const terminalPanel = dockApi.getPanel('terminal')
+      if (terminalPanel) {
+        terminalPanel.api.close()
+      }
+      try {
+        localStorage.removeItem(`${storagePrefix}-terminal-sessions`)
+        localStorage.removeItem(`${storagePrefix}-terminal-active`)
+        localStorage.removeItem(`${storagePrefix}-terminal-chat-interface`)
+      } catch {
+        // ignore storage cleanup errors
+      }
+    }
+
     const companionEnabled = capabilities?.features?.companion === true
     const existingPanel = dockApi.getPanel('companion')
 
     if (companionEnabled && !existingPanel) {
-      // Add companion panel to the right of terminal
+      // Add companion panel to the right rail (right of the center group)
+      const emptyCenterPanel = dockApi.getPanel('empty-center')
       const terminalPanel = dockApi.getPanel('terminal')
       const filetreePanel = dockApi.getPanel('filetree')
       let position
-      if (terminalPanel) {
+      if (centerGroupRef.current) {
+        position = { direction: 'right', referenceGroup: centerGroupRef.current }
+      } else if (emptyCenterPanel) {
+        position = { direction: 'right', referencePanel: 'empty-center' }
+      } else if (terminalPanel) {
         position = { direction: 'right', referencePanel: 'terminal' }
       } else if (filetreePanel) {
         position = { direction: 'right', referencePanel: 'filetree' }
@@ -1493,9 +1544,12 @@ export default function App() {
         panel.group.locked = true
         panel.group.header.hidden = true
         panel.group.api.setConstraints({
-          minimumWidth: 250,
+          minimumWidth: panelMinRef.current.terminal,
           maximumWidth: Infinity,
         })
+        if (!collapsed.terminal) {
+          panel.group.api.setSize({ width: panelSizesRef.current.terminal })
+        }
       }
     } else if (!companionEnabled && existingPanel) {
       // Remove companion panel restored from saved layout when feature is disabled
