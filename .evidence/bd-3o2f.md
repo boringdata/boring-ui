@@ -2,30 +2,81 @@
 
 *2026-02-16T19:45:49Z by Showboat 0.5.0*
 
-Companion right-rail panel now shares collapse behavior with the agent chat panel and the embedded UI keeps its input visible above the bottom shell.
-
-```bash {image}
-![Companion right rail with input visible](.evidence/bd-3o2f-ui.png)
-```
-
-![Companion right rail with input visible](7a2b5152-2026-02-16.png)
+Companion now uses right-rail anchoring parity with Agent Chat, and native mode websocket base resolves to backend port 8000 for dev ports including 5180.
 
 ```bash
-python3 -c "import subprocess,sys; r=subprocess.run(['python3','-m','pytest','tests/unit/test_capabilities.py','-q','--disable-warnings','--maxfail=1'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True); print('pytest exit', r.returncode); sys.exit(r.returncode)"
+nodejs .evidence/bd3o2f-check.cjs
 ```
 
 ```output
-pytest exit 0
+{
+  "results": [
+    {
+      "mode": "native",
+      "terminalCount": 1,
+      "companionCount": 0,
+      "reachesBottom": true
+    },
+    {
+      "mode": "companion",
+      "terminalCount": 0,
+      "companionCount": 1,
+      "reachesBottom": true
+    },
+    {
+      "mode": "both",
+      "terminalCount": 1,
+      "companionCount": 1,
+      "reachesBottom": true
+    }
+  ],
+  "wsCheck": {
+    "wsBase": "ws://127.0.0.1:8000",
+    "pty": {
+      "url": "ws://127.0.0.1:8000/ws/pty?provider=shell",
+      "status": "open"
+    },
+    "stream": {
+      "url": "ws://127.0.0.1:8000/ws/claude-stream?mode=ask",
+      "status": "open"
+    }
+  }
+}
+```
+
+```bash
+npm run build 2>&1 | sed -E 's/index-[A-Za-z0-9_-]+\.(css|js)/index-<hash>.\1/g; s/built in [0-9.]+s/built in <time>/; s/[0-9]+ modules transformed\./<modules> modules transformed./'
+```
+
+```output
+
+> boring-ui@0.1.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ <modules> modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.98 kB │ gzip:   0.51 kB
+dist/assets/index-<hash>.css    190.41 kB │ gzip:  29.78 kB
+dist/assets/index-<hash>.js   2,205.82 kB │ gzip: 646.25 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in <time>
 ```
 
 ```bash {image}
-![Companion collapsed](.evidence/bd-3o2f-ui-collapsed.png)
+![Companion expanded (rodney)](.evidence/bd-3o2f-expanded.png)
 ```
 
-![Companion collapsed](6a0b0846-2026-02-16.png)
+![Companion expanded (rodney)](2a6bd610-2026-02-16.png)
 
 ```bash {image}
-![Companion expanded](.evidence/bd-3o2f-ui-expanded.png)
+![Companion collapsed (rodney)](.evidence/bd-3o2f-collapsed.png)
 ```
 
-![Companion expanded](91cd4bfc-2026-02-16.png)
+![Companion collapsed (rodney)](ebb19e49-2026-02-16.png)
