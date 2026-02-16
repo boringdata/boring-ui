@@ -45,7 +45,7 @@ nodejs .evidence/bd3o2f-check.cjs
 ```
 
 ```bash
-npm run build 2>&1 | sed -E 's/index-[A-Za-z0-9_-]+\.(css|js)/index-<hash>.\1/g; s/built in [0-9.]+s/built in <time>/; s/[0-9]+ modules transformed\./<modules> modules transformed./'
+npm run build 2>&1 | sed -E 's/index-[A-Za-z0-9_-]+\.(css|js)/index-<hash>.\1/g; s/[0-9][0-9,]*\.[0-9]{2} kB/<size> kB/g; s/built in [0-9.]+s/built in <time>/; s/[0-9]+ modules transformed\./<modules> modules transformed./'
 ```
 
 ```output
@@ -58,9 +58,9 @@ transforming...
 ✓ <modules> modules transformed.
 rendering chunks...
 computing gzip size...
-dist/index.html                     0.98 kB │ gzip:   0.51 kB
-dist/assets/index-<hash>.css    190.41 kB │ gzip:  29.78 kB
-dist/assets/index-<hash>.js   2,205.82 kB │ gzip: 646.25 kB
+dist/index.html                     <size> kB │ gzip:   <size> kB
+dist/assets/index-<hash>.css    <size> kB │ gzip:  <size> kB
+dist/assets/index-<hash>.js   <size> kB │ gzip: <size> kB
 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
@@ -73,10 +73,10 @@ dist/assets/index-<hash>.js   2,205.82 kB │ gzip: 646.25 kB
 ![Companion expanded (rodney)](.evidence/bd-3o2f-expanded.png)
 ```
 
-![Companion expanded (rodney)](2a6bd610-2026-02-16.png)
+![Companion expanded (rodney)](e88d8c00-2026-02-16.png)
 
 ```bash {image}
 ![Companion collapsed (rodney)](.evidence/bd-3o2f-collapsed.png)
 ```
 
-![Companion collapsed (rodney)](ebb19e49-2026-02-16.png)
+![Companion collapsed (rodney)](0c3c5704-2026-02-16.png)

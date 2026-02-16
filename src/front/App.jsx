@@ -99,17 +99,14 @@ export default function App() {
   const panelDefaults = config.panels?.defaults || { filetree: 280, terminal: 400, companion: 400, shell: 250 }
   const panelMin = config.panels?.min || { filetree: 180, terminal: 250, companion: 250, shell: 100, center: 200 }
   const panelCollapsed = config.panels?.collapsed || { filetree: 48, terminal: 48, companion: 48, shell: 36 }
-  const rightRailDefaults = useMemo(
-    () => ({
-      companion:
-        Number.isFinite(panelDefaults.companion) ? panelDefaults.companion : panelDefaults.terminal,
-      companionMin:
-        Number.isFinite(panelMin.companion) ? panelMin.companion : panelMin.terminal,
-      companionCollapsed:
-        Number.isFinite(panelCollapsed.companion) ? panelCollapsed.companion : panelCollapsed.terminal,
-    }),
-    [panelDefaults, panelMin, panelCollapsed],
-  )
+  const rightRailDefaults = {
+    companion:
+      Number.isFinite(panelDefaults.companion) ? panelDefaults.companion : panelDefaults.terminal,
+    companionMin:
+      Number.isFinite(panelMin.companion) ? panelMin.companion : panelMin.terminal,
+    companionCollapsed:
+      Number.isFinite(panelCollapsed.companion) ? panelCollapsed.companion : panelCollapsed.terminal,
+  }
 
   // Fetch backend capabilities for feature gating
   const { capabilities, loading: capabilitiesLoading } = useCapabilities()
@@ -1673,21 +1670,20 @@ export default function App() {
     const terminalGroup = terminalPanel?.group
     const filetreeGroup = dockApi.getPanel('filetree')?.group
 
+    const appearsInCenterColumn = (companionGroup, referenceGroup) => {
+      if (!companionGroup || !referenceGroup) return false
+      const referenceHeight = referenceGroup.api.height
+      const companionHeight = companionGroup.api.height
+      if (!referenceHeight || !companionHeight) return false
+      // Right-rail groups should be full height; significantly shorter height means old center-column placement.
+      return (companionHeight / referenceHeight) < 0.9
+    }
+
     // Repair older layouts that placed companion above shell instead of full-height right rail.
     if (
       companionEnabled &&
       existingPanel?.group &&
-      terminalGroup &&
-      existingPanel.group.api.height + 20 < terminalGroup.api.height
-    ) {
-      existingPanel.api.close()
-      existingPanel = null
-    }
-    if (
-      companionEnabled &&
-      existingPanel?.group &&
-      filetreeGroup &&
-      existingPanel.group.api.height + 20 < filetreeGroup.api.height
+      appearsInCenterColumn(existingPanel.group, terminalGroup || filetreeGroup)
     ) {
       existingPanel.api.close()
       existingPanel = null
