@@ -102,15 +102,17 @@ def run():
     host = validate_host(server.get("host", "0.0.0.0"))
     port = validate_port(int(server.get("port", 8000)))
 
+    backend_script = Path(__file__).with_name("run_backend.py")
     backend_cmd = [
         sys.executable,
-        "-c",
-        (
-            "from boring_ui.api.app import create_app; "
-            "import uvicorn; "
-            f"app = create_app(include_stream={include_stream}, include_pty={include_pty}, include_approval={include_approval}); "
-            f"uvicorn.run(app, host='{host}', port={port})"
-        ),
+        str(backend_script),
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--include-pty" if include_pty else "--no-include-pty",
+        "--include-stream" if include_stream else "--no-include-stream",
+        "--include-approval" if include_approval else "--no-include-approval",
     ]
 
     # Frontend command
