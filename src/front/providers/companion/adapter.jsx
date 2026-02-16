@@ -56,7 +56,7 @@ export default function CompanionAdapter() {
     }
   }, [setSdkSessions, setCliConnected])
 
-  const sessions = useMemo(() => {
+  const knownSessions = useMemo(() => {
     const all = new Map()
     for (const session of sessionsMap.values()) {
       all.set(session.session_id, session)
@@ -92,7 +92,7 @@ export default function CompanionAdapter() {
   useEffect(() => {
     if (!currentSessionId) return
     if (!hasLoadedSessions.current) return
-    const knownIds = new Set(sessions.map((s) => s.session_id))
+    const knownIds = new Set(knownSessions.map((s) => s.session_id))
     if (knownIds.has(currentSessionId)) {
       missingCountsRef.current.delete(currentSessionId)
       return
@@ -103,7 +103,7 @@ export default function CompanionAdapter() {
       missingCountsRef.current.delete(currentSessionId)
       setCurrentSession(null)
     }
-  }, [currentSessionId, sessions, setCurrentSession])
+  }, [currentSessionId, knownSessions, setCurrentSession])
 
   useEffect(() => {
     missingCountsRef.current.clear()
@@ -112,11 +112,11 @@ export default function CompanionAdapter() {
   useEffect(() => {
     if (currentSessionId) return
     if (!hasLoadedSessions.current) return
-    if (sessions.length === 0) return
-    const nextId = sessions[0].session_id
+    if (knownSessions.length === 0) return
+    const nextId = knownSessions[0].session_id
     setCurrentSession(nextId)
     connectSession(nextId)
-  }, [currentSessionId, sessions, setCurrentSession])
+  }, [currentSessionId, knownSessions, setCurrentSession])
 
   return (
     <div className="companion-wrapper">
