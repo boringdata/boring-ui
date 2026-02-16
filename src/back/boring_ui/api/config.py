@@ -22,6 +22,20 @@ def _default_cors_origins() -> list[str]:
     ]
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Parse a bool environment variable."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _workspace_plugin_allowlist() -> list[str]:
+    """Parse optional comma-separated workspace plugin allowlist."""
+    raw = os.environ.get('WORKSPACE_PLUGIN_ALLOWLIST', '')
+    return [item.strip() for item in raw.split(',') if item.strip()]
+
+
 @dataclass
 class APIConfig:
     """Central configuration for all API routers.
@@ -43,6 +57,13 @@ class APIConfig:
     )
     pi_url: str | None = field(
         default_factory=lambda: os.environ.get('PI_URL')
+    )
+    # Disabled by default because workspace plugins execute local Python modules.
+    workspace_plugins_enabled: bool = field(
+        default_factory=lambda: _env_bool('WORKSPACE_PLUGINS_ENABLED', False)
+    )
+    workspace_plugin_allowlist: list[str] = field(
+        default_factory=_workspace_plugin_allowlist
     )
 
     def validate_path(self, path: Path | str) -> Path:

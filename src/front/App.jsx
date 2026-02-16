@@ -1672,9 +1672,12 @@ export default function App() {
   }, [workspacePanesKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebSocket for live workspace plugin hot-reload
+  const workspacePluginsEnabled =
+    (capabilities?.workspace_panes?.length || 0) > 0
+    || (capabilities?.workspace_routes?.length || 0) > 0
   useWorkspacePlugins({
     onPluginChanged: refetchCapabilities,
-    enabled: true,
+    enabled: workspacePluginsEnabled,
   })
 
   // Add or remove the right-rail agent panel based on provider feature availability.

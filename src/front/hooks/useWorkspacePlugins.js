@@ -19,6 +19,7 @@ import { buildApiUrl } from '../utils/apiBase'
 export function useWorkspacePlugins({ onPluginChanged, enabled = true }) {
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
+  const reconnectDelayMs = useRef(1000)
   const onPluginChangedRef = useRef(onPluginChanged)
   onPluginChangedRef.current = onPluginChanged
 
@@ -37,6 +38,10 @@ export function useWorkspacePlugins({ onPluginChanged, enabled = true }) {
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
+      ws.onopen = () => {
+        reconnectDelayMs.current = 1000
+      }
+
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
@@ -50,8 +55,10 @@ export function useWorkspacePlugins({ onPluginChanged, enabled = true }) {
 
       ws.onclose = () => {
         if (!disposed) {
-          // Reconnect after a short delay
-          reconnectTimer.current = setTimeout(connect, 3000)
+          // Exponential backoff to avoid hammering unavailable endpoints.
+          const delay = reconnectDelayMs.current
+          reconnectDelayMs.current = Math.min(delay * 2, 30000)
+          reconnectTimer.current = setTimeout(connect, delay)
         }
       }
 
@@ -65,6 +72,7 @@ export function useWorkspacePlugins({ onPluginChanged, enabled = true }) {
     return () => {
       disposed = true
       clearTimeout(reconnectTimer.current)
+      reconnectDelayMs.current = 1000
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null

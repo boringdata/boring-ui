@@ -29,6 +29,8 @@ class TestAPIConfig:
         assert 'shell' in config.pty_providers
         assert 'claude' in config.pty_providers
         assert config.pty_providers['shell'] == ['bash']
+        assert config.workspace_plugins_enabled is False
+        assert config.workspace_plugin_allowlist == []
 
     def test_custom_cors_origins(self, tmp_path):
         """Test custom CORS origins."""
@@ -65,6 +67,18 @@ class TestAPIConfig:
         monkeypatch.delenv('PI_URL', raising=False)
         config = APIConfig(workspace_root=tmp_path)
         assert config.pi_url is None
+
+    def test_workspace_plugins_enabled_from_env(self, tmp_path, monkeypatch):
+        """Test workspace_plugins_enabled is parsed from env."""
+        monkeypatch.setenv('WORKSPACE_PLUGINS_ENABLED', 'true')
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.workspace_plugins_enabled is True
+
+    def test_workspace_plugin_allowlist_from_env(self, tmp_path, monkeypatch):
+        """Test plugin allowlist is parsed from comma-separated env."""
+        monkeypatch.setenv('WORKSPACE_PLUGIN_ALLOWLIST', 'alpha, beta,gamma ')
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.workspace_plugin_allowlist == ['alpha', 'beta', 'gamma']
 
 
 class TestValidatePath:
