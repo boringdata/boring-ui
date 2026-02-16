@@ -850,42 +850,44 @@ export default function App() {
     let invalidLayoutFound = false
     if (!codeSessionsEnabled) {
       invalidLayoutFound = true
-    } else try {
-      // Use storagePrefix from config (available via closure from outer scope)
-      const layoutKeyPrefix = `${storagePrefix}-`
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
-        if (key && key.startsWith(layoutKeyPrefix) && key.endsWith('-layout')) {
-          const raw = localStorage.getItem(key)
-          if (raw) {
-            const parsed = JSON.parse(raw)
-            const hasValidVersion = parsed?.version >= LAYOUT_VERSION
-            const hasPanels = !!parsed?.panels
-            const hasValidStructure = validateLayoutStructure(parsed)
+    } else {
+      try {
+        // Use storagePrefix from config (available via closure from outer scope)
+        const layoutKeyPrefix = `${storagePrefix}-`
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key && key.startsWith(layoutKeyPrefix) && key.endsWith('-layout')) {
+            const raw = localStorage.getItem(key)
+            if (raw) {
+              const parsed = JSON.parse(raw)
+              const hasValidVersion = parsed?.version >= LAYOUT_VERSION
+              const hasPanels = !!parsed?.panels
+              const hasValidStructure = validateLayoutStructure(parsed)
 
-            // Check if layout is valid
-            if (hasValidVersion && hasPanels && hasValidStructure) {
-              hasSavedLayout = true
-              break
-            }
+              // Check if layout is valid
+              if (hasValidVersion && hasPanels && hasValidStructure) {
+                hasSavedLayout = true
+                break
+              }
 
-            // Invalid layout detected - clean up and reload
-            if (!hasValidStructure || !hasValidVersion || !hasPanels) {
-              console.warn('[Layout] Invalid layout detected in onReady, clearing and reloading:', key)
-              localStorage.removeItem(key)
-              // Clear related session storage
-              const keyPrefix = key.replace('-layout', '')
-              localStorage.removeItem(`${keyPrefix}-tabs`)
-              localStorage.removeItem(`${storagePrefix}-terminal-sessions`)
-              localStorage.removeItem(`${storagePrefix}-terminal-active`)
-              localStorage.removeItem(`${storagePrefix}-terminal-chat-interface`)
-              invalidLayoutFound = true
+              // Invalid layout detected - clean up and reload
+              if (!hasValidStructure || !hasValidVersion || !hasPanels) {
+                console.warn('[Layout] Invalid layout detected in onReady, clearing and reloading:', key)
+                localStorage.removeItem(key)
+                // Clear related session storage
+                const keyPrefix = key.replace('-layout', '')
+                localStorage.removeItem(`${keyPrefix}-tabs`)
+                localStorage.removeItem(`${storagePrefix}-terminal-sessions`)
+                localStorage.removeItem(`${storagePrefix}-terminal-active`)
+                localStorage.removeItem(`${storagePrefix}-terminal-chat-interface`)
+                invalidLayoutFound = true
+              }
             }
           }
         }
+      } catch {
+        // Ignore errors checking localStorage
       }
-    } catch {
-      // Ignore errors checking localStorage
     }
 
     // Only create fresh panels if no saved layout exists
