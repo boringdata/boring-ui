@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { fireEvent, render, screen } from '@testing-library/react'
 import FileTreePanel from '../../panels/FileTreePanel'
 
 vi.mock('../../components/FileTree', () => ({
@@ -33,15 +32,31 @@ const makeParams = (overrides = {}) => ({
 describe('FileTreePanel + UserMenu integration', () => {
   it('renders real collapsed menu and triggers action callbacks', async () => {
     const params = makeParams()
-    const user = userEvent.setup()
     render(<FileTreePanel params={params} />)
 
-    await user.click(screen.getByRole('button', { name: 'User menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
     expect(screen.getByRole('menu')).toBeInTheDocument()
     expect(screen.getByText('workspace: my-workspace')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('menuitem', { name: 'Logout' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Logout' }))
     expect(params.onLogout).toHaveBeenCalledWith({ workspaceId: 'ws-123' })
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('passes workspace context for switch/create/settings actions', async () => {
+    const params = makeParams()
+    render(<FileTreePanel params={params} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Switch workspace' }))
+    expect(params.onSwitchWorkspace).toHaveBeenCalledWith({ workspaceId: 'ws-123' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create workspace' }))
+    expect(params.onCreateWorkspace).toHaveBeenCalledWith({ workspaceId: 'ws-123' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'User settings' }))
+    expect(params.onOpenUserSettings).toHaveBeenCalledWith({ workspaceId: 'ws-123' })
   })
 })

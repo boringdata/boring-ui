@@ -13,14 +13,15 @@ import { routes } from './utils/routes'
 import {
   extractUserEmail,
   extractWorkspaceId,
-  extractWorkspaceSettingsPayload,
   getWorkspaceIdFromPathname,
   getWorkspacePathSuffix,
-  isRuntimeReady,
   normalizeWorkspaceList,
   runWithPreflightFallback,
-  shouldRetryRuntime,
 } from './utils/controlPlane'
+import {
+  resolveWorkspaceNavigationRoute,
+  syncWorkspaceRuntimeAndSettings,
+} from './utils/workspaceNavigation'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -327,51 +328,6 @@ export default function App() {
     refreshUserMenuData().catch(() => {})
   }, [refreshUserMenuData])
 
-  const syncWorkspaceRuntimeAndSettings = useCallback(async (workspaceId, options = {}) => {
-    const { writeSettings = false } = options
-    const runtimeRoute = routes.controlPlane.workspaces.runtime.get(workspaceId)
-    const { response: runtimeResponse, data: runtimeData } = await apiFetchJson(runtimeRoute.path, {
-      query: runtimeRoute.query,
-    })
-    let runtimePayload = runtimeResponse.ok ? runtimeData : null
-
-    if (runtimeResponse.ok && shouldRetryRuntime(runtimeData)) {
-      const retryRoute = routes.controlPlane.workspaces.runtime.retry(workspaceId)
-      await apiFetch(retryRoute.path, { query: retryRoute.query, method: 'POST' })
-      const retriedRuntime = await apiFetchJson(runtimeRoute.path, { query: runtimeRoute.query })
-      if (retriedRuntime.response.ok) {
-        runtimePayload = retriedRuntime.data
-      }
-    }
-
-    const settingsReadRoute = routes.controlPlane.workspaces.settings.get(workspaceId)
-    const { response: settingsResponse, data: settingsData } = await apiFetchJson(
-      settingsReadRoute.path,
-      { query: settingsReadRoute.query },
-    )
-    if (writeSettings && settingsResponse.ok) {
-      const settingsWriteRoute = routes.controlPlane.workspaces.settings.update(workspaceId)
-      await apiFetch(settingsWriteRoute.path, {
-        query: settingsWriteRoute.query,
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(extractWorkspaceSettingsPayload(settingsData)),
-      })
-    }
-
-    return { runtimePayload }
-  }, [])
-
-  const resolveWorkspaceNavigationRoute = useCallback(
-    (workspaceId, runtimePayload) => {
-      if (isRuntimeReady(runtimePayload)) {
-        return routes.controlPlane.workspaces.scope(workspaceId, currentWorkspacePathSuffix)
-      }
-      return routes.controlPlane.workspaces.setup(workspaceId)
-    },
-    [currentWorkspacePathSuffix],
-  )
-
   const handleSwitchWorkspace = useCallback(async () => {
     const workspaces = await fetchWorkspaceList()
     const candidateWorkspaces = workspaces.filter(
@@ -399,10 +355,17 @@ export default function App() {
 
     const route = await runWithPreflightFallback({
       run: async () => {
-        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(targetWorkspaceId, {
+        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings({
+          workspaceId: targetWorkspaceId,
           writeSettings: false,
+          apiFetchJson,
+          apiFetch,
         })
-        return resolveWorkspaceNavigationRoute(targetWorkspaceId, runtimePayload)
+        return resolveWorkspaceNavigationRoute({
+          workspaceId: targetWorkspaceId,
+          runtimePayload,
+          currentWorkspacePathSuffix,
+        })
       },
       fallbackRoute: routes.controlPlane.workspaces.scope(targetWorkspaceId, currentWorkspacePathSuffix),
       warningMessage: '[UserMenu] Switch workspace preflight failed:',
@@ -412,8 +375,6 @@ export default function App() {
     currentWorkspaceId,
     currentWorkspacePathSuffix,
     fetchWorkspaceList,
-    resolveWorkspaceNavigationRoute,
-    syncWorkspaceRuntimeAndSettings,
   ])
 
   const handleCreateWorkspace = useCallback(async () => {
@@ -430,16 +391,23 @@ export default function App() {
     await fetchWorkspaceList()
     const route = await runWithPreflightFallback({
       run: async () => {
-        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(createdWorkspaceId, {
+        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings({
+          workspaceId: createdWorkspaceId,
           writeSettings: true,
+          apiFetchJson,
+          apiFetch,
         })
-        return resolveWorkspaceNavigationRoute(createdWorkspaceId, runtimePayload)
+        return resolveWorkspaceNavigationRoute({
+          workspaceId: createdWorkspaceId,
+          runtimePayload,
+          currentWorkspacePathSuffix,
+        })
       },
       fallbackRoute: routes.controlPlane.workspaces.setup(createdWorkspaceId),
       warningMessage: '[UserMenu] Create workspace preflight failed:',
     })
     window.location.assign(buildApiUrl(route.path, route.query))
-  }, [fetchWorkspaceList, resolveWorkspaceNavigationRoute, syncWorkspaceRuntimeAndSettings])
+  }, [currentWorkspacePathSuffix, fetchWorkspaceList])
 
   const handleOpenUserSettings = useCallback(() => {
     const key = getStorageKey(storagePrefix, projectRoot, 'user-settings-intent')
