@@ -62,6 +62,7 @@ const DEFAULT_CONFIG = {
     search: true,
     cloudMode: false,
     workflows: false,
+    controlPlaneOnboarding: false,
   },
 
   // Design token customization (CSS variables)

@@ -2,11 +2,14 @@
 import sys
 from pathlib import Path
 
-# Add src/back to path for src-layout imports
+# Add src/back and src/ to path for src-layout imports
 _PROJECT_ROOT = Path(__file__).parent.parent
 _SRC_BACK = _PROJECT_ROOT / 'src' / 'back'
 if str(_SRC_BACK) not in sys.path:
     sys.path.insert(0, str(_SRC_BACK))
+_SRC = _PROJECT_ROOT / 'src'
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
 import pytest
 

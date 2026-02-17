@@ -1,0 +1,23 @@
+[server]
+host = "0.0.0.0"
+port = 8010
+include_stream = false
+include_pty = true
+include_approval = true
+# Use the host-reachable IP so browsers off-box can connect directly.
+companion_url = "http://100.68.199.114:3456"
+cors_origins = ["http://localhost:5176", "http://100.68.199.114:5176"]
+
+[frontend]
+host = "0.0.0.0"
+port = 5176
+vite_api_url = "http://100.68.199.114:8010"
+# vite_gateway_url = "http://localhost:8080"
+
+[ui]
+# This table is serialized to app.config.js as-is.
+# Example:
+# branding = { name = "My IDE", logo = "M" }
+# features = { controlPlaneOnboarding = false }
+# panels = { defaults = { filetree = 280 } }
+features = { codeSessions = false }

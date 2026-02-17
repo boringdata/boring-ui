@@ -1,0 +1,116 @@
+{
+  "slos": [
+    {
+      "key": "api_availability_monthly",
+      "description": "Control-plane auth/workspace API availability",
+      "target_percent": 99.5,
+      "measurement_window": "30d",
+      "sli_query": "100 * (1 - (sum(increase(http_server_requests_total{path=~\"/api/v1/workspaces.*|/auth/callback\",status=~\"5..\"}[30d])) / clamp_min(sum(increase(http_server_requests_total{path=~\"/api/v1/workspaces.*|/auth/callback\"}[30d])), 1)))",
+      "alert_keys": [
+        "api_5xx_error_rate_burn"
+      ]
+    },
+    {
+      "key": "provisioning_reliability_monthly",
+      "description": "Successful provisioning ratio for valid releases",
+      "target_percent": 99.0,
+      "measurement_window": "30d",
+      "sli_query": "100 * (sum(increase(control_plane_provision_jobs_total{state=\"ready\",release_valid=\"true\"}[30d])) / clamp_min(sum(increase(control_plane_provision_jobs_total{state=~\"ready|error\",release_valid=\"true\"}[30d])), 1))",
+      "alert_keys": [
+        "provisioning_error_rate_burn"
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "key": "api_5xx_error_rate_burn",
+      "description": "5m 5xx burn-rate for /api/v1/workspaces* and /auth/callback",
+      "severity": "warning",
+      "window": "5m",
+      "threshold": 2.0,
+      "threshold_unit": "percent_error_rate",
+      "expr": "(sum(rate(http_server_requests_total{path=~\"/api/v1/workspaces.*|/auth/callback\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_total{path=~\"/api/v1/workspaces.*|/auth/callback\"}[5m]))) > 0.02",
+      "owner": "backend_oncall_owner",
+      "group_by": [
+        "path"
+      ],
+      "immediate": false,
+      "mandatory_actions": []
+    },
+    {
+      "key": "provisioning_error_rate_burn",
+      "description": "15m provisioning failure rate by last_error_code",
+      "severity": "critical",
+      "window": "15m",
+      "threshold": 5.0,
+      "threshold_unit": "percent_failure_rate",
+      "expr": "(sum by (last_error_code)(increase(control_plane_provision_jobs_total{state=\"error\"}[15m])) / clamp_min(sum(increase(control_plane_provision_jobs_total{state=~\"ready|error\"}[15m])), 1)) > 0.05",
+      "owner": "runtime_owner",
+      "group_by": [
+        "last_error_code"
+      ],
+      "immediate": false,
+      "mandatory_actions": []
+    },
+    {
+      "key": "tenant_isolation_violation",
+      "description": "Immediate SEV-1 alert on confirmed cross-workspace access event",
+      "severity": "sev1",
+      "window": "1m",
+      "threshold": 0.0,
+      "threshold_unit": "count_gt",
+      "expr": "increase(control_plane_tenant_boundary_incidents_total[1m]) > 0",
+      "owner": "backend_oncall_owner",
+      "group_by": [],
+      "immediate": true,
+      "mandatory_actions": [
+        "freeze_rollout",
+        "rotate_affected_credentials",
+        "publish_incident_summary"
+      ]
+    }
+  ],
+  "dashboards": [
+    {
+      "key": "control_plane_reliability",
+      "description": "Availability, provisioning reliability, and tenant-boundary incident visibility for Feature 3 operations.",
+      "panels": [
+        {
+          "key": "api_availability_monthly",
+          "title": "API Availability (30d)",
+          "query": "api_availability_monthly",
+          "category": "availability"
+        },
+        {
+          "key": "api_5xx_error_rate_5m",
+          "title": "API 5xx Error Rate (5m)",
+          "query": "api_5xx_error_rate_burn",
+          "category": "availability"
+        },
+        {
+          "key": "provisioning_success_rate_30d",
+          "title": "Provisioning Success Rate (30d)",
+          "query": "provisioning_reliability_monthly",
+          "category": "provisioning"
+        },
+        {
+          "key": "provisioning_error_rate_15m_by_code",
+          "title": "Provisioning Error Rate by last_error_code (15m)",
+          "query": "provisioning_error_rate_burn",
+          "category": "provisioning"
+        },
+        {
+          "key": "tenant_isolation_incidents",
+          "title": "Tenant Isolation Incidents (SEV-1 trigger)",
+          "query": "tenant_isolation_violation",
+          "category": "tenant_safety"
+        }
+      ]
+    }
+  ],
+  "escalation_owner_model": {
+    "control_plane_api_failures": "backend_oncall_owner",
+    "supabase_auth_or_rls_failures": "database_platform_owner",
+    "sprite_runtime_or_proxy_failures": "runtime_owner"
+  }
+}

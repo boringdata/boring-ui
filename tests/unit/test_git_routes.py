@@ -41,7 +41,7 @@ def app(git_repo):
     """Create test FastAPI app with git router."""
     config = APIConfig(workspace_root=git_repo)
     app = FastAPI()
-    app.include_router(create_git_router(config), prefix='/api/git')
+    app.include_router(create_git_router(config), prefix='/api/v1/git')
     return app
 
 
@@ -52,7 +52,7 @@ def non_git_app(tmp_path):
     (tmp_path / 'file.txt').write_text('not in repo')
     config = APIConfig(workspace_root=tmp_path)
     app = FastAPI()
-    app.include_router(create_git_router(config), prefix='/api/git')
+    app.include_router(create_git_router(config), prefix='/api/v1/git')
     return app
 
 
@@ -64,7 +64,7 @@ class TestStatusEndpoint:
         """Test status returns repo info with modified files."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/status')
+            r = await client.get('/api/v1/git/status')
             assert r.status_code == 200
             data = r.json()
             assert data['is_repo'] is True
@@ -79,7 +79,7 @@ class TestStatusEndpoint:
         """Test status returns is_repo=False for non-git directory."""
         transport = ASGITransport(app=non_git_app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/status')
+            r = await client.get('/api/v1/git/status')
             assert r.status_code == 200
             data = r.json()
             assert data['is_repo'] is False
@@ -93,11 +93,11 @@ class TestStatusEndpoint:
 
         config = APIConfig(workspace_root=git_repo)
         app = FastAPI()
-        app.include_router(create_git_router(config), prefix='/api/git')
+        app.include_router(create_git_router(config), prefix='/api/v1/git')
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/status')
+            r = await client.get('/api/v1/git/status')
             assert r.status_code == 200
             data = r.json()
             assert data['is_repo'] is True
@@ -115,11 +115,11 @@ class TestStatusEndpoint:
 
         config = APIConfig(workspace_root=git_repo)
         app = FastAPI()
-        app.include_router(create_git_router(config), prefix='/api/git')
+        app.include_router(create_git_router(config), prefix='/api/v1/git')
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/status')
+            r = await client.get('/api/v1/git/status')
             assert r.status_code == 200
             data = r.json()
             assert 'file.txt' in data['files']
@@ -134,11 +134,11 @@ class TestStatusEndpoint:
 
         config = APIConfig(workspace_root=git_repo)
         app = FastAPI()
-        app.include_router(create_git_router(config), prefix='/api/git')
+        app.include_router(create_git_router(config), prefix='/api/v1/git')
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/status')
+            r = await client.get('/api/v1/git/status')
             assert r.status_code == 200
             data = r.json()
             assert 'untracked.txt' in data['files']
@@ -154,7 +154,7 @@ class TestDiffEndpoint:
         """Test diff shows changes for modified file."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/diff?path=file.txt')
+            r = await client.get('/api/v1/git/diff?path=file.txt')
             assert r.status_code == 200
             data = r.json()
             assert 'diff' in data
@@ -171,11 +171,11 @@ class TestDiffEndpoint:
 
         config = APIConfig(workspace_root=git_repo)
         app = FastAPI()
-        app.include_router(create_git_router(config), prefix='/api/git')
+        app.include_router(create_git_router(config), prefix='/api/v1/git')
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/diff?path=file.txt')
+            r = await client.get('/api/v1/git/diff?path=file.txt')
             assert r.status_code == 200
             data = r.json()
             assert data['diff'] == ''
@@ -188,11 +188,11 @@ class TestDiffEndpoint:
 
         config = APIConfig(workspace_root=git_repo)
         app = FastAPI()
-        app.include_router(create_git_router(config), prefix='/api/git')
+        app.include_router(create_git_router(config), prefix='/api/v1/git')
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/diff?path=new.txt')
+            r = await client.get('/api/v1/git/diff?path=new.txt')
             assert r.status_code == 200
             data = r.json()
             # Should return empty diff with error message for untracked
@@ -203,7 +203,7 @@ class TestDiffEndpoint:
         """Test path traversal is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/diff?path=../../../etc/passwd')
+            r = await client.get('/api/v1/git/diff?path=../../../etc/passwd')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()
 
@@ -216,7 +216,7 @@ class TestShowEndpoint:
         """Test show returns file content at HEAD."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/show?path=file.txt')
+            r = await client.get('/api/v1/git/show?path=file.txt')
             assert r.status_code == 200
             data = r.json()
             assert data['content'] == 'original content'
@@ -230,11 +230,11 @@ class TestShowEndpoint:
 
         config = APIConfig(workspace_root=git_repo)
         app = FastAPI()
-        app.include_router(create_git_router(config), prefix='/api/git')
+        app.include_router(create_git_router(config), prefix='/api/v1/git')
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/show?path=untracked.txt')
+            r = await client.get('/api/v1/git/show?path=untracked.txt')
             assert r.status_code == 200
             data = r.json()
             assert data['content'] is None
@@ -246,11 +246,11 @@ class TestShowEndpoint:
         # File has modified content but we want committed content
         config = APIConfig(workspace_root=git_repo)
         app = FastAPI()
-        app.include_router(create_git_router(config), prefix='/api/git')
+        app.include_router(create_git_router(config), prefix='/api/v1/git')
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/show?path=file.txt')
+            r = await client.get('/api/v1/git/show?path=file.txt')
             assert r.status_code == 200
             data = r.json()
             # Should return original committed content, not modified
@@ -262,7 +262,7 @@ class TestShowEndpoint:
         """Test path traversal is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/show?path=../../../etc/passwd')
+            r = await client.get('/api/v1/git/show?path=../../../etc/passwd')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()
 
@@ -280,11 +280,11 @@ class TestShowEndpoint:
 
         config = APIConfig(workspace_root=git_repo)
         app = FastAPI()
-        app.include_router(create_git_router(config), prefix='/api/git')
+        app.include_router(create_git_router(config), prefix='/api/v1/git')
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/show?path=subdir/nested.txt')
+            r = await client.get('/api/v1/git/show?path=subdir/nested.txt')
             assert r.status_code == 200
             data = r.json()
             assert data['content'] == 'nested content'
@@ -298,7 +298,7 @@ class TestPathSecurity:
         """Test absolute path in diff is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/diff?path=/etc/passwd')
+            r = await client.get('/api/v1/git/diff?path=/etc/passwd')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()
 
@@ -307,6 +307,6 @@ class TestPathSecurity:
         """Test absolute path in show is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/git/show?path=/etc/passwd')
+            r = await client.get('/api/v1/git/show?path=/etc/passwd')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()

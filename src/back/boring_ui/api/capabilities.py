@@ -151,12 +151,14 @@ def create_default_registry() -> RouterRegistry:
 def create_capabilities_router(
     enabled_features: dict[str, bool],
     registry: RouterRegistry | None = None,
+    config: "APIConfig | None" = None,
 ) -> APIRouter:
     """Create a router for the capabilities endpoint.
 
     Args:
         enabled_features: Map of feature name -> enabled status
         registry: Optional router registry for detailed info
+        config: Optional APIConfig for services metadata
 
     Returns:
         Router with /capabilities endpoint
@@ -188,6 +190,13 @@ def create_capabilities_router(
                 }
                 for info, _ in registry.all()
             ]
+
+        # Service connection info for direct-connect panels
+        if config and config.companion_url:
+            services = capabilities.setdefault('services', {})
+            services['companion'] = {
+                'url': config.companion_url,
+            }
 
         return capabilities
 

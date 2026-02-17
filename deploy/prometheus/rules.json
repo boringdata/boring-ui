@@ -1,0 +1,53 @@
+{
+  "groups": [
+    {
+      "name": "feature3-control-plane-operations",
+      "rules": [
+        {
+          "alert": "api_5xx_error_rate_burn",
+          "expr": "(sum(rate(http_server_requests_total{path=~\"/api/v1/workspaces.*|/auth/callback\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_total{path=~\"/api/v1/workspaces.*|/auth/callback\"}[5m]))) > 0.02",
+          "for": "5m",
+          "labels": {
+            "severity": "warning",
+            "owner": "backend_oncall_owner",
+            "window": "5m"
+          },
+          "annotations": {
+            "summary": "5m 5xx burn-rate for /api/v1/workspaces* and /auth/callback",
+            "threshold": "2.0 percent_error_rate"
+          }
+        },
+        {
+          "alert": "provisioning_error_rate_burn",
+          "expr": "(sum by (last_error_code)(increase(control_plane_provision_jobs_total{state=\"error\"}[15m])) / clamp_min(sum(increase(control_plane_provision_jobs_total{state=~\"ready|error\"}[15m])), 1)) > 0.05",
+          "for": "15m",
+          "labels": {
+            "severity": "critical",
+            "owner": "runtime_owner",
+            "window": "15m"
+          },
+          "annotations": {
+            "summary": "15m provisioning failure rate by last_error_code",
+            "threshold": "5.0 percent_failure_rate"
+          }
+        },
+        {
+          "alert": "tenant_isolation_violation",
+          "expr": "increase(control_plane_tenant_boundary_incidents_total[1m]) > 0",
+          "for": "1m",
+          "labels": {
+            "severity": "sev1",
+            "owner": "backend_oncall_owner",
+            "window": "1m",
+            "page": "immediate"
+          },
+          "annotations": {
+            "summary": "Immediate SEV-1 alert on confirmed cross-workspace access event",
+            "threshold": "0.0 count_gt",
+            "mandatory_actions": "freeze_rollout, rotate_affected_credentials, publish_incident_summary"
+          }
+        }
+      ]
+    }
+  ]
+}

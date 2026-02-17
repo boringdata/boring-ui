@@ -1,0 +1,80 @@
+# Alertmanager routing configuration for Feature 3 control plane.
+#
+# Bead: bd-223o.4 (P4)
+#
+# Routes alerts from Prometheus rule groups (deploy/prometheus/rules.yaml)
+# to the appropriate notification channels based on severity and owner.
+#
+# Notification receivers are configured as placeholders -- replace webhook
+# URLs with actual PagerDuty/Slack/email endpoints per environment.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ["alertname", "owner"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # SEV-1: tenant isolation violations -- immediate page.
+    - match:
+        severity: sev1
+      receiver: sev1-pager
+      group_wait: 0s
+      repeat_interval: 15m
+      continue: false
+
+    # Critical: provisioning burn-rate -- page on-call.
+    - match:
+        severity: critical
+      receiver: critical-oncall
+      group_wait: 30s
+      repeat_interval: 1h
+      continue: false
+
+    # Warning: API error burn-rate -- Slack notification.
+    - match:
+        severity: warning
+      receiver: warning-slack
+      group_wait: 1m
+      repeat_interval: 4h
+
+receivers:
+  - name: default
+    webhook_configs:
+      - url: "http://localhost:9095/webhook"
+        send_resolved: true
+
+  - name: sev1-pager
+    # Replace with PagerDuty or Opsgenie integration.
+    webhook_configs:
+      - url: "http://localhost:9095/webhook/sev1"
+        send_resolved: true
+
+  - name: critical-oncall
+    # Replace with PagerDuty routing key for runtime_owner.
+    webhook_configs:
+      - url: "http://localhost:9095/webhook/critical"
+        send_resolved: true
+
+  - name: warning-slack
+    # Replace with Slack incoming webhook URL.
+    webhook_configs:
+      - url: "http://localhost:9095/webhook/warning"
+        send_resolved: true
+
+# Inhibition: suppress warnings while critical or SEV-1 is firing
+# for the same owner group.
+inhibit_rules:
+  - source_match:
+      severity: sev1
+    target_match:
+      severity: critical
+    equal: ["owner"]
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ["owner"]

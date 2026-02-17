@@ -81,6 +81,13 @@ export {
 // Hooks - React hooks
 // =============================================================================
 export { ThemeProvider, useTheme } from './hooks/useTheme'
+export { useOnboardingState } from './hooks/useOnboardingState'
+export {
+  ONBOARDING_STATES,
+  ONBOARDING_EVENTS,
+  advanceOnboardingState,
+  deriveOnboardingState,
+} from './onboarding/stateMachine'
 
 // =============================================================================
 // Panels - Dockview panel components
@@ -96,6 +103,7 @@ export { default as ReviewPanel } from './panels/ReviewPanel'
 // Components - UI components
 // =============================================================================
 export { default as ThemeToggle } from './components/ThemeToggle'
+export { default as OnboardingStateGate } from './components/OnboardingStateGate'
 
 // =============================================================================
 // Main App

@@ -21,7 +21,7 @@ def app(tmp_path):
     (tmp_path / 'subdir' / 'nested.txt').write_text('nested content')
 
     app = FastAPI()
-    app.include_router(create_file_router(config, storage), prefix='/api')
+    app.include_router(create_file_router(config, storage), prefix='/api/v1/files')
     return app
 
 
@@ -39,7 +39,7 @@ class TestTreeEndpoint:
         """Test listing root directory."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/tree?path=.')
+            r = await client.get('/api/v1/files/list?path=.')
             assert r.status_code == 200
             data = r.json()
             assert 'entries' in data
@@ -54,7 +54,7 @@ class TestTreeEndpoint:
         """Test listing subdirectory."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/tree?path=subdir')
+            r = await client.get('/api/v1/files/list?path=subdir')
             assert r.status_code == 200
             data = r.json()
             names = [e['name'] for e in data['entries']]
@@ -65,7 +65,7 @@ class TestTreeEndpoint:
         """Test listing with default path."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/tree')
+            r = await client.get('/api/v1/files/list')
             assert r.status_code == 200
 
     @pytest.mark.asyncio
@@ -73,7 +73,7 @@ class TestTreeEndpoint:
         """Test listing non-existent directory returns empty."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/tree?path=nonexistent')
+            r = await client.get('/api/v1/files/list?path=nonexistent')
             assert r.status_code == 200
             data = r.json()
             assert data['entries'] == []
@@ -87,7 +87,7 @@ class TestFileReadEndpoint:
         """Test reading file contents."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/file?path=test.txt')
+            r = await client.get('/api/v1/files/read?path=test.txt')
             assert r.status_code == 200
             data = r.json()
             assert data['content'] == 'test content'
@@ -98,7 +98,7 @@ class TestFileReadEndpoint:
         """Test reading nested file."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/file?path=subdir/nested.txt')
+            r = await client.get('/api/v1/files/read?path=subdir/nested.txt')
             assert r.status_code == 200
             assert r.json()['content'] == 'nested content'
 
@@ -107,7 +107,7 @@ class TestFileReadEndpoint:
         """Test reading non-existent file returns 404."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/file?path=nonexistent.txt')
+            r = await client.get('/api/v1/files/read?path=nonexistent.txt')
             assert r.status_code == 404
             assert 'not found' in r.json()['detail'].lower()
 
@@ -120,7 +120,7 @@ class TestFileWriteEndpoint:
         """Test writing new file."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.put('/api/file?path=new.txt', json={'content': 'new content'})
+            r = await client.put('/api/v1/files/write?path=new.txt', json={'content': 'new content'})
             assert r.status_code == 200
             data = r.json()
             assert data['success'] is True
@@ -132,7 +132,7 @@ class TestFileWriteEndpoint:
         """Test overwriting existing file."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.put('/api/file?path=test.txt', json={'content': 'updated'})
+            r = await client.put('/api/v1/files/write?path=test.txt', json={'content': 'updated'})
             assert r.status_code == 200
             assert (tmp_path_ref / 'test.txt').read_text() == 'updated'
 
@@ -141,7 +141,7 @@ class TestFileWriteEndpoint:
         """Test writing file creates parent directories."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.put('/api/file?path=new/deep/file.txt', json={'content': 'deep'})
+            r = await client.put('/api/v1/files/write?path=new/deep/file.txt', json={'content': 'deep'})
             assert r.status_code == 200
             assert (tmp_path_ref / 'new' / 'deep' / 'file.txt').read_text() == 'deep'
 
@@ -154,7 +154,7 @@ class TestFileDeleteEndpoint:
         """Test deleting file."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.delete('/api/file?path=test.txt')
+            r = await client.delete('/api/v1/files/delete?path=test.txt')
             assert r.status_code == 200
             assert r.json()['success'] is True
             assert not (tmp_path_ref / 'test.txt').exists()
@@ -164,7 +164,7 @@ class TestFileDeleteEndpoint:
         """Test deleting non-existent file returns 404."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.delete('/api/file?path=nonexistent.txt')
+            r = await client.delete('/api/v1/files/delete?path=nonexistent.txt')
             assert r.status_code == 404
 
 
@@ -176,7 +176,7 @@ class TestRenameEndpoint:
         """Test renaming file."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.post('/api/file/rename', json={
+            r = await client.post('/api/v1/files/rename', json={
                 'old_path': 'test.txt',
                 'new_path': 'renamed.txt'
             })
@@ -193,7 +193,7 @@ class TestRenameEndpoint:
         """Test renaming non-existent file returns 404."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.post('/api/file/rename', json={
+            r = await client.post('/api/v1/files/rename', json={
                 'old_path': 'nonexistent.txt',
                 'new_path': 'new.txt'
             })
@@ -204,7 +204,7 @@ class TestRenameEndpoint:
         """Test renaming to existing file returns 409."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.post('/api/file/rename', json={
+            r = await client.post('/api/v1/files/rename', json={
                 'old_path': 'test.txt',
                 'new_path': 'file2.txt'
             })
@@ -220,7 +220,7 @@ class TestMoveEndpoint:
         """Test moving file to different directory."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.post('/api/file/move', json={
+            r = await client.post('/api/v1/files/move', json={
                 'src_path': 'test.txt',
                 'dest_dir': 'subdir'
             })
@@ -237,7 +237,7 @@ class TestMoveEndpoint:
         """Test moving non-existent file returns 404."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.post('/api/file/move', json={
+            r = await client.post('/api/v1/files/move', json={
                 'src_path': 'nonexistent.txt',
                 'dest_dir': 'subdir'
             })
@@ -248,7 +248,7 @@ class TestMoveEndpoint:
         """Test moving to non-directory returns 400."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.post('/api/file/move', json={
+            r = await client.post('/api/v1/files/move', json={
                 'src_path': 'test.txt',
                 'dest_dir': 'file2.txt'
             })
@@ -264,7 +264,7 @@ class TestSearchEndpoint:
         """Test searching files by pattern."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/search?q=*.txt')
+            r = await client.get('/api/v1/files/search?q=*.txt')
             assert r.status_code == 200
             data = r.json()
             assert 'results' in data
@@ -279,7 +279,7 @@ class TestSearchEndpoint:
         """Test searching with specific pattern."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/search?q=test*')
+            r = await client.get('/api/v1/files/search?q=test*')
             assert r.status_code == 200
             names = [m['name'] for m in r.json()['results']]
             assert 'test.txt' in names
@@ -289,7 +289,7 @@ class TestSearchEndpoint:
         """Test searching in specific subdirectory."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/search?q=*.txt&path=subdir')
+            r = await client.get('/api/v1/files/search?q=*.txt&path=subdir')
             assert r.status_code == 200
             names = [m['name'] for m in r.json()['results']]
             assert 'nested.txt' in names
@@ -301,7 +301,7 @@ class TestSearchEndpoint:
         (tmp_path_ref / 'UPPER.TXT').write_text('upper')
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/search?q=upper*')
+            r = await client.get('/api/v1/files/search?q=upper*')
             assert r.status_code == 200
             names = [m['name'] for m in r.json()['results']]
             assert 'UPPER.TXT' in names
@@ -311,7 +311,7 @@ class TestSearchEndpoint:
         """Test search results include 'dir' field."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/search?q=nested.txt')
+            r = await client.get('/api/v1/files/search?q=nested.txt')
             assert r.status_code == 200
             results = r.json()['results']
             assert len(results) == 1
@@ -327,7 +327,7 @@ class TestPathTraversalRejection:
         """Test path traversal in tree is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/tree?path=../../../etc')
+            r = await client.get('/api/v1/files/list?path=../../../etc')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()
 
@@ -336,7 +336,7 @@ class TestPathTraversalRejection:
         """Test path traversal in file read is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/file?path=../../../etc/passwd')
+            r = await client.get('/api/v1/files/read?path=../../../etc/passwd')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()
 
@@ -345,7 +345,7 @@ class TestPathTraversalRejection:
         """Test path traversal in file write is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.put('/api/file?path=../../../tmp/malicious.txt',
+            r = await client.put('/api/v1/files/write?path=../../../tmp/malicious.txt',
                                  json={'content': 'bad'})
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()
@@ -355,7 +355,7 @@ class TestPathTraversalRejection:
         """Test path traversal in file delete is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.delete('/api/file?path=../../../etc/passwd')
+            r = await client.delete('/api/v1/files/delete?path=../../../etc/passwd')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()
 
@@ -364,7 +364,7 @@ class TestPathTraversalRejection:
         """Test path traversal in rename is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.post('/api/file/rename', json={
+            r = await client.post('/api/v1/files/rename', json={
                 'old_path': '../../../etc/passwd',
                 'new_path': 'stolen.txt'
             })
@@ -376,7 +376,7 @@ class TestPathTraversalRejection:
         """Test path traversal in move is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.post('/api/file/move', json={
+            r = await client.post('/api/v1/files/move', json={
                 'src_path': 'test.txt',
                 'dest_dir': '../../../tmp'
             })
@@ -388,7 +388,7 @@ class TestPathTraversalRejection:
         """Test path traversal in search is rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/search?q=*.txt&path=../../../etc')
+            r = await client.get('/api/v1/files/search?q=*.txt&path=../../../etc')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()
 
@@ -397,6 +397,6 @@ class TestPathTraversalRejection:
         """Test absolute paths outside workspace are rejected."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            r = await client.get('/api/file?path=/etc/passwd')
+            r = await client.get('/api/v1/files/read?path=/etc/passwd')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()

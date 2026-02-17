@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning for boring-ui observability.
+#
+# Bead: bd-223o.4 (P4)
+
+apiVersion: 1
+
+providers:
+  - name: boring-ui
+    orgId: 1
+    folder: "boring-ui"
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
