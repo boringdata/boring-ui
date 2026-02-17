@@ -158,3 +158,44 @@ def test_guard_ignores_forbidden_literals_inside_block_comments(tmp_path: Path) 
     assert result.returncode == 0, result.stdout + result.stderr
     payload = json.loads(result.stdout)
     assert payload["violation_count"] == 0
+
+
+def test_guard_keeps_prefix_before_unclosed_inline_block_comment(tmp_path: Path) -> None:
+    file_path = tmp_path / "src/front/components/InlinePrefix.jsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(
+        "\n".join(
+            [
+                "const risky = '/api/tree'; /* block starts",
+                " * '/api/tree' inside comment",
+                " */",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_guard("--root", str(tmp_path), "--format", "json")
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["violation_count"] == 1
+    assert payload["violations"][0]["rule"] == "legacy-compat-route"
+
+
+def test_guard_does_not_treat_double_slash_inside_string_as_comment(tmp_path: Path) -> None:
+    file_path = tmp_path / "src/front/components/SlashInString.jsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(
+        "\n".join(
+            [
+                "const prefix = 'https://example.com//trace';",
+                "const risky = prefix + '/api/tree';",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_guard("--root", str(tmp_path), "--format", "json")
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["violation_count"] == 1
+    assert payload["violations"][0]["rule"] == "legacy-compat-route"

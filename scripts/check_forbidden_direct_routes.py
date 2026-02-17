@@ -87,14 +87,35 @@ def _is_candidate(rel_path: Path) -> bool:
 def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
     result: list[str] = []
     index = 0
+    string_delimiter: str | None = None
+    escaped = False
 
     while index < len(line):
         if in_block_comment:
             end = line.find("*/", index)
             if end == -1:
-                return "", True
+                return "".join(result).strip(), True
             index = end + 2
             in_block_comment = False
+            continue
+
+        char = line[index]
+
+        if string_delimiter is not None:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == string_delimiter:
+                string_delimiter = None
+            index += 1
+            continue
+
+        if char in {"'", '"', "`"}:
+            string_delimiter = char
+            result.append(char)
+            index += 1
             continue
 
         if line.startswith("//", index):
@@ -105,7 +126,7 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
             index += 2
             continue
 
-        result.append(line[index])
+        result.append(char)
         index += 1
 
     return "".join(result).strip(), in_block_comment
