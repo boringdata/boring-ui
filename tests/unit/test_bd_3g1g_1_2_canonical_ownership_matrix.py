@@ -84,6 +84,13 @@ def _parse_matrix_rows(text: str) -> tuple[dict[str, dict[str, str]], list[str]]
     return rows, duplicates
 
 
+def _assert_no_duplicate_current_families(duplicates: list[str]) -> None:
+    assert not duplicates, (
+        "Matrix contains duplicate current-family rows:\n- "
+        + "\n- ".join(sorted(set(duplicates)))
+    )
+
+
 def test_artifacts_exist() -> None:
     assert INVENTORY_ARTIFACT.exists(), "Expected bd-3g1g.1.1 inventory artifact is missing"
     assert MATRIX_ARTIFACT.exists(), "Expected bd-3g1g.1.2 matrix artifact is missing"
@@ -99,7 +106,7 @@ def test_matrix_covers_all_inventory_route_families() -> None:
     assert len(inventory_families) == len(set(inventory_families)), (
         "Inventory route family ledger should contain unique families"
     )
-    assert not duplicates, "Matrix contains duplicate current-family rows:\n- " + "\n- ".join(sorted(set(duplicates)))
+    _assert_no_duplicate_current_families(duplicates)
 
     missing = sorted(set(inventory_families) - set(matrix_rows))
     assert not missing, "Matrix missing inventory route families:\n- " + "\n- ".join(missing)
@@ -111,7 +118,7 @@ def test_matrix_covers_all_inventory_route_families() -> None:
 def test_matrix_rows_are_execution_ready() -> None:
     matrix_text = MATRIX_ARTIFACT.read_text(encoding="utf-8")
     matrix_rows, duplicates = _parse_matrix_rows(matrix_text)
-    assert not duplicates, "Matrix contains duplicate current-family rows:\n- " + "\n- ".join(sorted(set(duplicates)))
+    _assert_no_duplicate_current_families(duplicates)
     assert matrix_rows, "Expected at least one matrix row"
 
     for family, row in matrix_rows.items():
@@ -133,3 +140,16 @@ def test_matrix_rows_are_execution_ready() -> None:
             )
         if status == "dead":
             assert action == "remove", f"Dead family should have remove action: {family}"
+
+
+def test_parse_matrix_reports_duplicate_current_family_rows() -> None:
+    sample = """
+## Ownership Matrix
+| Current family | Canonical target family | Canonical owner | Route status | Migration action | Policy notes |
+|---|---|---|---|---|---|
+| `/api/a` | `/api/v1/a` | `workspace-core` | `canonical` | `keep` | a |
+| `/api/a` | `/api/v1/a` | `workspace-core` | `canonical` | `keep` | a duplicate |
+"""
+
+    _, duplicates = _parse_matrix_rows(sample)
+    assert duplicates == ["/api/a"]
