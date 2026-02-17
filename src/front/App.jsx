@@ -402,7 +402,8 @@ export default function App() {
         writeSettings: false,
       })
       route = resolveWorkspaceNavigationRoute(targetWorkspaceId, runtimePayload)
-    } catch {
+    } catch (error) {
+      console.warn('[UserMenu] Switch workspace preflight failed:', error)
       // failure UX follows in bead bd-3g1g.4.3; fall back to canonical workspace scope path
     }
     window.location.assign(buildApiUrl(route.path, route.query))
@@ -432,7 +433,8 @@ export default function App() {
         writeSettings: true,
       })
       route = resolveWorkspaceNavigationRoute(createdWorkspaceId, runtimePayload)
-    } catch {
+    } catch (error) {
+      console.warn('[UserMenu] Create workspace preflight failed:', error)
       // failure UX follows in bead bd-3g1g.4.3; keep setup fallback so user can recover
     }
     window.location.assign(buildApiUrl(route.path, route.query))
