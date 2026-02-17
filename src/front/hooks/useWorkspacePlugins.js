@@ -21,7 +21,10 @@ export function useWorkspacePlugins({ onPluginChanged, enabled = true }) {
   const reconnectTimer = useRef(null)
   const reconnectDelayMs = useRef(1000)
   const onPluginChangedRef = useRef(onPluginChanged)
-  onPluginChangedRef.current = onPluginChanged
+
+  useEffect(() => {
+    onPluginChangedRef.current = onPluginChanged
+  }, [onPluginChanged])
 
   useEffect(() => {
     if (!enabled) return
