@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useId } from 'react'
+import { createPortal } from 'react-dom'
 
 /**
  * UserMenu - Avatar with dropdown menu for user and workspace actions
@@ -25,6 +26,7 @@ export default function UserMenu({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef(null)
+  const [collapsedMenuStyle, setCollapsedMenuStyle] = useState(null)
 
   // Get first letter of email (uppercase) for avatar
   const avatarLetter = email ? email.charAt(0).toUpperCase() : '?'
@@ -76,12 +78,77 @@ export default function UserMenu({
     { key: 'logout', label: 'Logout', onClick: onLogout },
   ]
 
-  const menuId = 'sidebar-user-menu'
+  const menuId = useId()
   const displayEmail = email || 'Signed in user'
-  const showWorkspace = workspaceName && !workspaceName.includes('-')
+  const workspaceNameValue = String(workspaceName || '').trim()
+  const isUuidWorkspaceName = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workspaceNameValue)
+  const showWorkspace = workspaceNameValue.length > 0 && !isUuidWorkspaceName
   const workspaceLabel = showWorkspace
     ? `workspace: ${workspaceName}`
     : workspaceId ? `workspace id: ${workspaceId}` : 'workspace: not selected'
+
+  useEffect(() => {
+    if (!isOpen || !collapsed || !menuRef.current) return
+
+    const updateCollapsedMenuPosition = () => {
+      const rect = menuRef.current.getBoundingClientRect()
+      const menuWidth = 220
+      const menuHeight = 240
+      const horizontalGap = 8
+      const viewportPadding = 8
+      const left = Math.min(
+        rect.right + horizontalGap,
+        window.innerWidth - menuWidth - viewportPadding,
+      )
+      const top = Math.min(
+        Math.max(viewportPadding, rect.bottom - menuHeight),
+        window.innerHeight - menuHeight - viewportPadding,
+      )
+
+      setCollapsedMenuStyle({
+        position: 'fixed',
+        top: `${top}px`,
+        left: `${left}px`,
+        minWidth: `${menuWidth}px`,
+        zIndex: 1000,
+      })
+    }
+
+    updateCollapsedMenuPosition()
+    window.addEventListener('resize', updateCollapsedMenuPosition)
+    window.addEventListener('scroll', updateCollapsedMenuPosition, true)
+    return () => {
+      window.removeEventListener('resize', updateCollapsedMenuPosition)
+      window.removeEventListener('scroll', updateCollapsedMenuPosition, true)
+    }
+  }, [isOpen, collapsed])
+
+  const dropdown = (
+    <div
+      className={`user-menu-dropdown ${collapsed ? 'user-menu-dropdown-portal' : ''}`}
+      id={menuId}
+      role="menu"
+      style={collapsed ? collapsedMenuStyle || undefined : undefined}
+    >
+      <div className="user-menu-email">{displayEmail}</div>
+      <div className="user-menu-workspace">{workspaceLabel}</div>
+      <div className="user-menu-divider" />
+      {actionItems.map((item) => {
+        const disabled = typeof item.onClick !== 'function'
+        return (
+          <button
+            key={item.key}
+            className={`user-menu-item ${disabled ? 'user-menu-item-disabled' : ''}`}
+            onClick={() => runAction(item.onClick)}
+            role="menuitem"
+            disabled={disabled}
+          >
+            {item.label}
+          </button>
+        )
+      })}
+    </div>
+  )
 
   return (
     <div
@@ -105,27 +172,7 @@ export default function UserMenu({
         )}
       </button>
 
-      {isOpen && (
-        <div className="user-menu-dropdown" id={menuId} role="menu">
-          <div className="user-menu-email">{displayEmail}</div>
-          <div className="user-menu-workspace">{workspaceLabel}</div>
-          <div className="user-menu-divider" />
-          {actionItems.map((item) => {
-            const disabled = typeof item.onClick !== 'function'
-            return (
-              <button
-                key={item.key}
-                className={`user-menu-item ${disabled ? 'user-menu-item-disabled' : ''}`}
-                onClick={() => runAction(item.onClick)}
-                role="menuitem"
-                disabled={disabled}
-              >
-                {item.label}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      {isOpen && (collapsed ? createPortal(dropdown, document.body) : dropdown)}
     </div>
   )
 }

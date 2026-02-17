@@ -3788,10 +3788,8 @@ html {
   cursor: not-allowed;
 }
 
-.user-menu-collapsed .user-menu-dropdown {
-  right: auto;
-  left: calc(100% + var(--space-1));
-  bottom: 0;
+.user-menu-dropdown-portal {
+  position: fixed;
 }
 
 /* File item hover icon color */
