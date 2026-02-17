@@ -185,12 +185,7 @@ def test_guard_does_not_treat_double_slash_inside_string_as_comment(tmp_path: Pa
     file_path = tmp_path / "src/front/components/SlashInString.jsx"
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(
-        "\n".join(
-            [
-                "const prefix = 'https://example.com//trace';",
-                "const risky = prefix + '/api/tree';",
-            ]
-        ),
+        "const risky = 'https://example.com//trace' + '/api/tree';\n",
         encoding="utf-8",
     )
 
@@ -199,3 +194,4 @@ def test_guard_does_not_treat_double_slash_inside_string_as_comment(tmp_path: Pa
     payload = json.loads(result.stdout)
     assert payload["violation_count"] == 1
     assert payload["violations"][0]["rule"] == "legacy-compat-route"
+    assert payload["violations"][0]["line"] == 1

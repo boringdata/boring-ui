@@ -112,7 +112,11 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
             index += 1
             continue
 
-        if char in {"'", '"', "`"}:
+        # Keep parsing focused on standard quoted strings where comment-token
+        # ambiguity is common. Template literals are still scanned for route
+        # patterns, but comment stripping inside `${...}` expressions is not
+        # modeled here.
+        if char in {"'", '"'}:
             string_delimiter = char
             result.append(char)
             index += 1
