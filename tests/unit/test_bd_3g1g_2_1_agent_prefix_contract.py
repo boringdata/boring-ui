@@ -53,7 +53,7 @@ def test_agent_prefix_families_are_finalized() -> None:
     section = _extract_finalized_contract_section(text)
 
     family_matches = re.findall(
-        r"/(?:api/v1|ws)/agent/(?:normal|companion|pi)/\*",
+        r"/(?:api/v1|ws)/agent/[^/\s`|]+/\*",
         section,
     )
     actual = set(family_matches)
@@ -72,7 +72,7 @@ def test_provisional_agent_prefix_language_removed() -> None:
     assert not found, "Found provisional agent prefix language:\n- " + "\n- ".join(found)
 
     pattern = re.compile(
-        r"provisional.{0,200}/(?:api/v1|ws)/agent/(?:normal|companion|pi)/\*",
+        r"provisional.*?/(?:api/v1|ws)/agent/[^/\s`|]+/\*",
         re.IGNORECASE | re.DOTALL,
     )
     assert not pattern.search(text), "Found regex match for provisional agent prefix language"
