@@ -84,26 +84,31 @@ def _is_candidate(rel_path: Path) -> bool:
     return True
 
 
-def _strip_comment_only_segments(line: str, in_block_comment: bool) -> tuple[str, bool]:
-    stripped = line.lstrip()
+def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
+    result: list[str] = []
+    index = 0
 
-    if in_block_comment:
-        end = stripped.find("*/")
-        if end == -1:
-            return "", True
-        stripped = stripped[end + 2 :].lstrip()
-        in_block_comment = False
+    while index < len(line):
+        if in_block_comment:
+            end = line.find("*/", index)
+            if end == -1:
+                return "", True
+            index = end + 2
+            in_block_comment = False
+            continue
 
-    while stripped.startswith("/*"):
-        end = stripped.find("*/", 2)
-        if end == -1:
-            return "", True
-        stripped = stripped[end + 2 :].lstrip()
+        if line.startswith("//", index):
+            break
 
-    if stripped.startswith("//"):
-        return "", in_block_comment
+        if line.startswith("/*", index):
+            in_block_comment = True
+            index += 2
+            continue
 
-    return stripped, in_block_comment
+        result.append(line[index])
+        index += 1
+
+    return "".join(result).strip(), in_block_comment
 
 
 def _iter_targets(root: Path, scan_root: Path) -> Iterable[Path]:
@@ -120,7 +125,7 @@ def _scan_file(root: Path, file_path: Path) -> list[Violation]:
     violations: list[Violation] = []
     in_block_comment = False
     for line_number, line in enumerate(text.splitlines(), start=1):
-        candidate_line, in_block_comment = _strip_comment_only_segments(
+        candidate_line, in_block_comment = _strip_comments(
             line=line,
             in_block_comment=in_block_comment,
         )

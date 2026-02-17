@@ -136,3 +136,25 @@ def test_guard_scans_generator_method_lines(tmp_path: Path) -> None:
     assert result.returncode == 1, result.stdout + result.stderr
     payload = json.loads(result.stdout)
     assert payload["violation_count"] >= 1
+
+
+def test_guard_ignores_forbidden_literals_inside_block_comments(tmp_path: Path) -> None:
+    file_path = tmp_path / "src/front/components/InlineBlockComment.jsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(
+        "\n".join(
+            [
+                "const value = 1; /* block starts here",
+                " * '/api/tree'",
+                " * '/api/v1/git?x=1'",
+                " */",
+                "const safe = 'ok'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_guard("--root", str(tmp_path), "--format", "json")
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["violation_count"] == 0
