@@ -1,6 +1,7 @@
 """Coverage guard for bd-3g1g.1.1 route/callsite inventory artifact."""
 
 from pathlib import Path
+from collections import Counter
 import re
 
 
@@ -30,10 +31,6 @@ EXPECTED_LEDGER_FAMILIES = [
     "/api/v1/git/status",
     "/api/v1/git/diff",
     "/api/v1/git/show",
-    "/api/capabilities",
-    "/api/project",
-    "/api/sessions",
-    "/api/approval/request",
     "/ws/pty",
     "/ws/claude-stream",
     "/api/x/{plugin}/...",
@@ -99,23 +96,50 @@ def test_inventory_includes_required_route_families_and_tags() -> None:
         if match:
             found_families.append(match.group(1))
 
-    missing_families = [
-        family for family in EXPECTED_LEDGER_FAMILIES if family not in found_families
-    ]
-    unexpected_families = [
-        family for family in found_families if family not in EXPECTED_LEDGER_FAMILIES
-    ]
+    expected_counts = Counter(EXPECTED_LEDGER_FAMILIES)
+    found_counts = Counter(found_families)
 
+    missing_families = sorted(set(expected_counts) - set(found_counts))
     assert not missing_families, (
-        "Inventory is missing required route families:\n- "
-        + "\n- ".join(missing_families)
-    )
-    assert not unexpected_families, (
-        "Inventory contains unexpected route families:\n- "
-        + "\n- ".join(unexpected_families)
+        "Inventory is missing route families:\n- " + "\n- ".join(missing_families)
     )
 
-    missing_tags = [tag for tag in REQUIRED_TAGS if tag not in text]
+    unexpected_families = sorted(set(found_counts) - set(expected_counts))
+    assert not unexpected_families, (
+        "Inventory contains unexpected route families:\n- " + "\n- ".join(unexpected_families)
+    )
+
+    duplicate_families = sorted(
+        family for family, count in found_counts.items() if count != expected_counts.get(family, 0)
+    )
+    assert not duplicate_families, (
+        "Inventory has duplicate/mismatched family counts:\n- "
+        + "\n- ".join(
+            f"{family}: expected {expected_counts.get(family, 0)}, found {found_counts[family]}"
+            for family in duplicate_families
+        )
+    )
+
+    parsed_tags = set()
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        cols = [col.strip() for col in line.split("|")]
+        if len(cols) < 5:
+            continue
+        tag_col = cols[3].strip()
+        if not tag_col:
+            continue
+        if tag_col.lower() == "tag(s)":
+            continue
+        if set(tag_col) == {"-"}:
+            continue
+        tag_col = tag_col.replace("`", "")
+        for tag in [token.strip() for token in tag_col.split(",")]:
+            if tag:
+                parsed_tags.add(tag)
+
+    missing_tags = [tag for tag in REQUIRED_TAGS if tag not in parsed_tags]
     assert not missing_tags, (
         "Inventory is missing required category tags:\n- "
         + "\n- ".join(missing_tags)

@@ -63,7 +63,7 @@ Tag key:
 | `GET` | `/api/sessions/{id}/history` | `external-service-live` | `src/front/providers/pi/backendAdapter.jsx:70` |
 | `POST` (SSE stream) | `/api/sessions/{id}/stream` | `external-service-live` | `src/front/providers/pi/backendAdapter.jsx:197` |
 
-## Legacy Backend Declarations Not Mounted By `create_app`
+## Legacy/Unresolved Route Surfaces Outside `create_app` Mounts
 
 | Method(s) | Route family | Tag(s) | Evidence |
 |---|---|---|---|
