@@ -371,6 +371,10 @@ class TestRouterSelection:
             assert files_response.status_code == 200
             assert git_response.status_code == 200
             assert default_response.status_code == 404
+            assert 'entries' in files_response.json()
+            git_data = git_response.json()
+            assert 'is_repo' in git_data
+            assert 'files' in git_data
 
 
 class TestWebSocketRoutes:
