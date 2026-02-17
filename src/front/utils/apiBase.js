@@ -1,3 +1,5 @@
+import { isLoopbackHost, rewriteLoopbackForRemoteClient } from './loopbackRewrite'
+
 const normalizeBase = (value) => (value ? value.replace(/\/$/, '') : '')
 
 const isDevPort = (port) => {
@@ -5,30 +7,9 @@ const isDevPort = (port) => {
   return devPorts.has(port)
 }
 
-const isLoopbackHost = (hostname) => hostname === 'localhost' || hostname === '127.0.0.1'
-
-const rewriteLoopbackForRemoteClient = (baseUrl, location = typeof window !== 'undefined' ? window.location : null) => {
-  if (!baseUrl || !location) {
-    return baseUrl
-  }
-
-  try {
-    const parsed = new URL(baseUrl, location.origin)
-    const browserHost = location.hostname
-    if (isLoopbackHost(parsed.hostname) && browserHost && !isLoopbackHost(browserHost)) {
-      parsed.hostname = browserHost
-      return normalizeBase(parsed.toString())
-    }
-  } catch {
-    return baseUrl
-  }
-
-  return baseUrl
-}
-
 const resolveApiBase = () => {
   const envUrl = import.meta.env.VITE_API_URL || ''
-  if (envUrl) return rewriteLoopbackForRemoteClient(normalizeBase(envUrl))
+  if (envUrl) return normalizeBase(rewriteLoopbackForRemoteClient(normalizeBase(envUrl)))
 
   if (typeof window !== 'undefined' && window.location) {
     const { protocol, hostname, port, origin } = window.location

@@ -204,7 +204,8 @@ const createSessionId = () => {
 }
 
 const promptForApiKey = async (provider, runtime) => {
-  const injectedKey = String(window.__PI_TEST_API_KEY__ || '').trim()
+  const allowInjectedTestKey = import.meta.env.DEV || import.meta.env.MODE === 'test'
+  const injectedKey = allowInjectedTestKey ? String(window.__PI_TEST_API_KEY__ || '').trim() : ''
   if (injectedKey) {
     await runtime.providerKeys.set(provider, injectedKey)
     return true
