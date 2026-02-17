@@ -16,6 +16,7 @@ const defaults = {
   maxTotalMs: 30000,
   settleQuietMs: 1200,
   waitPanelMs: 20000,
+  providerKey: '',
 }
 
 function parseArgs(argv) {
@@ -36,6 +37,7 @@ function parseArgs(argv) {
     if (key === '--max-total-ms') opts.maxTotalMs = Number(value)
     if (key === '--settle-quiet-ms') opts.settleQuietMs = Number(value)
     if (key === '--wait-panel-ms') opts.waitPanelMs = Number(value)
+    if (key === '--provider-key') opts.providerKey = value
   }
   return opts
 }
@@ -100,6 +102,11 @@ async function run() {
   const context = await browser.newContext({
     viewport: { width: 1536, height: 960 },
   })
+  if (opts.providerKey) {
+    await context.addInitScript((value) => {
+      window.__PI_TEST_API_KEY__ = value
+    }, opts.providerKey)
+  }
   const page = await context.newPage()
 
   const requestState = {
@@ -229,12 +236,18 @@ async function run() {
         const sendButton = buttons.length > 0 ? buttons[buttons.length - 1] : null
         const sendEnabledBeforeClick = Boolean(sendButton && !sendButton.disabled)
         let sendClicked = false
+        let usedDirectOnSend = false
         if (sendEnabledBeforeClick) {
           sendButton.click()
           sendClicked = true
         } else {
           textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true }))
           textarea.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true }))
+        }
+        await sleep(120)
+        if (mutationCount === 0 && textarea.value.trim() && typeof editor.onSend === 'function') {
+          editor.onSend(textarea.value, Array.isArray(editor.attachments) ? editor.attachments : [])
+          usedDirectOnSend = true
         }
 
         let doneReason = null
@@ -282,6 +295,7 @@ async function run() {
           submitAttempted: true,
           sendEnabledBeforeClick,
           sendClicked,
+          usedDirectOnSend,
           firstVisibleUpdateMs,
           totalResponseMs,
           doneReason,
