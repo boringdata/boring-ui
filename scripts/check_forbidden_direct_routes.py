@@ -90,6 +90,7 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
     string_delimiter: str | None = None
     escaped = False
     template_interpolation_depth = 0
+    template_resume_depths: list[int] = []
 
     while index < len(line):
         if in_block_comment:
@@ -110,9 +111,11 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
                 escaped = True
             elif string_delimiter == "`" and line.startswith("${", index):
                 result.append("{")
+                previous_depth = template_interpolation_depth
                 index += 2
                 string_delimiter = None
-                template_interpolation_depth = 1
+                template_interpolation_depth = previous_depth + 1
+                template_resume_depths.append(previous_depth)
                 escaped = False
                 continue
             elif char == string_delimiter:
@@ -129,7 +132,7 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
             continue
 
         if template_interpolation_depth > 0:
-            if char in {"'", '"'}:
+            if char in {"'", '"', "`"}:
                 string_delimiter = char
                 escaped = False
                 result.append(char)
@@ -140,11 +143,15 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
                 template_interpolation_depth += 1
             elif char == "}":
                 template_interpolation_depth -= 1
-                if template_interpolation_depth == 0:
+                if (
+                    template_resume_depths
+                    and template_interpolation_depth == template_resume_depths[-1]
+                ):
                     result.append(char)
                     index += 1
                     string_delimiter = "`"
                     escaped = False
+                    template_resume_depths.pop()
                     continue
 
             result.append(char)
