@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, ListChecks, Quote, Code, Link as LinkIcon,
-  Minus, Highlighter, Loader2, Circle, Check, Copy,
+  Minus, Highlighter, Loader2, Circle, Check,
   Table as TableIcon, Image as ImageIcon
 } from 'lucide-react'
 import { EditorContent, useEditor } from '@tiptap/react'
@@ -54,7 +54,6 @@ function buildDiffMap(originalContent, currentContent) {
   const addedLineNumbers = new Set()
   const wordDiffs = new Map()
 
-  let originalLineNum = 0
   let currentLineNum = 0
   let pendingDeleted = []
   let pendingDeletedTexts = []
@@ -67,7 +66,6 @@ function buildDiffMap(originalContent, currentContent) {
       lines.forEach(text => {
         pendingDeleted.push(text)
         pendingDeletedTexts.push(text)
-        originalLineNum++
       })
     } else if (change.added) {
       lines.forEach((text, idx) => {
@@ -111,7 +109,6 @@ function buildDiffMap(originalContent, currentContent) {
         pendingDeletedTexts = []
       }
       lines.forEach(() => {
-        originalLineNum++
         currentLineNum++
       })
     }
@@ -558,7 +555,7 @@ export default function Editor({
 
   // Frontmatter state - separate from body content
   // Parse initial values from content prop
-  const initialParsed = useMemo(() => parseFrontmatter(content || ''), [])
+  const initialParsed = useMemo(() => parseFrontmatter(content || ''), [content])
   const [frontmatterCollapsed, setFrontmatterCollapsed] = useState(
     !initialParsed.frontmatter || initialParsed.frontmatter.trim() === ''
   )
@@ -767,7 +764,7 @@ export default function Editor({
           const linkText = file.name || file.path.split('/').pop()
           editor.chain().focus().insertContent(`[${linkText}](${file.path})`).run()
         }
-      } catch (e) {
+      } catch {
         // Ignore parse errors
       }
     }

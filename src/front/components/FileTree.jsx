@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Search, X, Folder, FolderOpen, File, FolderInput, ChevronRight, ChevronDown, MoreHorizontal, Settings } from 'lucide-react'
+import { Search, X, Folder, FolderOpen, FolderInput, ChevronRight, ChevronDown, MoreHorizontal, Settings } from 'lucide-react'
 import { buildApiUrl } from '../utils/apiBase'
 import { getFileIcon } from '../utils/fileIcons'
 

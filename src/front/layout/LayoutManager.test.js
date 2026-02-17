@@ -4,7 +4,7 @@
  * Tests for layout persistence, validation, recovery, and migration.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   LAYOUT_VERSION,
   hashProjectRoot,

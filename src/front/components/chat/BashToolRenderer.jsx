@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import ToolUseBlock, { ToolOutput, ToolError, ToolCommand } from './ToolUseBlock'
+import ToolUseBlock, { ToolOutput, ToolError } from './ToolUseBlock'
 
 /**
  * BashToolRenderer - Displays bash command executions

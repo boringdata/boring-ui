@@ -94,7 +94,7 @@ const buildSocketUrl = (sessionId, resume, forceNew, provider, sessionName) => {
 export default function Terminal({
   isActive = true,
   onFirstPrompt,
-  provider = 'claude',
+  provider: _provider = 'claude',
   sessionId,
   sessionName,
   resume,
@@ -104,6 +104,7 @@ export default function Terminal({
   onBannerShown,
 }) {
   const { theme: appTheme } = useTheme()
+  const appThemeRef = useRef(appTheme)
   const containerRef = useRef(null)
   const termRef = useRef(null)
   const fitAddonRef = useRef(null)
@@ -162,6 +163,7 @@ export default function Terminal({
 
   // Update terminal theme when app theme changes
   useEffect(() => {
+    appThemeRef.current = appTheme
     if (termRef.current) {
       termRef.current.options.theme = TERMINAL_THEMES[appTheme] || TERMINAL_THEMES.light
     }
@@ -183,7 +185,7 @@ export default function Terminal({
       convertEol: false,
       fontFamily: '"IBM Plex Mono", "SFMono-Regular", Menlo, monospace',
       fontSize: 13,
-      theme: TERMINAL_THEMES[appTheme] || TERMINAL_THEMES.light,
+      theme: TERMINAL_THEMES[appThemeRef.current] || TERMINAL_THEMES.light,
     })
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)

@@ -21,7 +21,6 @@ import {
   savePanelSizes,
   pruneEmptyGroups,
   getStorageKey,
-  checkForSavedLayout,
   getFileName,
 } from './layout'
 import ThemeToggle from './components/ThemeToggle'
@@ -31,8 +30,6 @@ import {
   registerPane,
   getGatedComponents,
   getKnownComponents,
-  essentialPanes,
-  checkRequirements,
   getUnavailableEssentialPanes,
 } from './registry/panes'
 
@@ -69,9 +66,6 @@ const debounce = (fn, wait) => {
 // Get capability-gated components from pane registry
 // Components with requiresFeatures/requiresRouters will show error states when unavailable
 const KNOWN_COMPONENTS = getKnownComponents()
-
-// Get essential panel IDs from pane registry
-const ESSENTIAL_PANELS = essentialPanes()
 
 // Custom tab component that hides close button (for shell tabs)
 const TabWithoutClose = (props) => <DockviewDefaultTab {...props} hideClose />
@@ -1465,7 +1459,6 @@ export default function App() {
 
         // Update editor panels with callbacks (callbacks can't be serialized in layout JSON)
         editorPanels.forEach((panel) => {
-          const path = panel.id.replace('editor-', '')
           panel.api.updateParameters({
             onContentChange: (p, newContent) => {
               setTabs((prev) => ({
@@ -1570,7 +1563,27 @@ export default function App() {
         layoutRestored.current = false
       }
     }
-  }, [dockApi, projectRoot, storagePrefix, collapsed.filetree, collapsed.terminal, collapsed.shell, collapsed.companion, openFile, openFileToSide, openDiff, activeFile, activeDiffFile, toggleFiletree])
+  }, [
+    dockApi,
+    projectRoot,
+    storagePrefix,
+    layoutVersion,
+    capabilities,
+    capabilitiesLoading,
+    collapsed.filetree,
+    collapsed.terminal,
+    collapsed.shell,
+    collapsed.companion,
+    openFile,
+    openFileToSide,
+    openDiff,
+    activeFile,
+    activeDiffFile,
+    toggleFiletree,
+    companionAgentEnabled,
+    nativeAgentEnabled,
+    piAgentEnabled,
+  ])
 
   // Track active panel to highlight in file tree and sync URL
   useEffect(() => {
@@ -1841,7 +1854,17 @@ export default function App() {
     } else if (!piEnabled && piPanel) {
       piPanel.api.close()
     }
-  }, [dockApi, capabilities, capabilitiesLoading, companionAgentEnabled, piAgentEnabled, nativeAgentEnabled])
+  }, [
+    dockApi,
+    capabilities,
+    capabilitiesLoading,
+    companionAgentEnabled,
+    piAgentEnabled,
+    nativeAgentEnabled,
+    collapsed.companion,
+    storagePrefix,
+    toggleCompanion,
+  ])
 
   // Restore saved tabs when dockApi and projectRoot become available
   const hasRestoredTabs = useRef(false)

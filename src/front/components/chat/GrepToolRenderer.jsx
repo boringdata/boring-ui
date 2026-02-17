@@ -1,4 +1,4 @@
-import ToolUseBlock, { ToolOutput, ToolError, InlineCode } from './ToolUseBlock'
+import ToolUseBlock, { ToolError, InlineCode } from './ToolUseBlock'
 
 /**
  * GrepToolRenderer - Displays code search operations
