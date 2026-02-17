@@ -43,12 +43,13 @@ def _parse_inventory_route_families(text: str) -> list[str]:
     return families
 
 
-def _parse_matrix_rows(text: str) -> dict[str, dict[str, str]]:
+def _parse_matrix_rows(text: str) -> tuple[dict[str, dict[str, str]], list[str]]:
     marker = "## Ownership Matrix"
     assert marker in text, "Matrix artifact missing Ownership Matrix section"
     block = text.split(marker, maxsplit=1)[1]
 
     rows: dict[str, dict[str, str]] = {}
+    duplicates: list[str] = []
     for line in block.splitlines():
         if not line.startswith("|"):
             continue
@@ -69,6 +70,9 @@ def _parse_matrix_rows(text: str) -> dict[str, dict[str, str]]:
             continue
 
         current = current.strip("`")
+        if current in rows:
+            duplicates.append(current)
+
         rows[current] = {
             "target": target.strip("`"),
             "owner": owner.strip("`"),
@@ -77,7 +81,7 @@ def _parse_matrix_rows(text: str) -> dict[str, dict[str, str]]:
             "policy": policy,
         }
 
-    return rows
+    return rows, duplicates
 
 
 def test_artifacts_exist() -> None:
@@ -90,12 +94,12 @@ def test_matrix_covers_all_inventory_route_families() -> None:
     matrix_text = MATRIX_ARTIFACT.read_text(encoding="utf-8")
 
     inventory_families = _parse_inventory_route_families(inventory_text)
-    matrix_rows = _parse_matrix_rows(matrix_text)
+    matrix_rows, duplicates = _parse_matrix_rows(matrix_text)
 
     assert len(inventory_families) == len(set(inventory_families)), (
         "Inventory route family ledger should contain unique families"
     )
-    assert len(matrix_rows) == len(set(matrix_rows)), "Matrix should not contain duplicate current families"
+    assert not duplicates, "Matrix contains duplicate current-family rows:\n- " + "\n- ".join(sorted(set(duplicates)))
 
     missing = sorted(set(inventory_families) - set(matrix_rows))
     assert not missing, "Matrix missing inventory route families:\n- " + "\n- ".join(missing)
@@ -106,7 +110,8 @@ def test_matrix_covers_all_inventory_route_families() -> None:
 
 def test_matrix_rows_are_execution_ready() -> None:
     matrix_text = MATRIX_ARTIFACT.read_text(encoding="utf-8")
-    matrix_rows = _parse_matrix_rows(matrix_text)
+    matrix_rows, duplicates = _parse_matrix_rows(matrix_text)
+    assert not duplicates, "Matrix contains duplicate current-family rows:\n- " + "\n- ".join(sorted(set(duplicates)))
     assert matrix_rows, "Expected at least one matrix row"
 
     for family, row in matrix_rows.items():
