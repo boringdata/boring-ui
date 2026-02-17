@@ -135,6 +135,9 @@ def test_frontend_control_plane_contract_only_lists_allowed_direct_routes() -> N
         ("`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`", "`/w/{workspace_id}/{path}`"),
         ("`WS`", "`/w/{workspace_id}/{path}`"),
     }
+    assert len(rows) == len(expected_method_path), (
+        "Frontend control-plane contract table has duplicate or unexpected row count"
+    )
     assert actual_method_path == expected_method_path, (
         "Frontend control-plane direct route contract does not match locked method+path baseline"
     )
