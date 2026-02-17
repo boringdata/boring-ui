@@ -6,7 +6,21 @@ include_pty = true
 include_approval = true
 # Use the host-reachable IP so browsers off-box can connect directly.
 companion_url = "http://100.68.199.114:3456"
+pi_url = "http://100.68.199.114:8789"
+pi_mode = "backend"
 cors_origins = ["http://localhost:5176", "http://100.68.199.114:5176"]
+
+[services.companion]
+enabled = true
+port = 3456
+# command = ["npm", "run", "companion:service"]
+
+[services.pi]
+enabled = true
+host = "0.0.0.0"
+port = 8789
+cors_origin = "*"
+# command = ["npm", "run", "pi:service"]
 
 [frontend]
 host = "0.0.0.0"
@@ -20,4 +34,4 @@ vite_api_url = "http://100.68.199.114:8010"
 # branding = { name = "My IDE", logo = "M" }
 # features = { controlPlaneOnboarding = false }
 # panels = { defaults = { filetree = 280 } }
-features = { codeSessions = false }
+features = { codeSessions = true, agentRailMode = "all" }
