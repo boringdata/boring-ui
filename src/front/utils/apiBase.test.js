@@ -10,7 +10,7 @@ describe('apiBase loopback rewrite', () => {
         hostname: '213.32.19.186',
       },
     )
-    expect(rewritten).toBe('http://213.32.19.186:3456/')
+    expect(rewritten).toBe('http://213.32.19.186:3456')
   })
 
   it('keeps loopback VITE_API_URL when the browser itself is local', () => {
@@ -32,7 +32,7 @@ describe('apiBase loopback rewrite', () => {
         hostname: '213.32.19.186',
       },
     )
-    expect(rewritten).toBe('http://213.32.19.186:3456/')
+    expect(rewritten).toBe('http://213.32.19.186:3456')
   })
 
   it('treats 5190 as a dev port for fallback API host resolution', () => {

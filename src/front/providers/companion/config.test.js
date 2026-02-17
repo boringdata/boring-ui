@@ -11,7 +11,7 @@ describe('companion config loopback rewrite', () => {
       },
     )
 
-    expect(rewritten).toBe('http://213.32.19.186:3456/')
+    expect(rewritten).toBe('http://213.32.19.186:3456')
   })
 
   it('keeps localhost companion URL for local browsers', () => {
@@ -35,6 +35,6 @@ describe('companion config loopback rewrite', () => {
       },
     )
 
-    expect(rewritten).toBe('http://213.32.19.186:3456/')
+    expect(rewritten).toBe('http://213.32.19.186:3456')
   })
 })

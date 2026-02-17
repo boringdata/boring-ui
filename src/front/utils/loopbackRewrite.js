@@ -3,6 +3,8 @@ const defaultLocation = () => {
   return window.location
 }
 
+const stripTrailingSlash = (value) => value.replace(/\/+$/, '')
+
 export const isLoopbackHost = (hostname) => (
   hostname === 'localhost'
   || hostname === '127.0.0.1'
@@ -18,11 +20,11 @@ export const rewriteLoopbackForRemoteClient = (baseUrl, location = defaultLocati
     const browserHost = location.hostname
     if (isLoopbackHost(parsed.hostname) && browserHost && !isLoopbackHost(browserHost)) {
       parsed.hostname = browserHost
-      return parsed.toString()
+      return stripTrailingSlash(parsed.toString())
     }
   } catch {
     return baseUrl
   }
 
-  return baseUrl
+  return stripTrailingSlash(baseUrl)
 }
