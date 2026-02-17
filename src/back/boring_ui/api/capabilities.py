@@ -210,6 +210,7 @@ def create_capabilities_router(
             services = capabilities.setdefault('services', {})
             services['pi'] = {
                 'url': config.pi_url,
+                'mode': config.pi_mode,
             }
 
         return capabilities
