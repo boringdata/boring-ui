@@ -61,18 +61,52 @@ def test_contract_pack_service_ownership_table_is_exact() -> None:
     rows = _extract_table_rows(text, "## Canonical Service Ownership and Route Families")
     assert len(rows) == 6, f"Expected 6 service-ownership rows, found {len(rows)}"
 
-    actual = {(row[0], row[1], row[2], row[3]) for row in rows}
+    for row in rows:
+        assert len(row) == 5, f"Expected 5 columns in service ownership row, found {len(row)}: {row}"
+
+    actual = {(row[0], row[1], row[2], row[3], row[4]) for row in rows}
     expected = {
-        ("`workspace-core`", "`/api/v1/files/*`, `/api/v1/git/*`", "none", "no"),
-        ("`pty-service`", "`/api/v1/pty/*`", "`/ws/pty`", "no"),
-        ("`agent-normal`", "`/api/v1/agent/normal/*`", "`/ws/agent/normal/*`", "no"),
-        ("`agent-companion`", "`/api/v1/agent/companion/*`", "`/ws/agent/companion/*`", "no"),
-        ("`agent-pi`", "`/api/v1/agent/pi/*`", "`/ws/agent/pi/*`", "no"),
+        (
+            "`workspace-core`",
+            "`/api/v1/files/*`, `/api/v1/git/*`",
+            "none",
+            "no",
+            "deny by default on missing scope/claims",
+        ),
+        (
+            "`pty-service`",
+            "`/api/v1/pty/*`",
+            "`/ws/pty`",
+            "no",
+            "deny by default on missing scope/claims/session",
+        ),
+        (
+            "`agent-normal`",
+            "`/api/v1/agent/normal/*`",
+            "`/ws/agent/normal/*`",
+            "no",
+            "runtime/session authority only",
+        ),
+        (
+            "`agent-companion`",
+            "`/api/v1/agent/companion/*`",
+            "`/ws/agent/companion/*`",
+            "no",
+            "runtime/session authority only",
+        ),
+        (
+            "`agent-pi`",
+            "`/api/v1/agent/pi/*`",
+            "`/ws/agent/pi/*`",
+            "no",
+            "runtime/session authority only",
+        ),
         (
             "`control-plane`",
             "`/auth/*`, `/api/v1/me`, `/api/v1/workspaces*`, `/w/{workspace_id}/*`",
             "`/w/{workspace_id}/{path}`",
             "yes",
+            "sole frontend boundary for auth + membership + policy",
         ),
     }
     assert actual == expected, "Service ownership table does not match locked contract baseline"
@@ -81,22 +115,29 @@ def test_contract_pack_service_ownership_table_is_exact() -> None:
 def test_frontend_control_plane_contract_only_lists_allowed_direct_routes() -> None:
     text = CONTRACT_PACK.read_text(encoding="utf-8")
     rows = _extract_table_rows(text, "## Frontend -> Control-Plane Contract (Only Direct UI Surface)")
-    paths = {row[1] for row in rows}
 
-    required_paths = {
-        "`/auth/login`",
-        "`/auth/callback`",
-        "`/auth/logout`",
-        "`/api/v1/me`",
-        "`/api/v1/workspaces`",
-        "`/api/v1/workspaces/{workspace_id}/runtime`",
-        "`/api/v1/workspaces/{workspace_id}/runtime/retry`",
-        "`/api/v1/workspaces/{workspace_id}/settings`",
-        "`/w/{workspace_id}/setup`",
-        "`/w/{workspace_id}/{path}`",
+    for row in rows:
+        assert len(row) == 3, f"Expected 3 columns in frontend contract row, found {len(row)}: {row}"
+
+    actual_method_path = {(row[0], row[1]) for row in rows}
+    expected_method_path = {
+        ("`GET`", "`/auth/login`"),
+        ("`GET`", "`/auth/callback`"),
+        ("`GET`", "`/auth/logout`"),
+        ("`GET`", "`/api/v1/me`"),
+        ("`GET`", "`/api/v1/workspaces`"),
+        ("`POST`", "`/api/v1/workspaces`"),
+        ("`GET`", "`/api/v1/workspaces/{workspace_id}/runtime`"),
+        ("`POST`", "`/api/v1/workspaces/{workspace_id}/runtime/retry`"),
+        ("`GET`", "`/api/v1/workspaces/{workspace_id}/settings`"),
+        ("`PUT`", "`/api/v1/workspaces/{workspace_id}/settings`"),
+        ("`GET`", "`/w/{workspace_id}/setup`"),
+        ("`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`", "`/w/{workspace_id}/{path}`"),
+        ("`WS`", "`/w/{workspace_id}/{path}`"),
     }
-    missing = sorted(required_paths - paths)
-    assert not missing, "Missing frontend-callable control-plane path(s):\n- " + "\n- ".join(missing)
+    assert actual_method_path == expected_method_path, (
+        "Frontend control-plane direct route contract does not match locked method+path baseline"
+    )
 
     forbidden_direct_paths = {
         "`/api/v1/files/*`",
@@ -106,6 +147,7 @@ def test_frontend_control_plane_contract_only_lists_allowed_direct_routes() -> N
         "`/api/v1/agent/companion/*`",
         "`/api/v1/agent/pi/*`",
     }
+    paths = {row[1] for row in rows}
     leaked = sorted(forbidden_direct_paths & paths)
     assert not leaked, "Internal service routes leaked into frontend direct contract:\n- " + "\n- ".join(leaked)
 
