@@ -8,6 +8,9 @@ vi.mock('../providers/companion/adapter', () => ({
 vi.mock('../providers/companion/EmbeddedSessionToolbar', () => ({
   default: () => <div data-testid="mock-companion-toolbar">MockCompanionToolbar</div>,
 }))
+vi.mock('../providers/pi/PiSessionToolbar', () => ({
+  default: () => <div data-testid="mock-pi-toolbar">MockPiToolbar</div>,
+}))
 vi.mock('../providers/pi/nativeAdapter', () => ({
   default: () => <div data-testid="mock-pi-native-app">MockPiNativeApp</div>,
 }))
@@ -47,13 +50,14 @@ describe('CompanionPanel', () => {
     expect(mockSetCompanionConfig).not.toHaveBeenCalled()
   })
 
-  it('shows connecting state when pi URL is not available', () => {
+  it('renders PI native adapter without companion URL wiring when provider is pi', () => {
     mockCapabilities.services = {}
 
     render(<CompanionPanel params={{ provider: 'pi' }} />)
 
-    expect(screen.getByTestId('companion-connecting')).toBeTruthy()
-    expect(screen.queryByTestId('pi-app')).toBeNull()
+    expect(screen.getByTestId('pi-app')).toBeTruthy()
+    expect(screen.getByTestId('mock-pi-toolbar')).toBeTruthy()
+    expect(screen.getByTestId('mock-pi-native-app')).toBeTruthy()
     expect(mockSetCompanionConfig).not.toHaveBeenCalled()
   })
 
@@ -69,31 +73,19 @@ describe('CompanionPanel', () => {
     expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:3456', '')
   })
 
-  it('renders embedded PI adapter by default when provider is pi and URL is available', () => {
-    mockCapabilities.services = {
-      pi: { url: 'http://localhost:8787' },
-    }
-
-    render(<CompanionPanel params={{ provider: 'pi' }} />)
-
-    expect(screen.getByTestId('pi-app')).toBeTruthy()
-    expect(screen.getByTestId('mock-pi-native-app')).toBeTruthy()
-    expect(screen.getByTestId('mock-companion-toolbar')).toBeTruthy()
-    expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:8787', '')
-  })
-
-  it('uses dedicated pi backend URL when both provider URLs exist', () => {
+  it('uses dedicated pi backend URL metadata when both provider URLs exist', () => {
     mockCapabilities.services = {
       companion: { url: 'http://localhost:3456' },
-      pi: { url: 'http://localhost:8787', mode: 'iframe' },
+      pi: { url: 'http://localhost:8787', mode: 'embedded' },
     }
 
     render(<CompanionPanel params={{ provider: 'pi' }} />)
 
     expect(screen.getByTestId('pi-app')).toBeTruthy()
-    expect(screen.getByTestId('mock-companion-toolbar')).toBeTruthy()
+    expect(screen.getByTestId('mock-pi-toolbar')).toBeTruthy()
     expect(screen.getByTestId('mock-pi-native-app')).toBeTruthy()
-    expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:8787', '')
+    expect(screen.getByTestId('pi-app').getAttribute('data-service-url')).toBe('http://localhost:8787')
+    expect(mockSetCompanionConfig).not.toHaveBeenCalled()
   })
 
   it('renders collapsed state with correct test id', () => {
@@ -123,10 +115,8 @@ describe('CompanionPanel', () => {
 
     render(<CompanionPanel params={{}} />)
 
-    // setCompanionConfig should have been called (via useMemo, before render)
     expect(mockSetCompanionConfig).toHaveBeenCalledTimes(1)
     expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:3456', '')
-    // And CompanionApp should be rendered
     expect(screen.getByTestId('mock-companion-app')).toBeTruthy()
   })
 })

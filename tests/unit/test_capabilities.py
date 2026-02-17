@@ -95,6 +95,30 @@ class TestCapabilitiesEndpoint:
         assert 'pty' in features
         assert 'stream' in features
         assert 'approval' in features
+        assert 'companion' in features
+        assert 'pi' in features
+
+    def test_default_embedded_agent_features_are_enabled(self):
+        """Companion/PI should be available by default in embedded mode."""
+        app = create_app(config=APIConfig(workspace_root=Path.cwd()))
+        client = TestClient(app)
+
+        response = client.get('/api/capabilities')
+        data = response.json()
+
+        assert data['features']['companion'] is True
+        assert data['features']['pi'] is True
+
+    def test_pi_iframe_mode_without_url_is_disabled(self):
+        """PI iframe mode requires PI_URL to be configured."""
+        config = APIConfig(workspace_root=Path.cwd(), pi_url=None, pi_mode='iframe')
+        app = create_app(config=config)
+        client = TestClient(app)
+
+        response = client.get('/api/capabilities')
+        data = response.json()
+
+        assert data['features']['pi'] is False
 
     def test_capabilities_has_routers(self, client):
         """Response should include router details."""
@@ -196,6 +220,7 @@ class TestCapabilitiesEndpoint:
     def test_capabilities_includes_pi_service(self, monkeypatch):
         """PI service metadata should appear when configured."""
         monkeypatch.setenv('PI_URL', 'http://localhost:8787')
+        monkeypatch.setenv('PI_MODE', 'iframe')
         config = APIConfig(workspace_root=Path.cwd())
         registry = create_default_registry()
         enabled_features = {'pi': True}
@@ -211,6 +236,7 @@ class TestCapabilitiesEndpoint:
         data = response.json()
 
         assert data['services']['pi']['url'] == 'http://localhost:8787'
+        assert data['services']['pi']['mode'] == 'iframe'
 
     def test_capabilities_includes_both_companion_and_pi_services(self, monkeypatch):
         """Both service blocks should appear when both URLs are configured."""
