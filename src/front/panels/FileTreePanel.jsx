@@ -2,9 +2,26 @@ import React, { useState } from 'react'
 import { ChevronRight, ChevronLeft, FolderOpen, GitBranch, Plus } from 'lucide-react'
 import FileTree from '../components/FileTree'
 import GitChangesView from '../components/GitChangesView'
+import UserMenu from '../components/UserMenu'
 
 export default function FileTreePanel({ params }) {
-  const { onOpenFile, onOpenFileToSide, onOpenDiff, projectRoot, activeFile, activeDiffFile, collapsed, onToggleCollapse } = params
+  const {
+    onOpenFile,
+    onOpenFileToSide,
+    onOpenDiff,
+    projectRoot,
+    activeFile,
+    activeDiffFile,
+    collapsed,
+    onToggleCollapse,
+    userEmail,
+    workspaceName,
+    workspaceId,
+    onSwitchWorkspace,
+    onCreateWorkspace,
+    onOpenUserSettings,
+    onLogout,
+  } = params
   const [creatingFile, setCreatingFile] = useState(false)
   const [viewMode, setViewMode] = useState('files') // 'files' | 'changes'
 
@@ -36,6 +53,18 @@ export default function FileTreePanel({ params }) {
           <ChevronRight size={12} />
         </button>
         <div className="sidebar-collapsed-label">{viewMode === 'files' ? 'Files' : 'Changes'}</div>
+        <div className="filetree-collapsed-footer">
+          <UserMenu
+            email={userEmail}
+            workspaceName={workspaceName}
+            workspaceId={workspaceId}
+            onSwitchWorkspace={onSwitchWorkspace}
+            onCreateWorkspace={onCreateWorkspace}
+            onOpenUserSettings={onOpenUserSettings}
+            onLogout={onLogout}
+            collapsed
+          />
+        </div>
       </div>
     )
   }
@@ -84,22 +113,35 @@ export default function FileTreePanel({ params }) {
           </button>
         </div>
       </div>
-      {viewMode === 'files' ? (
-        <FileTree
-          onOpen={onOpenFile}
-          onOpenToSide={onOpenFileToSide}
-          projectRoot={projectRoot}
-          activeFile={activeFile}
-          creatingFile={creatingFile}
-          onFileCreated={handleFileCreated}
-          onCancelCreate={handleCancelCreate}
+      <div className="filetree-body">
+        {viewMode === 'files' ? (
+          <FileTree
+            onOpen={onOpenFile}
+            onOpenToSide={onOpenFileToSide}
+            projectRoot={projectRoot}
+            activeFile={activeFile}
+            creatingFile={creatingFile}
+            onFileCreated={handleFileCreated}
+            onCancelCreate={handleCancelCreate}
+          />
+        ) : (
+          <GitChangesView
+            onOpenDiff={onOpenDiff}
+            activeDiffFile={activeDiffFile}
+          />
+        )}
+      </div>
+      <div className="filetree-footer">
+        <UserMenu
+          email={userEmail}
+          workspaceName={workspaceName}
+          workspaceId={workspaceId}
+          onSwitchWorkspace={onSwitchWorkspace}
+          onCreateWorkspace={onCreateWorkspace}
+          onOpenUserSettings={onOpenUserSettings}
+          onLogout={onLogout}
         />
-      ) : (
-        <GitChangesView
-          onOpenDiff={onOpenDiff}
-          activeDiffFile={activeDiffFile}
-        />
-      )}
+      </div>
     </div>
   )
 }
