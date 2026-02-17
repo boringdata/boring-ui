@@ -62,7 +62,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     try {
       const { response, data } = await apiFetchJson('/api/v1/git/diff', { query: { path } })
       if (!response.ok) {
-        throw new Error(data.detail || 'Failed to load git diff')
+        throw new Error(data.detail || data.message || `Failed to load git diff (${response.status})`)
       }
       setDiffText(data.diff || '')
     } catch (err) {
@@ -76,7 +76,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     try {
       const { response, data } = await apiFetchJson('/api/v1/git/show', { query: { path } })
       if (!response.ok) {
-        throw new Error(data.detail || 'Failed to load original content')
+        throw new Error(data.detail || data.message || `Failed to load original content (${response.status})`)
       }
       setOriginalContent(data.is_new ? '' : (data.content || ''))
     } catch (err) {
@@ -165,12 +165,15 @@ export default function EditorPanel({ params: initialParams, api }) {
     setContent(newContent)
     setIsSaving(true)
     try {
-      await apiFetchJson('/api/v1/files/write', {
+      const { response, data } = await apiFetchJson('/api/v1/files/write', {
         query: { path },
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newContent }),
       })
+      if (!response.ok) {
+        throw new Error(data.detail || data.message || `Failed to save file (${response.status})`)
+      }
 
       setIsDirty(false)
       setExternalChange(false) // Clear notification since we just wrote to disk

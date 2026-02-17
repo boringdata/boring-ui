@@ -19,6 +19,8 @@ const formatSectionLabel = (path) => {
   return name.charAt(0).toUpperCase() + name.slice(1)
 }
 
+const getErrorDetail = (response, data) => data?.detail || data?.message || `HTTP ${response.status}`
+
 export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRenamed, onFileMoved, projectRoot, activeFile, creatingFile, onFileCreated, onCancelCreate }) {
   const [entries, setEntries] = useState([])
   const [expandedDirs, setExpandedDirs] = useState({})
@@ -277,7 +279,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileDeleted?.(entry.path)
       } else {
-        alert(`Failed to delete: ${data.detail || 'Unknown error'}`)
+        alert(`Failed to delete: ${getErrorDetail(response, data)}`)
       }
     } catch (err) {
       alert(`Failed to delete: ${err.message}`)
@@ -310,7 +312,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileRenamed?.(oldPath, newPath)
       } else {
-        alert(`Failed to rename: ${data.detail || 'Unknown error'}`)
+        alert(`Failed to rename: ${getErrorDetail(response, data)}`)
       }
     } catch (err) {
       alert(`Failed to rename: ${err.message}`)
@@ -364,7 +366,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileCreated?.(filePath)
       } else {
-        alert(`Failed to create file: ${data.detail || 'Unknown error'}`)
+        alert(`Failed to create file: ${getErrorDetail(response, data)}`)
       }
     } catch (err) {
       alert(`Failed to create file: ${err.message}`)
@@ -468,7 +470,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileMoved?.(srcFile.path, data.dest_path)
       } else {
-        alert(`Failed to move: ${data.detail || 'Unknown error'}`)
+        alert(`Failed to move: ${getErrorDetail(response, data)}`)
       }
     } catch (err) {
       alert(`Failed to move: ${err.message}`)
@@ -496,7 +498,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileMoved?.(srcFile.path, data.dest_path)
       } else {
-        alert(`Failed to move: ${data.detail || 'Unknown error'}`)
+        alert(`Failed to move: ${getErrorDetail(response, data)}`)
       }
     } catch (err) {
       alert(`Failed to move: ${err.message}`)

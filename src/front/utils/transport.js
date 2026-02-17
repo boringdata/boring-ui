@@ -32,7 +32,11 @@ export const openWebSocket = (path, options = {}) => {
   return new WebSocket(buildWsUrl(path, query))
 }
 
-export const fetchUrl = (url, options = {}) => fetch(url, options)
+export const fetchUrl = (url, options = {}) => {
+  const init = { ...options }
+  delete init.query
+  return fetch(url, init)
+}
 
 export const fetchJsonUrl = async (url, options = {}) => {
   const response = await fetchUrl(url, options)
