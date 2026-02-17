@@ -158,6 +158,10 @@ const fixLitTree = (root) => {
   }
 }
 
+const logPiError = (context, error) => {
+  console.error(`[PiNativeAdapter] ${context}`, error)
+}
+
 export default function PiNativeAdapter() {
   const rootRef = useRef(null)
   const chatPanelRef = useRef(null)
@@ -172,12 +176,6 @@ export default function PiNativeAdapter() {
 
     const runtime = getPiRuntime()
     let active = true
-    const originalCreateElement = document.createElement.bind(document)
-    document.createElement = (...args) => {
-      const element = originalCreateElement(...args)
-      fixLitClassFieldShadowing(element)
-      return element
-    }
 
     const shadowHost = document.createElement('div')
     shadowHost.style.display = 'flex'
@@ -199,7 +197,17 @@ export default function PiNativeAdapter() {
     chatPanelRef.current = chatPanel
     panelRoot.appendChild(chatPanel)
 
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of Array.from(mutation.addedNodes)) {
+          fixLitTree(node)
+        }
+      }
+    })
+    observer.observe(shadowRoot, { childList: true, subtree: true })
+
     rootEl.appendChild(shadowHost)
+    fixLitTree(shadowRoot)
 
     const refreshSessionState = async () => {
       if (!active) return
@@ -306,7 +314,7 @@ export default function PiNativeAdapter() {
       unsubscribeRef.current = agent.subscribe((event) => {
         if (!active) return
         if (event.type === 'message_end' || event.type === 'agent_end') {
-          void persistCurrentSession()
+          void persistCurrentSession().catch((error) => logPiError('Failed to persist session', error))
         }
       })
 
@@ -315,10 +323,6 @@ export default function PiNativeAdapter() {
           onApiKeyRequired: async (provider) => ApiKeyPromptDialog.prompt(provider),
         })
         fixLitTree(chatPanelRef.current)
-        requestAnimationFrame(() => fixLitTree(chatPanelRef.current))
-        setTimeout(() => fixLitTree(chatPanelRef.current), 0)
-        setTimeout(() => fixLitTree(chatPanelRef.current), 50)
-        setTimeout(() => fixLitTree(chatPanelRef.current), 200)
       }
 
       await refreshSessionState()
@@ -340,13 +344,13 @@ export default function PiNativeAdapter() {
 
     const unsubscribeActions = subscribePiSessionActions({
       onSwitch: (sessionId) => {
-        void switchSession(sessionId)
+        void switchSession(sessionId).catch((error) => logPiError('Failed to switch session', error))
       },
       onNew: () => {
-        void createNewSession()
+        void createNewSession().catch((error) => logPiError('Failed to create new session', error))
       },
       onRequestState: () => {
-        void refreshSessionState()
+        void refreshSessionState().catch((error) => logPiError('Failed to refresh session state', error))
       },
     })
 
@@ -360,13 +364,13 @@ export default function PiNativeAdapter() {
         await mountAgent(null)
       }
       await refreshSessionState()
-    })()
+    })().catch((error) => logPiError('Failed to initialize PI session', error))
 
     return () => {
       active = false
+      observer.disconnect()
       unsubscribeActions()
       unsubscribeRef.current()
-      document.createElement = originalCreateElement
       agentRef.current = null
       chatPanelRef.current = null
       if (rootEl.contains(shadowHost)) {

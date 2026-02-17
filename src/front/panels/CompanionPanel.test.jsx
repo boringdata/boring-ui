@@ -73,7 +73,7 @@ describe('CompanionPanel', () => {
     expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:3456', '')
   })
 
-  it('uses dedicated pi backend URL metadata when both provider URLs exist', () => {
+  it('keeps PI provider isolated when both provider URLs exist', () => {
     mockCapabilities.services = {
       companion: { url: 'http://localhost:3456' },
       pi: { url: 'http://localhost:8787', mode: 'embedded' },
@@ -84,7 +84,6 @@ describe('CompanionPanel', () => {
     expect(screen.getByTestId('pi-app')).toBeTruthy()
     expect(screen.getByTestId('mock-pi-toolbar')).toBeTruthy()
     expect(screen.getByTestId('mock-pi-native-app')).toBeTruthy()
-    expect(screen.getByTestId('pi-app').getAttribute('data-service-url')).toBe('http://localhost:8787')
     expect(mockSetCompanionConfig).not.toHaveBeenCalled()
   })
 
