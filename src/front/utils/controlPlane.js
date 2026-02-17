@@ -108,7 +108,5 @@ export const extractWorkspaceSettingsPayload = (payload) => {
   if (isRecord(payload?.workspace_settings)) return payload.workspace_settings
   if (isRecord(payload?.data?.settings)) return payload.data.settings
   if (isRecord(payload?.data?.workspace_settings)) return payload.data.workspace_settings
-  if (isRecord(payload?.data) && !Array.isArray(payload.data)) return payload.data
-  if (isRecord(payload)) return payload
   return {}
 }

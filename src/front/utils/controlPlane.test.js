@@ -71,6 +71,6 @@ describe('controlPlane utils', () => {
     expect(extractWorkspaceSettingsPayload({ data: { settings: { theme: 'dark' } } })).toEqual({
       theme: 'dark',
     })
-    expect(extractWorkspaceSettingsPayload({ data: { editor: 'vim' } })).toEqual({ editor: 'vim' })
+    expect(extractWorkspaceSettingsPayload({ data: { editor: 'vim' } })).toEqual({})
   })
 })

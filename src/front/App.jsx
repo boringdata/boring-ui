@@ -326,7 +326,8 @@ export default function App() {
     refreshUserMenuData().catch(() => {})
   }, [refreshUserMenuData])
 
-  const syncWorkspaceRuntimeAndSettings = useCallback(async (workspaceId) => {
+  const syncWorkspaceRuntimeAndSettings = useCallback(async (workspaceId, options = {}) => {
+    const { writeSettings = false } = options
     const runtimeRoute = routes.controlPlane.workspaces.runtime.get(workspaceId)
     const { response: runtimeResponse, data: runtimeData } = await apiFetchJson(runtimeRoute.path, {
       query: runtimeRoute.query,
@@ -347,7 +348,7 @@ export default function App() {
       settingsReadRoute.path,
       { query: settingsReadRoute.query },
     )
-    if (settingsResponse.ok) {
+    if (writeSettings && settingsResponse.ok) {
       const settingsWriteRoute = routes.controlPlane.workspaces.settings.update(workspaceId)
       await apiFetch(settingsWriteRoute.path, {
         query: settingsWriteRoute.query,
@@ -389,15 +390,25 @@ export default function App() {
     const selectedId = promptValue.trim()
     if (!selectedId || selectedId === currentWorkspaceId) return
 
-    const selectedWorkspace = workspaces.find(
+    const selectedWorkspace = candidateWorkspaces.find(
       (workspace) => workspace.id === selectedId || workspace.name === selectedId,
     )
-    const targetWorkspaceId = selectedWorkspace?.id || selectedId
-    const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(targetWorkspaceId)
-    const route = resolveWorkspaceNavigationRoute(targetWorkspaceId, runtimePayload)
+    if (!selectedWorkspace?.id) return
+    const targetWorkspaceId = selectedWorkspace.id
+
+    let route = routes.controlPlane.workspaces.scope(targetWorkspaceId, currentWorkspacePathSuffix)
+    try {
+      const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(targetWorkspaceId, {
+        writeSettings: false,
+      })
+      route = resolveWorkspaceNavigationRoute(targetWorkspaceId, runtimePayload)
+    } catch {
+      // failure UX follows in bead bd-3g1g.4.3; fall back to canonical workspace scope path
+    }
     window.location.assign(buildApiUrl(route.path, route.query))
   }, [
     currentWorkspaceId,
+    currentWorkspacePathSuffix,
     fetchWorkspaceList,
     resolveWorkspaceNavigationRoute,
     syncWorkspaceRuntimeAndSettings,
@@ -415,8 +426,15 @@ export default function App() {
     if (!createdWorkspaceId) return
 
     await fetchWorkspaceList()
-    const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(createdWorkspaceId)
-    const route = resolveWorkspaceNavigationRoute(createdWorkspaceId, runtimePayload)
+    let route = routes.controlPlane.workspaces.setup(createdWorkspaceId)
+    try {
+      const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(createdWorkspaceId, {
+        writeSettings: true,
+      })
+      route = resolveWorkspaceNavigationRoute(createdWorkspaceId, runtimePayload)
+    } catch {
+      // failure UX follows in bead bd-3g1g.4.3; keep setup fallback so user can recover
+    }
     window.location.assign(buildApiUrl(route.path, route.query))
   }, [fetchWorkspaceList, resolveWorkspaceNavigationRoute, syncWorkspaceRuntimeAndSettings])
 
