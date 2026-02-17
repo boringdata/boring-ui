@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
+import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
+import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
 import { buildApiUrl } from './utils/apiBase'
 import {
@@ -18,17 +20,16 @@ import {
   loadPanelSizes,
   savePanelSizes,
   pruneEmptyGroups,
-  checkForSavedLayout,
+  getStorageKey,
   getFileName,
 } from './layout'
 import ThemeToggle from './components/ThemeToggle'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
 import {
+  registerPane,
   getGatedComponents,
   getKnownComponents,
-  essentialPanes,
-  checkRequirements,
   getUnavailableEssentialPanes,
 } from './registry/panes'
 
@@ -64,11 +65,7 @@ const debounce = (fn, wait) => {
 
 // Get capability-gated components from pane registry
 // Components with requiresFeatures/requiresRouters will show error states when unavailable
-const components = getGatedComponents(createCapabilityGatedPane)
 const KNOWN_COMPONENTS = getKnownComponents()
-
-// Get essential panel IDs from pane registry
-const ESSENTIAL_PANELS = essentialPanes()
 
 // Custom tab component that hides close button (for shell tabs)
 const TabWithoutClose = (props) => <DockviewDefaultTab {...props} hideClose />
@@ -80,20 +77,53 @@ const tabComponents = {
 export default function App() {
   // Get config (defaults are used until async load completes)
   const config = useConfig()
+  const codeSessionsEnabled = config.features?.codeSessions !== false
+  const urlAgentMode = new URLSearchParams(window.location.search).get('agent_mode')
+  const configAgentMode = config.features?.agentRailMode || 'all'
+  const validAgentModes = ['all', 'native', 'companion', 'pi']
+  const fallbackAgentMode = validAgentModes.includes(configAgentMode) ? configAgentMode : 'all'
+  const agentRailMode = validAgentModes.includes(urlAgentMode)
+    ? urlAgentMode
+    : fallbackAgentMode
+  const nativeAgentEnabled = codeSessionsEnabled && (agentRailMode === 'all' || agentRailMode === 'native')
+  const companionAgentEnabled = agentRailMode === 'all' || agentRailMode === 'companion'
+  const piAgentEnabled = agentRailMode === 'all' || agentRailMode === 'pi'
   const storagePrefix = config.storage?.prefix || 'kurt-web'
   const layoutVersion = config.storage?.layoutVersion || 1
 
   // Panel sizing configuration from config
-  const panelDefaults = config.panels?.defaults || { filetree: 280, terminal: 400, shell: 250 }
-  const panelMin = config.panels?.min || { filetree: 180, terminal: 250, shell: 100, center: 200 }
-  const panelCollapsed = config.panels?.collapsed || { filetree: 48, terminal: 48, shell: 36 }
+  const panelDefaults = config.panels?.defaults || { filetree: 280, terminal: 400, companion: 400, shell: 250 }
+  const panelMin = config.panels?.min || { filetree: 180, terminal: 250, companion: 250, shell: 100, center: 200 }
+  const panelCollapsed = config.panels?.collapsed || { filetree: 48, terminal: 48, companion: 48, shell: 36 }
+  const rightRailDefaults = {
+    companion:
+      Number.isFinite(panelDefaults.companion) ? panelDefaults.companion : panelDefaults.terminal,
+    companionMin:
+      Number.isFinite(panelMin.companion) ? panelMin.companion : panelMin.terminal,
+    companionCollapsed:
+      Number.isFinite(panelCollapsed.companion) ? panelCollapsed.companion : panelCollapsed.terminal,
+  }
 
   // Fetch backend capabilities for feature gating
-  const { capabilities, loading: capabilitiesLoading } = useCapabilities()
+  const { capabilities, loading: capabilitiesLoading, refetch: refetchCapabilities } = useCapabilities()
+
+  // Workspace plugin components loaded dynamically
+  const [workspaceComponents, setWorkspaceComponents] = useState({})
+
+  const components = useMemo(() => {
+    const gated = getGatedComponents(createCapabilityGatedPane)
+    const merged = { ...gated, ...workspaceComponents }
+    if (nativeAgentEnabled) return merged
+    const next = { ...merged }
+    delete next.terminal
+    return next
+  }, [nativeAgentEnabled, workspaceComponents])
 
   // Check for unavailable essential panes
   const unavailableEssentials = capabilities
-    ? getUnavailableEssentialPanes(capabilities)
+    ? getUnavailableEssentialPanes(capabilities).filter(
+        (pane) => nativeAgentEnabled || pane.id !== 'terminal',
+      )
     : []
 
   const [dockApi, setDockApi] = useState(null)
@@ -102,12 +132,15 @@ export default function App() {
   const [approvalsLoaded, setApprovalsLoaded] = useState(false)
   const [activeFile, setActiveFile] = useState(null)
   const [activeDiffFile, setActiveDiffFile] = useState(null)
-  const [collapsed, setCollapsed] = useState(() =>
-    loadCollapsedState(storagePrefix)
-  )
-  const panelSizesRef = useRef(
-    loadPanelSizes(storagePrefix) || panelDefaults
-  )
+  const [collapsed, setCollapsed] = useState(() => {
+    const saved = loadCollapsedState(storagePrefix)
+    return { filetree: false, terminal: false, shell: false, companion: false, ...saved }
+  })
+  const panelSizesRef = useRef({
+    ...panelDefaults,
+    companion: rightRailDefaults.companion,
+    ...(loadPanelSizes(storagePrefix) || {}),
+  })
   const collapsedEffectRan = useRef(false)
   const dismissedApprovalsRef = useRef(new Set())
   const centerGroupRef = useRef(null)
@@ -122,10 +155,10 @@ export default function App() {
   layoutVersionRef.current = layoutVersion
 
   // Refs for panel config (used in callbacks)
-  const panelCollapsedRef = useRef(panelCollapsed)
-  panelCollapsedRef.current = panelCollapsed
-  const panelMinRef = useRef(panelMin)
-  panelMinRef.current = panelMin
+  const panelCollapsedRef = useRef({ ...panelCollapsed, companion: rightRailDefaults.companionCollapsed })
+  panelCollapsedRef.current = { ...panelCollapsed, companion: rightRailDefaults.companionCollapsed }
+  const panelMinRef = useRef({ ...panelMin, companion: rightRailDefaults.companionMin })
+  panelMinRef.current = { ...panelMin, companion: rightRailDefaults.companionMin }
 
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
@@ -149,6 +182,7 @@ export default function App() {
   }, [collapsed.filetree, dockApi])
 
   const toggleTerminal = useCallback(() => {
+    if (!nativeAgentEnabled) return
     if (!collapsed.terminal && dockApi) {
       // Capture current size before collapsing
       const terminalPanel = dockApi.getPanel('terminal')
@@ -166,7 +200,26 @@ export default function App() {
       saveCollapsedState(next, storagePrefixRef.current)
       return next
     })
-  }, [collapsed.terminal, dockApi])
+  }, [collapsed.terminal, dockApi, nativeAgentEnabled])
+
+  const toggleCompanion = useCallback(() => {
+    if (!collapsed.companion && dockApi) {
+      const companionPanel = dockApi.getPanel('companion')
+      const companionGroup = companionPanel?.group
+      if (companionGroup) {
+        const currentWidth = companionGroup.api.width
+        if (currentWidth > panelCollapsedRef.current.companion) {
+          panelSizesRef.current = { ...panelSizesRef.current, companion: currentWidth }
+          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
+        }
+      }
+    }
+    setCollapsed((prev) => {
+      const next = { ...prev, companion: !prev.companion }
+      saveCollapsedState(next, storagePrefixRef.current)
+      return next
+    })
+  }, [collapsed.companion, dockApi])
 
   const toggleShell = useCallback(() => {
     if (!collapsed.shell && dockApi) {
@@ -253,6 +306,7 @@ export default function App() {
 
     const filetreePanel = dockApi.getPanel('filetree')
     const terminalPanel = dockApi.getPanel('terminal')
+    const companionPanel = dockApi.getPanel('companion')
 
     const filetreeGroup = filetreePanel?.group
     if (filetreeGroup) {
@@ -291,6 +345,25 @@ export default function App() {
         })
         if (!isFirstRun) {
           terminalGroup.api.setSize({ width: panelSizesRef.current.terminal })
+        }
+      }
+    }
+
+    const companionGroup = companionPanel?.group
+    if (companionGroup) {
+      if (collapsed.companion) {
+        companionGroup.api.setConstraints({
+          minimumWidth: panelCollapsedRef.current.companion,
+          maximumWidth: panelCollapsedRef.current.companion,
+        })
+        companionGroup.api.setSize({ width: panelCollapsedRef.current.companion })
+      } else {
+        companionGroup.api.setConstraints({
+          minimumWidth: panelMinRef.current.companion,
+          maximumWidth: Infinity,
+        })
+        if (!isFirstRun) {
+          companionGroup.api.setSize({ width: panelSizesRef.current.companion })
         }
       }
     }
@@ -705,6 +778,7 @@ export default function App() {
     const applyLockedPanels = () => {
       const filetreePanel = api.getPanel('filetree')
       const terminalPanel = api.getPanel('terminal')
+      const companionPanel = api.getPanel('companion')
 
       const filetreeGroup = filetreePanel?.group
       if (filetreeGroup) {
@@ -716,14 +790,28 @@ export default function App() {
         })
       }
 
-      const terminalGroup = terminalPanel?.group
-      if (terminalGroup) {
-        terminalGroup.locked = true
-        terminalGroup.header.hidden = true
-        terminalGroup.api.setConstraints({
-          minimumWidth: panelMinRef.current.terminal,
-          maximumWidth: Infinity,
-        })
+      if (nativeAgentEnabled) {
+        const terminalGroup = terminalPanel?.group
+        if (terminalGroup) {
+          terminalGroup.locked = true
+          terminalGroup.header.hidden = true
+          terminalGroup.api.setConstraints({
+            minimumWidth: panelMinRef.current.terminal,
+            maximumWidth: Infinity,
+          })
+        }
+      }
+
+      if (companionAgentEnabled) {
+        const companionGroup = companionPanel?.group
+        if (companionGroup) {
+          companionGroup.locked = true
+          companionGroup.header.hidden = true
+          companionGroup.api.setConstraints({
+            minimumWidth: panelMinRef.current.companion,
+            maximumWidth: Infinity,
+          })
+        }
       }
 
       const shellPanel = api.getPanel('shell')
@@ -738,12 +826,12 @@ export default function App() {
     }
 
     const ensureCorePanels = () => {
-      // Layout goal: [filetree | [editor / shell] | terminal]
+      // Layout goal: [filetree | [editor / shell] | right-rail-agent]
       //
       // Strategy: Create in order that establishes correct hierarchy
       // 1. filetree (left)
-      // 2. terminal (right) - agent sessions column
-      // 3. empty-center (left of terminal) - center column for editors
+      // 2. right-rail panel anchor (terminal for native, agent for web-agent-only)
+      // 3. empty-center (left of right rail) - center column for editors
       // 4. shell (below empty-center) - bottom of center
 
       let filetreePanel = api.getPanel('filetree')
@@ -756,9 +844,9 @@ export default function App() {
         })
       }
 
-      // Add terminal (right of filetree) - establishes rightmost column
       let terminalPanel = api.getPanel('terminal')
-      if (!terminalPanel) {
+      // Add terminal (right of filetree) - native right-rail anchor
+      if (nativeAgentEnabled && !terminalPanel) {
         terminalPanel = api.addPanel({
           id: 'terminal',
           component: 'terminal',
@@ -767,14 +855,35 @@ export default function App() {
         })
       }
 
-      // Add empty panel LEFT of terminal - creates center column
+      // Web-agent-only mode still needs a dedicated right rail anchor so it doesn't end up in the middle.
+      let companionPanel = api.getPanel('companion')
+      if (!nativeAgentEnabled && companionAgentEnabled && !companionPanel) {
+        companionPanel = api.addPanel({
+          id: 'companion',
+          component: 'companion',
+          title: 'Agent',
+          position: { direction: 'right', referencePanel: 'filetree' },
+          params: {
+            collapsed: collapsed.companion,
+            onToggleCollapse: toggleCompanion,
+            provider: 'companion',
+            lockProvider: true,
+          },
+        })
+      }
+
+      const rightRailReferencePanel = terminalPanel || companionPanel
+
+      // Add empty panel LEFT of right rail anchor (or right of filetree if no anchor) - creates center column
       let emptyPanel = api.getPanel('empty-center')
       if (!emptyPanel) {
         emptyPanel = api.addPanel({
           id: 'empty-center',
           component: 'empty',
           title: '',
-          position: { direction: 'left', referencePanel: 'terminal' },
+          position: rightRailReferencePanel
+            ? { direction: 'left', referencePanel: rightRailReferencePanel.id }
+            : { direction: 'right', referencePanel: 'filetree' },
         })
       }
       // Always set centerGroupRef from empty panel if it exists
@@ -832,42 +941,46 @@ export default function App() {
     // We check localStorage directly since projectRoot isn't available yet
     let hasSavedLayout = false
     let invalidLayoutFound = false
-    try {
-      // Use storagePrefix from config (available via closure from outer scope)
-      const layoutKeyPrefix = `${storagePrefix}-`
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
-        if (key && key.startsWith(layoutKeyPrefix) && key.endsWith('-layout')) {
-          const raw = localStorage.getItem(key)
-          if (raw) {
-            const parsed = JSON.parse(raw)
-            const hasValidVersion = parsed?.version >= LAYOUT_VERSION
-            const hasPanels = !!parsed?.panels
-            const hasValidStructure = validateLayoutStructure(parsed)
+    if (!nativeAgentEnabled) {
+      invalidLayoutFound = true
+    } else {
+      try {
+        // Use storagePrefix from config (available via closure from outer scope)
+        const layoutKeyPrefix = `${storagePrefix}-`
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key && key.startsWith(layoutKeyPrefix) && key.endsWith('-layout')) {
+            const raw = localStorage.getItem(key)
+            if (raw) {
+              const parsed = JSON.parse(raw)
+              const hasValidVersion = parsed?.version >= LAYOUT_VERSION
+              const hasPanels = !!parsed?.panels
+              const hasValidStructure = validateLayoutStructure(parsed)
 
-            // Check if layout is valid
-            if (hasValidVersion && hasPanels && hasValidStructure) {
-              hasSavedLayout = true
-              break
-            }
+              // Check if layout is valid
+              if (hasValidVersion && hasPanels && hasValidStructure) {
+                hasSavedLayout = true
+                break
+              }
 
-            // Invalid layout detected - clean up and reload
-            if (!hasValidStructure || !hasValidVersion || !hasPanels) {
-              console.warn('[Layout] Invalid layout detected in onReady, clearing and reloading:', key)
-              localStorage.removeItem(key)
-              // Clear related session storage
-              const keyPrefix = key.replace('-layout', '')
-              localStorage.removeItem(`${keyPrefix}-tabs`)
-              localStorage.removeItem(`${storagePrefix}-terminal-sessions`)
-              localStorage.removeItem(`${storagePrefix}-terminal-active`)
-              localStorage.removeItem(`${storagePrefix}-terminal-chat-interface`)
-              invalidLayoutFound = true
+              // Invalid layout detected - clean up and reload
+              if (!hasValidStructure || !hasValidVersion || !hasPanels) {
+                console.warn('[Layout] Invalid layout detected in onReady, clearing and reloading:', key)
+                localStorage.removeItem(key)
+                // Clear related session storage
+                const keyPrefix = key.replace('-layout', '')
+                localStorage.removeItem(`${keyPrefix}-tabs`)
+                localStorage.removeItem(`${storagePrefix}-terminal-sessions`)
+                localStorage.removeItem(`${storagePrefix}-terminal-active`)
+                localStorage.removeItem(`${storagePrefix}-terminal-chat-interface`)
+                invalidLayoutFound = true
+              }
             }
           }
         }
+      } catch {
+        // Ignore errors checking localStorage
       }
-    } catch {
-      // Ignore errors checking localStorage
     }
 
     // Only create fresh panels if no saved layout exists
@@ -885,12 +998,16 @@ export default function App() {
     requestAnimationFrame(() => {
       const filetreeGroup = api.getPanel('filetree')?.group
       const terminalGroup = api.getPanel('terminal')?.group
+      const companionGroup = api.getPanel('companion')?.group
       const shellGroup = api.getPanel('shell')?.group
       if (filetreeGroup) {
         api.getGroup(filetreeGroup.id)?.api.setSize({ width: panelSizesRef.current.filetree })
       }
       if (terminalGroup) {
         api.getGroup(terminalGroup.id)?.api.setSize({ width: panelSizesRef.current.terminal })
+      }
+      if (companionGroup) {
+        api.getGroup(companionGroup.id)?.api.setSize({ width: panelSizesRef.current.companion })
       }
       if (shellGroup) {
         // Ensure shell height respects minimum constraint
@@ -952,12 +1069,17 @@ export default function App() {
           position: { direction: 'above', referenceGroup: shellPanel.group },
         })
       } else {
-        // Fallback: add to the right of filetree
+        // Fallback: keep center column between filetree and right-rail agent panel.
+        const terminalPanel = api.getPanel('terminal')
+        const companionPanel = api.getPanel('companion')
+        const rightRailPanel = terminalPanel || companionPanel
         emptyPanel = api.addPanel({
           id: 'empty-center',
           component: 'empty',
           title: '',
-          position: { direction: 'right', referencePanel: 'filetree' },
+          position: rightRailPanel
+            ? { direction: 'left', referencePanel: rightRailPanel.id }
+            : { direction: 'right', referencePanel: 'filetree' },
         })
       }
 
@@ -997,10 +1119,12 @@ export default function App() {
     const savePanelSizesNow = () => {
       const filetreePanel = api.getPanel('filetree')
       const terminalPanel = api.getPanel('terminal')
+      const companionPanel = api.getPanel('companion')
       const shellPanel = api.getPanel('shell')
 
       const filetreeGroup = filetreePanel?.group
       const terminalGroup = terminalPanel?.group
+      const companionGroup = companionPanel?.group
       const shellGroup = shellPanel?.group
 
       const newSizes = { ...panelSizesRef.current }
@@ -1016,6 +1140,12 @@ export default function App() {
       if (terminalGroup && terminalGroup.api.width > panelCollapsedRef.current.terminal) {
         if (newSizes.terminal !== terminalGroup.api.width) {
           newSizes.terminal = terminalGroup.api.width
+          changed = true
+        }
+      }
+      if (companionGroup && companionGroup.api.width > panelCollapsedRef.current.companion) {
+        if (newSizes.companion !== companionGroup.api.width) {
+          newSizes.companion = companionGroup.api.width
           changed = true
         }
       }
@@ -1116,6 +1246,19 @@ export default function App() {
     if (!dockApi || projectRoot === null || layoutRestorationRan.current) return
     layoutRestorationRan.current = true
 
+    if (!nativeAgentEnabled) {
+      try {
+        localStorage.removeItem(getStorageKey(storagePrefix, projectRoot, 'layout'))
+      } catch {
+        // ignore storage cleanup errors
+      }
+      if (ensureCorePanelsRef.current) {
+        ensureCorePanelsRef.current()
+        layoutRestored.current = true
+      }
+      return
+    }
+
     const savedLayout = loadLayout(storagePrefix, projectRoot, KNOWN_COMPONENTS, layoutVersion)
     if (!savedLayout) {
       if (ensureCorePanelsRef.current) {
@@ -1124,6 +1267,7 @@ export default function App() {
         requestAnimationFrame(() => {
           const ftGroup = dockApi.getPanel('filetree')?.group
           const tGroup = dockApi.getPanel('terminal')?.group
+          const cGroup = dockApi.getPanel('companion')?.group
           const sGroup = dockApi.getPanel('shell')?.group
 
           if (ftGroup) {
@@ -1147,6 +1291,18 @@ export default function App() {
               } else {
                 tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Infinity })
                 tApi.setSize({ width: panelSizesRef.current.terminal })
+              }
+            }
+          }
+          if (cGroup) {
+            const cApi = dockApi.getGroup(cGroup.id)?.api
+            if (cApi) {
+              if (collapsed.companion) {
+                cApi.setConstraints({ minimumWidth: panelCollapsedRef.current.companion, maximumWidth: panelCollapsedRef.current.companion })
+                cApi.setSize({ width: panelCollapsedRef.current.companion })
+              } else {
+                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Infinity })
+                cApi.setSize({ width: panelSizesRef.current.companion })
               }
             }
           }
@@ -1228,6 +1384,52 @@ export default function App() {
           }
         }
 
+        // Handle companion panel restored from saved layout.
+        const companionPanel = dockApi.getPanel('companion')
+        if (companionPanel) {
+          if (!capabilitiesLoading && (!companionAgentEnabled || capabilities?.features?.companion !== true)) {
+            companionPanel.api.close()
+          } else {
+            const companionGroup = companionPanel.group
+            if (companionGroup) {
+              companionGroup.locked = true
+              companionGroup.header.hidden = true
+              if (collapsed.companion) {
+                companionGroup.api.setConstraints({
+                  minimumWidth: panelCollapsedRef.current.companion,
+                  maximumWidth: panelCollapsedRef.current.companion,
+                })
+                companionGroup.api.setSize({ width: panelCollapsedRef.current.companion })
+              } else {
+                companionGroup.api.setConstraints({
+                  minimumWidth: panelMinRef.current.companion,
+                  maximumWidth: Infinity,
+                })
+                companionGroup.api.setSize({ width: panelSizesRef.current.companion })
+              }
+            }
+          }
+        }
+
+        // Handle PI panel restored from saved layout.
+        const piPanel = dockApi.getPanel('pi-agent')
+        if (piPanel) {
+          if (!capabilitiesLoading && (!piAgentEnabled || capabilities?.features?.pi !== true)) {
+            piPanel.api.close()
+          } else {
+            const piGroup = piPanel.group
+            if (piGroup) {
+              piGroup.locked = true
+              piGroup.header.hidden = true
+              piGroup.api.setConstraints({
+                minimumWidth: panelMinRef.current.companion,
+                maximumWidth: Infinity,
+              })
+              piGroup.api.setSize({ width: panelSizesRef.current.companion })
+            }
+          }
+        }
+
         // If layout has editor panels, set constraints and close empty-center
         const panels = Array.isArray(dockApi.panels)
           ? dockApi.panels
@@ -1257,7 +1459,6 @@ export default function App() {
 
         // Update editor panels with callbacks (callbacks can't be serialized in layout JSON)
         editorPanels.forEach((panel) => {
-          const path = panel.id.replace('editor-', '')
           panel.api.updateParameters({
             onContentChange: (p, newContent) => {
               setTabs((prev) => ({
@@ -1300,6 +1501,7 @@ export default function App() {
         requestAnimationFrame(() => {
           const ftGroup = dockApi.getPanel('filetree')?.group
           const tGroup = dockApi.getPanel('terminal')?.group
+          const cGroup = dockApi.getPanel('companion')?.group
           const sGroup = dockApi.getPanel('shell')?.group
 
           // For collapsed panels, set collapsed size; for expanded, use saved size
@@ -1327,6 +1529,18 @@ export default function App() {
               }
             }
           }
+          if (cGroup) {
+            const cApi = dockApi.getGroup(cGroup.id)?.api
+            if (cApi) {
+              if (collapsed.companion) {
+                cApi.setConstraints({ minimumWidth: panelCollapsedRef.current.companion, maximumWidth: panelCollapsedRef.current.companion })
+                cApi.setSize({ width: panelCollapsedRef.current.companion })
+              } else {
+                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Infinity })
+                cApi.setSize({ width: panelSizesRef.current.companion })
+              }
+            }
+          }
           if (sGroup) {
             const sApi = dockApi.getGroup(sGroup.id)?.api
             if (sApi) {
@@ -1349,7 +1563,27 @@ export default function App() {
         layoutRestored.current = false
       }
     }
-  }, [dockApi, projectRoot, storagePrefix, collapsed.filetree, collapsed.terminal, collapsed.shell, openFile, openFileToSide, openDiff, activeFile, activeDiffFile, toggleFiletree])
+  }, [
+    dockApi,
+    projectRoot,
+    storagePrefix,
+    layoutVersion,
+    capabilities,
+    capabilitiesLoading,
+    collapsed.filetree,
+    collapsed.terminal,
+    collapsed.shell,
+    collapsed.companion,
+    openFile,
+    openFileToSide,
+    openDiff,
+    activeFile,
+    activeDiffFile,
+    toggleFiletree,
+    companionAgentEnabled,
+    nativeAgentEnabled,
+    piAgentEnabled,
+  ])
 
   // Track active panel to highlight in file tree and sync URL
   useEffect(() => {
@@ -1434,6 +1668,203 @@ export default function App() {
       })
     }
   }, [dockApi, collapsed.shell, toggleShell, projectRoot])
+
+  // Update companion panel params
+  useEffect(() => {
+    if (!dockApi) return
+    const companionPanel = dockApi.getPanel('companion')
+    if (companionPanel) {
+      companionPanel.api.updateParameters({
+        collapsed: collapsed.companion,
+        onToggleCollapse: toggleCompanion,
+        provider: 'companion',
+        lockProvider: true,
+      })
+    }
+    const piPanel = dockApi.getPanel('pi-agent')
+    if (piPanel) {
+      piPanel.api.updateParameters({
+        collapsed: false,
+        provider: 'pi',
+        lockProvider: true,
+      })
+    }
+  }, [dockApi, collapsed.companion, toggleCompanion])
+
+  // Load workspace plugin panels when capabilities include them
+  const workspacePanesKey = JSON.stringify(capabilities?.workspace_panes || [])
+  useEffect(() => {
+    const panes = capabilities?.workspace_panes
+    if (!panes || panes.length === 0) return
+
+    loadWorkspacePanes(panes).then((loaded) => {
+      for (const [id, component] of Object.entries(loaded)) {
+        const name = id.replace('ws-', '')
+        registerPane({ id, component, title: name, placement: 'center' })
+      }
+      setWorkspaceComponents(loaded)
+    })
+  }, [workspacePanesKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // WebSocket for live workspace plugin hot-reload
+  const workspacePluginsEnabled =
+    (capabilities?.workspace_panes?.length || 0) > 0
+    || (capabilities?.workspace_routes?.length || 0) > 0
+  useWorkspacePlugins({
+    onPluginChanged: refetchCapabilities,
+    enabled: workspacePluginsEnabled,
+  })
+
+  // Add or remove the right-rail agent panel based on provider feature availability.
+  // Waits for capabilities to finish loading before making decisions to avoid
+  // prematurely removing a panel restored from a saved layout.
+  useEffect(() => {
+    if (!dockApi || capabilitiesLoading) return
+
+    // Remove Code Sessions panel when disabled via config.
+    if (!nativeAgentEnabled) {
+      const terminalPanel = dockApi.getPanel('terminal')
+      if (terminalPanel) {
+        terminalPanel.api.close()
+      }
+      try {
+        localStorage.removeItem(`${storagePrefix}-terminal-sessions`)
+        localStorage.removeItem(`${storagePrefix}-terminal-active`)
+        localStorage.removeItem(`${storagePrefix}-terminal-chat-interface`)
+      } catch {
+        // ignore storage cleanup errors
+      }
+    }
+
+    const companionEnabled = companionAgentEnabled && capabilities?.features?.companion === true
+    const piEnabled = piAgentEnabled && capabilities?.features?.pi === true
+    let companionPanel = dockApi.getPanel('companion')
+    let piPanel = dockApi.getPanel('pi-agent')
+    const terminalPanel = dockApi.getPanel('terminal')
+    const filetreePanel = dockApi.getPanel('filetree')
+    const terminalGroup = terminalPanel?.group
+    const filetreeGroup = filetreePanel?.group
+
+    const appearsInCenterColumn = (companionGroup, referenceGroup) => {
+      if (!companionGroup || !referenceGroup) return false
+      const referenceHeight = referenceGroup.api.height
+      const companionHeight = companionGroup.api.height
+      if (!referenceHeight || !companionHeight) return false
+      // Right-rail groups should be full height; significantly shorter height means old center-column placement.
+      return (companionHeight / referenceHeight) < 0.9
+    }
+
+    // Repair older layouts that placed companion above shell instead of full-height right rail.
+    if (
+      companionEnabled &&
+      companionPanel?.group &&
+      appearsInCenterColumn(companionPanel.group, terminalGroup || filetreeGroup)
+    ) {
+      companionPanel.api.close()
+      companionPanel = null
+    }
+
+    if (
+      piEnabled &&
+      piPanel?.group &&
+      appearsInCenterColumn(piPanel.group, companionPanel?.group || terminalGroup || filetreeGroup)
+    ) {
+      piPanel.api.close()
+      piPanel = null
+    }
+
+    const resolveRightRailPosition = (referencePanel) => {
+      if (referencePanel) {
+        return { direction: 'right', referencePanel: referencePanel.id }
+      }
+      let position
+      const centerGroup = dockApi.getPanel('empty-center')?.group || dockApi.getPanel('shell')?.group
+      if (centerGroup) {
+        position = { direction: 'right', referenceGroup: centerGroup }
+      }
+      if (!position && filetreePanel) {
+        position = { direction: 'right', referencePanel: 'filetree' }
+      }
+      return position
+    }
+
+    if (companionEnabled && !companionPanel) {
+      // Add companion panel to the right rail.
+      const position = resolveRightRailPosition(terminalPanel)
+      if (position) {
+        const panel = dockApi.addPanel({
+          id: 'companion',
+          component: 'companion',
+          title: 'Companion',
+          position,
+          params: {
+            collapsed: collapsed.companion,
+            onToggleCollapse: toggleCompanion,
+            provider: 'companion',
+            lockProvider: true,
+          },
+        })
+
+        if (panel?.group) {
+          panel.group.locked = true
+          panel.group.header.hidden = true
+          panel.group.api.setConstraints({
+            minimumWidth: panelMinRef.current.companion,
+            maximumWidth: Infinity,
+          })
+          if (!collapsed.companion) {
+            panel.group.api.setSize({ width: panelSizesRef.current.companion })
+          }
+        }
+      }
+    } else if (!companionEnabled && companionPanel) {
+      // Remove companion panel restored from saved layout when feature is disabled
+      companionPanel.api.close()
+      companionPanel = null
+    }
+
+    // Refresh companion ref after add/remove above so PI can anchor to it.
+    companionPanel = dockApi.getPanel('companion')
+
+    if (piEnabled && !piPanel) {
+      const position = resolveRightRailPosition(companionPanel || terminalPanel)
+      if (position) {
+        const panel = dockApi.addPanel({
+          id: 'pi-agent',
+          component: 'companion',
+          title: 'PI Agent',
+          position,
+          params: {
+            collapsed: false,
+            provider: 'pi',
+            lockProvider: true,
+          },
+        })
+
+        if (panel?.group) {
+          panel.group.locked = true
+          panel.group.header.hidden = true
+          panel.group.api.setConstraints({
+            minimumWidth: panelMinRef.current.companion,
+            maximumWidth: Infinity,
+          })
+          panel.group.api.setSize({ width: panelSizesRef.current.companion })
+        }
+      }
+    } else if (!piEnabled && piPanel) {
+      piPanel.api.close()
+    }
+  }, [
+    dockApi,
+    capabilities,
+    capabilitiesLoading,
+    companionAgentEnabled,
+    piAgentEnabled,
+    nativeAgentEnabled,
+    collapsed.companion,
+    storagePrefix,
+    toggleCompanion,
+  ])
 
   // Restore saved tabs when dockApi and projectRoot become available
   const hasRestoredTabs = useRef(false)
@@ -1537,6 +1968,7 @@ export default function App() {
     'dockview-theme-abyss',
     collapsed.filetree && 'filetree-is-collapsed',
     collapsed.terminal && 'terminal-is-collapsed',
+    collapsed.companion && 'companion-is-collapsed',
     collapsed.shell && 'shell-is-collapsed',
   ].filter(Boolean).join(' ')
 

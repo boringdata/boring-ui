@@ -112,7 +112,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       setContent(initialContent)
       setContentVersion((v) => v + 1)
     }
-  }, [initialContent])
+  }, [initialContent, content, isDirty])
 
   // Poll for external changes
   // Uses refs so interval isn't recreated on every keystroke (which would cancel in-flight fetches)

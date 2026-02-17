@@ -33,6 +33,7 @@ const DESTINATION_TITLES = {
   cliArg: 'From command line arguments',
 }
 const DESTINATION_ORDER = ['localSettings', 'userSettings', 'projectSettings', 'session']
+const EMPTY_QUESTIONS = []
 
 const styles = {
   container: {
@@ -584,7 +585,7 @@ const getToolDisplay = (toolName, toolInput) => {
 }
 
 const QuestionList = ({ input, onInputChange, onClose }) => {
-  const questions = Array.isArray(input?.questions) ? input.questions : []
+  const questions = Array.isArray(input?.questions) ? input.questions : EMPTY_QUESTIONS
   const [activeIndex, setActiveIndex] = useState(0)
   const [answers, setAnswers] = useState(() => {
     const initial = {}
@@ -603,12 +604,14 @@ const QuestionList = ({ input, onInputChange, onClose }) => {
   const [confirming, setConfirming] = useState(null)
 
   useEffect(() => {
-    const next = {}
-    questions.forEach((question) => {
-      next[question.question] = answers[question.question] || new Set()
+    setAnswers((prev) => {
+      const next = {}
+      questions.forEach((question) => {
+        next[question.question] = prev[question.question] || new Set()
+      })
+      return next
     })
-    setAnswers(next)
-  }, [input, questions])
+  }, [questions])
 
   useEffect(() => {
     if (!questions.length) return

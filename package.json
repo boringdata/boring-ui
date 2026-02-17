@@ -32,6 +32,8 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
+    "companion:service": "bash src/companion_service/launch.sh",
+    "pi:service": "node src/pi_service/server.mjs",
     "build": "vite build",
     "build:lib": "vite build --mode lib",
     "preview": "vite preview --port 5173",
@@ -47,6 +49,10 @@
   "dependencies": {
     "@assistant-ui/react": "^0.11.53",
     "@assistant-ui/react-markdown": "^0.11.9",
+    "@mariozechner/mini-lit": "^0.2.1",
+    "@mariozechner/pi-agent-core": "^0.52.12",
+    "@mariozechner/pi-ai": "^0.52.12",
+    "@mariozechner/pi-web-ui": "^0.52.12",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-slot": "^1.2.4",
@@ -73,6 +79,7 @@
     "clsx": "^2.1.1",
     "diff": "^8.0.2",
     "dockview-react": "^4.13.1",
+    "lit": "^3.3.2",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.562.0",
     "markdown-it": "^14.0.0",

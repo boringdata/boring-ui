@@ -681,6 +681,12 @@ html {
   box-shadow: inset 1px 0 0 var(--color-border);
 }
 
+/* Right rail panels (Code Sessions + Companion) */
+.right-rail-panel {
+  background: var(--color-bg-secondary);
+  box-shadow: inset 1px 0 0 var(--color-border);
+}
+
 /* Dockview theme customizations */
 .dockview-theme-abyss {
   --dv-tabs-and-actions-container-height: 36px;
@@ -2014,6 +2020,184 @@ html {
   flex: 1;
   min-height: 0;
   position: relative;
+}
+
+.companion-panel-content .companion-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.companion-panel-content .companion-instance {
+  position: relative;
+  inset: auto;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.companion-panel-content .provider-companion {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.companion-panel-content .provider-pi-native {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.companion-panel-content .provider-pi-native .pi-native-wrapper {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.companion-panel-content .provider-pi {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.companion-panel-content .pi-agent-frame {
+  flex: 1;
+  min-height: 0;
+}
+
+.pi-backend-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--color-bg-primary);
+}
+
+.pi-backend-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pi-backend-row {
+  display: flex;
+}
+
+.pi-backend-row.is-user {
+  justify-content: flex-end;
+}
+
+.pi-backend-row.is-assistant {
+  justify-content: flex-start;
+}
+
+.pi-backend-bubble {
+  max-width: 92%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.pi-backend-row.is-user .pi-backend-bubble {
+  background: var(--color-bg-tertiary);
+}
+
+.pi-backend-bubble.is-streaming::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: middle;
+  background: var(--color-accent);
+  animation: blink 1s step-start infinite;
+}
+
+.pi-backend-composer {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-2);
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  flex-shrink: 0;
+  background: var(--color-bg-primary);
+}
+
+.pi-backend-input {
+  flex: 1;
+  min-height: 44px;
+  max-height: 180px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  padding: var(--space-2);
+  font: inherit;
+}
+
+.pi-backend-input:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+}
+
+.pi-backend-send {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.pi-backend-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pi-backend-error {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  font-size: var(--text-xs);
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.companion-session-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.companion-session-select {
+  min-width: 140px;
+  max-width: 220px;
 }
 
 .terminal-empty {
@@ -3439,6 +3623,12 @@ html {
 
 /* When terminal is collapsed, disable the sash to its left (last sash in horizontal splitview) */
 .terminal-is-collapsed > .dv-grid-view > .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash:last-child {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
+/* When companion is collapsed, disable the sash to its left (last sash in horizontal splitview) */
+.companion-is-collapsed > .dv-grid-view > .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash:last-child {
   pointer-events: none !important;
   cursor: default !important;
 }

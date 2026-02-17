@@ -10,7 +10,7 @@ export default function GitDiff({ diff, showFileHeader = true, viewType = 'split
   let files = []
   try {
     files = parseDiff(diff)
-  } catch (error) {
+  } catch {
     return <div className="diff-empty">Unable to parse diff.</div>
   }
   if (!files.length) {

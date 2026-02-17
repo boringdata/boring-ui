@@ -28,5 +28,6 @@ coverage/
 
 # bv (beads viewer) local config and caches
 .bv/
+.evidence/
 *.pyc
 __pycache__/

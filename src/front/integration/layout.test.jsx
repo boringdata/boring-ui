@@ -7,7 +7,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   createDefaultRegistry,
-  PaneRegistry,
 } from '../registry/panes'
 import {
   saveLayout,
@@ -127,8 +126,6 @@ describe('Layout Integration', () => {
     })
 
     it('validates essential panes are present', () => {
-      const registry = createDefaultRegistry()
-
       // Layout missing essential pane
       const incompleteLayout = createValidLayout()
       delete incompleteLayout.panels.filetree

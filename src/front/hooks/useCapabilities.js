@@ -58,12 +58,14 @@ export const useCapabilities = () => {
     } catch (err) {
       console.error('[Capabilities] Failed to fetch:', err)
       setError(err)
-      // Set default capabilities on error to prevent blocking
-      setCapabilities({
-        version: 'unknown',
-        features: {},
-        routers: [],
-      })
+      // Preserve last known-good capabilities if available.
+      setCapabilities((prev) => (
+        prev || {
+          version: 'unknown',
+          features: {},
+          routers: [],
+        }
+      ))
     } finally {
       setLoading(false)
     }
@@ -72,6 +74,18 @@ export const useCapabilities = () => {
   useEffect(() => {
     fetchCapabilities()
   }, [fetchCapabilities])
+
+  // If initial fetch failed (empty features), keep retrying until we get
+  // a real capabilities payload so panes recover without a hard refresh.
+  useEffect(() => {
+    const featureCount = Object.keys(capabilities?.features || {}).length
+    if (loading || featureCount > 0) return
+
+    const timer = setTimeout(() => {
+      fetchCapabilities()
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [capabilities, loading, fetchCapabilities])
 
   return {
     capabilities,

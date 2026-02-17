@@ -54,6 +54,16 @@ class TestAppFactory:
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
         assert '/api/config' in paths
 
+    def test_app_has_api_project_endpoint(self, app):
+        """Test that project endpoint is available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/api/project' in paths
+
+    def test_app_has_api_sessions_endpoints(self, app):
+        """Test that session list/create endpoints are available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/api/sessions' in paths
+
     def test_app_has_capabilities_endpoint(self, app):
         """Test that capabilities endpoint is available."""
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
@@ -211,6 +221,47 @@ class TestConfigEndpoint:
             data = response.json()
             assert 'pty_providers' in data
             assert 'shell' in data['pty_providers']
+
+
+class TestProjectEndpoint:
+    """Integration tests for /api/project endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_project_returns_workspace_root(self, app, workspace):
+        """Project endpoint should expose workspace root for frontend bootstrap."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            response = await client.get('/api/project')
+            assert response.status_code == 200
+            data = response.json()
+            assert data == {'root': str(workspace)}
+
+
+class TestSessionsEndpoint:
+    """Integration tests for /api/sessions endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_returns_collection(self, app):
+        """Session listing should always return a sessions array."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            response = await client.get('/api/sessions')
+            assert response.status_code == 200
+            data = response.json()
+            assert 'sessions' in data
+            assert isinstance(data['sessions'], list)
+
+    @pytest.mark.asyncio
+    async def test_create_session_returns_session_id(self, app):
+        """Session create should return a generated session_id."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            response = await client.post('/api/sessions')
+            assert response.status_code == 200
+            data = response.json()
+            assert 'session_id' in data
+            assert isinstance(data['session_id'], str)
+            assert data['session_id']
 
 
 class TestRouterSelection:

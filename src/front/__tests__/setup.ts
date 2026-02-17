@@ -31,6 +31,39 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', MockResizeObserver)
 })
 
+// Minimal DOMMatrix polyfill for jsdom/test runtime.
+// Some UI libraries (via pdf.js) reference DOMMatrix at module import time.
+class MockDOMMatrix {
+  a = 1
+  b = 0
+  c = 0
+  d = 1
+  e = 0
+  f = 0
+  m11 = 1
+  m12 = 0
+  m21 = 0
+  m22 = 1
+  m41 = 0
+  m42 = 0
+  is2D = true
+  isIdentity = true
+
+  constructor() {}
+
+  multiplySelf() { return this }
+  preMultiplySelf() { return this }
+  translateSelf(x = 0, y = 0) { this.e += x; this.f += y; return this }
+  scaleSelf() { return this }
+  rotateSelf() { return this }
+  invertSelf() { return this }
+  toFloat64Array() { return new Float64Array([this.a, this.b, this.c, this.d, this.e, this.f]) }
+
+  static fromMatrix() { return new MockDOMMatrix() }
+}
+
+vi.stubGlobal('DOMMatrix', MockDOMMatrix)
+
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

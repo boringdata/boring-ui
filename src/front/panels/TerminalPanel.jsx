@@ -4,7 +4,6 @@ import Terminal from '../components/Terminal'
 import ClaudeStreamChat from '../components/chat/ClaudeStreamChat'
 
 const SESSION_STORAGE_KEY = 'kurt-web-terminal-sessions'
-const VIEW_MODE_KEY = 'kurt-web-terminal-view-mode'
 const ACTIVE_SESSION_KEY = 'kurt-web-terminal-active'
 const CHAT_INTERFACE_KEY = 'kurt-web-terminal-chat-interface'
 const DEFAULT_PROVIDER = 'claude'
@@ -29,7 +28,7 @@ const loadSessions = () => {
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed) || parsed.length === 0) return null
     return parsed
-  } catch (error) {
+  } catch {
     return null
   }
 }
@@ -40,13 +39,13 @@ const loadActiveSession = () => {
     if (!raw) return null
     const id = Number(raw)
     return Number.isNaN(id) ? null : id
-  } catch (error) {
+  } catch {
     return null
   }
 }
 
 const normalizeSession = (session, fallbackId) => {
-  const { bannerMessage, ...rest } = session
+  const rest = session
   const id = Number(rest.id) || fallbackId
   // Always use claude as provider (migration from old codex sessions)
   return {
@@ -59,7 +58,12 @@ const normalizeSession = (session, fallbackId) => {
 }
 
 const serializeSessions = (sessions) =>
-  sessions.map(({ bannerMessage, resume, ...session }) => session)
+  sessions.map((session) => {
+    const persisted = { ...session }
+    delete persisted.resume
+    delete persisted.bannerMessage
+    return persisted
+  })
 
 const getFileName = (path) => {
   if (!path) return ''
@@ -70,8 +74,6 @@ const getFileName = (path) => {
 export default function TerminalPanel({ params }) {
   const { collapsed, onToggleCollapse, approvals, onFocusReview, onDecision, normalizeApprovalPath } = params || {}
   const terminalCounter = useRef(1)
-  // Always in chat mode (removed raw/chat toggle)
-  const viewMode = 'chat'
   const [chatInterface, setChatInterface] = useState(() => {
     try {
       return localStorage.getItem(CHAT_INTERFACE_KEY) || 'web'
@@ -199,7 +201,7 @@ export default function TerminalPanel({ params }) {
       } else {
         localStorage.setItem(ACTIVE_SESSION_KEY, String(activeId))
       }
-    } catch (error) {
+    } catch {
       // Ignore storage errors
     }
   }, [sessions, activeId])
@@ -215,7 +217,10 @@ export default function TerminalPanel({ params }) {
 
   if (collapsed) {
     return (
-      <div className="panel-content terminal-panel-content terminal-collapsed">
+      <div
+        className="panel-content terminal-panel-content right-rail-panel terminal-collapsed"
+        data-testid="terminal-panel-collapsed"
+      >
         <button
           type="button"
           className="sidebar-toggle-btn"
@@ -231,7 +236,7 @@ export default function TerminalPanel({ params }) {
   }
 
   return (
-    <div className="panel-content terminal-panel-content">
+    <div className="panel-content terminal-panel-content right-rail-panel" data-testid="terminal-panel">
       <div className="terminal-header">
         <button
           type="button"

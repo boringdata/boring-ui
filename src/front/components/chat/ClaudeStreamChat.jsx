@@ -328,30 +328,6 @@ const createNewSession = async () => {
   }
 }
 
-const fetchPendingApprovals = async () => {
-  try {
-    const res = await fetch(buildApiUrl('/api/approval/pending'))
-    if (!res.ok) return []
-    const data = await res.json()
-    return data.requests || []
-  } catch {
-    return []
-  }
-}
-
-const submitApprovalDecision = async (requestId, decision, reason) => {
-  try {
-    const res = await fetch(buildApiUrl('/api/approval/decision'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ request_id: requestId, decision, reason }),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
 const mergeStreamText = (previous, incoming) => {
   if (!previous) return incoming
   if (incoming.startsWith(previous)) return incoming
@@ -725,7 +701,7 @@ const useClaudeStreamRuntime = (
     connect(currentSessionId, mode).catch(() => {
       // Connection failed, will retry on message send
     })
-  }, [connect, currentSessionId])
+  }, [connect, currentSessionId, mode])
 
   const switchSession = useCallback((sessionId, resumeOverride = true) => {
     if (wsRef.current) {
@@ -1397,15 +1373,6 @@ const MODES = [
   { id: 'act', title: 'Auto-Accept', description: 'Automatically accepts file edits.' },
   { id: 'plan', title: 'Plan', description: 'Defines a plan before acting.' },
 ]
-
-const mapModeToControl = (mode) => {
-  const map = {
-    ask: 'default',
-    act: 'acceptEdits',
-    plan: 'plan',
-  }
-  return map[mode] || 'default'
-}
 
 const mapControlToMode = (mode) => {
   const map = {
@@ -2512,7 +2479,6 @@ const Thread = ({
 
 export default function ClaudeStreamChat({
   initialSessionId = null,
-  provider = 'claude',
   resume = false,
   onSessionStarted,
   showSessionPicker = true,
@@ -2550,7 +2516,7 @@ export default function ClaudeStreamChat({
     if (initialSessionId && initialSessionId !== currentSessionId) {
       setCurrentSessionId(initialSessionId)
     }
-  }, [initialSessionId])
+  }, [initialSessionId, currentSessionId])
 
   useEffect(() => {
     try {
@@ -2590,7 +2556,6 @@ export default function ClaudeStreamChat({
       setActiveError(entry)
     }
   }, [])
-  const dismissError = useCallback(() => setActiveError(null), [])
   const clearErrorLog = useCallback(() => {
     setErrorLog([])
     setActiveError(null)
@@ -2736,7 +2701,7 @@ export default function ClaudeStreamChat({
         }))
       }
     }
-  }, [])
+  }, [logError])
 
   const handleLastMessageChange = useCallback((msg) => {
     retryMessageRef.current = msg
@@ -2771,7 +2736,6 @@ export default function ClaudeStreamChat({
     switchSession,
     sendApprovalResponse,
     sendQuestionResponse,
-    sendMessage,
     restartSession,
     restartCounter,
     historyCleared,
@@ -3007,12 +2971,6 @@ export default function ClaudeStreamChat({
 
   const isUploadingAttachments = fileAttachments.some((attachment) => attachment.status === 'uploading')
 
-  const handleRetryConnection = useCallback(() => {
-    if (!currentSessionId) return
-    switchSession(currentSessionId, true)
-    setActiveError(null)
-  }, [currentSessionId, switchSession])
-
   const sessionLabel = useMemo(() => {
     const id = currentSessionId || sessionName
     return formatSessionLabel(id, sessions)
@@ -3026,7 +2984,7 @@ export default function ClaudeStreamChat({
     return loadStoredHistory(sessionKey)
       .map(normalizeHistoryMessage)
       .filter(Boolean)
-  }, [currentSessionId, sessionName, restartCounter, historyCleared])
+  }, [currentSessionId, sessionName, historyCleared])
 
   const runtimeKey = `${currentSessionId || sessionName || 'new'}-${restartCounter}`
 

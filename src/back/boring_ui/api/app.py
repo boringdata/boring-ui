@@ -5,16 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import APIConfig
 from .storage import Storage, LocalStorage
-from .modules.files import create_file_router
-from .modules.git import create_git_router
-from .modules.pty import create_pty_router
-from .modules.stream import create_stream_router
-from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
+from .approval import ApprovalStore, InMemoryApprovalStore
 from .capabilities import (
     RouterRegistry,
     create_default_registry,
     create_capabilities_router,
 )
+from .workspace_plugins import WorkspacePluginManager
 
 
 def create_app(
@@ -94,6 +91,9 @@ def create_app(
     # Build enabled features map for capabilities endpoint
     # Include both names for backward compatibility
     chat_enabled = 'chat_claude_code' in enabled_routers or 'stream' in enabled_routers
+    pi_embedded_mode = config.pi_mode != 'iframe'
+    pi_enabled = pi_embedded_mode or bool(config.pi_url)
+
     enabled_features = {
         'files': 'files' in enabled_routers,
         'git': 'git' in enabled_routers,
@@ -101,6 +101,10 @@ def create_app(
         'chat_claude_code': chat_enabled,
         'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
+        # Companion has a built-in embedded UI mode and does not require a service URL.
+        'companion': True,
+        # PI is available in embedded mode without PI_URL; iframe mode needs PI_URL.
+        'pi': pi_enabled,
     }
 
     # Create app
@@ -145,13 +149,41 @@ def create_app(
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 
-    # Always include capabilities router
+    # Mount canonical /api/v1 routes alongside legacy /api routes.
+    # The modular routers define both legacy names (/tree, /file) and
+    # canonical names (/list, /read, /write, /delete, /rename, /move).
+    # Mounting at /api/v1/files and /api/v1/git makes the canonical v1
+    # contract available at runtime while legacy /api/* paths keep working.
+    if 'files' in enabled_routers:
+        from .modules.files import create_file_router
+        app.include_router(
+            create_file_router(config, storage),
+            prefix='/api/v1/files',
+        )
+    if 'git' in enabled_routers:
+        from .modules.git import create_git_router
+        app.include_router(
+            create_git_router(config),
+            prefix='/api/v1/git',
+        )
+
+    # Workspace plugins are optional and disabled by default since they execute
+    # workspace-local Python modules in-process.
+    plugin_manager = None
+    if config.workspace_plugins_enabled:
+        allowlist = set(config.workspace_plugin_allowlist) if config.workspace_plugin_allowlist else None
+        plugin_manager = WorkspacePluginManager(config.workspace_root, allowed_plugins=allowlist)
+        app.mount('/api/x', plugin_manager.get_asgi_app())
+        app.include_router(plugin_manager.create_ws_router())
+
+    # Always include capabilities router (pass plugin_manager for workspace_panes)
     app.include_router(
-        create_capabilities_router(enabled_features, registry),
+        create_capabilities_router(enabled_features, registry, config, plugin_manager),
         prefix='/api',
     )
 
-    # Health check
+    # Core utility endpoints are intentionally inlined here to keep runtime
+    # dependencies minimal and avoid coupling to control-plane-era modules.
     @app.get('/health')
     async def health():
         """Health check endpoint."""
@@ -161,7 +193,6 @@ def create_app(
             'features': enabled_features,
         }
 
-    # API info
     @app.get('/api/config')
     async def get_config():
         """Get API configuration info."""
@@ -173,7 +204,6 @@ def create_app(
             },
         }
 
-    # Project endpoint (expected by frontend)
     @app.get('/api/project')
     async def get_project():
         """Get project root for the frontend."""
@@ -181,14 +211,12 @@ def create_app(
             'root': str(config.workspace_root),
         }
 
-    # Claude session endpoints (aligned with kurt-core)
     @app.get('/api/sessions')
     async def list_sessions():
-        """List active Claude stream sessions."""
+        """List active PTY and stream sessions."""
         from .modules.stream import get_session_registry as get_stream_registry
         from .modules.pty import get_session_registry as get_pty_registry
 
-        # Combine PTY and stream sessions
         pty_sessions = [
             {
                 'id': session_id,
@@ -216,5 +244,11 @@ def create_app(
         """Create a new session ID (client will connect via WebSocket)."""
         import uuid
         return {'session_id': str(uuid.uuid4())}
+
+    if plugin_manager is not None:
+        # Start file watcher after startup.
+        @app.on_event('startup')
+        async def _start_plugin_watcher() -> None:
+            plugin_manager.start_watcher()
 
     return app

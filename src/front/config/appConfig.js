@@ -36,17 +36,20 @@ const DEFAULT_CONFIG = {
     defaults: {
       filetree: 280,
       terminal: 400,
+      companion: 400,
       shell: 250,
     },
     min: {
       filetree: 180,
       terminal: 250,
+      companion: 250,
       shell: 100,
       center: 200, // Minimum height for the center/main content area
     },
     collapsed: {
       filetree: 48,
       terminal: 48,
+      companion: 48,
       shell: 36,
     },
   },
@@ -62,6 +65,9 @@ const DEFAULT_CONFIG = {
     search: true,
     cloudMode: false,
     workflows: false,
+    controlPlaneOnboarding: false,
+    // Right-rail agent chat mode: 'all' | 'native' | 'companion' | 'pi'
+    agentRailMode: 'all',
   },
 
   // Design token customization (CSS variables)
