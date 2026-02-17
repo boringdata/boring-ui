@@ -8,8 +8,7 @@ export function setCompanionConfig(baseUrl, authToken) {
   if (normalized.startsWith('/') && typeof window !== 'undefined') {
     normalized = `${window.location.origin}${normalized}`
   }
-  normalized = normalized.replace(/\/+$/, '')
-  normalized = rewriteLoopbackForRemoteClient(normalized).replace(/\/+$/, '')
+  normalized = rewriteLoopbackForRemoteClient(normalized.replace(/\/+$/, ''))
   _baseUrl = normalized
   _authToken = String(authToken || '').trim()
 }
