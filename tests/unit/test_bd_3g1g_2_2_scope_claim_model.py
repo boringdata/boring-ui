@@ -134,3 +134,10 @@ def test_required_denial_outcomes_and_machine_codes_are_present() -> None:
     ]
     for term in required_terms:
         assert term in text, f"Missing denial outcome contract term: {term}"
+
+
+def test_acceptance_confirmation_mentions_both_owner_services() -> None:
+    text = ARTIFACT.read_text(encoding="utf-8")
+    assert "## Acceptance Confirmation" in text
+    assert "`workspace-core` deny-by-default validation is explicitly defined" in text
+    assert "`pty-service` deny-by-default validation is explicitly defined" in text

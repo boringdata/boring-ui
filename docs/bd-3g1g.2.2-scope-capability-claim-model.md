@@ -76,4 +76,9 @@ Minimum machine-code expectations for phase-1 deny paths:
 - `workspace_mismatch`
 - `session_mismatch`
 
+## Acceptance Confirmation
+
+`workspace-core` deny-by-default validation is explicitly defined in this artifact.
+`pty-service` deny-by-default validation is explicitly defined in this artifact.
+
 This artifact is normative for downstream implementation beads that wire shared claim middleware and owner-service validators.
