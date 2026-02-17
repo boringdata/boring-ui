@@ -10,6 +10,13 @@ import {
 
 let runtime = null
 
+class OperationCallbackError extends Error {
+  constructor(error) {
+    super('PI storage transaction callback failed')
+    this.originalError = error
+  }
+}
+
 class MemoryStorageBackend {
   constructor({ stores }) {
     this.config = { stores }
@@ -102,21 +109,42 @@ class MemoryStorageBackend {
 }
 
 class FallbackStorageBackend {
-  constructor(primary, fallback) {
+  constructor(primary, fallback, storeNames = []) {
     this.active = primary
     this.fallback = fallback
     this.usingFallback = false
+    this.storeNames = storeNames
+  }
+
+  async mirrorPrimaryToFallback() {
+    for (const storeName of this.storeNames) {
+      try {
+        const keys = await this.active.keys(storeName)
+        for (const key of keys) {
+          const value = await this.active.get(storeName, key)
+          if (value !== null) {
+            await this.fallback.set(storeName, key, value)
+          }
+        }
+      } catch (error) {
+        console.warn(`[PiNativeAdapter] Failed to mirror store "${storeName}" during fallback.`, error)
+      }
+    }
+  }
+
+  async activateFallback(error) {
+    if (this.usingFallback) return
+    await this.mirrorPrimaryToFallback()
+    console.warn('[PiNativeAdapter] IndexedDB unavailable, falling back to in-memory storage.', error)
+    this.active = this.fallback
+    this.usingFallback = true
   }
 
   async run(name, args) {
     try {
       return await this.active[name](...args)
     } catch (error) {
-      if (!this.usingFallback) {
-        console.warn('[PiNativeAdapter] IndexedDB unavailable, falling back to in-memory storage.', error)
-        this.active = this.fallback
-        this.usingFallback = true
-      }
+      await this.activateFallback(error)
       return this.active[name](...args)
     }
   }
@@ -150,7 +178,25 @@ class FallbackStorageBackend {
   }
 
   transaction(...args) {
-    return this.run('transaction', args)
+    const [storeNames, mode, operation] = args
+    const wrappedOperation = async (tx) => {
+      try {
+        return await operation(tx)
+      } catch (error) {
+        throw new OperationCallbackError(error)
+      }
+    }
+
+    return this.active
+      .transaction(storeNames, mode, wrappedOperation)
+      .catch(async (error) => {
+        if (error instanceof OperationCallbackError) {
+          throw error.originalError
+        }
+
+        await this.activateFallback(error)
+        return this.active.transaction(storeNames, mode, operation)
+      })
   }
 
   getQuotaInfo(...args) {
@@ -188,7 +234,11 @@ export function getPiRuntime() {
       stores,
     })
   }
-  const backend = new FallbackStorageBackend(primaryBackend, fallbackBackend)
+  const backend = new FallbackStorageBackend(
+    primaryBackend,
+    fallbackBackend,
+    stores.map((store) => store.name),
+  )
 
   settings.setBackend(backend)
   providerKeys.setBackend(backend)

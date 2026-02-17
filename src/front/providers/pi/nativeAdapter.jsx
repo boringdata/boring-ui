@@ -200,6 +200,9 @@ export default function PiNativeAdapter() {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of Array.from(mutation.addedNodes)) {
+          if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
+            continue
+          }
           fixLitTree(node)
         }
       }
@@ -314,7 +317,7 @@ export default function PiNativeAdapter() {
       unsubscribeRef.current = agent.subscribe((event) => {
         if (!active) return
         if (event.type === 'message_end' || event.type === 'agent_end') {
-          void persistCurrentSession().catch((error) => logPiError('Failed to persist session', error))
+          persistCurrentSession().catch((error) => logPiError('Failed to persist session', error))
         }
       })
 
@@ -344,13 +347,13 @@ export default function PiNativeAdapter() {
 
     const unsubscribeActions = subscribePiSessionActions({
       onSwitch: (sessionId) => {
-        void switchSession(sessionId).catch((error) => logPiError('Failed to switch session', error))
+        switchSession(sessionId).catch((error) => logPiError('Failed to switch session', error))
       },
       onNew: () => {
-        void createNewSession().catch((error) => logPiError('Failed to create new session', error))
+        createNewSession().catch((error) => logPiError('Failed to create new session', error))
       },
       onRequestState: () => {
-        void refreshSessionState().catch((error) => logPiError('Failed to refresh session state', error))
+        refreshSessionState().catch((error) => logPiError('Failed to refresh session state', error))
       },
     })
 
