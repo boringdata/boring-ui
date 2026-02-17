@@ -21,7 +21,9 @@ Repeat until no beads remain:
 
 ### Evidence & Proof (Showboat + Rodney)
 
-Use [Showboat](https://simonwillison.net/2026/Feb/10/showboat-and-rodney/) to capture proof, [Rodney](https://github.com/simonw/rodney) for browser screenshots. Run `showboat --help` / `rodney --help` for full usage.
+Use [Showboat](https://simonwillison.net/2026/Feb/10/showboat-and-rodney/) to capture proof, [Rodney](https://github.com/simonw/rodney) for visual proof via CLI browser automation ([blog post](https://simonwillison.net/2026/Feb/10/showboat-and-rodney/)). Run `showboat --help` / `rodney --help` for full usage.
+
+**Rodney** is a CLI browser tool (Chrome DevTools Protocol via Rod). Key commands: `rodney start`, `rodney open <url>`, `rodney screenshot <file>`, `rodney click '<selector>'`, `rodney js '<code>'`, `rodney stop`. Install: `uvx rodney` or `uv tool install rodney`.
 
 ```bash
 # Proof flow: init → exec/image → verify → commit

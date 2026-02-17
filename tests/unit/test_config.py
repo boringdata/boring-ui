@@ -68,6 +68,18 @@ class TestAPIConfig:
         config = APIConfig(workspace_root=tmp_path)
         assert config.pi_url is None
 
+    def test_pi_mode_defaults_to_embedded(self, tmp_path, monkeypatch):
+        """Test pi_mode defaults to embedded."""
+        monkeypatch.delenv('PI_MODE', raising=False)
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.pi_mode == 'embedded'
+
+    def test_pi_mode_reads_env(self, tmp_path, monkeypatch):
+        """Test pi_mode reads from PI_MODE env var."""
+        monkeypatch.setenv('PI_MODE', 'iframe')
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.pi_mode == 'iframe'
+
     def test_workspace_plugins_enabled_from_env(self, tmp_path, monkeypatch):
         """Test workspace_plugins_enabled is parsed from env."""
         monkeypatch.setenv('WORKSPACE_PLUGINS_ENABLED', 'true')

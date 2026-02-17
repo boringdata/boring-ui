@@ -58,6 +58,12 @@ class APIConfig:
     pi_url: str | None = field(
         default_factory=lambda: os.environ.get('PI_URL')
     )
+    # PI provider rendering mode:
+    # - embedded: use built-in chat UI (functional fallback/default)
+    # - iframe: render configured PI_URL inside iframe
+    pi_mode: str = field(
+        default_factory=lambda: (os.environ.get('PI_MODE') or 'embedded').strip().lower()
+    )
     # Disabled by default because workspace plugins execute local Python modules.
     workspace_plugins_enabled: bool = field(
         default_factory=lambda: _env_bool('WORKSPACE_PLUGINS_ENABLED', False)

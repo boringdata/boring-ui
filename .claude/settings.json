@@ -1,4 +1,5 @@
 {
+  "disableAllHooks": true,
   "mcpServers": {
     "mcp-agent-mail": {
       "type": "http",
