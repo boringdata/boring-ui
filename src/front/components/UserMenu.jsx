@@ -26,6 +26,7 @@ export default function UserMenu({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef(null)
+  const dropdownRef = useRef(null)
   const [collapsedMenuStyle, setCollapsedMenuStyle] = useState(null)
 
   // Get first letter of email (uppercase) for avatar
@@ -34,9 +35,9 @@ export default function UserMenu({
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setIsOpen(false)
-      }
+      const clickedTrigger = menuRef.current?.contains(event.target)
+      const clickedMenu = dropdownRef.current?.contains(event.target)
+      if (!clickedTrigger && !clickedMenu) setIsOpen(false)
     }
 
     if (isOpen) {
@@ -128,6 +129,7 @@ export default function UserMenu({
       className={`user-menu-dropdown ${collapsed ? 'user-menu-dropdown-portal' : ''}`}
       id={menuId}
       role="menu"
+      ref={dropdownRef}
       style={collapsed ? collapsedMenuStyle || undefined : undefined}
     >
       <div className="user-menu-email">{displayEmail}</div>

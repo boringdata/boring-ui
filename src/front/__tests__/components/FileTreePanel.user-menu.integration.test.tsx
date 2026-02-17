@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import FileTreePanel from '../../panels/FileTreePanel'
 
 vi.mock('../../components/FileTree', () => ({
@@ -30,15 +31,16 @@ const makeParams = (overrides = {}) => ({
 })
 
 describe('FileTreePanel + UserMenu integration', () => {
-  it('renders real collapsed menu and triggers action callbacks', () => {
+  it('renders real collapsed menu and triggers action callbacks', async () => {
     const params = makeParams()
+    const user = userEvent.setup()
     render(<FileTreePanel params={params} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
+    await user.click(screen.getByRole('button', { name: 'User menu' }))
     expect(screen.getByRole('menu')).toBeInTheDocument()
     expect(screen.getByText('workspace: my-workspace')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Logout' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Logout' }))
     expect(params.onLogout).toHaveBeenCalledWith({ workspaceId: 'ws-123' })
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })

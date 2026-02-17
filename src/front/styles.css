@@ -3790,6 +3790,8 @@ html {
 
 .user-menu-dropdown-portal {
   position: fixed;
+  right: auto;
+  bottom: auto;
 }
 
 /* File item hover icon color */
