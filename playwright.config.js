@@ -1,5 +1,35 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const e2eFrontendPort = Number(process.env.PW_E2E_PORT || 4173)
+const e2eApiPort = Number(process.env.PW_E2E_API_PORT || 8000)
+const frontendUrl = `http://127.0.0.1:${e2eFrontendPort}`
+const apiHealthUrl = `http://127.0.0.1:${e2eApiPort}/health`
+const runCrossBrowser = process.env.PW_E2E_CROSS_BROWSER === '1'
+
+const projects = [
+  {
+    name: 'chromium',
+    use: { ...devices['Desktop Chrome'] },
+  },
+]
+
+if (runCrossBrowser) {
+  projects.push(
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
+      name: 'Mobile Chrome',
+      use: { ...devices['Pixel 5'] },
+    }
+  )
+}
+
 /**
  * Playwright E2E Test Configuration
  *
@@ -42,7 +72,7 @@ export default defineConfig({
   // Shared settings for all browsers
   use: {
     // Base URL for requests
-    baseURL: 'http://localhost:5173',
+    baseURL: frontendUrl,
 
     // Take screenshot on failure
     screenshot: 'only-on-failure',
@@ -55,34 +85,21 @@ export default defineConfig({
   },
 
   // Configure different browsers
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    // Mobile testing
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-  ],
+  projects,
 
   // Web Server configuration for running tests against dev server
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  webServer: [
+    {
+      command: `npm run dev -- --host 127.0.0.1 --port ${e2eFrontendPort} --strictPort`,
+      url: frontendUrl,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120000,
+    },
+    {
+      command: `PYTHONPATH=src/back BORING_UI_WORKSPACE_ROOT=$PWD python3 -m uvicorn boring_ui.runtime:app --host 127.0.0.1 --port ${e2eApiPort}`,
+      url: apiHealthUrl,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120000,
+    },
+  ],
 })
