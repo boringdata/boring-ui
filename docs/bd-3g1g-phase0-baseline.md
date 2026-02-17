@@ -11,6 +11,8 @@ Data in this baseline was collected from current `HEAD` (`b5552ff`) using:
 - route/callsite grep scans across `src/`, `tests/`, `docs/`, `scripts/`
 - bead dependency extraction from `.beads/issues.jsonl`
 
+This is an auditable point-in-time baseline. Later commits in this branch may already migrate some listed legacy callsites; treat this file as the phase-0 starting snapshot, not a continuously updated live state document.
+
 Primary source files scanned:
 
 - `src/back/boring_ui/api/app.py`
@@ -146,6 +148,8 @@ Critical path to migration closeout:
 22. `bd-3g1g.7.2`
 23. `bd-3g1g.7.3`
 24. `bd-3g1g.7.4`
+
+Note: `bd-3g1g.5.3` is intentionally off this strict blocking chain. It still remains required for full phase completion and documentation alignment, but it does not gate the minimal sequence above.
 
 ## Traceability Notes (Plan -> Beads)
 
