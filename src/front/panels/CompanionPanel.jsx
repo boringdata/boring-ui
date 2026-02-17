@@ -5,7 +5,9 @@ import { setCompanionConfig } from '../providers/companion/config'
 import CompanionAdapter from '../providers/companion/adapter'
 import EmbeddedSessionToolbar from '../providers/companion/EmbeddedSessionToolbar'
 import PiNativeAdapter from '../providers/pi/nativeAdapter'
+import PiBackendAdapter from '../providers/pi/backendAdapter'
 import PiSessionToolbar from '../providers/pi/PiSessionToolbar'
+import { getPiServiceUrl, isPiBackendMode } from '../providers/pi/config'
 import '../providers/companion/upstream.css'
 import '../providers/companion/theme-bridge.css'
 
@@ -14,6 +16,8 @@ export default function CompanionPanel({ params }) {
   const capabilities = useCapabilitiesContext()
   const activeProvider = provider === 'pi' ? 'pi' : 'companion'
   const companionUrl = capabilities?.services?.companion?.url
+  const piBackendEnabled = activeProvider === 'pi' && isPiBackendMode(capabilities)
+  const piServiceUrl = piBackendEnabled ? getPiServiceUrl(capabilities) : ''
 
   const ready = useMemo(() => {
     if (activeProvider === 'pi') {
@@ -70,7 +74,9 @@ export default function CompanionPanel({ params }) {
             activeProvider === 'pi'
               ? (
                 <div className="provider-companion provider-pi-native" data-testid="pi-app">
-                  <PiNativeAdapter />
+                  {piBackendEnabled
+                    ? <PiBackendAdapter serviceUrl={piServiceUrl} />
+                    : <PiNativeAdapter />}
                 </div>
                 )
               : (

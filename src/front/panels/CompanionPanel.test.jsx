@@ -14,6 +14,9 @@ vi.mock('../providers/pi/PiSessionToolbar', () => ({
 vi.mock('../providers/pi/nativeAdapter', () => ({
   default: () => <div data-testid="mock-pi-native-app">MockPiNativeApp</div>,
 }))
+vi.mock('../providers/pi/backendAdapter', () => ({
+  default: () => <div data-testid="mock-pi-backend-app">MockPiBackendApp</div>,
+}))
 
 // Mock CSS imports
 vi.mock('../providers/companion/upstream.css', () => ({}))
@@ -24,6 +27,12 @@ vi.mock('../providers/companion/overrides.css', () => ({}))
 const mockSetCompanionConfig = vi.fn()
 vi.mock('../providers/companion/config', () => ({
   setCompanionConfig: (...args) => mockSetCompanionConfig(...args),
+}))
+const mockIsPiBackendMode = vi.fn(() => false)
+const mockGetPiServiceUrl = vi.fn(() => '')
+vi.mock('../providers/pi/config', () => ({
+  isPiBackendMode: (...args) => mockIsPiBackendMode(...args),
+  getPiServiceUrl: (...args) => mockGetPiServiceUrl(...args),
 }))
 
 // Mock CapabilityGate context
@@ -38,6 +47,8 @@ describe('CompanionPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockCapabilities.services = {}
+    mockIsPiBackendMode.mockReturnValue(false)
+    mockGetPiServiceUrl.mockReturnValue('')
   })
 
   it('shows connecting state when companion URL is not available', () => {
@@ -84,6 +95,22 @@ describe('CompanionPanel', () => {
     expect(screen.getByTestId('pi-app')).toBeTruthy()
     expect(screen.getByTestId('mock-pi-toolbar')).toBeTruthy()
     expect(screen.getByTestId('mock-pi-native-app')).toBeTruthy()
+    expect(mockSetCompanionConfig).not.toHaveBeenCalled()
+  })
+
+  it('renders PI backend adapter when PI backend mode is enabled', () => {
+    mockCapabilities.services = {
+      pi: { url: 'http://localhost:8789', mode: 'backend' },
+    }
+    mockIsPiBackendMode.mockReturnValue(true)
+    mockGetPiServiceUrl.mockReturnValue('http://localhost:8789')
+
+    render(<CompanionPanel params={{ provider: 'pi' }} />)
+
+    expect(screen.getByTestId('pi-app')).toBeTruthy()
+    expect(screen.getByTestId('mock-pi-toolbar')).toBeTruthy()
+    expect(screen.getByTestId('mock-pi-backend-app')).toBeTruthy()
+    expect(screen.queryByTestId('mock-pi-native-app')).toBeNull()
     expect(mockSetCompanionConfig).not.toHaveBeenCalled()
   })
 
