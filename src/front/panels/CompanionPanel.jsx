@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCapabilitiesContext } from '../components/CapabilityGate'
 import { setCompanionConfig } from '../providers/companion/config'
 import CompanionAdapter from '../providers/companion/adapter'
-import PiAdapter from '../providers/pi/adapter'
+import PiNativeAdapter from '../providers/pi/nativeAdapter'
 import EmbeddedSessionToolbar from '../providers/companion/EmbeddedSessionToolbar'
 import '../providers/companion/upstream.css'
 import '../providers/companion/theme-bridge.css'
@@ -14,24 +14,20 @@ export default function CompanionPanel({ params }) {
   const activeProvider = provider === 'pi' ? 'pi' : 'companion'
   const companionUrl = capabilities?.services?.companion?.url
   const piUrl = capabilities?.services?.pi?.url
-  const piMode = capabilities?.services?.pi?.mode === 'iframe' ? 'iframe' : 'embedded'
-  // PI should be fully interactive by default; prefer embedded chat whenever
-  // we have a compatible backend URL (companion first, PI second).
-  const embeddedUrl = companionUrl || (piMode !== 'iframe' ? piUrl : null)
-  const piEmbeddedMode = activeProvider === 'pi' && Boolean(embeddedUrl)
-  const piIframeMode = activeProvider === 'pi' && !embeddedUrl && piMode === 'iframe'
-  const agentUrl = activeProvider === 'pi' ? piUrl : companionUrl
+  // Provider-specific backend mapping:
+  // - companion mode uses companion URL
+  // - pi mode uses pi URL (dedicated backend)
+  const embeddedUrl = activeProvider === 'pi' ? piUrl : companionUrl
 
   // Set config synchronously before CompanionApp renders.
   // useMemo runs during render, before children mount.
   const ready = useMemo(() => {
-    if ((activeProvider === 'companion' || piEmbeddedMode) && embeddedUrl) {
+    if (embeddedUrl) {
       setCompanionConfig(embeddedUrl, '')
       return true
     }
-    if (piIframeMode && piUrl) return true
     return false
-  }, [activeProvider, piEmbeddedMode, piIframeMode, embeddedUrl, piUrl])
+  }, [embeddedUrl])
 
   if (collapsed) {
     return (
@@ -67,20 +63,20 @@ export default function CompanionPanel({ params }) {
         </button>
         <span className="terminal-title-text">Agent</span>
         <div className="terminal-header-spacer" />
-        {(activeProvider === 'companion' || piEmbeddedMode) ? <EmbeddedSessionToolbar /> : null}
+        <EmbeddedSessionToolbar />
       </div>
       <div className="terminal-body companion-body">
         <div className="companion-instance active">
           {ready ? (
-            (activeProvider === 'companion' || piEmbeddedMode)
+            activeProvider === 'pi'
               ? (
-                <div className="provider-companion" data-testid={piEmbeddedMode ? 'pi-app' : 'companion-app'}>
-                  <CompanionAdapter />
+                <div className="provider-companion provider-pi-native" data-testid="pi-app">
+                  <PiNativeAdapter />
                 </div>
                 )
               : (
-                <div className="provider-pi" data-testid="pi-app">
-                  <PiAdapter url={agentUrl} />
+                <div className="provider-companion" data-testid="companion-app">
+                  <CompanionAdapter />
                 </div>
                 )
           ) : (
@@ -89,7 +85,7 @@ export default function CompanionPanel({ params }) {
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-text-tertiary)' }}
             >
               {activeProvider === 'pi'
-                ? (piIframeMode ? 'Connecting to Pi server...' : 'Connecting to Pi embedded chat...')
+                ? 'Connecting to Pi backend...'
                 : 'Connecting to Companion server...'}
             </div>
           )}

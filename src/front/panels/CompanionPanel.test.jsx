@@ -8,8 +8,8 @@ vi.mock('../providers/companion/adapter', () => ({
 vi.mock('../providers/companion/EmbeddedSessionToolbar', () => ({
   default: () => <div data-testid="mock-companion-toolbar">MockCompanionToolbar</div>,
 }))
-vi.mock('../providers/pi/adapter', () => ({
-  default: () => <div data-testid="mock-pi-app">MockPiApp</div>,
+vi.mock('../providers/pi/nativeAdapter', () => ({
+  default: () => <div data-testid="mock-pi-native-app">MockPiNativeApp</div>,
 }))
 
 // Mock CSS imports
@@ -77,26 +77,12 @@ describe('CompanionPanel', () => {
     render(<CompanionPanel params={{ provider: 'pi' }} />)
 
     expect(screen.getByTestId('pi-app')).toBeTruthy()
-    expect(screen.getByTestId('mock-companion-app')).toBeTruthy()
+    expect(screen.getByTestId('mock-pi-native-app')).toBeTruthy()
     expect(screen.getByTestId('mock-companion-toolbar')).toBeTruthy()
-    expect(screen.queryByTestId('mock-pi-app')).toBeNull()
     expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:8787', '')
   })
 
-  it('renders iframe PI adapter when provider is pi in iframe mode', () => {
-    mockCapabilities.services = {
-      pi: { url: 'http://localhost:8787', mode: 'iframe' },
-    }
-
-    render(<CompanionPanel params={{ provider: 'pi' }} />)
-
-    expect(screen.getByTestId('pi-app')).toBeTruthy()
-    expect(screen.getByTestId('mock-pi-app')).toBeTruthy()
-    expect(screen.queryByTestId('mock-companion-toolbar')).toBeNull()
-    expect(mockSetCompanionConfig).not.toHaveBeenCalled()
-  })
-
-  it('falls back to embedded PI chat when companion service is available', () => {
+  it('uses dedicated pi backend URL when both provider URLs exist', () => {
     mockCapabilities.services = {
       companion: { url: 'http://localhost:3456' },
       pi: { url: 'http://localhost:8787', mode: 'iframe' },
@@ -105,10 +91,9 @@ describe('CompanionPanel', () => {
     render(<CompanionPanel params={{ provider: 'pi' }} />)
 
     expect(screen.getByTestId('pi-app')).toBeTruthy()
-    expect(screen.getByTestId('mock-companion-app')).toBeTruthy()
     expect(screen.getByTestId('mock-companion-toolbar')).toBeTruthy()
-    expect(screen.queryByTestId('mock-pi-app')).toBeNull()
-    expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:3456', '')
+    expect(screen.getByTestId('mock-pi-native-app')).toBeTruthy()
+    expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:8787', '')
   })
 
   it('renders collapsed state with correct test id', () => {
