@@ -203,16 +203,17 @@ class TestFileRoutes:
         """Legacy /api file route family should be unavailable."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            responses = [
-                await client.get('/api/tree?path=.'),
-                await client.get('/api/file?path=README.md'),
-                await client.put('/api/file?path=README.md', json={'content': 'x'}),
-                await client.delete('/api/file?path=README.md'),
-                await client.post('/api/file/rename', json={'old_path': 'a', 'new_path': 'b'}),
-                await client.post('/api/file/move', json={'src_path': 'a', 'dest_dir': '.'}),
-                await client.get('/api/search?q=README'),
+            checks = [
+                ('GET /api/tree?path=.', await client.get('/api/tree?path=.')),
+                ('GET /api/file?path=README.md', await client.get('/api/file?path=README.md')),
+                ('PUT /api/file?path=README.md', await client.put('/api/file?path=README.md', json={'content': 'x'})),
+                ('DELETE /api/file?path=README.md', await client.delete('/api/file?path=README.md')),
+                ('POST /api/file/rename', await client.post('/api/file/rename', json={'old_path': 'a', 'new_path': 'b'})),
+                ('POST /api/file/move', await client.post('/api/file/move', json={'src_path': 'a', 'dest_dir': '.'})),
+                ('GET /api/search?q=README', await client.get('/api/search?q=README')),
             ]
-            assert all(response.status_code == 404 for response in responses)
+            for url, response in checks:
+                assert response.status_code == 404, f'{url} returned {response.status_code}'
 
 
 class TestGitRoutes:
@@ -231,12 +232,13 @@ class TestGitRoutes:
         """Legacy /api/git route family should be unavailable."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            responses = [
-                await client.get('/api/git/status'),
-                await client.get('/api/git/diff?path=README.md'),
-                await client.get('/api/git/show?path=README.md'),
+            checks = [
+                ('GET /api/git/status', await client.get('/api/git/status')),
+                ('GET /api/git/diff?path=README.md', await client.get('/api/git/diff?path=README.md')),
+                ('GET /api/git/show?path=README.md', await client.get('/api/git/show?path=README.md')),
             ]
-            assert all(response.status_code == 404 for response in responses)
+            for url, response in checks:
+                assert response.status_code == 404, f'{url} returned {response.status_code}'
 
 
 class TestConfigEndpoint:
@@ -345,6 +347,30 @@ class TestRouterSelection:
             data = response.json()
             assert data['features']['stream'] is True
             assert data['features']['chat_claude_code'] is True
+
+    @pytest.mark.asyncio
+    async def test_custom_registry_prefixes_for_files_and_git(self, workspace):
+        """Custom registry prefixes should be honored for files/git routers."""
+        from boring_ui.api.capabilities import RouterRegistry
+        from boring_ui.api.modules.files import create_file_router
+        from boring_ui.api.modules.git import create_git_router
+
+        config = APIConfig(workspace_root=workspace)
+        registry = RouterRegistry()
+        registry.register('files', '/custom/files', create_file_router, tags=['files'])
+        registry.register('git', '/custom/git', create_git_router, tags=['git'])
+
+        app = create_app(config, registry=registry, routers=['files', 'git'])
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            files_response = await client.get('/custom/files/list?path=.')
+            git_response = await client.get('/custom/git/status')
+            default_response = await client.get('/api/v1/files/list?path=.')
+
+            assert files_response.status_code == 200
+            assert git_response.status_code == 200
+            assert default_response.status_code == 404
 
 
 class TestWebSocketRoutes:
