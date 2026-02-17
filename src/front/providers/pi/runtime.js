@@ -134,6 +134,10 @@ class FallbackStorageBackend {
   }
 
   async activateFallback(error) {
+    // Fallback state machine:
+    // 1) First caller flips `usingFallback` + `active` synchronously.
+    // 2) It then starts one shared activation promise for best-effort mirroring/logging.
+    // 3) Concurrent callers only await the shared promise or return immediately if done.
     if (this.usingFallback) {
       if (this.fallbackActivationPromise) {
         await this.fallbackActivationPromise
@@ -148,10 +152,10 @@ class FallbackStorageBackend {
     const sourceBackend = this.active
     this.active = this.fallback
     this.usingFallback = true
+    console.warn('[PiNativeAdapter] IndexedDB unavailable, falling back to in-memory storage.', error)
 
     this.fallbackActivationPromise = (async () => {
       await this.attemptMirrorPrimaryToFallback(sourceBackend)
-      console.warn('[PiNativeAdapter] IndexedDB unavailable, falling back to in-memory storage.', error)
     })()
 
     try {
