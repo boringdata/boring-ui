@@ -98,6 +98,9 @@ def create_app(
     # Build enabled features map for capabilities endpoint
     # Include both names for backward compatibility
     chat_enabled = 'chat_claude_code' in enabled_routers or 'stream' in enabled_routers
+    pi_embedded_mode = config.pi_mode != 'iframe'
+    pi_enabled = pi_embedded_mode or bool(config.pi_url)
+
     enabled_features = {
         'files': 'files' in enabled_routers,
         'git': 'git' in enabled_routers,
@@ -105,8 +108,10 @@ def create_app(
         'chat_claude_code': chat_enabled,
         'stream': chat_enabled,  # Backward compatibility alias
         'approval': 'approval' in enabled_routers,
-        'companion': bool(config.companion_url),
-        'pi': bool(config.pi_url),
+        # Companion has a built-in embedded UI mode and does not require a service URL.
+        'companion': True,
+        # PI is available in embedded mode without PI_URL; iframe mode needs PI_URL.
+        'pi': pi_enabled,
     }
 
     # Create app

@@ -14,14 +14,32 @@ export default defineConfig(({ mode }) => {
 
   // Library build mode (npm run build:lib)
   const isLibMode = mode === 'lib'
+  const resolveAlias = [
+    { find: /^@\//, replacement: `${path.resolve(__dirname, './src/front')}/` },
+    {
+      find: '@mariozechner/pi-ai/dist/providers/register-builtins.js',
+      replacement: path.resolve(__dirname, './src/front/providers/pi/registerBuiltins.browser.js'),
+    },
+    {
+      find: '@mariozechner/pi-ai/dist/utils/http-proxy.js',
+      replacement: path.resolve(__dirname, './src/front/providers/pi/httpProxy.noop.js'),
+    },
+    {
+      find: /^@mariozechner\/pi-ai$/,
+      replacement: path.resolve(__dirname, './src/front/providers/pi/piAi.browser.js'),
+    },
+  ]
+  if (workspaceRoot) {
+    resolveAlias.push({
+      find: '@workspace',
+      replacement: path.resolve(workspaceRoot, 'kurt/panels'),
+    })
+  }
 
   const baseConfig = {
     plugins: [react(), tailwindcss()],
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src/front'),
-        ...(workspaceRoot ? { '@workspace': path.resolve(workspaceRoot, 'kurt/panels') } : {}),
-      },
+      alias: resolveAlias,
     },
     test: {
       globals: true,

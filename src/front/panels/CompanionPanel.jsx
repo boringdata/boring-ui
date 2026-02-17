@@ -3,8 +3,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCapabilitiesContext } from '../components/CapabilityGate'
 import { setCompanionConfig } from '../providers/companion/config'
 import CompanionAdapter from '../providers/companion/adapter'
-import PiNativeAdapter from '../providers/pi/nativeAdapter'
 import EmbeddedSessionToolbar from '../providers/companion/EmbeddedSessionToolbar'
+import PiNativeAdapter from '../providers/pi/nativeAdapter'
+import PiSessionToolbar from '../providers/pi/PiSessionToolbar'
 import '../providers/companion/upstream.css'
 import '../providers/companion/theme-bridge.css'
 
@@ -14,20 +15,19 @@ export default function CompanionPanel({ params }) {
   const activeProvider = provider === 'pi' ? 'pi' : 'companion'
   const companionUrl = capabilities?.services?.companion?.url
   const piUrl = capabilities?.services?.pi?.url
-  // Provider-specific backend mapping:
-  // - companion mode uses companion URL
-  // - pi mode uses pi URL (dedicated backend)
-  const embeddedUrl = activeProvider === 'pi' ? piUrl : companionUrl
 
-  // Set config synchronously before CompanionApp renders.
-  // useMemo runs during render, before children mount.
   const ready = useMemo(() => {
-    if (embeddedUrl) {
-      setCompanionConfig(embeddedUrl, '')
+    if (activeProvider === 'pi') {
       return true
     }
+
+    if (companionUrl) {
+      setCompanionConfig(companionUrl, '')
+      return true
+    }
+
     return false
-  }, [embeddedUrl])
+  }, [activeProvider, companionUrl])
 
   if (collapsed) {
     return (
@@ -63,14 +63,14 @@ export default function CompanionPanel({ params }) {
         </button>
         <span className="terminal-title-text">Agent</span>
         <div className="terminal-header-spacer" />
-        <EmbeddedSessionToolbar />
+        {activeProvider === 'pi' ? <PiSessionToolbar /> : <EmbeddedSessionToolbar />}
       </div>
       <div className="terminal-body companion-body">
         <div className="companion-instance active">
           {ready ? (
             activeProvider === 'pi'
               ? (
-                <div className="provider-companion provider-pi-native" data-testid="pi-app">
+                <div className="provider-companion provider-pi-native" data-testid="pi-app" data-service-url={piUrl || ''}>
                   <PiNativeAdapter />
                 </div>
                 )
@@ -84,9 +84,7 @@ export default function CompanionPanel({ params }) {
               data-testid="companion-connecting"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-text-tertiary)' }}
             >
-              {activeProvider === 'pi'
-                ? 'Connecting to Pi backend...'
-                : 'Connecting to Companion server...'}
+              Connecting to Companion server...
             </div>
           )}
         </div>
