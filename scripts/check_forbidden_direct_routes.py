@@ -89,6 +89,7 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
     index = 0
     string_delimiter: str | None = None
     escaped = False
+    template_interpolation_depth = 0
 
     while index < len(line):
         if in_block_comment:
@@ -107,18 +108,15 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
                 escaped = False
             elif char == "\\":
                 escaped = True
+            elif string_delimiter == "`" and line.startswith("${", index):
+                result.append("{")
+                index += 2
+                string_delimiter = None
+                template_interpolation_depth = 1
+                escaped = False
+                continue
             elif char == string_delimiter:
                 string_delimiter = None
-            index += 1
-            continue
-
-        # Keep parsing focused on standard quoted strings where comment-token
-        # ambiguity is common. Template literals are still scanned for route
-        # patterns, but comment stripping inside `${...}` expressions is not
-        # modeled here.
-        if char in {"'", '"'}:
-            string_delimiter = char
-            result.append(char)
             index += 1
             continue
 
@@ -128,6 +126,36 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
         if line.startswith("/*", index):
             in_block_comment = True
             index += 2
+            continue
+
+        if template_interpolation_depth > 0:
+            if char in {"'", '"'}:
+                string_delimiter = char
+                escaped = False
+                result.append(char)
+                index += 1
+                continue
+
+            if char == "{":
+                template_interpolation_depth += 1
+            elif char == "}":
+                template_interpolation_depth -= 1
+                if template_interpolation_depth == 0:
+                    result.append(char)
+                    index += 1
+                    string_delimiter = "`"
+                    escaped = False
+                    continue
+
+            result.append(char)
+            index += 1
+            continue
+
+        if char in {"'", '"', "`"}:
+            string_delimiter = char
+            escaped = False
+            result.append(char)
+            index += 1
             continue
 
         result.append(char)

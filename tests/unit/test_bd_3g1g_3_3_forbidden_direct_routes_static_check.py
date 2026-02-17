@@ -195,3 +195,21 @@ def test_guard_does_not_treat_double_slash_inside_string_as_comment(tmp_path: Pa
     assert payload["violation_count"] == 1
     assert payload["violations"][0]["rule"] == "legacy-compat-route"
     assert payload["violations"][0]["line"] == 1
+
+
+def test_guard_does_not_treat_double_slash_inside_template_text_as_comment(
+    tmp_path: Path,
+) -> None:
+    file_path = tmp_path / "src/front/components/TemplateSlash.jsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(
+        "const risky = `https://example.com//trace` + '/api/tree';\n",
+        encoding="utf-8",
+    )
+
+    result = _run_guard("--root", str(tmp_path), "--format", "json")
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["violation_count"] == 1
+    assert payload["violations"][0]["rule"] == "legacy-compat-route"
+    assert payload["violations"][0]["line"] == 1
