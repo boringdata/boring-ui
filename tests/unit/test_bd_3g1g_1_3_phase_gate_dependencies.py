@@ -63,6 +63,18 @@ def test_phase_gate_graph_artifact_contains_required_sections() -> None:
     for token in required_tokens:
         assert token in text, f"Missing expected token in graph artifact: {token}"
 
+    required_relationship_snippets = [
+        "`bd-3g1g.3` now `blocks` on `bd-3g1g.2.4`",
+        "`bd-3g1g.5` now `blocks` on `bd-3g1g.3.5`",
+        "`bd-3g1g.6` now `blocks` on `bd-3g1g.5.5`",
+        "`bd-3g1g.5.3` + `bd-3g1g.5.4` -> `bd-3g1g.5.5`",
+    ]
+    for snippet in required_relationship_snippets:
+        assert snippet in text, (
+            "Missing expected dependency relationship in graph artifact: "
+            f"{snippet}"
+        )
+
 
 def test_phase_gates_are_encoded_as_blocks_dependencies() -> None:
     index = _load_dependency_index()
