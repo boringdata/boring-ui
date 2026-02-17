@@ -5,24 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import APIConfig
 from .storage import Storage, LocalStorage
-from .modules.files import create_file_router
-from .modules.git import create_git_router
-from .modules.pty import create_pty_router
-from .modules.stream import create_stream_router
-from .approval import ApprovalStore, InMemoryApprovalStore, create_approval_router
+from .approval import ApprovalStore, InMemoryApprovalStore
 from .capabilities import (
     RouterRegistry,
     create_default_registry,
     create_capabilities_router,
 )
-from .utility_routes import create_utility_router
 from .workspace_plugins import WorkspacePluginManager
-from boring_ui.observability import configure_logging, get_logger
-from boring_ui.observability.middleware import (
-    MetricsMiddleware,
-    RequestIdMiddleware,
-    RequestLoggingMiddleware,
-)
 
 
 def create_app(
@@ -193,7 +182,8 @@ def create_app(
         prefix='/api',
     )
 
-    # Health check
+    # Core utility endpoints are intentionally inlined here to keep runtime
+    # dependencies minimal and avoid coupling to control-plane-era modules.
     @app.get('/health')
     async def health():
         """Health check endpoint."""
@@ -203,18 +193,62 @@ def create_app(
             'features': enabled_features,
         }
 
+    @app.get('/api/config')
+    async def get_config():
+        """Get API configuration info."""
+        return {
+            'workspace_root': str(config.workspace_root),
+            'pty_providers': list(config.pty_providers.keys()),
+            'paths': {
+                'files': '.',
+            },
+        }
+
+    @app.get('/api/project')
+    async def get_project():
+        """Get project root for the frontend."""
+        return {
+            'root': str(config.workspace_root),
+        }
+
+    @app.get('/api/sessions')
+    async def list_sessions():
+        """List active PTY and stream sessions."""
+        from .modules.stream import get_session_registry as get_stream_registry
+        from .modules.pty import get_session_registry as get_pty_registry
+
+        pty_sessions = [
+            {
+                'id': session_id,
+                'type': 'pty',
+                'alive': session.is_alive(),
+                'clients': len(session.clients),
+                'history_count': len(session.history),
+            }
+            for session_id, session in get_pty_registry().items()
+        ]
+        stream_sessions = [
+            {
+                'id': session_id,
+                'type': 'stream',
+                'alive': session.is_alive(),
+                'clients': len(session.clients),
+                'history_count': len(session.history),
+            }
+            for session_id, session in get_stream_registry().items()
+        ]
+        return {'sessions': pty_sessions + stream_sessions}
+
+    @app.post('/api/sessions')
+    async def create_session():
+        """Create a new session ID (client will connect via WebSocket)."""
+        import uuid
+        return {'session_id': str(uuid.uuid4())}
+
     if plugin_manager is not None:
         # Start file watcher after startup.
         @app.on_event('startup')
         async def _start_plugin_watcher() -> None:
             plugin_manager.start_watcher()
-
-    logger.info(
-        "app_created",
-        workspace=str(config.workspace_root),
-        enabled_features={k: v for k, v in enabled_features.items() if v},
-        workspace_plugins_enabled=config.workspace_plugins_enabled,
-        workspace_plugin_allowlist=config.workspace_plugin_allowlist,
-    )
 
     return app
