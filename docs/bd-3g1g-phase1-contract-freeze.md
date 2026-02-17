@@ -88,6 +88,8 @@ Envelope requirements:
 3. `retryable` is policy-directed (not transport-guessing).
 4. `details` includes at least correlation context needed for triage.
 
+Normative detail source: `docs/bd-3g1g.2.3-api-standards-note.md`.
+
 ## Mutation Semantics Freeze
 
 | Operation class | Idempotency expectations | Conflict semantics |
@@ -95,6 +97,8 @@ Envelope requirements:
 | create/queue (`POST`) | client idempotency key required when operation has side effects beyond immediate request | duplicate key returns existing operation outcome |
 | write/rename/move/delete | retries must not produce duplicated side effects | path/workspace mismatch returns deterministic conflict/forbidden envelope |
 | runtime retry/start | dedupe per workspace/session where applicable | concurrent in-flight operation returns conflict envelope |
+
+Normative detail source: `docs/bd-3g1g.2.3-api-standards-note.md`.
 
 ## Contract Governance and Sign-Off
 

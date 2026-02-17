@@ -68,6 +68,7 @@ This section defines the high-level infra split across repositories so ownership
 1. Versioning: canonical HTTP endpoints remain under `/api/v1/...` until explicit major bump.
 2. Errors: services use one envelope (`code`, `message`, `retryable`, `details`).
 3. Mutations: write/move/rename/delete define retry-safe semantics and documented conflict behavior.
+4. Normative reference for envelope/code/mutation contract: `docs/bd-3g1g.2.3-api-standards-note.md`.
 
 ## Current-State Issues
 
