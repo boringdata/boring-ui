@@ -42,14 +42,14 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
   }, [expandedDirs])
 
   const fetchDir = (dirPath) => {
-    return fetch(buildApiUrl(`/api/tree?path=${encodeURIComponent(dirPath)}`))
+    return fetch(buildApiUrl(`/api/v1/files/list?path=${encodeURIComponent(dirPath)}`))
       .then((r) => r.json())
       .then((data) => data.entries || [])
       .catch(() => [])
   }
 
   const fetchGitStatus = () => {
-    fetch(buildApiUrl('/api/git/status'))
+    fetch(buildApiUrl('/api/v1/git/status'))
       .then((r) => r.json())
       .then((data) => {
         if (data.available && data.files) {
@@ -159,7 +159,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
     setIsSearching(true)
     const timeoutId = setTimeout(() => {
-      fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(trimmedQuery)}`))
+      fetch(buildApiUrl(`/api/v1/files/search?q=${encodeURIComponent(trimmedQuery)}`))
         .then((r) => r.json())
         .then((data) => {
           // Only update if query hasn't changed (prevent stale results)
@@ -273,7 +273,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!window.confirm(confirmMsg)) return
 
     try {
-      const res = await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(entry.path)}`), {
+      const res = await fetch(buildApiUrl(`/api/v1/files/delete?path=${encodeURIComponent(entry.path)}`), {
         method: 'DELETE',
       })
       if (res.ok) {
@@ -304,7 +304,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     }
 
     try {
-      const res = await fetch(buildApiUrl('/api/file/rename'), {
+      const res = await fetch(buildApiUrl('/api/v1/files/rename'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ old_path: oldPath, new_path: newPath }),
@@ -358,7 +358,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
       : fileName
 
     try {
-      const res = await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(filePath)}`), {
+      const res = await fetch(buildApiUrl(`/api/v1/files/write?path=${encodeURIComponent(filePath)}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: '' }),
@@ -464,7 +464,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (destEntry.path.startsWith(srcFile.path + '/')) return
 
     try {
-      const res = await fetch(buildApiUrl('/api/file/move'), {
+      const res = await fetch(buildApiUrl('/api/v1/files/move'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: destEntry.path }),
@@ -494,7 +494,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!srcFile.path.includes('/')) return
 
     try {
-      const res = await fetch(buildApiUrl('/api/file/move'), {
+      const res = await fetch(buildApiUrl('/api/v1/files/move'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: '.' }),

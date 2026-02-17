@@ -556,7 +556,7 @@ export default function App() {
         }
       }
 
-      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
+      fetch(buildApiUrl(`/api/v1/files/read?path=${encodeURIComponent(path)}`))
         .then((r) => r.json())
         .then((data) => {
           addEditorPanel(data.content || '')

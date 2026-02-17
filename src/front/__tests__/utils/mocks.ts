@@ -182,10 +182,14 @@ export class MockWebSocket {
  */
 export function setupApiMocks(overrides: Record<string, unknown> = {}) {
   const defaults: Record<string, unknown> = {
-    '/api/tree': { entries: [] },
-    '/api/git/status': { available: true, files: {} },
-    '/api/file': { content: '' },
-    '/api/search': { results: [] },
+    '/api/v1/files/list': { entries: [] },
+    '/api/v1/files/read': { content: '' },
+    '/api/v1/files/write': { success: true },
+    '/api/v1/files/delete': { success: true },
+    '/api/v1/files/rename': { success: true },
+    '/api/v1/files/move': { success: true, dest_path: '' },
+    '/api/v1/files/search': { results: [] },
+    '/api/v1/git/status': { available: true, files: {} },
     '/api/approval': [],
     ...overrides,
   }

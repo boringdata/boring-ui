@@ -249,7 +249,7 @@ const fetchSessions = async () => {
 const searchFiles = async (query, onError) => {
   if (!query || query.length < 1) return []
   try {
-    const res = await fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}`))
+    const res = await fetch(buildApiUrl(`/api/v1/files/search?q=${encodeURIComponent(query)}`))
     if (!res.ok) {
       onError?.({
         title: 'File search failed',
@@ -283,7 +283,7 @@ const searchFiles = async (query, onError) => {
 
 const fetchMentionDefaults = async (onError) => {
   try {
-    const res = await fetch(buildApiUrl('/api/tree?path=.'))
+    const res = await fetch(buildApiUrl('/api/v1/files/list?path=.'))
     if (!res.ok) {
       onError?.({
         title: 'File list failed',

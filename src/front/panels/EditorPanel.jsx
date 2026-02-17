@@ -61,7 +61,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     setDiffError('')
     try {
       const response = await fetch(
-        buildApiUrl(`/api/git/diff?path=${encodeURIComponent(path)}`)
+        buildApiUrl(`/api/v1/git/diff?path=${encodeURIComponent(path)}`)
       )
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
@@ -79,7 +79,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     if (!path) return
     try {
       const response = await fetch(
-        buildApiUrl(`/api/git/show?path=${encodeURIComponent(path)}`)
+        buildApiUrl(`/api/v1/git/show?path=${encodeURIComponent(path)}`)
       )
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
@@ -128,7 +128,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       const abortController = new AbortController()
       pollAbortRef.current = abortController
 
-      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`), {
+      fetch(buildApiUrl(`/api/v1/files/read?path=${encodeURIComponent(path)}`), {
         signal: abortController.signal,
       })
         .then((r) => r.json())
@@ -173,7 +173,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     setContent(newContent)
     setIsSaving(true)
     try {
-      await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`), {
+      await fetch(buildApiUrl(`/api/v1/files/write?path=${encodeURIComponent(path)}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newContent }),
@@ -218,7 +218,7 @@ export default function EditorPanel({ params: initialParams, api }) {
 
   const reloadFromDisk = () => {
     if (!path) return
-    fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
+    fetch(buildApiUrl(`/api/v1/files/read?path=${encodeURIComponent(path)}`))
       .then((r) => r.json())
       .then((data) => {
         setContent(data.content || '')

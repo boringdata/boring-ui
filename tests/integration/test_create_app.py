@@ -203,11 +203,16 @@ class TestFileRoutes:
         """Legacy /api file route family should be unavailable."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            list_response = await client.get('/api/tree?path=.')
-            read_response = await client.get('/api/file?path=README.md')
-
-            assert list_response.status_code == 404
-            assert read_response.status_code == 404
+            responses = [
+                await client.get('/api/tree?path=.'),
+                await client.get('/api/file?path=README.md'),
+                await client.put('/api/file?path=README.md', json={'content': 'x'}),
+                await client.delete('/api/file?path=README.md'),
+                await client.post('/api/file/rename', json={'old_path': 'a', 'new_path': 'b'}),
+                await client.post('/api/file/move', json={'src_path': 'a', 'dest_dir': '.'}),
+                await client.get('/api/search?q=README'),
+            ]
+            assert all(response.status_code == 404 for response in responses)
 
 
 class TestGitRoutes:
@@ -226,8 +231,12 @@ class TestGitRoutes:
         """Legacy /api/git route family should be unavailable."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/git/status')
-            assert response.status_code == 404
+            responses = [
+                await client.get('/api/git/status'),
+                await client.get('/api/git/diff?path=README.md'),
+                await client.get('/api/git/show?path=README.md'),
+            ]
+            assert all(response.status_code == 404 for response in responses)
 
 
 class TestConfigEndpoint:
