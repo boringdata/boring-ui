@@ -40,9 +40,9 @@ Tag key:
 | `GET` | `/api/git/status` | `legacy-callsite` | `src/front/components/FileTree.jsx:52`, `src/front/components/GitChangesView.jsx:19` |
 | `GET` | `/api/git/diff` | `legacy-callsite` | `src/front/panels/EditorPanel.jsx:64` |
 | `GET` | `/api/git/show` | `legacy-callsite` | `src/front/panels/EditorPanel.jsx:82` |
-| `GET` | `/api/capabilities` | `legacy-callsite` | `src/front/hooks/useCapabilities.js:51` |
-| `GET` | `/api/config` | `legacy-callsite` | `src/front/components/FileTree.jsx:84` |
-| `GET` | `/api/project` | `legacy-callsite` | `src/front/App.jsx:1196` |
+| `GET` | `/api/capabilities` | `canonical-live` | `src/front/hooks/useCapabilities.js:51` |
+| `GET` | `/api/config` | `canonical-live` | `src/front/components/FileTree.jsx:84` |
+| `GET` | `/api/project` | `canonical-live` | `src/front/App.jsx:1196` |
 | `GET`, `POST` | `/api/approval/{pending,decision}` | `canonical-live` | `src/front/App.jsx:406`, `src/front/App.jsx:444` |
 | `GET`, `POST` | `/api/sessions` | `canonical-live` | `src/front/components/chat/ClaudeStreamChat.jsx:240`, `src/front/components/chat/ClaudeStreamChat.jsx:322` |
 | `POST` | `/api/attachments` | `unknown-missing` | `src/front/components/chat/ClaudeStreamChat.jsx:228` |
@@ -56,7 +56,7 @@ Tag key:
 |---|---|---|---|
 | `GET`, `POST`, `DELETE` | `/api/sessions/{create,list,kill,archive,...}` | `external-service-live` | `src/front/providers/companion/upstream/api.ts:121` |
 | `GET`, `POST`, `DELETE` | `/api/fs/{list,home}` | `external-service-live` | `src/front/providers/companion/upstream/api.ts:141` |
-| `GET`, `POST`, `PUT`, `DELETE` | `/api/envs{,/ {slug}}` | `external-service-live` | `src/front/providers/companion/upstream/api.ts:148` |
+| `GET`, `POST`, `PUT`, `DELETE` | `/api/envs{,/{slug}}` | `external-service-live` | `src/front/providers/companion/upstream/api.ts:148` |
 | `GET`, `POST`, `DELETE` | `/api/git/{repo-info,branches,worktrees,worktree,fetch,pull}` | `external-service-live` | `src/front/providers/companion/upstream/api.ts:157` |
 | `WS` | `/ws/browser/{session_id}` | `external-service-live` | `src/front/providers/companion/upstream/ws.ts:99` |
 | `GET`, `POST` | `/api/sessions`, `/api/sessions/create` | `external-service-live` | `src/front/providers/pi/backendAdapter.jsx:60`, `src/front/providers/pi/backendAdapter.jsx:82` |
@@ -67,8 +67,7 @@ Tag key:
 
 | Method(s) | Route family | Tag(s) | Evidence |
 |---|---|---|---|
-| `GET`, `PUT`, `DELETE`, `POST` | `/api/tree`, `/api/file`, `/api/file/rename`, `/api/file/move`, `/api/search` (when mounted at `/api`) | `legacy-unmounted-backend` | `src/back/boring_ui/api/file_routes.py:58` |
-| `GET` | `/api/git/{status,diff,show}` (when mounted at `/api/git`) | `legacy-unmounted-backend` | `src/back/boring_ui/api/git_routes.py:63` |
+| `GET`, `PUT`, `DELETE`, `POST` | `/api/tree`, `/api/file`, `/api/file/rename`, `/api/file/move`, `/api/search`, `/api/git/{status,diff,show}` | `legacy-callsite`, `unknown-missing` | `src/front/components/FileTree.jsx:45`, `src/front/panels/EditorPanel.jsx:64` (no matching declaration in `src/back/boring_ui/api`) |
 | `WS` | `/ws/pty` | `legacy-unmounted-backend` | `src/back/boring_ui/api/pty_bridge.py:273` |
 | `WS` | `/ws/claude-stream` | `legacy-unmounted-backend` | `src/back/boring_ui/api/stream_bridge.py:1544` |
 

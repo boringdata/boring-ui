@@ -1,6 +1,7 @@
 """Coverage guard for bd-3g1g.1.1 route/callsite inventory artifact."""
 
 from pathlib import Path
+import re
 
 
 INVENTORY_PATH = (
@@ -8,7 +9,17 @@ INVENTORY_PATH = (
     / "docs/ROUTE_CALLSITE_INVENTORY_bd-3g1g.1.1.md"
 )
 
-REQUIRED_FAMILIES = [
+EXPECTED_LEDGER_FAMILIES = [
+    "/health",
+    "/api/capabilities",
+    "/api/config",
+    "/api/project",
+    "/api/sessions",
+    "/api/approval/request",
+    "/api/approval/pending",
+    "/api/approval/decision",
+    "/api/approval/status/{request_id}",
+    "/api/approval/{request_id}",
     "/api/v1/files/list",
     "/api/v1/files/read",
     "/api/v1/files/write",
@@ -33,16 +44,25 @@ REQUIRED_FAMILIES = [
     "/api/file/move",
     "/api/search",
     "/api/git/status",
+    "/api/git/diff",
+    "/api/git/show",
     "/api/attachments",
     "/api/fs/{list,home}",
     "/api/envs{,/{slug}}",
+    "/api/git/{repo-info,branches,worktrees,worktree,fetch,pull}",
     "/ws/browser/{session_id}",
     "/api/sessions/create",
     "/api/sessions/{id}/history",
     "/api/sessions/{id}/stream",
     "/api/v1/me",
     "/api/v1/workspaces",
+    "/api/v1/workspaces/{workspace_id}/runtime",
+    "/api/v1/workspaces/{workspace_id}/runtime/retry",
+    "/api/v1/workspaces/{workspace_id}/settings",
+    "/auth/login",
+    "/auth/callback",
     "/auth/logout",
+    "/w/{workspace_id}/setup",
     "/w/{workspace_id}/{path}",
     "/api/v1/agent/normal/*",
     "/api/v1/agent/companion/*",
@@ -67,10 +87,32 @@ def test_inventory_artifact_exists() -> None:
 def test_inventory_includes_required_route_families_and_tags() -> None:
     text = INVENTORY_PATH.read_text(encoding="utf-8")
 
-    missing_families = [family for family in REQUIRED_FAMILIES if family not in text]
+    marker = "## Route Family Ledger (Unique Families)"
+    assert marker in text, "Inventory is missing the route family ledger section"
+
+    ledger_block = text.split(marker, maxsplit=1)[1]
+    ledger_block = ledger_block.split("Status summary:", maxsplit=1)[0]
+
+    found_families = []
+    for line in ledger_block.splitlines():
+        match = re.match(r"^\s*\d+\.\s+`([^`]+)`\s*$", line)
+        if match:
+            found_families.append(match.group(1))
+
+    missing_families = [
+        family for family in EXPECTED_LEDGER_FAMILIES if family not in found_families
+    ]
+    unexpected_families = [
+        family for family in found_families if family not in EXPECTED_LEDGER_FAMILIES
+    ]
+
     assert not missing_families, (
         "Inventory is missing required route families:\n- "
         + "\n- ".join(missing_families)
+    )
+    assert not unexpected_families, (
+        "Inventory contains unexpected route families:\n- "
+        + "\n- ".join(unexpected_families)
     )
 
     missing_tags = [tag for tag in REQUIRED_TAGS if tag not in text]
