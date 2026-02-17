@@ -67,7 +67,14 @@ export default function UserMenu({
 
   const runAction = (action) => {
     if (typeof action === 'function') {
-      action({ workspaceId })
+      try {
+        const result = action({ workspaceId })
+        if (result && typeof result.catch === 'function') {
+          result.catch(() => {})
+        }
+      } catch {
+        // failure UX is handled by parent flows; keep menu interactions resilient
+      }
     }
     setIsOpen(false)
   }

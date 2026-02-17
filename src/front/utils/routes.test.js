@@ -32,4 +32,54 @@ describe('routes helper', () => {
       query: { session_id: 'abc' },
     })
   })
+
+  it('builds canonical control-plane route descriptors', () => {
+    expect(routes.controlPlane.me.get()).toEqual({
+      path: '/api/v1/me',
+      query: undefined,
+    })
+    expect(routes.controlPlane.workspaces.list()).toEqual({
+      path: '/api/v1/workspaces',
+      query: undefined,
+    })
+    expect(routes.controlPlane.workspaces.create()).toEqual({
+      path: '/api/v1/workspaces',
+      query: undefined,
+    })
+    expect(routes.controlPlane.workspaces.runtime.get('ws-123')).toEqual({
+      path: '/api/v1/workspaces/ws-123/runtime',
+      query: undefined,
+    })
+    expect(routes.controlPlane.workspaces.runtime.retry('ws-123')).toEqual({
+      path: '/api/v1/workspaces/ws-123/runtime/retry',
+      query: undefined,
+    })
+    expect(routes.controlPlane.workspaces.settings.get('ws-123')).toEqual({
+      path: '/api/v1/workspaces/ws-123/settings',
+      query: undefined,
+    })
+    expect(routes.controlPlane.workspaces.settings.update('ws-123')).toEqual({
+      path: '/api/v1/workspaces/ws-123/settings',
+      query: undefined,
+    })
+    expect(routes.controlPlane.auth.logout()).toEqual({
+      path: '/auth/logout',
+      query: undefined,
+    })
+  })
+
+  it('builds canonical workspace navigation paths', () => {
+    expect(routes.controlPlane.workspaces.scope('ws-123')).toEqual({
+      path: '/w/ws-123/',
+      query: undefined,
+    })
+    expect(routes.controlPlane.workspaces.scope('ws-123', '/app/editor')).toEqual({
+      path: '/w/ws-123/app/editor',
+      query: undefined,
+    })
+    expect(routes.controlPlane.workspaces.setup('ws-123')).toEqual({
+      path: '/w/ws-123/setup',
+      query: undefined,
+    })
+  })
 })

@@ -1,7 +1,59 @@
+const encodeSegment = (value) => encodeURIComponent(String(value || '').trim())
+
+const normalizeWorkspaceSubpath = (subpath) =>
+  String(subpath || '')
+    .replace(/^\/+/, '')
+    .trim()
+
 export const routes = {
   approval: {
     pending: () => ({ path: '/api/approval/pending', query: undefined }),
     decision: () => ({ path: '/api/approval/decision', query: undefined }),
+  },
+  controlPlane: {
+    auth: {
+      logout: () => ({ path: '/auth/logout', query: undefined }),
+    },
+    me: {
+      get: () => ({ path: '/api/v1/me', query: undefined }),
+    },
+    workspaces: {
+      list: () => ({ path: '/api/v1/workspaces', query: undefined }),
+      create: () => ({ path: '/api/v1/workspaces', query: undefined }),
+      runtime: {
+        get: (workspaceId) => ({
+          path: `/api/v1/workspaces/${encodeSegment(workspaceId)}/runtime`,
+          query: undefined,
+        }),
+        retry: (workspaceId) => ({
+          path: `/api/v1/workspaces/${encodeSegment(workspaceId)}/runtime/retry`,
+          query: undefined,
+        }),
+      },
+      settings: {
+        get: (workspaceId) => ({
+          path: `/api/v1/workspaces/${encodeSegment(workspaceId)}/settings`,
+          query: undefined,
+        }),
+        update: (workspaceId) => ({
+          path: `/api/v1/workspaces/${encodeSegment(workspaceId)}/settings`,
+          query: undefined,
+        }),
+      },
+      setup: (workspaceId) => ({
+        path: `/w/${encodeSegment(workspaceId)}/setup`,
+        query: undefined,
+      }),
+      scope: (workspaceId, subpath = '') => {
+        const normalizedSubpath = normalizeWorkspaceSubpath(subpath)
+        return {
+          path: normalizedSubpath
+            ? `/w/${encodeSegment(workspaceId)}/${normalizedSubpath}`
+            : `/w/${encodeSegment(workspaceId)}/`,
+          query: undefined,
+        }
+      },
+    },
   },
   project: {
     root: () => ({ path: '/api/project', query: undefined }),

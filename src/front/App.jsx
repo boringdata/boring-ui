@@ -8,7 +8,18 @@ import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
 import { apiFetch, apiFetchJson } from './utils/transport'
+import { buildApiUrl } from './utils/apiBase'
 import { routes } from './utils/routes'
+import {
+  extractUserEmail,
+  extractWorkspaceId,
+  extractWorkspaceSettingsPayload,
+  getWorkspaceIdFromPathname,
+  getWorkspacePathSuffix,
+  isRuntimeReady,
+  normalizeWorkspaceList,
+  shouldRetryRuntime,
+} from './utils/controlPlane'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -133,6 +144,14 @@ export default function App() {
   const [approvalsLoaded, setApprovalsLoaded] = useState(false)
   const [activeFile, setActiveFile] = useState(null)
   const [activeDiffFile, setActiveDiffFile] = useState(null)
+  const [menuUserEmail, setMenuUserEmail] = useState('')
+  const [workspaceOptions, setWorkspaceOptions] = useState([])
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState(() =>
+    getWorkspaceIdFromPathname(window.location.pathname),
+  )
+  const [currentWorkspacePathSuffix, setCurrentWorkspacePathSuffix] = useState(() =>
+    getWorkspacePathSuffix(window.location.pathname),
+  )
   const [collapsed, setCollapsed] = useState(() => {
     const saved = loadCollapsedState(storagePrefix)
     return { filetree: false, terminal: false, shell: false, companion: false, ...saved }
@@ -160,6 +179,14 @@ export default function App() {
   panelCollapsedRef.current = { ...panelCollapsed, companion: rightRailDefaults.companionCollapsed }
   const panelMinRef = useRef({ ...panelMin, companion: rightRailDefaults.companionMin })
   panelMinRef.current = { ...panelMin, companion: rightRailDefaults.companionMin }
+  const activeWorkspaceName = useMemo(() => {
+    const match = workspaceOptions.find((workspace) => workspace.id === currentWorkspaceId)
+    if (match?.name) return match.name
+    if (!currentWorkspaceId && projectRoot) {
+      return projectRoot.split('/').filter(Boolean).pop() || ''
+    }
+    return ''
+  }, [workspaceOptions, currentWorkspaceId, projectRoot])
 
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
@@ -256,6 +283,161 @@ export default function App() {
   const toggleTheme = useCallback(() => {
     // Dispatch custom event that ThemeProvider listens to
     window.dispatchEvent(new CustomEvent('theme-toggle-request'))
+  }, [])
+
+  const syncWorkspacePathContext = useCallback(() => {
+    setCurrentWorkspaceId(getWorkspaceIdFromPathname(window.location.pathname))
+    setCurrentWorkspacePathSuffix(getWorkspacePathSuffix(window.location.pathname))
+  }, [])
+
+  useEffect(() => {
+    syncWorkspacePathContext()
+    window.addEventListener('popstate', syncWorkspacePathContext)
+    return () => {
+      window.removeEventListener('popstate', syncWorkspacePathContext)
+    }
+  }, [syncWorkspacePathContext])
+
+  const fetchWorkspaceList = useCallback(async () => {
+    const route = routes.controlPlane.workspaces.list()
+    const { response, data } = await apiFetchJson(route.path, { query: route.query })
+    if (!response.ok) return []
+    const workspaces = normalizeWorkspaceList(data)
+    setWorkspaceOptions(workspaces)
+    return workspaces
+  }, [])
+
+  const refreshUserMenuData = useCallback(async () => {
+    const meRoute = routes.controlPlane.me.get()
+    const [{ response: meResponse, data: meData }, workspaces] = await Promise.all([
+      apiFetchJson(meRoute.path, { query: meRoute.query }),
+      fetchWorkspaceList(),
+    ])
+
+    if (meResponse.ok) {
+      const email = extractUserEmail(meData)
+      if (email) setMenuUserEmail(email)
+    }
+
+    return workspaces
+  }, [fetchWorkspaceList])
+
+  useEffect(() => {
+    refreshUserMenuData().catch(() => {})
+  }, [refreshUserMenuData])
+
+  const syncWorkspaceRuntimeAndSettings = useCallback(async (workspaceId) => {
+    const runtimeRoute = routes.controlPlane.workspaces.runtime.get(workspaceId)
+    const { response: runtimeResponse, data: runtimeData } = await apiFetchJson(runtimeRoute.path, {
+      query: runtimeRoute.query,
+    })
+    let runtimePayload = runtimeResponse.ok ? runtimeData : null
+
+    if (runtimeResponse.ok && shouldRetryRuntime(runtimeData)) {
+      const retryRoute = routes.controlPlane.workspaces.runtime.retry(workspaceId)
+      await apiFetch(retryRoute.path, { query: retryRoute.query, method: 'POST' })
+      const retriedRuntime = await apiFetchJson(runtimeRoute.path, { query: runtimeRoute.query })
+      if (retriedRuntime.response.ok) {
+        runtimePayload = retriedRuntime.data
+      }
+    }
+
+    const settingsReadRoute = routes.controlPlane.workspaces.settings.get(workspaceId)
+    const { response: settingsResponse, data: settingsData } = await apiFetchJson(
+      settingsReadRoute.path,
+      { query: settingsReadRoute.query },
+    )
+    if (settingsResponse.ok) {
+      const settingsWriteRoute = routes.controlPlane.workspaces.settings.update(workspaceId)
+      await apiFetch(settingsWriteRoute.path, {
+        query: settingsWriteRoute.query,
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(extractWorkspaceSettingsPayload(settingsData)),
+      })
+    }
+
+    return { runtimePayload }
+  }, [])
+
+  const resolveWorkspaceNavigationRoute = useCallback(
+    (workspaceId, runtimePayload) => {
+      if (isRuntimeReady(runtimePayload)) {
+        return routes.controlPlane.workspaces.scope(workspaceId, currentWorkspacePathSuffix)
+      }
+      return routes.controlPlane.workspaces.setup(workspaceId)
+    },
+    [currentWorkspacePathSuffix],
+  )
+
+  const handleSwitchWorkspace = useCallback(async () => {
+    const workspaces = await fetchWorkspaceList()
+    const candidateWorkspaces = workspaces.filter(
+      (workspace) => workspace.id && workspace.id !== currentWorkspaceId,
+    )
+    if (candidateWorkspaces.length === 0) return
+
+    const defaultId = candidateWorkspaces[0].id
+    const optionsText = candidateWorkspaces
+      .map((workspace) => `- ${workspace.name || workspace.id} (${workspace.id})`)
+      .join('\n')
+    const promptValue = window.prompt(
+      `Select workspace id to switch:\n${optionsText}`,
+      defaultId,
+    )
+    if (!promptValue) return
+    const selectedId = promptValue.trim()
+    if (!selectedId || selectedId === currentWorkspaceId) return
+
+    const selectedWorkspace = workspaces.find(
+      (workspace) => workspace.id === selectedId || workspace.name === selectedId,
+    )
+    const targetWorkspaceId = selectedWorkspace?.id || selectedId
+    const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(targetWorkspaceId)
+    const route = resolveWorkspaceNavigationRoute(targetWorkspaceId, runtimePayload)
+    window.location.assign(buildApiUrl(route.path, route.query))
+  }, [
+    currentWorkspaceId,
+    fetchWorkspaceList,
+    resolveWorkspaceNavigationRoute,
+    syncWorkspaceRuntimeAndSettings,
+  ])
+
+  const handleCreateWorkspace = useCallback(async () => {
+    const createRoute = routes.controlPlane.workspaces.create()
+    const { response, data } = await apiFetchJson(createRoute.path, {
+      query: createRoute.query,
+      method: 'POST',
+    })
+    if (!response.ok) return
+
+    const createdWorkspaceId = extractWorkspaceId(data)
+    if (!createdWorkspaceId) return
+
+    await fetchWorkspaceList()
+    const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(createdWorkspaceId)
+    const route = resolveWorkspaceNavigationRoute(createdWorkspaceId, runtimePayload)
+    window.location.assign(buildApiUrl(route.path, route.query))
+  }, [fetchWorkspaceList, resolveWorkspaceNavigationRoute, syncWorkspaceRuntimeAndSettings])
+
+  const handleOpenUserSettings = useCallback(() => {
+    const key = getStorageKey(storagePrefix, projectRoot, 'user-settings-intent')
+    const detail = {
+      source: 'sidebar-user-menu',
+      workspace_id: currentWorkspaceId || null,
+      timestamp: Date.now(),
+    }
+    try {
+      localStorage.setItem(key, JSON.stringify(detail))
+    } catch {
+      // ignore storage errors for local-only settings intent
+    }
+    window.dispatchEvent(new CustomEvent('boring-ui:user-settings-open', { detail }))
+  }, [storagePrefix, projectRoot, currentWorkspaceId])
+
+  const handleLogout = useCallback(() => {
+    const route = routes.controlPlane.auth.logout()
+    window.location.assign(buildApiUrl(route.path, route.query))
   }, [])
 
   // Keyboard shortcuts
@@ -843,7 +1025,23 @@ export default function App() {
           id: 'filetree',
           component: 'filetree',
           title: 'Files',
-          params: { onOpenFile: () => {} },
+          params: {
+            onOpenFile: openFile,
+            onOpenFileToSide: openFileToSide,
+            onOpenDiff: openDiff,
+            projectRoot,
+            activeFile,
+            activeDiffFile,
+            collapsed: collapsed.filetree,
+            onToggleCollapse: toggleFiletree,
+            userEmail: menuUserEmail,
+            workspaceName: activeWorkspaceName,
+            workspaceId: currentWorkspaceId,
+            onSwitchWorkspace: handleSwitchWorkspace,
+            onCreateWorkspace: handleCreateWorkspace,
+            onOpenUserSettings: handleOpenUserSettings,
+            onLogout: handleLogout,
+          },
         })
       }
 
@@ -1359,6 +1557,13 @@ export default function App() {
             activeDiffFile,
             collapsed: collapsed.filetree,
             onToggleCollapse: toggleFiletree,
+            userEmail: menuUserEmail,
+            workspaceName: activeWorkspaceName,
+            workspaceId: currentWorkspaceId,
+            onSwitchWorkspace: handleSwitchWorkspace,
+            onCreateWorkspace: handleCreateWorkspace,
+            onOpenUserSettings: handleOpenUserSettings,
+            onLogout: handleLogout,
           })
         }
 
@@ -1583,6 +1788,13 @@ export default function App() {
     activeFile,
     activeDiffFile,
     toggleFiletree,
+    menuUserEmail,
+    activeWorkspaceName,
+    currentWorkspaceId,
+    handleSwitchWorkspace,
+    handleCreateWorkspace,
+    handleOpenUserSettings,
+    handleLogout,
     companionAgentEnabled,
     nativeAgentEnabled,
     piAgentEnabled,
@@ -1627,9 +1839,33 @@ export default function App() {
         activeDiffFile,
         collapsed: collapsed.filetree,
         onToggleCollapse: toggleFiletree,
+        userEmail: menuUserEmail,
+        workspaceName: activeWorkspaceName,
+        workspaceId: currentWorkspaceId,
+        onSwitchWorkspace: handleSwitchWorkspace,
+        onCreateWorkspace: handleCreateWorkspace,
+        onOpenUserSettings: handleOpenUserSettings,
+        onLogout: handleLogout,
       })
     }
-  }, [dockApi, openFile, openFileToSide, openDiff, projectRoot, activeFile, activeDiffFile, collapsed.filetree, toggleFiletree])
+  }, [
+    dockApi,
+    openFile,
+    openFileToSide,
+    openDiff,
+    projectRoot,
+    activeFile,
+    activeDiffFile,
+    collapsed.filetree,
+    toggleFiletree,
+    menuUserEmail,
+    activeWorkspaceName,
+    currentWorkspaceId,
+    handleSwitchWorkspace,
+    handleCreateWorkspace,
+    handleOpenUserSettings,
+    handleLogout,
+  ])
 
   // Helper to focus a review panel
   const focusReviewPanel = useCallback(

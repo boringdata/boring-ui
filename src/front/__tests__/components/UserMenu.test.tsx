@@ -76,6 +76,17 @@ describe('UserMenu', () => {
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     })
 
+    it('safely handles async callback rejection paths', () => {
+      const props = makeProps()
+      props.onSwitchWorkspace = vi.fn().mockRejectedValue(new Error('network failure'))
+      render(<UserMenu {...props} />)
+      fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Switch workspace' }))
+
+      expect(props.onSwitchWorkspace).toHaveBeenCalledWith({ workspaceId: 'ws-123' })
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
     it('renders disabled action items when callbacks are not provided', () => {
       render(<UserMenu email="john@example.com" workspaceName="My Workspace" workspaceId="ws-123" />)
       fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
