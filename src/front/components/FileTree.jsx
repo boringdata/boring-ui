@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X, Folder, FolderOpen, FolderInput, ChevronRight, ChevronDown, MoreHorizontal, Settings } from 'lucide-react'
 import { apiFetchJson, getHttpErrorDetail } from '../utils/transport'
+import { routes } from '../utils/routes'
 import { getFileIcon } from '../utils/fileIcons'
 
 const configPath = import.meta.env.VITE_CONFIG_PATH || ''
@@ -42,13 +43,15 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
   }, [expandedDirs])
 
   const fetchDir = (dirPath) => {
-    return apiFetchJson('/api/v1/files/list', { query: { path: dirPath } })
+    const route = routes.files.list(dirPath)
+    return apiFetchJson(route.path, { query: route.query })
       .then(({ data }) => data.entries || [])
       .catch(() => [])
   }
 
   const fetchGitStatus = () => {
-    apiFetchJson('/api/v1/git/status')
+    const route = routes.git.status()
+    apiFetchJson(route.path, { query: route.query })
       .then(({ data }) => {
         if (data.available && data.files) {
           setGitStatus(data.files)
@@ -78,8 +81,8 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
   // Fetch config for section organization
   const fetchConfig = () => {
-    const query = configPath ? { config_path: configPath } : undefined
-    apiFetchJson('/api/config', { query })
+    const route = routes.config.get(configPath)
+    apiFetchJson(route.path, { query: route.query })
       .then(async ({ data }) => {
         if (data.paths) {
           setKurtConfig(data.paths)
@@ -156,7 +159,8 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
     setIsSearching(true)
     const timeoutId = setTimeout(() => {
-      apiFetchJson('/api/v1/files/search', { query: { q: trimmedQuery } })
+      const route = routes.files.search(trimmedQuery)
+      apiFetchJson(route.path, { query: route.query })
         .then(({ data }) => {
           // Only update if query hasn't changed (prevent stale results)
           setSearchResults(data.results || [])
@@ -269,10 +273,8 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!window.confirm(confirmMsg)) return
 
     try {
-      const { response, data } = await apiFetchJson('/api/v1/files/delete', {
-        query: { path: entry.path },
-        method: 'DELETE',
-      })
+      const route = routes.files.delete(entry.path)
+      const { response, data } = await apiFetchJson(route.path, { query: route.query, method: 'DELETE' })
       if (response.ok) {
         await refreshTree()
         onFileDeleted?.(entry.path)
@@ -300,7 +302,9 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     }
 
     try {
-      const { response, data } = await apiFetchJson('/api/v1/files/rename', {
+      const route = routes.files.rename()
+      const { response, data } = await apiFetchJson(route.path, {
+        query: route.query,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ old_path: oldPath, new_path: newPath }),
@@ -353,8 +357,9 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
       : fileName
 
     try {
-      const { response, data } = await apiFetchJson('/api/v1/files/write', {
-        query: { path: filePath },
+      const route = routes.files.write(filePath)
+      const { response, data } = await apiFetchJson(route.path, {
+        query: route.query,
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: '' }),
@@ -459,7 +464,9 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (destEntry.path.startsWith(srcFile.path + '/')) return
 
     try {
-      const { response, data } = await apiFetchJson('/api/v1/files/move', {
+      const route = routes.files.move()
+      const { response, data } = await apiFetchJson(route.path, {
+        query: route.query,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: destEntry.path }),
@@ -487,7 +494,9 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!srcFile.path.includes('/')) return
 
     try {
-      const { response, data } = await apiFetchJson('/api/v1/files/move', {
+      const route = routes.files.move()
+      const { response, data } = await apiFetchJson(route.path, {
+        query: route.query,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: '.' }),

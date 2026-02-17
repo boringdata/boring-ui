@@ -3,6 +3,7 @@ import Editor from '../components/Editor'
 import CodeEditor from '../components/CodeEditor'
 import GitDiff from '../components/GitDiff'
 import { apiFetchJson, getHttpErrorDetail } from '../utils/transport'
+import { routes } from '../utils/routes'
 
 // Check if file is markdown
 const isMarkdownFile = (filepath) => {
@@ -60,7 +61,8 @@ export default function EditorPanel({ params: initialParams, api }) {
     if (!path) return
     setDiffError('')
     try {
-      const { response, data } = await apiFetchJson('/api/v1/git/diff', { query: { path } })
+      const route = routes.git.diff(path)
+      const { response, data } = await apiFetchJson(route.path, { query: route.query })
       if (!response.ok) {
         throw new Error(getHttpErrorDetail(response, data, 'Failed to load git diff'))
       }
@@ -74,7 +76,8 @@ export default function EditorPanel({ params: initialParams, api }) {
   const loadOriginalContent = useCallback(async () => {
     if (!path) return
     try {
-      const { response, data } = await apiFetchJson('/api/v1/git/show', { query: { path } })
+      const route = routes.git.show(path)
+      const { response, data } = await apiFetchJson(route.path, { query: route.query })
       if (!response.ok) {
         throw new Error(getHttpErrorDetail(response, data, 'Failed to load original content'))
       }
@@ -120,8 +123,9 @@ export default function EditorPanel({ params: initialParams, api }) {
       const abortController = new AbortController()
       pollAbortRef.current = abortController
 
-      apiFetchJson('/api/v1/files/read', {
-        query: { path },
+      const route = routes.files.read(path)
+      apiFetchJson(route.path, {
+        query: route.query,
         signal: abortController.signal,
       })
         .then(({ data }) => {
@@ -165,8 +169,9 @@ export default function EditorPanel({ params: initialParams, api }) {
     setContent(newContent)
     setIsSaving(true)
     try {
-      const { response, data } = await apiFetchJson('/api/v1/files/write', {
-        query: { path },
+      const route = routes.files.write(path)
+      const { response, data } = await apiFetchJson(route.path, {
+        query: route.query,
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newContent }),
@@ -214,7 +219,8 @@ export default function EditorPanel({ params: initialParams, api }) {
 
   const reloadFromDisk = () => {
     if (!path) return
-    apiFetchJson('/api/v1/files/read', { query: { path } })
+    const route = routes.files.read(path)
+    apiFetchJson(route.path, { query: route.query })
       .then(({ data }) => {
         setContent(data.content || '')
         setIsDirty(false)

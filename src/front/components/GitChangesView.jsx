@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Check, FileText } from 'lucide-react'
 import { apiFetchJson } from '../utils/transport'
+import { routes } from '../utils/routes'
 
 const STATUS_CONFIG = {
   M: { label: 'Modified', className: 'git-status-modified', icon: 'M' },
@@ -16,7 +17,8 @@ export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
   const [error, setError] = useState(null)
 
   const fetchGitStatus = useCallback(() => {
-    apiFetchJson('/api/v1/git/status')
+    const route = routes.git.status()
+    apiFetchJson(route.path, { query: route.query })
       .then(({ data }) => {
         if (data.available && data.files) {
           setChanges(data.files)

@@ -4,6 +4,7 @@ import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import { useTheme } from '../hooks/useTheme'
 import { openWebSocket } from '../utils/transport'
+import { routes } from '../utils/routes'
 
 // Terminal color schemes for light/dark mode
 const TERMINAL_THEMES = {
@@ -215,9 +216,8 @@ export default function Terminal({
       if (connectionStarted) return
       connectionStarted = true
       historyAppliedRef.current = false
-      const socket = openWebSocket('/ws/pty', {
-        query: buildSocketQuery(sessionId, resume, false, providerKey, sessionName),
-      })
+      const route = routes.ws.pty(buildSocketQuery(sessionId, resume, false, providerKey, sessionName))
+      const socket = openWebSocket(route.path, { query: route.query })
       socketRef.current = socket
       let resumeMissingNotified = false
 

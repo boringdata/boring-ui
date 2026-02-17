@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetchJson } from '../utils/transport'
+import { routes } from '../utils/routes'
 
 /**
  * Capabilities response from /api/capabilities endpoint.
@@ -48,7 +49,8 @@ export const useCapabilities = () => {
       setLoading(true)
       setError(null)
 
-      const { response, data } = await apiFetchJson('/api/capabilities')
+      const route = routes.capabilities.get()
+      const { response, data } = await apiFetchJson(route.path, { query: route.query })
       if (!response.ok) {
         throw new Error(`Failed to fetch capabilities: ${response.status}`)
       }

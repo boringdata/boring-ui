@@ -25,6 +25,7 @@ import PermissionPanel from './PermissionPanel'
 import './styles.css'
 import { buildWsUrl } from '../../utils/apiBase'
 import { apiFetch, apiFetchJson, openWebSocketUrl } from '../../utils/transport'
+import { routes } from '../../utils/routes'
 
 // Generate a valid UUID, with fallback for environments without crypto.randomUUID
 const generateUUID = () => {
@@ -218,13 +219,16 @@ const buildClaudeStreamWsUrl = (
       if (spec) queryParams.append('file', spec)
     })
   }
-  return buildWsUrl('/ws/claude-stream', queryParams)
+  const route = routes.ws.claudeStream(queryParams)
+  return buildWsUrl(route.path, route.query)
 }
 
 const uploadAttachment = async (file) => {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await apiFetch('/api/attachments', {
+  const route = routes.attachments.upload()
+  const res = await apiFetch(route.path, {
+    query: route.query,
     method: 'POST',
     body: formData,
   })
@@ -236,7 +240,8 @@ const uploadAttachment = async (file) => {
 
 const fetchSessions = async () => {
   try {
-    const { response, data } = await apiFetchJson('/api/sessions')
+    const route = routes.sessions.list()
+    const { response, data } = await apiFetchJson(route.path, { query: route.query })
     const res = response
     if (!res.ok) return []
     return data.sessions || []
@@ -248,7 +253,8 @@ const fetchSessions = async () => {
 const searchFiles = async (query, onError) => {
   if (!query || query.length < 1) return []
   try {
-    const { response, data } = await apiFetchJson('/api/v1/files/search', { query: { q: query } })
+    const route = routes.files.search(query)
+    const { response, data } = await apiFetchJson(route.path, { query: route.query })
     const res = response
     if (!res.ok) {
       onError?.({
@@ -282,7 +288,8 @@ const searchFiles = async (query, onError) => {
 
 const fetchMentionDefaults = async (onError) => {
   try {
-    const { response, data } = await apiFetchJson('/api/v1/files/list', { query: { path: '.' } })
+    const route = routes.files.list('.')
+    const { response, data } = await apiFetchJson(route.path, { query: route.query })
     const res = response
     if (!res.ok) {
       onError?.({
@@ -318,7 +325,8 @@ const fetchMentionDefaults = async (onError) => {
 
 const createNewSession = async () => {
   try {
-    const { response, data } = await apiFetchJson('/api/sessions', { method: 'POST' })
+    const route = routes.sessions.create()
+    const { response, data } = await apiFetchJson(route.path, { query: route.query, method: 'POST' })
     const res = response
     if (!res.ok) return null
     return data.session_id

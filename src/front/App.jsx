@@ -8,6 +8,7 @@ import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
 import { apiFetch, apiFetchJson } from './utils/transport'
+import { routes } from './utils/routes'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -403,7 +404,8 @@ export default function App() {
     let isActive = true
 
     const fetchApprovals = () => {
-      apiFetchJson('/api/approval/pending')
+      const route = routes.approval.pending()
+      apiFetchJson(route.path, { query: route.query })
         .then(({ data }) => {
           if (!isActive) return
           const requests = Array.isArray(data.requests) ? data.requests : []
@@ -440,7 +442,9 @@ export default function App() {
         setApprovals([])
       }
       try {
-        await apiFetch('/api/approval/decision', {
+        const route = routes.approval.decision()
+        await apiFetch(route.path, {
+          query: route.query,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ request_id: requestId, decision, reason }),
@@ -555,7 +559,8 @@ export default function App() {
         }
       }
 
-      apiFetchJson('/api/v1/files/read', { query: { path } })
+      const route = routes.files.read(path)
+      apiFetchJson(route.path, { query: route.query })
         .then(({ data }) => {
           addEditorPanel(data.content || '')
         })
@@ -1191,7 +1196,8 @@ export default function App() {
     let fallbackApplied = false
     const maxRetries = 6 // ~3 seconds total before initial fallback
     const fetchProjectRoot = () => {
-      apiFetchJson('/api/project')
+      const route = routes.project.root()
+      apiFetchJson(route.path, { query: route.query })
         .then(({ data }) => {
           const root = data.root || ''
           // Don't update projectRoot after fallback to avoid overwriting project-scoped state
