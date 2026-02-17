@@ -14,18 +14,24 @@ export default function CompanionPanel({ params }) {
   const activeProvider = provider === 'pi' ? 'pi' : 'companion'
   const companionUrl = capabilities?.services?.companion?.url
   const piUrl = capabilities?.services?.pi?.url
+  const piMode = capabilities?.services?.pi?.mode === 'iframe' ? 'iframe' : 'embedded'
+  // PI should be fully interactive by default; prefer embedded chat whenever
+  // we have a compatible backend URL (companion first, PI second).
+  const embeddedUrl = companionUrl || (piMode !== 'iframe' ? piUrl : null)
+  const piEmbeddedMode = activeProvider === 'pi' && Boolean(embeddedUrl)
+  const piIframeMode = activeProvider === 'pi' && !embeddedUrl && piMode === 'iframe'
   const agentUrl = activeProvider === 'pi' ? piUrl : companionUrl
 
   // Set config synchronously before CompanionApp renders.
   // useMemo runs during render, before children mount.
   const ready = useMemo(() => {
-    if (activeProvider === 'companion' && companionUrl) {
-      setCompanionConfig(companionUrl, '')
+    if ((activeProvider === 'companion' || piEmbeddedMode) && embeddedUrl) {
+      setCompanionConfig(embeddedUrl, '')
       return true
     }
-    if (activeProvider === 'pi' && piUrl) return true
+    if (piIframeMode && piUrl) return true
     return false
-  }, [activeProvider, companionUrl, piUrl])
+  }, [activeProvider, piEmbeddedMode, piIframeMode, embeddedUrl, piUrl])
 
   if (collapsed) {
     return (
@@ -61,14 +67,14 @@ export default function CompanionPanel({ params }) {
         </button>
         <span className="terminal-title-text">Agent</span>
         <div className="terminal-header-spacer" />
-        {activeProvider === 'companion' ? <EmbeddedSessionToolbar /> : null}
+        {(activeProvider === 'companion' || piEmbeddedMode) ? <EmbeddedSessionToolbar /> : null}
       </div>
       <div className="terminal-body companion-body">
         <div className="companion-instance active">
           {ready ? (
-            activeProvider === 'companion'
+            (activeProvider === 'companion' || piEmbeddedMode)
               ? (
-                <div className="provider-companion" data-testid="companion-app">
+                <div className="provider-companion" data-testid={piEmbeddedMode ? 'pi-app' : 'companion-app'}>
                   <CompanionAdapter />
                 </div>
                 )
@@ -82,7 +88,9 @@ export default function CompanionPanel({ params }) {
               data-testid="companion-connecting"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-text-tertiary)' }}
             >
-              {activeProvider === 'pi' ? 'Connecting to Pi server...' : 'Connecting to Companion server...'}
+              {activeProvider === 'pi'
+                ? (piIframeMode ? 'Connecting to Pi server...' : 'Connecting to Pi embedded chat...')
+                : 'Connecting to Companion server...'}
             </div>
           )}
         </div>

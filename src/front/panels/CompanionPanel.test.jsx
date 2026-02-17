@@ -69,9 +69,23 @@ describe('CompanionPanel', () => {
     expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:3456', '')
   })
 
-  it('renders Pi adapter when provider is pi and URL is available', () => {
+  it('renders embedded PI adapter by default when provider is pi and URL is available', () => {
     mockCapabilities.services = {
       pi: { url: 'http://localhost:8787' },
+    }
+
+    render(<CompanionPanel params={{ provider: 'pi' }} />)
+
+    expect(screen.getByTestId('pi-app')).toBeTruthy()
+    expect(screen.getByTestId('mock-companion-app')).toBeTruthy()
+    expect(screen.getByTestId('mock-companion-toolbar')).toBeTruthy()
+    expect(screen.queryByTestId('mock-pi-app')).toBeNull()
+    expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:8787', '')
+  })
+
+  it('renders iframe PI adapter when provider is pi in iframe mode', () => {
+    mockCapabilities.services = {
+      pi: { url: 'http://localhost:8787', mode: 'iframe' },
     }
 
     render(<CompanionPanel params={{ provider: 'pi' }} />)
@@ -80,6 +94,21 @@ describe('CompanionPanel', () => {
     expect(screen.getByTestId('mock-pi-app')).toBeTruthy()
     expect(screen.queryByTestId('mock-companion-toolbar')).toBeNull()
     expect(mockSetCompanionConfig).not.toHaveBeenCalled()
+  })
+
+  it('falls back to embedded PI chat when companion service is available', () => {
+    mockCapabilities.services = {
+      companion: { url: 'http://localhost:3456' },
+      pi: { url: 'http://localhost:8787', mode: 'iframe' },
+    }
+
+    render(<CompanionPanel params={{ provider: 'pi' }} />)
+
+    expect(screen.getByTestId('pi-app')).toBeTruthy()
+    expect(screen.getByTestId('mock-companion-app')).toBeTruthy()
+    expect(screen.getByTestId('mock-companion-toolbar')).toBeTruthy()
+    expect(screen.queryByTestId('mock-pi-app')).toBeNull()
+    expect(mockSetCompanionConfig).toHaveBeenCalledWith('http://localhost:3456', '')
   })
 
   it('renders collapsed state with correct test id', () => {
