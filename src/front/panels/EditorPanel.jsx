@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Editor from '../components/Editor'
 import CodeEditor from '../components/CodeEditor'
 import GitDiff from '../components/GitDiff'
-import { apiFetchJson } from '../utils/transport'
+import { apiFetchJson, getHttpErrorDetail } from '../utils/transport'
 
 // Check if file is markdown
 const isMarkdownFile = (filepath) => {
@@ -62,7 +62,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     try {
       const { response, data } = await apiFetchJson('/api/v1/git/diff', { query: { path } })
       if (!response.ok) {
-        throw new Error(data.detail || data.message || `Failed to load git diff (${response.status})`)
+        throw new Error(getHttpErrorDetail(response, data, 'Failed to load git diff'))
       }
       setDiffText(data.diff || '')
     } catch (err) {
@@ -76,7 +76,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     try {
       const { response, data } = await apiFetchJson('/api/v1/git/show', { query: { path } })
       if (!response.ok) {
-        throw new Error(data.detail || data.message || `Failed to load original content (${response.status})`)
+        throw new Error(getHttpErrorDetail(response, data, 'Failed to load original content'))
       }
       setOriginalContent(data.is_new ? '' : (data.content || ''))
     } catch (err) {
@@ -172,7 +172,7 @@ export default function EditorPanel({ params: initialParams, api }) {
         body: JSON.stringify({ content: newContent }),
       })
       if (!response.ok) {
-        throw new Error(data.detail || data.message || `Failed to save file (${response.status})`)
+        throw new Error(getHttpErrorDetail(response, data, 'Failed to save file'))
       }
 
       setIsDirty(false)

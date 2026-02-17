@@ -27,6 +27,9 @@ export const apiFetchText = async (path, options = {}) => {
   return { response, data }
 }
 
+export const getHttpErrorDetail = (response, data, fallback = 'Request failed') =>
+  data?.detail || data?.message || `${fallback} (${response.status})`
+
 export const openWebSocket = (path, options = {}) => {
   const { query } = options
   return new WebSocket(buildWsUrl(path, query))

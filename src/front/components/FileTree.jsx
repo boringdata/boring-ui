@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X, Folder, FolderOpen, FolderInput, ChevronRight, ChevronDown, MoreHorizontal, Settings } from 'lucide-react'
-import { apiFetchJson } from '../utils/transport'
+import { apiFetchJson, getHttpErrorDetail } from '../utils/transport'
 import { getFileIcon } from '../utils/fileIcons'
 
 const configPath = import.meta.env.VITE_CONFIG_PATH || ''
@@ -18,8 +18,6 @@ const formatSectionLabel = (path) => {
   const name = path.replace(/^\./, '') // Remove leading dot
   return name.charAt(0).toUpperCase() + name.slice(1)
 }
-
-const getErrorDetail = (response, data) => data?.detail || data?.message || `HTTP ${response.status}`
 
 export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRenamed, onFileMoved, projectRoot, activeFile, creatingFile, onFileCreated, onCancelCreate }) {
   const [entries, setEntries] = useState([])
@@ -279,7 +277,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileDeleted?.(entry.path)
       } else {
-        alert(`Failed to delete: ${getErrorDetail(response, data)}`)
+        alert(`Failed to delete: ${getHttpErrorDetail(response, data, 'Delete failed')}`)
       }
     } catch (err) {
       alert(`Failed to delete: ${err.message}`)
@@ -312,7 +310,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileRenamed?.(oldPath, newPath)
       } else {
-        alert(`Failed to rename: ${getErrorDetail(response, data)}`)
+        alert(`Failed to rename: ${getHttpErrorDetail(response, data, 'Rename failed')}`)
       }
     } catch (err) {
       alert(`Failed to rename: ${err.message}`)
@@ -366,7 +364,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileCreated?.(filePath)
       } else {
-        alert(`Failed to create file: ${getErrorDetail(response, data)}`)
+        alert(`Failed to create file: ${getHttpErrorDetail(response, data, 'Create file failed')}`)
       }
     } catch (err) {
       alert(`Failed to create file: ${err.message}`)
@@ -470,7 +468,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileMoved?.(srcFile.path, data.dest_path)
       } else {
-        alert(`Failed to move: ${getErrorDetail(response, data)}`)
+        alert(`Failed to move: ${getHttpErrorDetail(response, data, 'Move failed')}`)
       }
     } catch (err) {
       alert(`Failed to move: ${err.message}`)
@@ -498,7 +496,7 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
         await refreshTree()
         onFileMoved?.(srcFile.path, data.dest_path)
       } else {
-        alert(`Failed to move: ${getErrorDetail(response, data)}`)
+        alert(`Failed to move: ${getHttpErrorDetail(response, data, 'Move failed')}`)
       }
     } catch (err) {
       alert(`Failed to move: ${err.message}`)
