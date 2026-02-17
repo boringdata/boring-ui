@@ -7,7 +7,7 @@ import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
-import { buildApiUrl } from './utils/apiBase'
+import { apiFetch, apiFetchJson } from './utils/transport'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -403,9 +403,8 @@ export default function App() {
     let isActive = true
 
     const fetchApprovals = () => {
-      fetch(buildApiUrl('/api/approval/pending'))
-        .then((r) => r.json())
-        .then((data) => {
+      apiFetchJson('/api/approval/pending')
+        .then(({ data }) => {
           if (!isActive) return
           const requests = Array.isArray(data.requests) ? data.requests : []
           const filtered = requests.filter(
@@ -441,7 +440,7 @@ export default function App() {
         setApprovals([])
       }
       try {
-        await fetch(buildApiUrl('/api/approval/decision'), {
+        await apiFetch('/api/approval/decision', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ request_id: requestId, decision, reason }),
@@ -556,9 +555,8 @@ export default function App() {
         }
       }
 
-      fetch(buildApiUrl(`/api/v1/files/read?path=${encodeURIComponent(path)}`))
-        .then((r) => r.json())
-        .then((data) => {
+      apiFetchJson('/api/v1/files/read', { query: { path } })
+        .then(({ data }) => {
           addEditorPanel(data.content || '')
         })
         .catch(() => {
@@ -1193,9 +1191,8 @@ export default function App() {
     let fallbackApplied = false
     const maxRetries = 6 // ~3 seconds total before initial fallback
     const fetchProjectRoot = () => {
-      fetch(buildApiUrl('/api/project'))
-        .then((r) => r.json())
-        .then((data) => {
+      apiFetchJson('/api/project')
+        .then(({ data }) => {
           const root = data.root || ''
           // Don't update projectRoot after fallback to avoid overwriting project-scoped state
           // (layout/tabs were restored from fallback key; updating root would save to wrong location)

@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { buildApiUrl } from '../utils/apiBase'
+import { apiFetchJson } from '../utils/transport'
 
 /**
  * Capabilities response from /api/capabilities endpoint.
@@ -48,12 +48,11 @@ export const useCapabilities = () => {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(buildApiUrl('/api/capabilities'))
+      const { response, data } = await apiFetchJson('/api/capabilities')
       if (!response.ok) {
         throw new Error(`Failed to fetch capabilities: ${response.status}`)
       }
 
-      const data = await response.json()
       setCapabilities(data)
     } catch (err) {
       console.error('[Capabilities] Failed to fetch:', err)

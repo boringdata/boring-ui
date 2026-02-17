@@ -2,6 +2,29 @@ import { isLoopbackHost, rewriteLoopbackForRemoteClient } from './loopbackRewrit
 
 const normalizeBase = (value) => (value ? value.replace(/\/$/, '') : '')
 
+const toSearchParams = (query) => {
+  if (!query) return ''
+  if (query instanceof URLSearchParams) {
+    const value = query.toString()
+    return value ? `?${value}` : ''
+  }
+
+  const params = new URLSearchParams()
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === undefined || value === null) return
+    if (Array.isArray(value)) {
+      value.forEach((entry) => {
+        if (entry !== undefined && entry !== null) params.append(key, String(entry))
+      })
+      return
+    }
+    params.set(key, String(value))
+  })
+
+  const value = params.toString()
+  return value ? `?${value}` : ''
+}
+
 const isDevPort = (port) => {
   const devPorts = new Set(['3000', '3001', '4173', '4174', '5173', '5174', '5175', '5176', '5180', '5190'])
   return devPorts.has(port)
@@ -24,7 +47,7 @@ const resolveApiBase = () => {
 
 export const getApiBase = () => resolveApiBase()
 
-export const buildApiUrl = (path) => `${getApiBase()}${path}`
+export const buildApiUrl = (path, query) => `${getApiBase()}${path}${toSearchParams(query)}`
 
 export const getWsBase = () => {
   const apiBase = getApiBase()
@@ -33,8 +56,11 @@ export const getWsBase = () => {
   return `${protocol}://${url.host}`
 }
 
+export const buildWsUrl = (path, query) => `${getWsBase()}${path}${toSearchParams(query)}`
+
 export const __apiBaseTestUtils = {
   isDevPort,
   isLoopbackHost,
   rewriteLoopbackForRemoteClient,
+  toSearchParams,
 }

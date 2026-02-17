@@ -40,4 +40,14 @@ describe('apiBase loopback rewrite', () => {
     expect(__apiBaseTestUtils.isDevPort('5173')).toBe(true)
     expect(__apiBaseTestUtils.isDevPort('8000')).toBe(false)
   })
+
+  it('builds query strings from objects while skipping empty values', () => {
+    expect(
+      __apiBaseTestUtils.toSearchParams({
+        q: 'hello',
+        tag: ['a', 'b'],
+        ignored: undefined,
+      }),
+    ).toBe('?q=hello&tag=a&tag=b')
+  })
 })

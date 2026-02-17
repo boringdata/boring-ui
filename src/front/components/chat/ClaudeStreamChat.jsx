@@ -23,7 +23,8 @@ import GrepToolRenderer from './GrepToolRenderer'
 import ToolUseBlock, { ToolOutput } from './ToolUseBlock'
 import PermissionPanel from './PermissionPanel'
 import './styles.css'
-import { buildApiUrl, getWsBase } from '../../utils/apiBase'
+import { buildWsUrl } from '../../utils/apiBase'
+import { apiFetch, apiFetchJson, openWebSocketUrl } from '../../utils/transport'
 
 // Generate a valid UUID, with fallback for environments without crypto.randomUUID
 const generateUUID = () => {
@@ -193,7 +194,7 @@ const buildFileSpec = (attachment) => {
   return `${attachment.fileId}:${attachment.relativePath}`
 }
 
-const buildWsUrl = (
+const buildClaudeStreamWsUrl = (
   sessionId,
   mode,
   forceNew = false,
@@ -217,15 +218,13 @@ const buildWsUrl = (
       if (spec) queryParams.append('file', spec)
     })
   }
-  const params = queryParams.toString() ? `?${queryParams.toString()}` : ''
-  const wsBase = getWsBase()
-  return `${wsBase}/ws/claude-stream${params}`
+  return buildWsUrl('/ws/claude-stream', queryParams)
 }
 
 const uploadAttachment = async (file) => {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(buildApiUrl('/api/attachments'), {
+  const res = await apiFetch('/api/attachments', {
     method: 'POST',
     body: formData,
   })
@@ -237,9 +236,9 @@ const uploadAttachment = async (file) => {
 
 const fetchSessions = async () => {
   try {
-    const res = await fetch(buildApiUrl('/api/sessions'))
+    const { response, data } = await apiFetchJson('/api/sessions')
+    const res = response
     if (!res.ok) return []
-    const data = await res.json()
     return data.sessions || []
   } catch {
     return []
@@ -249,7 +248,8 @@ const fetchSessions = async () => {
 const searchFiles = async (query, onError) => {
   if (!query || query.length < 1) return []
   try {
-    const res = await fetch(buildApiUrl(`/api/v1/files/search?q=${encodeURIComponent(query)}`))
+    const { response, data } = await apiFetchJson('/api/v1/files/search', { query: { q: query } })
+    const res = response
     if (!res.ok) {
       onError?.({
         title: 'File search failed',
@@ -261,7 +261,6 @@ const searchFiles = async (query, onError) => {
       }, { showBanner: false })
       return []
     }
-    const data = await res.json()
     return (data.results || []).map((f) => ({
       id: f.path,
       label: f.name,
@@ -283,7 +282,8 @@ const searchFiles = async (query, onError) => {
 
 const fetchMentionDefaults = async (onError) => {
   try {
-    const res = await fetch(buildApiUrl('/api/v1/files/list?path=.'))
+    const { response, data } = await apiFetchJson('/api/v1/files/list', { query: { path: '.' } })
+    const res = response
     if (!res.ok) {
       onError?.({
         title: 'File list failed',
@@ -295,7 +295,6 @@ const fetchMentionDefaults = async (onError) => {
       }, { showBanner: false })
       return []
     }
-    const data = await res.json()
     const entries = Array.isArray(data.entries) ? data.entries : []
     const files = entries.filter((entry) => !entry.is_dir)
     return files.map((file) => ({
@@ -319,9 +318,9 @@ const fetchMentionDefaults = async (onError) => {
 
 const createNewSession = async () => {
   try {
-    const res = await fetch(buildApiUrl('/api/sessions'), { method: 'POST' })
+    const { response, data } = await apiFetchJson('/api/sessions', { method: 'POST' })
+    const res = response
     if (!res.ok) return null
-    const data = await res.json()
     return data.session_id
   } catch {
     return null
@@ -541,9 +540,16 @@ const useClaudeStreamRuntime = (
 
     return new Promise((resolve, reject) => {
       const shouldForceNew = optionsChanged || attachmentsChanged
-      const url = buildWsUrl(sessionId, useMode, shouldForceNew, shouldResume, optionsRef.current, fileSpecs)
+      const url = buildClaudeStreamWsUrl(
+        sessionId,
+        useMode,
+        shouldForceNew,
+        shouldResume,
+        optionsRef.current,
+        fileSpecs,
+      )
       console.log('[ClaudeStream] Connecting to:', url)
-      const ws = new WebSocket(url)
+      const ws = openWebSocketUrl(url)
       wsRef.current = ws
       closedRef.current = false
 
@@ -726,7 +732,7 @@ const useClaudeStreamRuntime = (
       .map((attachment) => buildFileSpec(attachment))
       .filter(Boolean)
     // Reconnect with force_new to restart CLI with new settings
-    const wsUrl = buildWsUrl(
+    const wsUrl = buildClaudeStreamWsUrl(
       currentSessionId,
       modeRef.current,
       true,
@@ -734,7 +740,7 @@ const useClaudeStreamRuntime = (
       optionsRef.current,
       fileSpecs,
     ) // force_new=true
-    const ws = new WebSocket(wsUrl)
+    const ws = openWebSocketUrl(wsUrl)
     wsRef.current = ws
     ws.onopen = () => {
       if (wsRef.current !== ws) return

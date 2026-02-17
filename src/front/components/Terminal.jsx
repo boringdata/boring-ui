@@ -3,7 +3,7 @@ import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import { useTheme } from '../hooks/useTheme'
-import { getWsBase } from '../utils/apiBase'
+import { openWebSocket } from '../utils/transport'
 
 // Terminal color schemes for light/dark mode
 const TERMINAL_THEMES = {
@@ -69,27 +69,13 @@ const saveStoredHistory = (sessionId, text) => {
   }
 }
 
-const buildSocketUrl = (sessionId, resume, forceNew, provider, sessionName) => {
-  const wsBase = getWsBase()
-  const params = new URLSearchParams()
-  if (sessionId) {
-    params.set('session_id', sessionId)
-  }
-  if (resume) {
-    params.set('resume', '1')
-  }
-  if (forceNew) {
-    params.set('force_new', '1')
-  }
-  if (provider) {
-    params.set('provider', provider)
-  }
-  if (sessionName) {
-    params.set('session_name', sessionName)
-  }
-  const query = params.toString()
-  return `${wsBase}/ws/pty${query ? `?${query}` : ''}`
-}
+const buildSocketQuery = (sessionId, resume, forceNew, provider, sessionName) => ({
+  session_id: sessionId || undefined,
+  resume: resume ? '1' : undefined,
+  force_new: forceNew ? '1' : undefined,
+  provider: provider || undefined,
+  session_name: sessionName || undefined,
+})
 
 export default function Terminal({
   isActive = true,
@@ -229,9 +215,9 @@ export default function Terminal({
       if (connectionStarted) return
       connectionStarted = true
       historyAppliedRef.current = false
-      const socket = new WebSocket(
-        buildSocketUrl(sessionId, resume, false, providerKey, sessionName),
-      )
+      const socket = openWebSocket('/ws/pty', {
+        query: buildSocketQuery(sessionId, resume, false, providerKey, sessionName),
+      })
       socketRef.current = socket
       let resumeMissingNotified = false
 

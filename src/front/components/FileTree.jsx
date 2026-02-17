@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X, Folder, FolderOpen, FolderInput, ChevronRight, ChevronDown, MoreHorizontal, Settings } from 'lucide-react'
-import { buildApiUrl } from '../utils/apiBase'
+import { apiFetchJson } from '../utils/transport'
 import { getFileIcon } from '../utils/fileIcons'
 
 const configPath = import.meta.env.VITE_CONFIG_PATH || ''
@@ -42,16 +42,14 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
   }, [expandedDirs])
 
   const fetchDir = (dirPath) => {
-    return fetch(buildApiUrl(`/api/v1/files/list?path=${encodeURIComponent(dirPath)}`))
-      .then((r) => r.json())
-      .then((data) => data.entries || [])
+    return apiFetchJson('/api/v1/files/list', { query: { path: dirPath } })
+      .then(({ data }) => data.entries || [])
       .catch(() => [])
   }
 
   const fetchGitStatus = () => {
-    fetch(buildApiUrl('/api/v1/git/status'))
-      .then((r) => r.json())
-      .then((data) => {
+    apiFetchJson('/api/v1/git/status')
+      .then(({ data }) => {
         if (data.available && data.files) {
           setGitStatus(data.files)
         }
@@ -80,10 +78,9 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
   // Fetch config for section organization
   const fetchConfig = () => {
-    const query = configPath ? `?config_path=${encodeURIComponent(configPath)}` : ''
-    fetch(buildApiUrl(`/api/config${query}`))
-      .then((r) => r.json())
-      .then(async (data) => {
+    const query = configPath ? { config_path: configPath } : undefined
+    apiFetchJson('/api/config', { query })
+      .then(async ({ data }) => {
         if (data.paths) {
           setKurtConfig(data.paths)
           // Auto-expand section folders on initial load (projects, sources)
@@ -159,9 +156,8 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
 
     setIsSearching(true)
     const timeoutId = setTimeout(() => {
-      fetch(buildApiUrl(`/api/v1/files/search?q=${encodeURIComponent(trimmedQuery)}`))
-        .then((r) => r.json())
-        .then((data) => {
+      apiFetchJson('/api/v1/files/search', { query: { q: trimmedQuery } })
+        .then(({ data }) => {
           // Only update if query hasn't changed (prevent stale results)
           setSearchResults(data.results || [])
           setIsSearching(false)
@@ -273,14 +269,14 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!window.confirm(confirmMsg)) return
 
     try {
-      const res = await fetch(buildApiUrl(`/api/v1/files/delete?path=${encodeURIComponent(entry.path)}`), {
+      const { response, data } = await apiFetchJson('/api/v1/files/delete', {
+        query: { path: entry.path },
         method: 'DELETE',
       })
-      if (res.ok) {
+      if (response.ok) {
         await refreshTree()
         onFileDeleted?.(entry.path)
       } else {
-        const data = await res.json()
         alert(`Failed to delete: ${data.detail || 'Unknown error'}`)
       }
     } catch (err) {
@@ -304,17 +300,16 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     }
 
     try {
-      const res = await fetch(buildApiUrl('/api/v1/files/rename'), {
+      const { response, data } = await apiFetchJson('/api/v1/files/rename', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ old_path: oldPath, new_path: newPath }),
       })
-      if (res.ok) {
+      if (response.ok) {
         setRenaming(null)
         await refreshTree()
         onFileRenamed?.(oldPath, newPath)
       } else {
-        const data = await res.json()
         alert(`Failed to rename: ${data.detail || 'Unknown error'}`)
       }
     } catch (err) {
@@ -358,17 +353,17 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
       : fileName
 
     try {
-      const res = await fetch(buildApiUrl(`/api/v1/files/write?path=${encodeURIComponent(filePath)}`), {
+      const { response, data } = await apiFetchJson('/api/v1/files/write', {
+        query: { path: filePath },
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: '' }),
       })
-      if (res.ok) {
+      if (response.ok) {
         setNewFileInput(null)
         await refreshTree()
         onFileCreated?.(filePath)
       } else {
-        const data = await res.json()
         alert(`Failed to create file: ${data.detail || 'Unknown error'}`)
       }
     } catch (err) {
@@ -464,17 +459,15 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (destEntry.path.startsWith(srcFile.path + '/')) return
 
     try {
-      const res = await fetch(buildApiUrl('/api/v1/files/move'), {
+      const { response, data } = await apiFetchJson('/api/v1/files/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: destEntry.path }),
       })
-      if (res.ok) {
-        const data = await res.json()
+      if (response.ok) {
         await refreshTree()
         onFileMoved?.(srcFile.path, data.dest_path)
       } else {
-        const data = await res.json()
         alert(`Failed to move: ${data.detail || 'Unknown error'}`)
       }
     } catch (err) {
@@ -494,17 +487,15 @@ export default function FileTree({ onOpen, onOpenToSide, onFileDeleted, onFileRe
     if (!srcFile.path.includes('/')) return
 
     try {
-      const res = await fetch(buildApiUrl('/api/v1/files/move'), {
+      const { response, data } = await apiFetchJson('/api/v1/files/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src_path: srcFile.path, dest_dir: '.' }),
       })
-      if (res.ok) {
-        const data = await res.json()
+      if (response.ok) {
         await refreshTree()
         onFileMoved?.(srcFile.path, data.dest_path)
       } else {
-        const data = await res.json()
         alert(`Failed to move: ${data.detail || 'Unknown error'}`)
       }
     } catch (err) {

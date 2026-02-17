@@ -3,6 +3,7 @@ import {
   publishPiSessionState,
   subscribePiSessionActions,
 } from './sessionBus'
+import { fetchJsonUrl, fetchUrl } from '../../utils/transport'
 
 const EMPTY_STATE = { currentSessionId: '', sessions: [] }
 
@@ -57,21 +58,21 @@ export default function PiBackendAdapter({ serviceUrl }) {
   }, [])
 
   const listSessions = useCallback(async () => {
-    const response = await fetch(`${apiBase}/sessions`)
+    const { response, data: payload } = await fetchJsonUrl(`${apiBase}/sessions`)
     if (!response.ok) {
       throw new Error(`Failed to list PI sessions (${response.status})`)
     }
-    const payload = await readJson(response)
     return Array.isArray(payload.sessions) ? payload.sessions : []
   }, [apiBase])
 
   const loadHistory = useCallback(async (sessionId) => {
     if (!sessionId) return
-    const response = await fetch(`${apiBase}/sessions/${encodeURIComponent(sessionId)}/history`)
+    const { response, data: payload } = await fetchJsonUrl(
+      `${apiBase}/sessions/${encodeURIComponent(sessionId)}/history`,
+    )
     if (!response.ok) {
       throw new Error(`Failed to load PI history (${response.status})`)
     }
-    const payload = await readJson(response)
     const nextMessages = Array.isArray(payload.messages)
       ? payload.messages.map(toDisplayMessage).filter(Boolean)
       : []
@@ -79,7 +80,7 @@ export default function PiBackendAdapter({ serviceUrl }) {
   }, [apiBase])
 
   const createSession = useCallback(async () => {
-    const response = await fetch(`${apiBase}/sessions/create`, {
+    const { response, data: payload } = await fetchJsonUrl(`${apiBase}/sessions/create`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
@@ -87,7 +88,6 @@ export default function PiBackendAdapter({ serviceUrl }) {
     if (!response.ok) {
       throw new Error(`Failed to create PI session (${response.status})`)
     }
-    const payload = await readJson(response)
     const created = payload?.session
     if (!created?.id) {
       throw new Error('PI service returned no session id')
@@ -194,7 +194,7 @@ export default function PiBackendAdapter({ serviceUrl }) {
     ])
 
     try {
-      const response = await fetch(`${apiBase}/sessions/${encodeURIComponent(currentSessionId)}/stream`, {
+      const response = await fetchUrl(`${apiBase}/sessions/${encodeURIComponent(currentSessionId)}/stream`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ message: text }),
