@@ -20,56 +20,27 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
     router = APIRouter(tags=['files'])
     service = FileService(config, storage)
     
-    @router.get('/tree')
-    async def get_tree(path: str = '.'):
-        """List directory contents.
-        
-        Args:
-            path: Directory path relative to workspace root
-            
-        Returns:
-            dict with entries list and path
-        """
+    @router.get('/list')
+    async def list_files(path: str = '.'):
+        """List directory contents."""
         return service.list_directory(path)
     
-    @router.get('/file')
-    async def get_file(path: str):
-        """Read file contents.
-        
-        Args:
-            path: File path relative to workspace root
-            
-        Returns:
-            dict with content string and path
-        """
+    @router.get('/read')
+    async def read_file(path: str):
+        """Read file contents."""
         return service.read_file(path)
     
-    @router.put('/file')
-    async def put_file(path: str, body: FileContent):
-        """Write file contents.
-        
-        Args:
-            path: File path relative to workspace root
-            body: Request body with content string
-            
-        Returns:
-            dict with success status and path
-        """
+    @router.put('/write')
+    async def write_file(path: str, body: FileContent):
+        """Write file contents."""
         return service.write_file(path, body.content)
     
-    @router.delete('/file')
+    @router.delete('/delete')
     async def delete_file(path: str):
-        """Delete file.
-        
-        Args:
-            path: File path relative to workspace root
-            
-        Returns:
-            dict with success status
-        """
+        """Delete file."""
         return service.delete_file(path)
     
-    @router.post('/file/rename')
+    @router.post('/rename')
     async def rename_file(body: RenameRequest):
         """Rename file.
         
@@ -81,7 +52,7 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
         """
         return service.rename_file(body.old_path, body.new_path)
     
-    @router.post('/file/move')
+    @router.post('/move')
     async def move_file(body: MoveRequest):
         """Move file to a different directory.
         

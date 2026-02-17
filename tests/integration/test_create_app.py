@@ -166,10 +166,10 @@ class TestFileRoutes:
 
     @pytest.mark.asyncio
     async def test_tree_endpoint(self, app, workspace):
-        """Test /api/tree returns directory listing."""
+        """Test /api/v1/files/list returns directory listing."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/tree?path=.')
+            response = await client.get('/api/v1/files/list?path=.')
             assert response.status_code == 200
             data = response.json()
             names = [e['name'] for e in data['entries']]
@@ -178,25 +178,56 @@ class TestFileRoutes:
 
     @pytest.mark.asyncio
     async def test_file_read_endpoint(self, app, workspace):
-        """Test /api/file returns file contents."""
+        """Test /api/v1/files/read returns file contents."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/file?path=README.md')
+            response = await client.get('/api/v1/files/read?path=README.md')
             assert response.status_code == 200
             data = response.json()
             assert data['content'] == '# Test Project'
 
     @pytest.mark.asyncio
     async def test_file_write_endpoint(self, app, workspace):
-        """Test PUT /api/file writes file contents."""
+        """Test PUT /api/v1/files/write writes file contents."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
             response = await client.put(
-                '/api/file?path=new.txt',
+                '/api/v1/files/write?path=new.txt',
                 json={'content': 'new content'}
             )
             assert response.status_code == 200
             assert (workspace / 'new.txt').read_text() == 'new content'
+
+    @pytest.mark.asyncio
+    async def test_legacy_file_routes_not_found(self, app):
+        """Legacy /api file route family should be unavailable."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            list_response = await client.get('/api/tree?path=.')
+            read_response = await client.get('/api/file?path=README.md')
+
+            assert list_response.status_code == 404
+            assert read_response.status_code == 404
+
+
+class TestGitRoutes:
+    """Integration tests for canonical git endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_git_status_endpoint(self, app):
+        """Canonical /api/v1/git/status endpoint should be available."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            response = await client.get('/api/v1/git/status')
+            assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_legacy_git_routes_not_found(self, app):
+        """Legacy /api/git route family should be unavailable."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            response = await client.get('/api/git/status')
+            assert response.status_code == 404
 
 
 class TestConfigEndpoint:

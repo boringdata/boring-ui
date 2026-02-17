@@ -123,10 +123,9 @@ def create_app(
         allow_headers=['*'],
     )
 
-    # Mount routers from registry based on enabled set
+    # Mount non-file/git routers from registry based on enabled set.
+    # File/git are mounted canonical-only below to prevent legacy aliases.
     router_args = {
-        'files': (config, storage),
-        'git': (config,),
         'pty': (config,),
         'chat_claude_code': (config,),
         'stream': (config,),  # Alias
@@ -138,6 +137,8 @@ def create_app(
     mounted_factories: set[int] = set()
 
     for router_name in enabled_routers:
+        if router_name in {'files', 'git'}:
+            continue
         entry = registry.get(router_name)
         if entry:
             info, factory = entry
@@ -149,11 +150,7 @@ def create_app(
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 
-    # Mount canonical /api/v1 routes alongside legacy /api routes.
-    # The modular routers define both legacy names (/tree, /file) and
-    # canonical names (/list, /read, /write, /delete, /rename, /move).
-    # Mounting at /api/v1/files and /api/v1/git makes the canonical v1
-    # contract available at runtime while legacy /api/* paths keep working.
+    # Mount canonical workspace-core HTTP routes.
     if 'files' in enabled_routers:
         from .modules.files import create_file_router
         app.include_router(
