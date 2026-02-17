@@ -199,7 +199,9 @@ const optionalQueryString = (value) =>
   value === undefined || value === null || value === '' ? undefined : String(value)
 
 const optionalQueryNumberLike = (value) =>
-  value === undefined || value === null || value === '' ? undefined : value
+  value === undefined || value === null || value === '' || typeof value === 'boolean'
+    ? undefined
+    : value
 
 const buildClaudeStreamQuery = (
   sessionId,
