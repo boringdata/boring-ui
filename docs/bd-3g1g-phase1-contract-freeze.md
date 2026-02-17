@@ -3,6 +3,10 @@
 Bead: `bd-3g1g.2`  
 Scope: freeze canonical contracts for `workspace-core`, `pty-service`, and agent services, plus frontend control-plane interface commitments.
 
+Publication baseline: downstream implementation should consume
+`docs/bd-3g1g.2.4-contract-pack-v1.md` and `docs/bd-3g1g.2.4-signoff.md`
+as the locked Phase-1 contract package.
+
 ## Inputs and Dependencies
 
 Contract freeze is based on:
