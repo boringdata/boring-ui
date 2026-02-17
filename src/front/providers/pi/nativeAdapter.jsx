@@ -200,7 +200,7 @@ export default function PiNativeAdapter() {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of Array.from(mutation.addedNodes)) {
-          if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
+          if (node.nodeType !== Node.ELEMENT_NODE) {
             continue
           }
           fixLitTree(node)
