@@ -14,8 +14,19 @@ describe('routes helper', () => {
     })
   })
 
+  it('builds config route descriptors with optional query values', () => {
+    expect(routes.config.get()).toEqual({
+      path: '/api/config',
+      query: undefined,
+    })
+    expect(routes.config.get('/tmp/app.config.js')).toEqual({
+      path: '/api/config',
+      query: { config_path: '/tmp/app.config.js' },
+    })
+  })
+
   it('builds websocket route descriptors without feature-local literals', () => {
-    expect(routes.ws.plugins()).toEqual({ path: '/ws/plugins' })
+    expect(routes.ws.plugins()).toEqual({ path: '/ws/plugins', query: undefined })
     expect(routes.ws.claudeStream({ session_id: 'abc' })).toEqual({
       path: '/ws/claude-stream',
       query: { session_id: 'abc' },

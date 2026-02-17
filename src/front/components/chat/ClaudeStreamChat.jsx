@@ -195,6 +195,30 @@ const buildFileSpec = (attachment) => {
   return `${attachment.fileId}:${attachment.relativePath}`
 }
 
+const buildClaudeStreamQuery = (
+  sessionId,
+  mode,
+  forceNew = false,
+  resume = false,
+  options = {},
+  fileSpecs = [],
+) => {
+  const files = Array.isArray(fileSpecs) ? fileSpecs.filter(Boolean) : []
+  return {
+    session_id: sessionId || undefined,
+    mode: mode || undefined,
+    force_new: forceNew ? '1' : undefined,
+    resume: resume ? '1' : undefined,
+    model: options?.model || undefined,
+    max_thinking_tokens: options?.maxThinkingTokens || undefined,
+    max_turns: options?.maxTurns || undefined,
+    max_budget_usd: options?.maxBudgetUsd || undefined,
+    allowed_tools: options?.allowedTools || undefined,
+    disallowed_tools: options?.disallowedTools || undefined,
+    file: files.length ? files : undefined,
+  }
+}
+
 const buildClaudeStreamWsUrl = (
   sessionId,
   mode,
@@ -203,23 +227,9 @@ const buildClaudeStreamWsUrl = (
   options = {},
   fileSpecs = []
 ) => {
-  const queryParams = new URLSearchParams()
-  if (sessionId) queryParams.set('session_id', sessionId)
-  if (mode) queryParams.set('mode', mode)
-  if (forceNew) queryParams.set('force_new', '1')
-  if (resume) queryParams.set('resume', '1')
-  if (options?.model) queryParams.set('model', options.model)
-  if (options?.maxThinkingTokens) queryParams.set('max_thinking_tokens', options.maxThinkingTokens)
-  if (options?.maxTurns) queryParams.set('max_turns', options.maxTurns)
-  if (options?.maxBudgetUsd) queryParams.set('max_budget_usd', options.maxBudgetUsd)
-  if (options?.allowedTools) queryParams.set('allowed_tools', options.allowedTools)
-  if (options?.disallowedTools) queryParams.set('disallowed_tools', options.disallowedTools)
-  if (Array.isArray(fileSpecs)) {
-    fileSpecs.forEach((spec) => {
-      if (spec) queryParams.append('file', spec)
-    })
-  }
-  const route = routes.ws.claudeStream(queryParams)
+  const route = routes.ws.claudeStream(
+    buildClaudeStreamQuery(sessionId, mode, forceNew, resume, options, fileSpecs),
+  )
   return buildWsUrl(route.path, route.query)
 }
 
