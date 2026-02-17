@@ -1778,32 +1778,30 @@ export default function App() {
     if (companionEnabled && !companionPanel) {
       // Add companion panel to the right rail.
       const position = resolveRightRailPosition(terminalPanel)
-      if (!position) {
-        return
-      }
-
-      const panel = dockApi.addPanel({
-        id: 'companion',
-        component: 'companion',
-        title: 'Companion',
-        position,
-        params: {
-          collapsed: collapsed.companion,
-          onToggleCollapse: toggleCompanion,
-          provider: 'companion',
-          lockProvider: true,
-        },
-      })
-
-      if (panel?.group) {
-        panel.group.locked = true
-        panel.group.header.hidden = true
-        panel.group.api.setConstraints({
-          minimumWidth: panelMinRef.current.companion,
-          maximumWidth: Infinity,
+      if (position) {
+        const panel = dockApi.addPanel({
+          id: 'companion',
+          component: 'companion',
+          title: 'Companion',
+          position,
+          params: {
+            collapsed: collapsed.companion,
+            onToggleCollapse: toggleCompanion,
+            provider: 'companion',
+            lockProvider: true,
+          },
         })
-        if (!collapsed.companion) {
-          panel.group.api.setSize({ width: panelSizesRef.current.companion })
+
+        if (panel?.group) {
+          panel.group.locked = true
+          panel.group.header.hidden = true
+          panel.group.api.setConstraints({
+            minimumWidth: panelMinRef.current.companion,
+            maximumWidth: Infinity,
+          })
+          if (!collapsed.companion) {
+            panel.group.api.setSize({ width: panelSizesRef.current.companion })
+          }
         }
       }
     } else if (!companionEnabled && companionPanel) {
@@ -1817,30 +1815,28 @@ export default function App() {
 
     if (piEnabled && !piPanel) {
       const position = resolveRightRailPosition(companionPanel || terminalPanel)
-      if (!position) {
-        return
-      }
-
-      const panel = dockApi.addPanel({
-        id: 'pi-agent',
-        component: 'companion',
-        title: 'PI Agent',
-        position,
-        params: {
-          collapsed: false,
-          provider: 'pi',
-          lockProvider: true,
-        },
-      })
-
-      if (panel?.group) {
-        panel.group.locked = true
-        panel.group.header.hidden = true
-        panel.group.api.setConstraints({
-          minimumWidth: panelMinRef.current.companion,
-          maximumWidth: Infinity,
+      if (position) {
+        const panel = dockApi.addPanel({
+          id: 'pi-agent',
+          component: 'companion',
+          title: 'PI Agent',
+          position,
+          params: {
+            collapsed: false,
+            provider: 'pi',
+            lockProvider: true,
+          },
         })
-        panel.group.api.setSize({ width: panelSizesRef.current.companion })
+
+        if (panel?.group) {
+          panel.group.locked = true
+          panel.group.header.hidden = true
+          panel.group.api.setConstraints({
+            minimumWidth: panelMinRef.current.companion,
+            maximumWidth: Infinity,
+          })
+          panel.group.api.setSize({ width: panelSizesRef.current.companion })
+        }
       }
     } else if (!piEnabled && piPanel) {
       piPanel.api.close()
