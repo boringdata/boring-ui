@@ -14,7 +14,6 @@ export default function CompanionPanel({ params }) {
   const capabilities = useCapabilitiesContext()
   const activeProvider = provider === 'pi' ? 'pi' : 'companion'
   const companionUrl = capabilities?.services?.companion?.url
-  const piUrl = capabilities?.services?.pi?.url
 
   const ready = useMemo(() => {
     if (activeProvider === 'pi') {
@@ -70,7 +69,7 @@ export default function CompanionPanel({ params }) {
           {ready ? (
             activeProvider === 'pi'
               ? (
-                <div className="provider-companion provider-pi-native" data-testid="pi-app" data-service-url={piUrl || ''}>
+                <div className="provider-companion provider-pi-native" data-testid="pi-app">
                   <PiNativeAdapter />
                 </div>
                 )
