@@ -3,7 +3,7 @@ import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities, useKeyboardShortcuts, useOnboardingState } from './hooks'
+import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
@@ -85,15 +85,15 @@ export default function App() {
   const config = useConfig()
   const codeSessionsEnabled = config.features?.codeSessions !== false
   const urlAgentMode = new URLSearchParams(window.location.search).get('agent_mode')
-  const configAgentMode = config.features?.agentRailMode || 'both'
-  const validAgentModes = ['native', 'companion', 'pi', 'both']
-  const fallbackAgentMode = validAgentModes.includes(configAgentMode) ? configAgentMode : 'both'
+  const configAgentMode = config.features?.agentRailMode || 'all'
+  const validAgentModes = ['all', 'native', 'companion', 'pi']
+  const fallbackAgentMode = validAgentModes.includes(configAgentMode) ? configAgentMode : 'all'
   const agentRailMode = validAgentModes.includes(urlAgentMode)
     ? urlAgentMode
     : fallbackAgentMode
-  const requestedEmbeddedAgentProvider = agentRailMode === 'pi' ? 'pi' : 'companion'
-  const nativeAgentEnabled = codeSessionsEnabled && agentRailMode !== 'companion' && agentRailMode !== 'pi'
-  const companionAgentEnabled = agentRailMode !== 'native'
+  const nativeAgentEnabled = codeSessionsEnabled && (agentRailMode === 'all' || agentRailMode === 'native')
+  const companionAgentEnabled = agentRailMode === 'all' || agentRailMode === 'companion'
+  const piAgentEnabled = agentRailMode === 'all' || agentRailMode === 'pi'
   const storagePrefix = config.storage?.prefix || 'kurt-web'
   const layoutVersion = config.storage?.layoutVersion || 1
 
@@ -112,11 +112,6 @@ export default function App() {
 
   // Fetch backend capabilities for feature gating
   const { capabilities, loading: capabilitiesLoading, refetch: refetchCapabilities } = useCapabilities()
-  const embeddedAgentProvider = (
-    agentRailMode === 'both' && capabilities?.features?.companion !== true && capabilities?.features?.pi === true
-  )
-    ? 'pi'
-    : requestedEmbeddedAgentProvider
 
   // Workspace plugin components loaded dynamically
   const [workspaceComponents, setWorkspaceComponents] = useState({})
@@ -877,7 +872,8 @@ export default function App() {
           params: {
             collapsed: collapsed.companion,
             onToggleCollapse: toggleCompanion,
-            provider: embeddedAgentProvider,
+            provider: 'companion',
+            lockProvider: true,
           },
         })
       }
@@ -1394,12 +1390,10 @@ export default function App() {
           }
         }
 
-        // Handle agent panel restored from saved layout.
-        // If capabilities are already loaded and the selected provider is disabled, remove now.
-        // Otherwise apply constraints; the companion useEffect will handle removal later.
+        // Handle companion panel restored from saved layout.
         const companionPanel = dockApi.getPanel('companion')
         if (companionPanel) {
-          if (!capabilitiesLoading && capabilities?.features?.[embeddedAgentProvider] !== true) {
+          if (!capabilitiesLoading && (!companionAgentEnabled || capabilities?.features?.companion !== true)) {
             companionPanel.api.close()
           } else {
             const companionGroup = companionPanel.group
@@ -1419,6 +1413,25 @@ export default function App() {
                 })
                 companionGroup.api.setSize({ width: panelSizesRef.current.companion })
               }
+            }
+          }
+        }
+
+        // Handle PI panel restored from saved layout.
+        const piPanel = dockApi.getPanel('pi-agent')
+        if (piPanel) {
+          if (!capabilitiesLoading && (!piAgentEnabled || capabilities?.features?.pi !== true)) {
+            piPanel.api.close()
+          } else {
+            const piGroup = piPanel.group
+            if (piGroup) {
+              piGroup.locked = true
+              piGroup.header.hidden = true
+              piGroup.api.setConstraints({
+                minimumWidth: panelMinRef.current.companion,
+                maximumWidth: Infinity,
+              })
+              piGroup.api.setSize({ width: panelSizesRef.current.companion })
             }
           }
         }
@@ -1651,10 +1664,19 @@ export default function App() {
       companionPanel.api.updateParameters({
         collapsed: collapsed.companion,
         onToggleCollapse: toggleCompanion,
-        provider: embeddedAgentProvider,
+        provider: 'companion',
+        lockProvider: true,
       })
     }
-  }, [dockApi, collapsed.companion, toggleCompanion, embeddedAgentProvider])
+    const piPanel = dockApi.getPanel('pi-agent')
+    if (piPanel) {
+      piPanel.api.updateParameters({
+        collapsed: false,
+        provider: 'pi',
+        lockProvider: true,
+      })
+    }
+  }, [dockApi, collapsed.companion, toggleCompanion])
 
   // Load workspace plugin panels when capabilities include them
   const workspacePanesKey = JSON.stringify(capabilities?.workspace_panes || [])
@@ -1701,11 +1723,14 @@ export default function App() {
       }
     }
 
-    const companionEnabled = companionAgentEnabled && capabilities?.features?.[embeddedAgentProvider] === true
-    let existingPanel = dockApi.getPanel('companion')
+    const companionEnabled = companionAgentEnabled && capabilities?.features?.companion === true
+    const piEnabled = piAgentEnabled && capabilities?.features?.pi === true
+    let companionPanel = dockApi.getPanel('companion')
+    let piPanel = dockApi.getPanel('pi-agent')
     const terminalPanel = dockApi.getPanel('terminal')
+    const filetreePanel = dockApi.getPanel('filetree')
     const terminalGroup = terminalPanel?.group
-    const filetreeGroup = dockApi.getPanel('filetree')?.group
+    const filetreeGroup = filetreePanel?.group
 
     const appearsInCenterColumn = (companionGroup, referenceGroup) => {
       if (!companionGroup || !referenceGroup) return false
@@ -1719,29 +1744,40 @@ export default function App() {
     // Repair older layouts that placed companion above shell instead of full-height right rail.
     if (
       companionEnabled &&
-      existingPanel?.group &&
-      appearsInCenterColumn(existingPanel.group, terminalGroup || filetreeGroup)
+      companionPanel?.group &&
+      appearsInCenterColumn(companionPanel.group, terminalGroup || filetreeGroup)
     ) {
-      existingPanel.api.close()
-      existingPanel = null
+      companionPanel.api.close()
+      companionPanel = null
     }
 
-    if (companionEnabled && !existingPanel) {
-      // Add companion panel to the right rail.
-      const filetreePanel = dockApi.getPanel('filetree')
+    if (
+      piEnabled &&
+      piPanel?.group &&
+      appearsInCenterColumn(piPanel.group, companionPanel?.group || terminalGroup || filetreeGroup)
+    ) {
+      piPanel.api.close()
+      piPanel = null
+    }
+
+    const resolveRightRailPosition = (referencePanel) => {
+      if (referencePanel) {
+        return { direction: 'right', referencePanel: referencePanel.id }
+      }
       let position
-      if (terminalPanel) {
-        // Keep agent panel full-height in the right rail.
-        position = { direction: 'right', referencePanel: 'terminal' }
-      } else {
-        const centerGroup = dockApi.getPanel('empty-center')?.group || dockApi.getPanel('shell')?.group
-        if (centerGroup) {
-          position = { direction: 'right', referenceGroup: centerGroup }
-        }
+      const centerGroup = dockApi.getPanel('empty-center')?.group || dockApi.getPanel('shell')?.group
+      if (centerGroup) {
+        position = { direction: 'right', referenceGroup: centerGroup }
       }
       if (!position && filetreePanel) {
         position = { direction: 'right', referencePanel: 'filetree' }
       }
+      return position
+    }
+
+    if (companionEnabled && !companionPanel) {
+      // Add companion panel to the right rail.
+      const position = resolveRightRailPosition(terminalPanel)
       if (!position) {
         return
       }
@@ -1749,12 +1785,13 @@ export default function App() {
       const panel = dockApi.addPanel({
         id: 'companion',
         component: 'companion',
-        title: 'Agent',
+        title: 'Companion',
         position,
         params: {
           collapsed: collapsed.companion,
           onToggleCollapse: toggleCompanion,
-          provider: embeddedAgentProvider,
+          provider: 'companion',
+          lockProvider: true,
         },
       })
 
@@ -1769,11 +1806,46 @@ export default function App() {
           panel.group.api.setSize({ width: panelSizesRef.current.companion })
         }
       }
-    } else if (!companionEnabled && existingPanel) {
+    } else if (!companionEnabled && companionPanel) {
       // Remove companion panel restored from saved layout when feature is disabled
-      existingPanel.api.close()
+      companionPanel.api.close()
+      companionPanel = null
     }
-  }, [dockApi, capabilities, capabilitiesLoading, companionAgentEnabled, nativeAgentEnabled, embeddedAgentProvider])
+
+    // Refresh companion ref after add/remove above so PI can anchor to it.
+    companionPanel = dockApi.getPanel('companion')
+
+    if (piEnabled && !piPanel) {
+      const position = resolveRightRailPosition(companionPanel || terminalPanel)
+      if (!position) {
+        return
+      }
+
+      const panel = dockApi.addPanel({
+        id: 'pi-agent',
+        component: 'companion',
+        title: 'PI Agent',
+        position,
+        params: {
+          collapsed: false,
+          provider: 'pi',
+          lockProvider: true,
+        },
+      })
+
+      if (panel?.group) {
+        panel.group.locked = true
+        panel.group.header.hidden = true
+        panel.group.api.setConstraints({
+          minimumWidth: panelMinRef.current.companion,
+          maximumWidth: Infinity,
+        })
+        panel.group.api.setSize({ width: panelSizesRef.current.companion })
+      }
+    } else if (!piEnabled && piPanel) {
+      piPanel.api.close()
+    }
+  }, [dockApi, capabilities, capabilitiesLoading, companionAgentEnabled, piAgentEnabled, nativeAgentEnabled])
 
   // Restore saved tabs when dockApi and projectRoot become available
   const hasRestoredTabs = useRef(false)

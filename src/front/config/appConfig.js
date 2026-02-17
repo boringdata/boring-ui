@@ -66,8 +66,8 @@ const DEFAULT_CONFIG = {
     cloudMode: false,
     workflows: false,
     controlPlaneOnboarding: false,
-    // Right-rail agent chat mode: 'native' | 'companion' | 'pi' | 'both'
-    agentRailMode: 'both',
+    // Right-rail agent chat mode: 'all' | 'native' | 'companion' | 'pi'
+    agentRailMode: 'all',
   },
 
   // Design token customization (CSS variables)

@@ -32,6 +32,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
+    "companion:service": "bash src/companion_service/launch.sh",
     "pi:service": "node src/pi_service/server.mjs",
     "build": "vite build",
     "build:lib": "vite build --mode lib",
