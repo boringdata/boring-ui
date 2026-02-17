@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Agent } from '@mariozechner/pi-agent-core'
 import { getModel } from '@mariozechner/pi-ai'
-import { ApiKeyPromptDialog, ChatPanel, defaultConvertToLlm } from '@mariozechner/pi-web-ui'
+import { ChatPanel, defaultConvertToLlm } from '@mariozechner/pi-web-ui'
 import piAppCss from '@mariozechner/pi-web-ui/app.css?raw'
 import piAppCssUrl from '@mariozechner/pi-web-ui/app.css?url'
 import { getPiRuntime } from './runtime'
@@ -119,15 +119,37 @@ message-editor [contenteditable="true"]:focus-visible {
 const fixLitClassFieldShadowing = (element) => {
   if (!element || typeof element !== 'object') return false
 
-  const props = element.constructor?.elementProperties
-  if (!(props instanceof Map)) return false
-
   let fixed = false
-  for (const key of props.keys()) {
-    if (!Object.prototype.hasOwnProperty.call(element, key)) continue
+
+  const props = element.constructor?.elementProperties
+  if (props instanceof Map) {
+    for (const key of props.keys()) {
+      if (!Object.prototype.hasOwnProperty.call(element, key)) continue
+      const value = element[key]
+      delete element[key]
+      element[key] = value
+      fixed = true
+    }
+  }
+
+  const ownKeys = Object.keys(element)
+  for (const key of ownKeys) {
+    let proto = Object.getPrototypeOf(element)
+    let descriptor = null
+    while (proto && !descriptor) {
+      descriptor = Object.getOwnPropertyDescriptor(proto, key) || null
+      proto = Object.getPrototypeOf(proto)
+    }
+
+    if (!descriptor || (typeof descriptor.get !== 'function' && typeof descriptor.set !== 'function')) {
+      continue
+    }
+
     const value = element[key]
     delete element[key]
-    element[key] = value
+    if (typeof descriptor.set === 'function') {
+      element[key] = value
+    }
     fixed = true
   }
 
@@ -160,6 +182,42 @@ const fixLitTree = (root) => {
 
 const logPiError = (context, error) => {
   console.error(`[PiNativeAdapter] ${context}`, error)
+}
+
+const createSessionId = () => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+
+  // randomUUID is unavailable on some non-secure origins.
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16)
+    globalThis.crypto.getRandomValues(bytes)
+    bytes[6] = (bytes[6] & 0x0f) | 0x40
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+
+  const suffix = Math.random().toString(36).slice(2, 10)
+  return `pi-${Date.now()}-${suffix}`
+}
+
+const promptForApiKey = async (provider, runtime) => {
+  const injectedKey = String(window.__PI_TEST_API_KEY__ || '').trim()
+  if (injectedKey) {
+    await runtime.providerKeys.set(provider, injectedKey)
+    return true
+  }
+
+  const label = `${provider || 'model'} API key`
+  const entry = typeof window?.prompt === 'function'
+    ? window.prompt(`Enter ${label} to use PI agent in this browser session:`)
+    : null
+  const key = String(entry || '').trim()
+  if (!key) return false
+  await runtime.providerKeys.set(provider, key)
+  return true
 }
 
 export default function PiNativeAdapter() {
@@ -297,7 +355,7 @@ export default function PiNativeAdapter() {
         throw new Error('PI adapter could not find a default model')
       }
 
-      const nextSessionId = sessionData?.id || crypto.randomUUID()
+      const nextSessionId = sessionData?.id || createSessionId()
       sessionIdRef.current = nextSessionId
       sessionTitleRef.current = sessionData?.title || 'New session'
 
@@ -323,7 +381,14 @@ export default function PiNativeAdapter() {
 
       if (chatPanelRef.current) {
         await chatPanelRef.current.setAgent(agent, {
-          onApiKeyRequired: async (provider) => ApiKeyPromptDialog.prompt(provider),
+          onApiKeyRequired: async (provider) => {
+            try {
+              return await promptForApiKey(provider, runtime)
+            } catch (error) {
+              logPiError('Failed to show API key prompt', error)
+              return false
+            }
+          },
         })
         fixLitTree(chatPanelRef.current)
       }
