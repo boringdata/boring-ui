@@ -71,8 +71,16 @@ def test_provisional_agent_prefix_language_removed() -> None:
     found = [line for line in FORBIDDEN_PROVISIONAL_LINES if line in text]
     assert not found, "Found provisional agent prefix language:\n- " + "\n- ".join(found)
 
-    pattern = re.compile(
-        r"provisional.*?/(?:api/v1|ws)/agent/[^/\s`|]+/\*",
-        re.IGNORECASE | re.DOTALL,
+    route_pattern = re.compile(
+        r"/(?:api/v1|ws)/agent/[^/\s`|]+/\*",
+        re.IGNORECASE,
     )
-    assert not pattern.search(text), "Found regex match for provisional agent prefix language"
+    offending_lines = [
+        line
+        for line in text.splitlines()
+        if "provisional" in line.lower() and route_pattern.search(line)
+    ]
+    assert not offending_lines, (
+        "Found provisional agent prefix language on line(s):\n- "
+        + "\n- ".join(offending_lines)
+    )
