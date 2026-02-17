@@ -110,3 +110,16 @@ export const extractWorkspaceSettingsPayload = (payload) => {
   if (isRecord(payload?.data?.workspace_settings)) return payload.data.workspace_settings
   return {}
 }
+
+export const runWithPreflightFallback = async ({
+  run,
+  fallbackRoute,
+  warningMessage,
+}) => {
+  try {
+    return await run()
+  } catch (error) {
+    console.warn(warningMessage, error)
+    return fallbackRoute
+  }
+}

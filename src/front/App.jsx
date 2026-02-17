@@ -18,6 +18,7 @@ import {
   getWorkspacePathSuffix,
   isRuntimeReady,
   normalizeWorkspaceList,
+  runWithPreflightFallback,
   shouldRetryRuntime,
 } from './utils/controlPlane'
 import {
@@ -396,16 +397,16 @@ export default function App() {
     if (!selectedWorkspace?.id) return
     const targetWorkspaceId = selectedWorkspace.id
 
-    let route = routes.controlPlane.workspaces.scope(targetWorkspaceId, currentWorkspacePathSuffix)
-    try {
-      const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(targetWorkspaceId, {
-        writeSettings: false,
-      })
-      route = resolveWorkspaceNavigationRoute(targetWorkspaceId, runtimePayload)
-    } catch (error) {
-      console.warn('[UserMenu] Switch workspace preflight failed:', error)
-      // failure UX follows in bead bd-3g1g.4.3; fall back to canonical workspace scope path
-    }
+    const route = await runWithPreflightFallback({
+      run: async () => {
+        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(targetWorkspaceId, {
+          writeSettings: false,
+        })
+        return resolveWorkspaceNavigationRoute(targetWorkspaceId, runtimePayload)
+      },
+      fallbackRoute: routes.controlPlane.workspaces.scope(targetWorkspaceId, currentWorkspacePathSuffix),
+      warningMessage: '[UserMenu] Switch workspace preflight failed:',
+    })
     window.location.assign(buildApiUrl(route.path, route.query))
   }, [
     currentWorkspaceId,
@@ -427,16 +428,16 @@ export default function App() {
     if (!createdWorkspaceId) return
 
     await fetchWorkspaceList()
-    let route = routes.controlPlane.workspaces.setup(createdWorkspaceId)
-    try {
-      const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(createdWorkspaceId, {
-        writeSettings: true,
-      })
-      route = resolveWorkspaceNavigationRoute(createdWorkspaceId, runtimePayload)
-    } catch (error) {
-      console.warn('[UserMenu] Create workspace preflight failed:', error)
-      // failure UX follows in bead bd-3g1g.4.3; keep setup fallback so user can recover
-    }
+    const route = await runWithPreflightFallback({
+      run: async () => {
+        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings(createdWorkspaceId, {
+          writeSettings: true,
+        })
+        return resolveWorkspaceNavigationRoute(createdWorkspaceId, runtimePayload)
+      },
+      fallbackRoute: routes.controlPlane.workspaces.setup(createdWorkspaceId),
+      warningMessage: '[UserMenu] Create workspace preflight failed:',
+    })
     window.location.assign(buildApiUrl(route.path, route.query))
   }, [fetchWorkspaceList, resolveWorkspaceNavigationRoute, syncWorkspaceRuntimeAndSettings])
 

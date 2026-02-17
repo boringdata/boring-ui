@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   extractUserEmail,
   extractWorkspaceId,
@@ -8,10 +8,15 @@ import {
   getWorkspacePathSuffix,
   isRuntimeReady,
   normalizeWorkspaceList,
+  runWithPreflightFallback,
   shouldRetryRuntime,
 } from './controlPlane'
 
 describe('controlPlane utils', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('normalizes workspace list payloads from common response envelopes', () => {
     expect(
       normalizeWorkspaceList({
@@ -72,5 +77,38 @@ describe('controlPlane utils', () => {
       theme: 'dark',
     })
     expect(extractWorkspaceSettingsPayload({ data: { editor: 'vim' } })).toEqual({})
+  })
+
+  it('uses fallback route and logs warning when preflight run fails', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fallbackRoute = { path: '/w/ws-1/setup', query: undefined }
+
+    const resolvedRoute = await runWithPreflightFallback({
+      run: async () => {
+        throw new Error('network error')
+      },
+      fallbackRoute,
+      warningMessage: '[UserMenu] Switch workspace preflight failed:',
+    })
+
+    expect(resolvedRoute).toEqual(fallbackRoute)
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[UserMenu] Switch workspace preflight failed:',
+      expect.any(Error),
+    )
+  })
+
+  it('returns run result when preflight succeeds', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const route = { path: '/w/ws-1/app', query: undefined }
+
+    const resolvedRoute = await runWithPreflightFallback({
+      run: async () => route,
+      fallbackRoute: { path: '/w/ws-1/setup', query: undefined },
+      warningMessage: '[UserMenu] Create workspace preflight failed:',
+    })
+
+    expect(resolvedRoute).toEqual(route)
+    expect(warnSpy).not.toHaveBeenCalled()
   })
 })
