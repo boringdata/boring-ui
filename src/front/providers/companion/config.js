@@ -1,26 +1,7 @@
+import { isLoopbackHost, rewriteLoopbackForRemoteClient } from '../../utils/loopbackRewrite'
+
 let _baseUrl = ''
 let _authToken = ''
-
-const isLoopbackHost = (hostname) => hostname === 'localhost' || hostname === '127.0.0.1'
-
-const rewriteLoopbackForRemoteClient = (baseUrl, location = typeof window !== 'undefined' ? window.location : null) => {
-  if (!baseUrl || !location) {
-    return baseUrl
-  }
-
-  try {
-    const parsed = new URL(baseUrl, location.origin)
-    const browserHost = location.hostname
-    if (isLoopbackHost(parsed.hostname) && browserHost && !isLoopbackHost(browserHost)) {
-      parsed.hostname = browserHost
-      return parsed.toString().replace(/\/+$/, '')
-    }
-  } catch {
-    return baseUrl
-  }
-
-  return baseUrl
-}
 
 export function setCompanionConfig(baseUrl, authToken) {
   let normalized = String(baseUrl || '').trim()
@@ -28,7 +9,7 @@ export function setCompanionConfig(baseUrl, authToken) {
     normalized = `${window.location.origin}${normalized}`
   }
   normalized = normalized.replace(/\/+$/, '')
-  normalized = rewriteLoopbackForRemoteClient(normalized)
+  normalized = rewriteLoopbackForRemoteClient(normalized).replace(/\/+$/, '')
   _baseUrl = normalized
   _authToken = String(authToken || '').trim()
 }
