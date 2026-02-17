@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import UserMenu from '../../components/UserMenu'
 
 const makeProps = () => ({
@@ -58,8 +58,9 @@ describe('UserMenu', () => {
       render(<UserMenu {...makeProps()} />)
       fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
 
-      expect(screen.getByText('john@example.com')).toBeInTheDocument()
-      expect(screen.getByText('workspace: My Workspace')).toBeInTheDocument()
+      const menu = screen.getByRole('menu')
+      expect(within(menu).getByText('john@example.com')).toBeInTheDocument()
+      expect(within(menu).getByText('workspace: My Workspace')).toBeInTheDocument()
       expect(screen.getByRole('menuitem', { name: 'Switch workspace' })).toBeInTheDocument()
       expect(screen.getByRole('menuitem', { name: 'Create workspace' })).toBeInTheDocument()
       expect(screen.getByRole('menuitem', { name: 'User settings' })).toBeInTheDocument()
