@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { __apiBaseTestUtils } from './apiBase'
+import { __apiBaseTestUtils, buildWsUrl } from './apiBase'
 
 describe('apiBase loopback rewrite', () => {
   it('rewrites loopback VITE_API_URL to current host for remote browser clients', () => {
@@ -49,5 +49,17 @@ describe('apiBase loopback rewrite', () => {
         ignored: undefined,
       }),
     ).toBe('?q=hello&tag=a&tag=b')
+  })
+
+  it('serializes array query values as repeated parameters for websocket URLs', () => {
+    const wsUrl = buildWsUrl('/ws/claude-stream', {
+      session_id: 'abc123',
+      file: ['one.txt', 'two.txt'],
+    })
+
+    expect(wsUrl).toContain('/ws/claude-stream?')
+    expect(wsUrl).toContain('session_id=abc123')
+    expect(wsUrl).toContain('file=one.txt')
+    expect(wsUrl).toContain('file=two.txt')
   })
 })

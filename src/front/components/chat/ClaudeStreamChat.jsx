@@ -195,6 +195,9 @@ const buildFileSpec = (attachment) => {
   return `${attachment.fileId}:${attachment.relativePath}`
 }
 
+const optionalQueryValue = (value) =>
+  value === undefined || value === null || value === '' ? undefined : value
+
 const buildClaudeStreamQuery = (
   sessionId,
   mode,
@@ -205,16 +208,16 @@ const buildClaudeStreamQuery = (
 ) => {
   const files = Array.isArray(fileSpecs) ? fileSpecs.filter(Boolean) : []
   return {
-    session_id: sessionId || undefined,
-    mode: mode || undefined,
+    session_id: optionalQueryValue(sessionId),
+    mode: optionalQueryValue(mode),
     force_new: forceNew ? '1' : undefined,
     resume: resume ? '1' : undefined,
-    model: options?.model || undefined,
-    max_thinking_tokens: options?.maxThinkingTokens || undefined,
-    max_turns: options?.maxTurns || undefined,
-    max_budget_usd: options?.maxBudgetUsd || undefined,
-    allowed_tools: options?.allowedTools || undefined,
-    disallowed_tools: options?.disallowedTools || undefined,
+    model: optionalQueryValue(options?.model),
+    max_thinking_tokens: optionalQueryValue(options?.maxThinkingTokens),
+    max_turns: optionalQueryValue(options?.maxTurns),
+    max_budget_usd: optionalQueryValue(options?.maxBudgetUsd),
+    allowed_tools: optionalQueryValue(options?.allowedTools),
+    disallowed_tools: optionalQueryValue(options?.disallowedTools),
     file: files.length ? files : undefined,
   }
 }

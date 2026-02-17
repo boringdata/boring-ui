@@ -17,5 +17,8 @@ describe('createPiRoutes', () => {
 
     expect(routes.isConfigured).toBe(false)
     expect(routes.sessions()).toBe('/sessions')
+    expect(routes.history('abc')).toBe('/sessions/abc/history')
+    expect(routes.createSession()).toBe('/sessions/create')
+    expect(routes.stream('abc')).toBe('/sessions/abc/stream')
   })
 })
