@@ -139,10 +139,26 @@ Interpretation:
 1. `/api/v1/files/*` -> `workspace-core`
 2. `/api/v1/git/*` -> `workspace-core`
 3. `/ws/pty` and PTY session route family -> `pty-service`
-4. Provisional prefix `/api/v1/agent/normal/*` and related stream routes -> `agent-normal` (finalized in Phase 1)
-5. Provisional prefix `/api/v1/agent/companion/*` and related stream routes -> `agent-companion` (finalized in Phase 1)
-6. Provisional prefix `/api/v1/agent/pi/*` and related stream routes -> `agent-pi` (finalized in Phase 1)
+4. `/api/v1/agent/normal/*` and `/ws/agent/normal/*` -> `agent-normal`
+5. `/api/v1/agent/companion/*` and `/ws/agent/companion/*` -> `agent-companion`
+6. `/api/v1/agent/pi/*` and `/ws/agent/pi/*` -> `agent-pi`
 7. `/api/v1/me`, `/api/v1/workspaces`, `/auth/logout` -> control-plane APIs consumed by `front`
+
+### Finalized Agent Route Prefix Contract (Phase 1)
+
+This section is the authoritative Phase-1 decision for agent route families.
+
+| Agent service | Canonical HTTP prefix | Canonical WebSocket prefix | Legacy/local families to rewrite |
+|---|---|---|---|
+| `agent-normal` | `/api/v1/agent/normal/*` | `/ws/agent/normal/*` | `/api/sessions*`, `/api/attachments`, `/ws/claude-stream` |
+| `agent-companion` | `/api/v1/agent/companion/*` | `/ws/agent/companion/*` | companion service-local `/api/sessions*`, `/api/fs/*`, `/api/envs*`, `/api/git/*`, `/ws/browser/{session_id}` |
+| `agent-pi` | `/api/v1/agent/pi/*` | `/ws/agent/pi/*` | PI service-local `/api/sessions*` + related stream/history lifecycle endpoints |
+
+Hard rules:
+
+1. Agent runtime routes must live under exactly one canonical agent prefix family.
+2. New top-level agent route families outside these prefixes are not allowed.
+3. Legacy/local families listed above are transitional implementation details and must be cut over to canonical agent prefixes during migration phases.
 
 ## Frontend -> Control Plane Route Contract
 
