@@ -1,7 +1,7 @@
 """Validation checks for bd-3g1g phase-1 contract freeze artifact."""
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 ARTIFACT = Path(__file__).resolve().parents[2] / "docs" / "bd-3g1g-phase1-contract-freeze.md"
@@ -23,8 +23,8 @@ def _extract_table_rows(text: str, heading: str) -> list[list[str]]:
         if not line.startswith("|"):
             continue
         cells = [cell.strip() for cell in line.strip("|").split("|")]
-        # skip separator rows like |---|---|
-        if cells and all(cell and set(cell) <= {"-"} for cell in cells):
+        # skip markdown separator rows like |---|:---:|---:|
+        if cells and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
             continue
         rows.append(cells)
 
@@ -118,6 +118,13 @@ def test_phase1_contract_freeze_has_exit_gate_checklist() -> None:
 def test_phase1_contract_freeze_has_mutation_semantics_contracts() -> None:
     text = ARTIFACT.read_text(encoding="utf-8")
     rows = _extract_table_rows(text, "## Mutation Semantics Freeze")
+    assert len(rows) == 3, f"Expected exactly 3 mutation-semantics rows, found {len(rows)}"
+
+    operation_keys = [row[0] for row in rows]
+    expected_ops = {"create/queue (`POST`)", "write/rename/move/delete", "runtime retry/start"}
+    assert set(operation_keys) == expected_ops, "Unexpected mutation operation class in contract table"
+    assert len(set(operation_keys)) == len(operation_keys), "Duplicate mutation operation classes detected"
+
     mapping = {row[0]: (row[1], row[2]) for row in rows}
 
     assert "create/queue (`POST`)" in mapping
