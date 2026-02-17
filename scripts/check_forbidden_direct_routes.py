@@ -46,7 +46,7 @@ RULES: tuple[Rule, ...] = (
     Rule(
         code="legacy-compat-route",
         pattern=re.compile(
-            r"""['"`]/(?:api/(?:tree|file(?:/|$)|search(?:/|$)|git(?:/|$)|attachments(?:/|$))|ws/(?:stream|pty)(?:/|$))"""
+            r"""['"`]/(?:api/(?:tree|file|search|git|attachments)(?:/|$|[?#]|['"`])|ws/(?:stream|pty)(?:/|$|[?#]|['"`]))"""
         ),
         message="Legacy /api/* or /ws/* compat literals are forbidden in feature modules.",
     ),
@@ -58,7 +58,7 @@ RULES: tuple[Rule, ...] = (
     Rule(
         code="direct-internal-service-route",
         pattern=re.compile(
-            r"""['"`]/(?:api/v1/(?:files|git|pty|agent(?:/(?:normal|companion|pi))?)(?:/|$)|ws/(?:pty|agent/(?:normal|companion|pi))(?:/|$))"""
+            r"""['"`]/(?:api/v1/(?:files|git|pty|agent(?:/(?:normal|companion|pi))?)(?:/|$|[?#]|['"`])|ws/(?:pty|agent/(?:normal|companion|pi))(?:/|$|[?#]|['"`]))"""
         ),
         message="Direct internal service families are forbidden; route via control-plane boundaries.",
     ),
@@ -84,14 +84,26 @@ def _is_candidate(rel_path: Path) -> bool:
     return True
 
 
-def _is_comment_line(line: str) -> bool:
+def _strip_comment_only_segments(line: str, in_block_comment: bool) -> tuple[str, bool]:
     stripped = line.lstrip()
-    return (
-        stripped.startswith("//")
-        or stripped.startswith("*")
-        or stripped.startswith("/*")
-        or stripped.startswith("*/")
-    )
+
+    if in_block_comment:
+        end = stripped.find("*/")
+        if end == -1:
+            return "", True
+        stripped = stripped[end + 2 :].lstrip()
+        in_block_comment = False
+
+    while stripped.startswith("/*"):
+        end = stripped.find("*/", 2)
+        if end == -1:
+            return "", True
+        stripped = stripped[end + 2 :].lstrip()
+
+    if stripped.startswith("//"):
+        return "", in_block_comment
+
+    return stripped, in_block_comment
 
 
 def _iter_targets(root: Path, scan_root: Path) -> Iterable[Path]:
@@ -106,11 +118,16 @@ def _scan_file(root: Path, file_path: Path) -> list[Violation]:
     rel_path = file_path.relative_to(root)
     text = file_path.read_text(encoding="utf-8")
     violations: list[Violation] = []
+    in_block_comment = False
     for line_number, line in enumerate(text.splitlines(), start=1):
-        if _is_comment_line(line):
+        candidate_line, in_block_comment = _strip_comment_only_segments(
+            line=line,
+            in_block_comment=in_block_comment,
+        )
+        if not candidate_line:
             continue
         for rule in RULES:
-            if rule.pattern.search(line):
+            if rule.pattern.search(candidate_line):
                 violations.append(
                     Violation(
                         rule=rule.code,

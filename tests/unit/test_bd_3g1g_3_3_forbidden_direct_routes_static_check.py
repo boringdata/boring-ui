@@ -75,3 +75,64 @@ def test_guard_skips_allowlisted_route_modules(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     payload = json.loads(result.stdout)
     assert payload["violation_count"] == 0
+
+
+def test_guard_ignores_route_lookalike_strings(tmp_path: Path) -> None:
+    file_path = tmp_path / "src/front/components/LooksSimilar.jsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(
+        "\n".join(
+            [
+                "const a = '/api/treehouse'",
+                "const b = '/api/gitops'",
+                "const c = '/api/v1/agents'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_guard("--root", str(tmp_path), "--format", "json")
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["violation_count"] == 0
+
+
+def test_guard_catches_query_or_hash_terminated_forbidden_routes(tmp_path: Path) -> None:
+    file_path = tmp_path / "src/front/components/WithQueryHash.jsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(
+        "\n".join(
+            [
+                "const a = '/api/file?path=abc'",
+                "const b = '/api/v1/git#status'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_guard("--root", str(tmp_path), "--format", "json")
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    rules = {item["rule"] for item in payload["violations"]}
+    assert "legacy-compat-route" in rules
+    assert "direct-internal-service-route" in rules
+
+
+def test_guard_scans_generator_method_lines(tmp_path: Path) -> None:
+    file_path = tmp_path / "src/front/components/GeneratorStyle.jsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(
+        "\n".join(
+            [
+                "const obj = {",
+                "  *gen() { return '/api/tree' }",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_guard("--root", str(tmp_path), "--format", "json")
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["violation_count"] >= 1
