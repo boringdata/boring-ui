@@ -114,14 +114,15 @@ class FallbackStorageBackend {
     this.fallback = fallback
     this.usingFallback = false
     this.storeNames = storeNames
+    this.fallbackActivationPromise = null
   }
 
-  async mirrorPrimaryToFallback() {
+  async attemptMirrorPrimaryToFallback(sourceBackend) {
     for (const storeName of this.storeNames) {
       try {
-        const keys = await this.active.keys(storeName)
+        const keys = await sourceBackend.keys(storeName)
         for (const key of keys) {
-          const value = await this.active.get(storeName, key)
+          const value = await sourceBackend.get(storeName, key)
           if (value !== null) {
             await this.fallback.set(storeName, key, value)
           }
@@ -133,11 +134,31 @@ class FallbackStorageBackend {
   }
 
   async activateFallback(error) {
-    if (this.usingFallback) return
-    await this.mirrorPrimaryToFallback()
-    console.warn('[PiNativeAdapter] IndexedDB unavailable, falling back to in-memory storage.', error)
+    if (this.usingFallback) {
+      if (this.fallbackActivationPromise) {
+        await this.fallbackActivationPromise
+      }
+      return
+    }
+    if (this.fallbackActivationPromise) {
+      await this.fallbackActivationPromise
+      return
+    }
+
+    const sourceBackend = this.active
     this.active = this.fallback
     this.usingFallback = true
+
+    this.fallbackActivationPromise = (async () => {
+      await this.attemptMirrorPrimaryToFallback(sourceBackend)
+      console.warn('[PiNativeAdapter] IndexedDB unavailable, falling back to in-memory storage.', error)
+    })()
+
+    try {
+      await this.fallbackActivationPromise
+    } finally {
+      this.fallbackActivationPromise = null
+    }
   }
 
   async run(name, args) {
