@@ -204,8 +204,8 @@ Layout corruption or outdated data should never block application usability. The
 A modular API structure keeps feature boundaries clear, allows focused tests, and reduces the chance of cross-feature regressions.
 
 ## API Contracts
-- Files API: `GET /api/tree`, `GET /api/file`, `PUT /api/file`, `DELETE /api/file`, `POST /api/file/rename`, `POST /api/file/move`, `GET /api/search`.
-- Git API: `GET /api/git/status`, `GET /api/git/diff`, `GET /api/git/show`.
+- Files API: `GET /api/v1/files/list`, `GET /api/v1/files/read`, `PUT /api/v1/files/write`, `DELETE /api/v1/files/delete`, `POST /api/v1/files/rename`, `POST /api/v1/files/move`, `GET /api/v1/files/search`.
+- Git API: `GET /api/v1/git/status`, `GET /api/v1/git/diff`, `GET /api/v1/git/show`.
 - PTY API: `WS /ws/pty?session_id=<id>&provider=<name>`.
 - Chat-Claude-Code API: `WS /ws/claude-stream` plus `GET /api/sessions` and `POST /api/sessions`.
 - Approval API: `/api/approval/request`, `/api/approval/pending`, `/api/approval/decision`, `/api/approval/status/{request_id}`, `/api/approval/{request_id}`.

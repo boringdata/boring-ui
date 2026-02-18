@@ -57,23 +57,23 @@ Large repos will overwhelm `tree` and `search`. Pagination, depth limits, and ca
 diff --git a/docs/PLAN.md b/docs/PLAN.md
 @@
  **Files API (modules/files)**
--- `GET /api/tree?path=.` list directory entries.
-+- `GET /api/tree?path=.` list directory entries.
-+- `GET /api/tree?path=.&depth=1&limit=500&cursor=<id>` for pagination.
-+- `GET /api/tree?includeHidden=false&respectGitignore=true` for safe defaults.
+-- `GET /api/v1/files/list?path=.` list directory entries.
++- `GET /api/v1/files/list?path=.` list directory entries.
++- `GET /api/v1/files/list?path=.&depth=1&limit=500&cursor=<id>` for pagination.
++- `GET /api/v1/files/list?includeHidden=false&respectGitignore=true` for safe defaults.
 +- Response includes `nextCursor`, `hasMore`, and `stats` for large dirs.
- - `GET /api/file?path=...` read file content.
-+- `HEAD /api/file?path=...` return metadata only.
-+- `GET /api/file?path=...` returns `etag` and `lastModified`.
+ - `GET /api/v1/files/read?path=...` read file content.
++- `HEAD /api/v1/files/read?path=...` return metadata only.
++- `GET /api/v1/files/read?path=...` returns `etag` and `lastModified`.
 +- Support `If-None-Match` to return `304` when unchanged.
- - `PUT /api/file?path=...` write file content with `{ content }`.
- - `DELETE /api/file?path=...` delete file.
- - `POST /api/file/rename` with `{ old_path, new_path }`.
- - `POST /api/file/move` with `{ src_path, dest_dir }`.
--- `GET /api/search?q=pattern&path=.` glob-style filename search.
-+- `GET /api/search?q=pattern&path=.` glob-style filename search.
-+- `GET /api/search?mode=content&limit=200&cursor=<id>` for content search.
-+- `POST /api/files/batch` to read multiple files in one request.
+ - `PUT /api/v1/files/write?path=...` write file content with `{ content }`.
+ - `DELETE /api/v1/files/delete?path=...` delete file.
+ - `POST /api/v1/files/rename` with `{ old_path, new_path }`.
+ - `POST /api/v1/files/move` with `{ src_path, dest_dir }`.
+-- `GET /api/v1/files/search?q=pattern&path=.` glob-style filename search.
++- `GET /api/v1/files/search?q=pattern&path=.` glob-style filename search.
++- `GET /api/v1/files/search?mode=content&limit=200&cursor=<id>` for content search.
++- `POST /api/v1/files/batch` to read multiple files in one request.
 ```
 
 ## Proposal 4: Unified Events Channel

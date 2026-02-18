@@ -276,8 +276,8 @@ app = create_app(routers=['files', 'git', 'pty'])
 
 | Router           | Prefix   | Description                    |
 |------------------|----------|--------------------------------|
-| files            | /api     | File CRUD + tree operations    |
-| git              | /api/git | Status, diff, show             |
+| files            | /api/v1/files | File CRUD + directory listing/search |
+| git              | /api/v1/git   | Status, diff, show                  |
 | pty              | /ws      | Shell terminal WebSocket       |
 | chat_claude_code | /ws      | Claude stream WebSocket        |
 | approval         | /api     | Tool approval workflow         |
@@ -360,16 +360,18 @@ npm run preview    # Preview production build
 | /api/capabilities     | GET    | Available features and routers   |
 | /api/config           | GET    | Workspace configuration          |
 | /api/project          | GET    | Project root path                |
-| /api/tree             | GET    | Directory tree                   |
-| /api/file             | GET    | Read file                        |
-| /api/file             | PUT    | Write file                       |
-| /api/file             | DELETE | Delete file                      |
-| /api/file/rename      | POST   | Rename file                      |
-| /api/file/move        | POST   | Move file                        |
-| /api/git/status       | GET    | Git status                       |
-| /api/git/diff         | GET    | Git diff                         |
-| /ws/pty/{session_id}  | WS     | Shell PTY                        |
-| /ws/stream/{session}  | WS     | Claude chat stream               |
+| /api/v1/files/list    | GET    | List directory entries           |
+| /api/v1/files/read    | GET    | Read file content                |
+| /api/v1/files/write   | PUT    | Write file content               |
+| /api/v1/files/delete  | DELETE | Delete file                      |
+| /api/v1/files/rename  | POST   | Rename file                      |
+| /api/v1/files/move    | POST   | Move file                        |
+| /api/v1/files/search  | GET    | Search files                     |
+| /api/v1/git/status    | GET    | Git status                       |
+| /api/v1/git/diff      | GET    | Git diff                         |
+| /api/v1/git/show      | GET    | Git show                         |
+| /ws/pty               | WS     | Shell PTY (query params include `session_id`, `provider`) |
+| /ws/claude-stream     | WS     | Claude chat stream               |
 
 ### Frontend Hooks
 
