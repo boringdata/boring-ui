@@ -296,7 +296,9 @@ def enforce_delegated_policy_ws_reason_or_none(
     """
     # Starlette Headers are case-insensitive, but some callers may pass a plain
     # dict; be tolerant there as well.
-    header_value = headers.get(SCOPE_CONTEXT_HEADER) or headers.get(SCOPE_CONTEXT_HEADER.lower())
+    header_value = headers.get(SCOPE_CONTEXT_HEADER)
+    if header_value is None:
+        header_value = headers.get(SCOPE_CONTEXT_HEADER.lower())
     if header_value is None:
         return None
 
