@@ -114,8 +114,9 @@ def test_pty_router_presence_and_unknown_provider_is_denied(workspace: Path) -> 
             ws.receive_text()
     except WebSocketDisconnect as exc:
         assert exc.code == 4003
-    except Exception as exc:  # pragma: no cover
-        assert "websocket" in str(exc).lower() or "provider" in str(exc).lower()
+    except (RuntimeError, OSError, ConnectionError) as exc:
+        msg = str(exc).lower()
+        assert "websocket" in msg or "handshake" in msg or "provider" in msg
     else:  # pragma: no cover
         raise AssertionError("Expected unknown PTY provider to be denied")
 
