@@ -71,6 +71,24 @@ def test_files_invalid_scope_context_header_is_400_envelope(workspace: Path) -> 
     _assert_error_envelope(resp.json(), "invalid_scope_context")
 
 
+def test_files_list_allows_delegated_read_claim(workspace: Path) -> None:
+    app = create_app(
+        APIConfig(workspace_root=workspace),
+        include_pty=False,
+        include_stream=False,
+        include_approval=False,
+    )
+    client = TestClient(app)
+
+    resp = client.get(
+        "/api/v1/files/list",
+        params={"path": "."},
+        headers=_scope_headers(claims=["workspace.files.read"]),
+    )
+    assert resp.status_code == 200
+    assert "entries" in resp.json()
+
+
 def test_files_write_denied_without_write_claim_and_no_side_effects(workspace: Path) -> None:
     app = create_app(
         APIConfig(workspace_root=workspace),
@@ -165,4 +183,3 @@ def test_pty_ws_session_mismatch_is_denied(workspace: Path) -> None:
             ws.receive_text()
 
     assert excinfo.value.code == 4004
-

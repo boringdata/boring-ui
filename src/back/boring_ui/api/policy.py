@@ -51,6 +51,10 @@ class PolicyDeny(Exception):
     request_id: str = ""
     workspace_id: str = ""
 
+    def __str__(self) -> str:  # pragma: no cover
+        # Keep logs readable if a PolicyDeny ever escapes local handling.
+        return f"{self.code}: {self.message}"
+
 
 def _error_envelope(
     *,
@@ -290,7 +294,9 @@ def enforce_delegated_policy_ws_reason_or_none(
     stable close reason string like `policy:capability_denied` when a delegated
     request must be denied. Non-delegated WS connections return None.
     """
-    header_value = headers.get(SCOPE_CONTEXT_HEADER)
+    # Starlette Headers are case-insensitive, but some callers may pass a plain
+    # dict; be tolerant there as well.
+    header_value = headers.get(SCOPE_CONTEXT_HEADER) or headers.get(SCOPE_CONTEXT_HEADER.lower())
     if header_value is None:
         return None
 
@@ -310,4 +316,3 @@ def enforce_delegated_policy_ws_reason_or_none(
         return "policy:session_mismatch"
 
     return None
-

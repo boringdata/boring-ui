@@ -36,7 +36,7 @@ def create_pty_lifecycle_router(config: APIConfig | None = None) -> APIRouter:
     router = APIRouter(tags=["pty"])
 
     @router.get("/sessions")
-    async def list_sessions(request: Request) -> dict[str, Any]:
+    async def list_sessions(request: Request):
         deny = enforce_delegated_policy_or_none(
             request,
             {"pty.session.attach"},
@@ -47,7 +47,7 @@ def create_pty_lifecycle_router(config: APIConfig | None = None) -> APIRouter:
         return {"sessions": list_pty_session_summaries()}
 
     @router.post("/sessions")
-    async def create_session(request: Request) -> dict[str, str]:
+    async def create_session(request: Request):
         deny = enforce_delegated_policy_or_none(
             request,
             {"pty.session.start"},
