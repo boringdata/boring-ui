@@ -97,6 +97,14 @@ def test_workspace_core_git_is_consistent_across_agents(service: str, workspace:
     )
     client = TestClient(app)
 
+    # Allowed: git read claim present (workspace may or may not be a git repo).
+    resp = client.get(
+        "/api/v1/git/status",
+        headers=_scope_headers(service=service, claims=["workspace.git.read"]),
+    )
+    assert resp.status_code == 200
+    assert "is_repo" in resp.json()
+
     resp = client.get(
         "/api/v1/git/status",
         headers=_scope_headers(service=service, claims=["workspace.files.read"]),
@@ -114,6 +122,14 @@ def test_pty_lifecycle_is_consistent_across_agents(service: str, workspace: Path
         include_pty=True,
     )
     client = TestClient(app)
+
+    # Allowed: session start claim present.
+    resp = client.post(
+        "/api/v1/pty/sessions",
+        headers=_scope_headers(service=service, claims=["pty.session.start"]),
+    )
+    assert resp.status_code == 200
+    assert isinstance(resp.json().get("session_id"), str)
 
     resp = client.post(
         "/api/v1/pty/sessions",
@@ -144,5 +160,5 @@ def test_pty_ws_policy_denial_is_consistent_across_agents(service: str, workspac
         ) as ws:
             ws.receive_text()
 
-    assert excinfo.value.code == 4004
-
+    assert excinfo.value.code in (4004, 1008)
+    assert excinfo.value.reason == "policy:capability_denied"
