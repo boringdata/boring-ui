@@ -101,6 +101,9 @@ Verification matrix (`## Verification Matrix`):
 | `bd-3g1g.7.3` | publish final migration summary for maintainers | `G1,G2,G3,G4` | `N1,N2,N3` | `AR5,AR6,AR7,AR8,SB1,SB2,SB3,SB4,SB5,SB6` | `R2` | `VM2,VM6` | closeout summary doc + `.evidence/bd-3g1g.7.3.md` |
 | `bd-3g1g.7.4` | audit epic completeness and close orphaned bookkeeping | `G1,G3` | `N1,N2,N3` | `AR5,AR6,AR7,SB1,SB2,SB3,SB4,SB5,SB6` | `R2` | `VM2` | closure audit checklist + `.evidence/bd-3g1g.7.4.md` |
 | `bd-3g1g.7.5` | build repeatable verification runner and structured log manifest | `G1,G2,G3,G4` | `N1,N2,N3` | `AR1,AR2,AR7,AR8,SB1,SB2,SB3,SB4,SB5,SB6` | `R2,R4` | `VM1,VM2,VM3,VM4,VM5,VM6` | verification runner + structured logs + `.evidence/bd-3g1g.7.5.md` |
+| `bd-3g1g.7.6` | keep Phase-5 UX smoke deterministic by scoping user-menu failure alerts and actions to the user-menu surface | `G4` | `N1,N2` | `AR2,AR8,SB1` | `R2,R4` | `VM4,VM6` | `src/front/__tests__/e2e/user-menu-flows.spec.ts`, `src/front/components/UserMenu.jsx`, `.evidence/bd-3g1g.7.6.md` |
+| `bd-3g1g.7.7` | stabilize PTY e2e runs by removing hard dependency on an external `claude` binary and handling spawn failures without ASGI tracebacks | `G1,G3` | `N2,N3` | `AR6,AR7,SB3` | `R2,R4` | `VM2,VM6` | `src/back/boring_ui/api/modules/pty/service.py`, `src/back/boring_ui/api/config.py`, unit tests + `.evidence/bd-3g1g.7.7.md` |
+| `bd-3g1g.7.8` | add lightweight performance smoke to the verification matrix runner so Phase-5 has a repeatable perf signal | `G3` | `N1,N2,N3` | `AR7,SB2,SB3` | `R2,R4` | `VM5` | perf smoke suite + thresholds + runner manifest integration + `.evidence/bd-3g1g.7.8.md` |
 
 ## Usage Guidance for Implementers
 
