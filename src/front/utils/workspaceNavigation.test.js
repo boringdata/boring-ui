@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   resolveWorkspaceNavigationRoute,
+  resolveWorkspaceNavigationRouteFromPathname,
   syncWorkspaceRuntimeAndSettings,
 } from './workspaceNavigation'
 
@@ -97,6 +98,30 @@ describe('workspaceNavigation transport regressions', () => {
       }),
     ).toEqual({
       path: '/w/ws-setup/setup',
+      query: undefined,
+    })
+  })
+
+  it('derives path suffix from pathname to avoid boot-race regressions', () => {
+    expect(
+      resolveWorkspaceNavigationRouteFromPathname({
+        workspaceId: 'ws-live',
+        runtimePayload: { runtime: { status: 'ready' } },
+        pathname: '/w/ws-current/app/editor',
+      }),
+    ).toEqual({
+      path: '/w/ws-live/app/editor',
+      query: undefined,
+    })
+
+    expect(
+      resolveWorkspaceNavigationRouteFromPathname({
+        workspaceId: 'ws-live',
+        runtimePayload: { runtime: { status: 'failed' } },
+        pathname: '/w/ws-current/app/editor',
+      }),
+    ).toEqual({
+      path: '/w/ws-live/setup',
       query: undefined,
     })
   })

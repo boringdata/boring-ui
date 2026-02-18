@@ -1,6 +1,7 @@
 import { routes } from './routes'
 import {
   extractWorkspaceSettingsPayload,
+  getWorkspacePathSuffix,
   isRuntimeReady,
   shouldRetryRuntime,
 } from './controlPlane'
@@ -53,4 +54,18 @@ export const resolveWorkspaceNavigationRoute = ({
     return routes.controlPlane.workspaces.scope(workspaceId, currentWorkspacePathSuffix)
   }
   return routes.controlPlane.workspaces.setup(workspaceId)
+}
+
+// Derive suffix from the live URL pathname to avoid boot-race/stale-state issues
+// when the App's path context effect hasn't run yet.
+export const resolveWorkspaceNavigationRouteFromPathname = ({
+  workspaceId,
+  runtimePayload,
+  pathname = '',
+}) => {
+  return resolveWorkspaceNavigationRoute({
+    workspaceId,
+    runtimePayload,
+    currentWorkspacePathSuffix: getWorkspacePathSuffix(pathname),
+  })
 }
