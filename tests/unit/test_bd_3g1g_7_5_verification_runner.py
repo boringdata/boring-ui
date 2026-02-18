@@ -67,3 +67,31 @@ def test_verification_runner_only_filters_and_unknown_step_errors() -> None:
     )
     assert bad.returncode == 2
     assert "unknown step" in (bad.stderr or "").lower()
+
+
+def test_verification_runner_playwright_env_overrides_are_present_and_usable() -> None:
+    root = _repo_root()
+    script = root / "scripts" / "bd_3g1g_verify.py"
+
+    proc = subprocess.run(  # noqa: S603 - local repo script under test
+        ["python3", str(script), "--dry-run", "--skip-ubs", "--only=playwright_e2e"],
+        cwd=str(root),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(proc.stdout)
+    steps = payload.get("steps")
+    assert isinstance(steps, list) and steps, "Expected non-empty steps list"
+    assert steps[0].get("name") == "playwright_e2e"
+
+    env_overrides = steps[0].get("env_overrides")
+    assert isinstance(env_overrides, dict)
+    assert env_overrides.get("PW_E2E_REUSE_SERVER") == "0"
+    assert env_overrides.get("PW_E2E_WORKERS") == "1"
+
+    e2e_port = env_overrides.get("PW_E2E_PORT")
+    api_port = env_overrides.get("PW_E2E_API_PORT")
+    assert isinstance(e2e_port, str) and e2e_port.isdigit()
+    assert isinstance(api_port, str) and api_port.isdigit()
+    assert e2e_port != api_port

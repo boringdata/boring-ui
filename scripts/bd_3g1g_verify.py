@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -54,11 +55,33 @@ def _repo_root() -> Path:
     raise RuntimeError("Could not locate repository root (pyproject.toml + package.json)")
 
 
+def _find_free_port() -> int:
+    # Best-effort: pick a currently-free local TCP port. There is an inherent race
+    # between selection and process start, but this avoids persistent collisions
+    # in multi-agent environments where fixed ports may be held by stray servers.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
 def _build_steps(repo_root: Path) -> list[Step]:
     # Ensure node-based steps use real Node even when `node` resolves to Bun.
     # Playwright e2e already has a wrapper for this, but vitest is commonly run
     # directly.
     node_env_overrides = {"PATH": f"/usr/bin:{os.environ.get('PATH','')}"}
+    e2e_frontend_port = _find_free_port()
+    e2e_api_port = _find_free_port()
+    while e2e_api_port == e2e_frontend_port:
+        e2e_api_port = _find_free_port()
+    playwright_env_overrides = {
+        **node_env_overrides,
+        # Keep the matrix deterministic: avoid server reuse and parallel worker flake.
+        "PW_E2E_REUSE_SERVER": "0",
+        "PW_E2E_WORKERS": "1",
+        # Avoid collisions with other tmux sessions: allocate free ports per run.
+        "PW_E2E_PORT": str(e2e_frontend_port),
+        "PW_E2E_API_PORT": str(e2e_api_port),
+    }
 
     return [
         Step(
@@ -88,7 +111,7 @@ def _build_steps(repo_root: Path) -> list[Step]:
         Step(
             name="playwright_e2e",
             cmd=["npm", "run", "-s", "test:e2e"],
-            env_overrides=node_env_overrides,
+            env_overrides=playwright_env_overrides,
             timeout_seconds=20 * 60,
         ),
         # UBS is best-effort in this environment; callers can skip explicitly.
