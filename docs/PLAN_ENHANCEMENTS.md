@@ -57,8 +57,7 @@ Large repos will overwhelm `tree` and `search`. Pagination, depth limits, and ca
 diff --git a/docs/PLAN.md b/docs/PLAN.md
 @@
  **Files API (modules/files)**
--- `GET /api/v1/files/list?path=.` list directory entries.
-+- `GET /api/v1/files/list?path=.` list directory entries.
+  - `GET /api/v1/files/list?path=.` list directory entries.
 +- `GET /api/v1/files/list?path=.&depth=1&limit=500&cursor=<id>` for pagination.
 +- `GET /api/v1/files/list?includeHidden=false&respectGitignore=true` for safe defaults.
 +- Response includes `nextCursor`, `hasMore`, and `stats` for large dirs.
@@ -70,8 +69,7 @@ diff --git a/docs/PLAN.md b/docs/PLAN.md
  - `DELETE /api/v1/files/delete?path=...` delete file.
  - `POST /api/v1/files/rename` with `{ old_path, new_path }`.
  - `POST /api/v1/files/move` with `{ src_path, dest_dir }`.
--- `GET /api/v1/files/search?q=pattern&path=.` glob-style filename search.
-+- `GET /api/v1/files/search?q=pattern&path=.` glob-style filename search.
+  - `GET /api/v1/files/search?q=pattern&path=.` glob-style filename search.
 +- `GET /api/v1/files/search?mode=content&limit=200&cursor=<id>` for content search.
 +- `POST /api/v1/files/batch` to read multiple files in one request.
 ```
