@@ -16,9 +16,9 @@ describe('createPiRoutes', () => {
     const routes = createPiRoutes('')
 
     expect(routes.isConfigured).toBe(false)
-    expect(routes.sessions()).toBe('/api/v1/agent/pi/sessions')
-    expect(routes.history('abc')).toBe('/api/v1/agent/pi/sessions/abc/history')
-    expect(routes.createSession()).toBe('/api/v1/agent/pi/sessions/create')
-    expect(routes.stream('abc')).toBe('/api/v1/agent/pi/sessions/abc/stream')
+    expect(routes.sessions()).toBe('/sessions')
+    expect(routes.history('abc')).toBe('/sessions/abc/history')
+    expect(routes.createSession()).toBe('/sessions/create')
+    expect(routes.stream('abc')).toBe('/sessions/abc/stream')
   })
 })

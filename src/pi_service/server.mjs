@@ -53,6 +53,14 @@ async function readJsonBody(req) {
   }
 }
 
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return null
+  }
+}
+
 function pickDefaultModel() {
   return (
     getModel('anthropic', DEFAULT_MODEL)
@@ -289,7 +297,11 @@ async function handleHttpRequest(req, res) {
 
   const historyMatch = path.match(/^\/api\/v1\/agent\/pi\/sessions\/([^/]+)\/history$/)
   if (req.method === 'GET' && historyMatch) {
-    const sessionId = decodeURIComponent(historyMatch[1])
+    const sessionId = safeDecodeURIComponent(historyMatch[1])
+    if (!sessionId) {
+      sendJson(res, 400, { error: 'invalid session id' })
+      return
+    }
     const session = sessions.get(sessionId)
     if (!session) {
       sendJson(res, 404, { error: 'session not found' })
@@ -304,7 +316,11 @@ async function handleHttpRequest(req, res) {
 
   const stopMatch = path.match(/^\/api\/v1\/agent\/pi\/sessions\/([^/]+)\/stop$/)
   if (req.method === 'POST' && stopMatch) {
-    const sessionId = decodeURIComponent(stopMatch[1])
+    const sessionId = safeDecodeURIComponent(stopMatch[1])
+    if (!sessionId) {
+      sendJson(res, 400, { error: 'invalid session id' })
+      return
+    }
     const session = sessions.get(sessionId)
     if (!session) {
       sendJson(res, 404, { error: 'session not found' })
@@ -318,13 +334,18 @@ async function handleHttpRequest(req, res) {
 
   const streamMatch = path.match(/^\/api\/v1\/agent\/pi\/sessions\/([^/]+)\/stream$/)
   if (req.method === 'POST' && streamMatch) {
-    const sessionId = decodeURIComponent(streamMatch[1])
+    const sessionId = safeDecodeURIComponent(streamMatch[1])
+    if (!sessionId) {
+      sendJson(res, 400, { error: 'invalid session id' })
+      return
+    }
     const session = getOrCreateSession(sessionId)
     try {
       await handleStream(req, res, session)
     } catch (error) {
+      console.error('[pi-service] stream handler failed', error)
       if (!res.headersSent) {
-        sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) })
+        sendJson(res, 500, { error: 'internal server error' })
       } else {
         res.end()
       }
@@ -337,8 +358,9 @@ async function handleHttpRequest(req, res) {
 
 const server = http.createServer((req, res) => {
   handleHttpRequest(req, res).catch((error) => {
+    console.error('[pi-service] request handler failed', error)
     if (!res.headersSent) {
-      sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(res, 500, { error: 'internal server error' })
     } else {
       res.end()
     }
