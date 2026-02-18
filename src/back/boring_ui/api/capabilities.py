@@ -116,14 +116,14 @@ def create_default_registry() -> RouterRegistry:
         'files',
         '/api/v1/files',
         create_file_router,
-        description='[owner=workspace-core] [canonical=/api/v1/files/*] File system operations (read, write, rename, delete)',
+        description='File system operations (read, write, rename, delete)',
         tags=['files'],
     )
     registry.register(
         'git',
         '/api/v1/git',
         create_git_router,
-        description='[owner=workspace-core] [canonical=/api/v1/git/*] Git operations (status, diff, show)',
+        description='Git operations (status, diff, show)',
         tags=['git'],
     )
 
@@ -132,14 +132,14 @@ def create_default_registry() -> RouterRegistry:
         'pty',
         '/ws',
         create_pty_router,
-        description='[owner=pty-service] [canonical=/ws/pty,/api/v1/pty/*] PTY WebSocket for shell terminals',
+        description='PTY WebSocket for shell terminals',
         tags=['websocket', 'terminal'],
     )
     registry.register(
         'chat_claude_code',
         '/ws',
         create_stream_router,
-        description='[owner=agent-normal] [canonical=/ws/agent/normal/*,/api/v1/agent/normal/*] Claude stream WebSocket for AI chat',
+        description='Claude stream WebSocket for AI chat',
         tags=['websocket', 'ai'],
     )
     # Backward compatibility alias: 'stream' -> 'chat_claude_code'
@@ -147,14 +147,14 @@ def create_default_registry() -> RouterRegistry:
         'stream',
         '/ws',
         create_stream_router,
-        description='[owner=agent-normal] [canonical=/ws/agent/normal/*,/api/v1/agent/normal/*] Claude stream WebSocket for AI chat (alias for chat_claude_code)',
+        description='Claude stream WebSocket for AI chat (alias for chat_claude_code)',
         tags=['websocket', 'ai'],
     )
     registry.register(
         'approval',
         '/api',
         create_approval_router,
-        description='[owner=boring-ui] [canonical=/api/approval/*] Approval workflow endpoints',
+        description='Approval workflow endpoints',
         tags=['approval'],
     )
 
@@ -194,6 +194,8 @@ def create_capabilities_router(
 
         # Add router details if registry provided
         if registry:
+            # Read env var at request-time to keep tests simple (monkeypatch),
+            # and to allow runtime overrides in dev environments.
             include_contract_metadata = os.environ.get("CAPABILITIES_INCLUDE_CONTRACT_METADATA", "").strip().lower() in {
                 "1",
                 "true",
@@ -214,18 +216,31 @@ def create_capabilities_router(
                 },
                 "approval": {"owner_service": "boring-ui", "canonical_families": ["/api/approval/*"]},
             }
+
+            def _apply_contract_prefix(description: str, contract: dict[str, Any] | None) -> str:
+                if not contract:
+                    return description
+                owner_service = contract.get("owner_service")
+                canonical_families = contract.get("canonical_families") or []
+                canonical = ",".join(canonical_families)
+                return f"[owner={owner_service}] [canonical={canonical}] {description}"
+
             capabilities['routers'] = [
                 {
                     'name': info.name,
                     'prefix': info.prefix,
-                    'description': info.description,
+                    'description': _apply_contract_prefix(
+                        info.description,
+                        contract_by_router.get(info.name),
+                    ),
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),
-                    'contract_metadata_included': include_contract_metadata,
                     'contract_metadata': (
-                        contract_by_router.get(info.name)
-                        if include_contract_metadata
-                        else None
+                        contract_by_router.get(info.name) if include_contract_metadata else None
+                    ),
+                    # Per-entry indicator: avoids confusing "enabled globally but missing for this router" states.
+                    'contract_metadata_included': (
+                        include_contract_metadata and info.name in contract_by_router
                     ),
                 }
                 for info, _ in registry.all()

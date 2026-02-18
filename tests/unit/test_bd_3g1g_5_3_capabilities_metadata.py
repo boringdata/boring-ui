@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 
 from boring_ui.api import create_app
+from boring_ui.api.capabilities import create_default_registry
 
 
 def _routers_by_name(payload: dict) -> dict[str, dict]:
@@ -55,15 +56,18 @@ def test_capabilities_contract_metadata_is_gated_and_schema_stable(monkeypatch) 
 
     # Enabled: metadata content is present and matches expected ownership/canonical families.
     monkeypatch.setenv("CAPABILITIES_INCLUDE_CONTRACT_METADATA", "1")
-    app2 = create_app()
+    registry = create_default_registry()
+    # Add a router without contract_by_router metadata to prove per-entry semantics stay stable.
+    registry.register("unknown_router", "/api", lambda *_args, **_kwargs: None, description="Unknown router")
+    app2 = create_app(registry=registry)
     client2 = TestClient(app2)
     payload2 = client2.get("/api/capabilities").json()
     by_name2 = _routers_by_name(payload2)
 
     for entry in by_name2.values():
-        assert entry["contract_metadata_included"] is True
         # Not all routers necessarily have contract metadata, but all must be structurally valid.
         meta = entry["contract_metadata"]
+        assert entry["contract_metadata_included"] is (meta is not None)
         if meta is None:
             continue
         assert "owner_service" in meta
@@ -81,3 +85,6 @@ def test_capabilities_contract_metadata_is_gated_and_schema_stable(monkeypatch) 
     assert "/ws/agent/normal/*" in by_name2["chat_claude_code"]["contract_metadata"]["canonical_families"]
     assert "/api/v1/agent/normal/*" in by_name2["chat_claude_code"]["contract_metadata"]["canonical_families"]
     assert by_name2["stream"]["contract_metadata"] == by_name2["chat_claude_code"]["contract_metadata"]
+
+    assert by_name2["unknown_router"]["contract_metadata_included"] is False
+    assert by_name2["unknown_router"]["contract_metadata"] is None
