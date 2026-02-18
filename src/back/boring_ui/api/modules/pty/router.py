@@ -13,6 +13,16 @@ from .service import PTYService, SharedSession, _SERVICE
 _pty_service = _SERVICE
 
 
+def _pty_start_error_message(exc: Exception, provider: str, command: list[str]) -> str:
+    # Keep the message stable and human-readable; avoid dumping stack traces into clients.
+    cmd_str = " ".join(command) if command else "<empty>"
+    exc_name = type(exc).__name__
+    detail = str(exc).strip()
+    if detail:
+        return f"PTY provider '{provider}' failed to start ({exc_name}): {detail} (command: {cmd_str})"
+    return f"PTY provider '{provider}' failed to start ({exc_name}) (command: {cmd_str})"
+
+
 def create_pty_router(config: APIConfig) -> APIRouter:
     """Create PTY WebSocket router.
 
@@ -83,7 +93,27 @@ def create_pty_router(config: APIConfig) -> APIRouter:
 
         # Accept WebSocket
         await websocket.accept()
-        await session.add_client(websocket)
+        try:
+            await session.add_client(websocket)
+        except Exception as exc:
+            # Defensive behavior: PTY spawn can fail (missing binary, missing ptyprocess, etc).
+            # Ensure we don't leak an ASGI traceback into server logs and that the client
+            # receives a test-assertable error envelope.
+            try:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "data": _pty_start_error_message(exc, provider, command),
+                        "session_id": session.session_id,
+                    }
+                )
+            except Exception:
+                pass
+            try:
+                await websocket.close(code=1011, reason="PTY start failed")
+            except Exception:
+                pass
+            return
 
         try:
             # Message loop
