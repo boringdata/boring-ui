@@ -19,6 +19,10 @@ export default function UserMenu({
   workspaceName,
   workspaceId,
   collapsed = false,
+  statusMessage = '',
+  statusTone = 'error',
+  onRetry,
+  disabledActions = [],
   onSwitchWorkspace,
   onCreateWorkspace,
   onOpenUserSettings,
@@ -141,9 +145,35 @@ export default function UserMenu({
     >
       <div className="user-menu-email">{displayEmail}</div>
       <div className="user-menu-workspace">{workspaceLabel}</div>
+      {statusMessage ? (
+        <div
+          className={`user-menu-status user-menu-status-${statusTone}`}
+          role="alert"
+        >
+          <span className="user-menu-status-text">{statusMessage}</span>
+          {typeof onRetry === 'function' ? (
+            <button
+              type="button"
+              className="user-menu-status-retry"
+              onClick={() => {
+                try {
+                  const result = onRetry()
+                  if (result && typeof result.catch === 'function') {
+                    result.catch(() => {})
+                  }
+                } catch {
+                  // ignore retry errors; status will be updated by parent flows if needed
+                }
+              }}
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="user-menu-divider" />
       {actionItems.map((item) => {
-        const disabled = typeof item.onClick !== 'function'
+        const disabled = typeof item.onClick !== 'function' || disabledActions.includes(item.key)
         return (
           <button
             key={item.key}

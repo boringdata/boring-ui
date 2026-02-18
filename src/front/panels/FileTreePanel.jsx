@@ -21,6 +21,10 @@ export default function FileTreePanel({ params }) {
     onCreateWorkspace,
     onOpenUserSettings,
     onLogout,
+    userMenuStatusMessage,
+    userMenuStatusTone,
+    onUserMenuRetry,
+    userMenuDisabledActions,
   } = params
   const [creatingFile, setCreatingFile] = useState(false)
   const [viewMode, setViewMode] = useState('files') // 'files' | 'changes'
@@ -58,6 +62,10 @@ export default function FileTreePanel({ params }) {
             email={userEmail}
             workspaceName={workspaceName}
             workspaceId={workspaceId}
+            statusMessage={userMenuStatusMessage}
+            statusTone={userMenuStatusTone}
+            onRetry={onUserMenuRetry}
+            disabledActions={userMenuDisabledActions}
             onSwitchWorkspace={onSwitchWorkspace}
             onCreateWorkspace={onCreateWorkspace}
             onOpenUserSettings={onOpenUserSettings}
@@ -136,6 +144,10 @@ export default function FileTreePanel({ params }) {
           email={userEmail}
           workspaceName={workspaceName}
           workspaceId={workspaceId}
+          statusMessage={userMenuStatusMessage}
+          statusTone={userMenuStatusTone}
+          onRetry={onUserMenuRetry}
+          disabledActions={userMenuDisabledActions}
           onSwitchWorkspace={onSwitchWorkspace}
           onCreateWorkspace={onCreateWorkspace}
           onOpenUserSettings={onOpenUserSettings}

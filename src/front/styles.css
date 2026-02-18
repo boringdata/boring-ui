@@ -3759,6 +3759,43 @@ html {
   color: var(--color-text-secondary);
 }
 
+.user-menu-status {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: 10px;
+  line-height: 1.35;
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.user-menu-status-error {
+  background: var(--color-danger-subtle, #ffeef0);
+  color: var(--color-danger-fg, #d73a49);
+}
+
+.user-menu-status-text {
+  flex: 1;
+}
+
+.user-menu-status-retry {
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  padding: 2px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.user-menu-status-retry:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
 .user-menu-divider {
   height: 1px;
   background: var(--color-border);
