@@ -189,6 +189,18 @@ export default function App() {
     return ''
   }, [workspaceOptions, currentWorkspaceId, projectRoot])
 
+  const userMenuStatusMessage = userMenuIdentityError || userMenuWorkspaceError
+  const userMenuStatusTone = userMenuStatusMessage ? 'error' : ''
+  const userMenuDisabledActions = useMemo(() => {
+    if (userMenuAuthStatus === 'unauthenticated') {
+      return ['switch', 'create', 'settings', 'logout']
+    }
+    if (userMenuWorkspaceError) {
+      return ['switch']
+    }
+    return []
+  }, [userMenuAuthStatus, userMenuWorkspaceError])
+
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
     if (!collapsed.filetree && dockApi) {
