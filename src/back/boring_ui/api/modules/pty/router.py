@@ -1,5 +1,6 @@
 """PTY WebSocket router for boring-ui API."""
 import json
+import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
@@ -47,10 +48,20 @@ def create_pty_router(config: APIConfig) -> APIRouter:
 
         command = config.pty_providers[provider]
 
+        normalized_session_id: str | None = None
+        if session_id is not None:
+            candidate = str(session_id).strip()
+            if candidate:
+                try:
+                    normalized_session_id = str(uuid.UUID(candidate))
+                except (ValueError, AttributeError, TypeError):
+                    await websocket.close(code=4004, reason="Invalid session_id (must be a UUID)")
+                    return
+
         # Get or create session
         try:
             session, is_new = await _pty_service.get_or_create_session(
-                session_id=session_id,
+                session_id=normalized_session_id,
                 command=command,
                 cwd=config.workspace_root,
             )
