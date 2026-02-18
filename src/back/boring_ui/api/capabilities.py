@@ -225,8 +225,16 @@ def create_capabilities_router(
                     'description': info.description,
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),
-                    'owner_service': (info.owner_service or None) if include_contract_metadata else None,
-                    'canonical_families': info.canonical_families if include_contract_metadata else [],
+                    **(
+                        {
+                            'contract_metadata': {
+                                'owner_service': info.owner_service or None,
+                                'canonical_families': info.canonical_families,
+                            }
+                        }
+                        if include_contract_metadata
+                        else {}
+                    ),
                 }
                 for info, _ in registry.all()
             ]

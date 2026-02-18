@@ -2,7 +2,8 @@
 
 from fastapi.testclient import TestClient
 
-from boring_ui.api import create_app
+from boring_ui.api import create_app, RouterRegistry
+from boring_ui.api.capabilities import RouterInfo
 
 
 def _routers_by_name(payload: dict) -> dict[str, dict]:
@@ -18,6 +19,29 @@ def _routers_by_name(payload: dict) -> dict[str, dict]:
     return by_name
 
 
+def test_registry_register_normalizes_string_lists() -> None:
+    registry = RouterRegistry()
+
+    # Intentionally pass strings to ensure we don't create ["f","i","l","e","s"].
+    # This is a defensive normalization behavior; callers should still pass lists.
+    registry.register(
+        name="demo",
+        prefix="/api/demo",
+        factory=lambda: None,  # type: ignore[arg-type]
+        tags="files",  # type: ignore[arg-type]
+        required_capabilities="cap.demo",  # type: ignore[arg-type]
+        canonical_families="/api/demo/*",  # type: ignore[arg-type]
+    )
+
+    entry = registry.get("demo")
+    assert entry is not None
+    info, _ = entry
+    assert isinstance(info, RouterInfo)
+    assert info.tags == ["files"]
+    assert info.required_capabilities == ["cap.demo"]
+    assert info.canonical_families == ["/api/demo/*"]
+
+
 def test_capabilities_router_metadata_includes_owner_and_canonical_families(monkeypatch) -> None:
     monkeypatch.setenv("CAPABILITIES_INCLUDE_CONTRACT_METADATA", "1")
     app = create_app()
@@ -30,30 +54,30 @@ def test_capabilities_router_metadata_includes_owner_and_canonical_families(monk
     by_name = _routers_by_name(payload)
 
     files = by_name["files"]
-    assert files["owner_service"] == "workspace-core"
-    assert files["canonical_families"] == ["/api/v1/files/*"]
+    assert files["contract_metadata"]["owner_service"] == "workspace-core"
+    assert files["contract_metadata"]["canonical_families"] == ["/api/v1/files/*"]
 
     git = by_name["git"]
-    assert git["owner_service"] == "workspace-core"
-    assert git["canonical_families"] == ["/api/v1/git/*"]
+    assert git["contract_metadata"]["owner_service"] == "workspace-core"
+    assert git["contract_metadata"]["canonical_families"] == ["/api/v1/git/*"]
 
     pty = by_name["pty"]
-    assert pty["owner_service"] == "pty-service"
-    assert "/ws/pty" in pty["canonical_families"]
-    assert "/api/v1/pty/*" in pty["canonical_families"]
+    assert pty["contract_metadata"]["owner_service"] == "pty-service"
+    assert "/ws/pty" in pty["contract_metadata"]["canonical_families"]
+    assert "/api/v1/pty/*" in pty["contract_metadata"]["canonical_families"]
 
     chat = by_name["chat_claude_code"]
-    assert chat["owner_service"] == "agent-normal"
-    assert "/ws/agent/normal/*" in chat["canonical_families"]
-    assert "/api/v1/agent/normal/*" in chat["canonical_families"]
+    assert chat["contract_metadata"]["owner_service"] == "agent-normal"
+    assert "/ws/agent/normal/*" in chat["contract_metadata"]["canonical_families"]
+    assert "/api/v1/agent/normal/*" in chat["contract_metadata"]["canonical_families"]
 
     stream_alias = by_name["stream"]
-    assert stream_alias["owner_service"] == "agent-normal"
-    assert stream_alias["canonical_families"] == chat["canonical_families"]
+    assert stream_alias["contract_metadata"]["owner_service"] == "agent-normal"
+    assert stream_alias["contract_metadata"]["canonical_families"] == chat["contract_metadata"]["canonical_families"]
 
     approval = by_name["approval"]
-    assert approval["owner_service"] == "boring-ui"
-    assert approval["canonical_families"] == ["/api/approval/*"]
+    assert approval["contract_metadata"]["owner_service"] == "boring-ui"
+    assert approval["contract_metadata"]["canonical_families"] == ["/api/approval/*"]
 
 
 def test_capabilities_contract_metadata_is_not_exposed_by_default(monkeypatch) -> None:
@@ -67,5 +91,4 @@ def test_capabilities_contract_metadata_is_not_exposed_by_default(monkeypatch) -
 
     by_name = _routers_by_name(payload)
     any_router = by_name["files"]
-    assert any_router["owner_service"] is None
-    assert any_router["canonical_families"] == []
+    assert "contract_metadata" not in any_router
