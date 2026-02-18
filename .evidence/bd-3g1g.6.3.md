@@ -1,5 +1,7 @@
 # bd-3g1g.6.3 Evidence: agent-pi Delegation Cutover
 
+*2026-02-18T10:23:56Z*
+
 ## Summary
 
 Migrates PI runtime endpoints to the canonical agent-pi route family and ensures agent-pi remains runtime-only (no file/git/pty ownership):
@@ -59,7 +61,7 @@ Result: PASS (js scan) after refactoring request handler to avoid dangling-promi
 ### Python guard
 
 ```bash
-pytest -q tests/integration/test_bd_3g1g_6_3_agent_pi_runtime_surface.py
+python3 -m pytest -q tests/integration/test_bd_3g1g_6_3_agent_pi_runtime_surface.py
 ```
 
 Result: PASS.

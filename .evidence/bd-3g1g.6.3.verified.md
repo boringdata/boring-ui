@@ -1,6 +1,6 @@
 # bd-3g1g.6.3 Evidence: agent-pi Delegation Cutover
 
-**
+*2026-02-18T10:23:56Z*
 
 ## Summary
 
@@ -61,7 +61,7 @@ Result: PASS (js scan) after refactoring request handler to avoid dangling-promi
 ### Python guard
 
 ```bash
-pytest -q tests/integration/test_bd_3g1g_6_3_agent_pi_runtime_surface.py
+python3 -m pytest -q tests/integration/test_bd_3g1g_6_3_agent_pi_runtime_surface.py
 ```
 
 Result: PASS.
