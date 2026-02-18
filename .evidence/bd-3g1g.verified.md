@@ -37,3 +37,5 @@ for p in problems:
 children 39
 problems 0
 ```
+
+Audit that all bd-3g1g phases are CLOSED and no other work remains open/in_progress outside this epic closure.
