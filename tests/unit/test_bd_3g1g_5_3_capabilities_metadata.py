@@ -1,7 +1,5 @@
 """Guards for bd-3g1g.5.3 capabilities/registry metadata alignment."""
 
-import os
-
 from fastapi.testclient import TestClient
 
 from boring_ui.api import create_app
@@ -69,5 +67,5 @@ def test_capabilities_contract_metadata_is_not_exposed_by_default(monkeypatch) -
 
     by_name = _routers_by_name(payload)
     any_router = by_name["files"]
-    assert "owner_service" not in any_router
-    assert "canonical_families" not in any_router
+    assert any_router["owner_service"] is None
+    assert any_router["canonical_families"] == []

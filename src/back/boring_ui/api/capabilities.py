@@ -69,14 +69,23 @@ class RouterRegistry:
             tags: OpenAPI tags for grouping
             required_capabilities: Capabilities this router requires
         """
+
+        def _normalize_str_list(value: list[str] | str | None) -> list[str]:
+            # Defensive: prevent accidental `list("foo") -> ["f","o","o"]`.
+            if value is None:
+                return []
+            if isinstance(value, str):
+                return [value]
+            return list(value)
+
         info = RouterInfo(
             name=name,
             prefix=prefix,
             description=description,
-            tags=list(tags or []),
-            required_capabilities=list(required_capabilities or []),
+            tags=_normalize_str_list(tags),
+            required_capabilities=_normalize_str_list(required_capabilities),
             owner_service=owner_service,
-            canonical_families=list(canonical_families or []),
+            canonical_families=_normalize_str_list(canonical_families),
         )
         self._routers[name] = (info, factory)
 
@@ -184,7 +193,7 @@ def create_capabilities_router(
     Args:
         enabled_features: Map of feature name -> enabled status
         registry: Optional router registry for detailed info
-        config: Optional APIConfig for services metadata
+        config: Optional APIConfig (includes optional contract-metadata exposure)
 
     Returns:
         Router with /capabilities endpoint
@@ -216,14 +225,8 @@ def create_capabilities_router(
                     'description': info.description,
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),
-                    **(
-                        {
-                            'owner_service': info.owner_service or None,
-                            'canonical_families': info.canonical_families,
-                        }
-                        if include_contract_metadata
-                        else {}
-                    ),
+                    'owner_service': (info.owner_service or None) if include_contract_metadata else None,
+                    'canonical_families': info.canonical_families if include_contract_metadata else [],
                 }
                 for info, _ in registry.all()
             ]
