@@ -278,8 +278,8 @@ app = create_app(routers=['files', 'git', 'pty'])
 |------------------|----------|--------------------------------|
 | files            | /api/v1/files | File CRUD + directory listing/search |
 | git              | /api/v1/git   | Status, diff, show                  |
-| pty              | /ws/pty  | Shell terminal WebSocket       |
-| chat_claude_code | /ws/claude-stream | Claude stream WebSocket |
+| pty              | /ws      | Shell terminal WebSocket       |
+| chat_claude_code | /ws/agent/normal | Claude stream WebSocket  |
 | approval         | /api     | Tool approval workflow         |
 
 ### Config: Deep Merge with Defaults
@@ -371,7 +371,7 @@ npm run preview    # Preview production build
 | /api/v1/git/diff      | GET    | Git diff                         |
 | /api/v1/git/show      | GET    | Git show                         |
 | /ws/pty               | WS     | Shell PTY (query params include `session_id`, `provider`) |
-| /ws/claude-stream     | WS     | Claude chat stream               |
+| /ws/agent/normal/stream | WS   | Claude chat stream               |
 
 ### Frontend Hooks
 

@@ -16,7 +16,6 @@ rg -n '/api/v1/files/|/api/v1/git/|/ws/pty\b' -S README.md docs/PLAN.md docs/PLA
 ```
 
 ```output
-README.md:281:| pty              | /ws/pty  | Shell terminal WebSocket       |
 README.md:363:| /api/v1/files/list    | GET    | List directory entries           |
 README.md:364:| /api/v1/files/read    | GET    | Read file content                |
 README.md:365:| /api/v1/files/write   | PUT    | Write file content               |
@@ -48,6 +47,7 @@ docs/PLAN_ENHANCEMENTS.md:86: - `WS /ws/pty?session_id=<id>&provider=<name>` for
 ```
 
 ```bash
+# `9f6ddbc` is the initial docs alignment commit for this bead; later commits refine it.
 git show --name-only --pretty=format: 9f6ddbc -- README.md docs/PLAN.md docs/PLAN_ENHANCEMENTS.md .beads/issues.jsonl | LC_ALL=C sort
 ```
 

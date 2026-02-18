@@ -207,7 +207,7 @@ A modular API structure keeps feature boundaries clear, allows focused tests, an
 - Files API: `GET /api/v1/files/list`, `GET /api/v1/files/read`, `PUT /api/v1/files/write`, `DELETE /api/v1/files/delete`, `POST /api/v1/files/rename`, `POST /api/v1/files/move`, `GET /api/v1/files/search`.
 - Git API: `GET /api/v1/git/status`, `GET /api/v1/git/diff`, `GET /api/v1/git/show`.
 - PTY API: `WS /ws/pty?session_id=<id>&provider=<name>`.
-- Chat-Claude-Code API: `WS /ws/claude-stream` plus `GET /api/sessions` and `POST /api/sessions`.
+- Chat-Claude-Code API: `WS /ws/agent/normal/stream` plus `GET /api/v1/agent/normal/sessions` and `POST /api/v1/agent/normal/sessions`.
 - Approval API: `/api/approval/request`, `/api/approval/pending`, `/api/approval/decision`, `/api/approval/status/{request_id}`, `/api/approval/{request_id}`.
 - Capabilities: `GET /api/capabilities` returns `{ version, features, routers }`.
 - Backward compatibility: `stream` remains an alias for `chat_claude_code` until clients migrate.
