@@ -59,6 +59,12 @@ def _build_steps(repo_root: Path) -> list[Step]:
     # Playwright e2e already has a wrapper for this, but vitest is commonly run
     # directly.
     node_env_overrides = {"PATH": f"/usr/bin:{os.environ.get('PATH','')}"}
+    playwright_env_overrides = {
+        **node_env_overrides,
+        # Keep the matrix deterministic: avoid server reuse and parallel worker flake.
+        "PW_E2E_REUSE_SERVER": "0",
+        "PW_E2E_WORKERS": "1",
+    }
 
     return [
         Step(
@@ -88,7 +94,7 @@ def _build_steps(repo_root: Path) -> list[Step]:
         Step(
             name="playwright_e2e",
             cmd=["npm", "run", "-s", "test:e2e"],
-            env_overrides=node_env_overrides,
+            env_overrides=playwright_env_overrides,
             timeout_seconds=20 * 60,
         ),
         # UBS is best-effort in this environment; callers can skip explicitly.
