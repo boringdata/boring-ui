@@ -229,9 +229,10 @@ def create_capabilities_router(
                 {
                     'name': info.name,
                     'prefix': info.prefix,
-                    'description': _apply_contract_prefix(
-                        info.description,
-                        contract_by_router.get(info.name),
+                    'description': (
+                        _apply_contract_prefix(info.description, contract_by_router.get(info.name))
+                        if include_contract_metadata
+                        else info.description
                     ),
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),

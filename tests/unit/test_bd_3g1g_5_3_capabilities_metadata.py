@@ -19,7 +19,8 @@ def _routers_by_name(payload: dict) -> dict[str, dict]:
     return by_name
 
 
-def test_capabilities_router_descriptions_encode_owner_and_canonical_contract() -> None:
+def test_capabilities_router_descriptions_encode_owner_and_canonical_contract(monkeypatch) -> None:
+    monkeypatch.setenv("CAPABILITIES_INCLUDE_CONTRACT_METADATA", "1")
     app = create_app()
     client = TestClient(app)
 
@@ -53,6 +54,7 @@ def test_capabilities_contract_metadata_is_gated_and_schema_stable(monkeypatch) 
     for entry in by_name.values():
         assert entry["contract_metadata_included"] is False
         assert entry["contract_metadata"] is None
+        assert not entry["description"].startswith("[owner=")
 
     # Enabled: metadata content is present and matches expected ownership/canonical families.
     monkeypatch.setenv("CAPABILITIES_INCLUDE_CONTRACT_METADATA", "1")
