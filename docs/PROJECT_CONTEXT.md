@@ -55,7 +55,7 @@ pyproject.toml      Python packaging
 
 ## Active Work
 
-The current branch (`control-plan-decoupling`) is focused on service split and control-plane decoupling: separating boring-ui into distinct service boundaries (workspace-core, pty-service, agent-normal, agent-companion, agent-pi) and ensuring frontend networking goes through shared transport helpers rather than hardcoding gateway patterns. See `docs/SERVICE_SPLIT_AND_LEGACY_CLEANUP_PLAN.md` for the full plan.
+The current branch (`control-plan-decoupling`) is focused on service split and control-plane decoupling: separating boring-ui into distinct service boundaries (workspace-core, pty-service, agent-normal, agent-companion, agent-pi) and ensuring frontend networking goes through shared transport helpers rather than hardcoding gateway patterns. See `docs/exec-plans/active/SERVICE_SPLIT_AND_LEGACY_CLEANUP_PLAN.md` for the full plan.
 
 ## Related Repositories
 

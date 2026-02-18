@@ -27,6 +27,12 @@ External references, API docs, and third-party documentation relevant to boring-
 | `@assistant-ui/react` | Assistant UI primitives |
 | `@assistant-ui/react-markdown` | Markdown rendering for assistant UI |
 
+## Guides
+
+| Guide | Description |
+|---|---|
+| [Extension Guide](EXTENSION_GUIDE.md) | Extending boring-ui with custom panels, routers, and configuration |
+
 ## Related Projects
 
 | Project | Relationship |

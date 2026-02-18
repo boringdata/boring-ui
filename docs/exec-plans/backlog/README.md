@@ -4,8 +4,7 @@ Plans queued but not yet started.
 
 | Plan | Description | Priority |
 |---|---|---|
-| Feature Bundles | Unify panes + routes + config per capability | Medium |
-| API Versioning | Formal versioning + consistent error envelope | Medium |
-| Scalable Files API | Pagination, depth limits, caching for large repos | Low |
-
-See `docs/PLAN_ENHANCEMENTS.md` for detailed proposals.
+| [Enhancements](PLAN_ENHANCEMENTS.md) | Feature bundles, API versioning, scalable files | Medium |
+| [Sidebar User Menu](SIDEBAR_USER_MENU_PLAN.md) | User menu UX in sidebar | Medium |
+| [PI Backend Filesystem](PI_BACKEND_FILESYSTEM_RUNTIME_PLAN.md) | Move PI from browser to backend execution | Medium |
+| [Composable UI](composable-ui.md) | Workspace plugin system architecture | Low |

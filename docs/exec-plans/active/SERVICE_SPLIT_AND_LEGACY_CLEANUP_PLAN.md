@@ -68,7 +68,7 @@ This section defines the high-level infra split across repositories so ownership
 1. Versioning: canonical HTTP endpoints remain under `/api/v1/...` until explicit major bump.
 2. Errors: services use one envelope (`code`, `message`, `retryable`, `details`).
 3. Mutations: write/move/rename/delete define retry-safe semantics and documented conflict behavior.
-4. Normative reference for envelope/code/mutation contract: `docs/bd-3g1g.2.3-api-standards-note.md`.
+4. Normative reference for envelope/code/mutation contract: `docs/exec-plans/completed/bd-3g1g/bd-3g1g.2.3-api-standards-note.md`.
 
 ## Current-State Issues
 
@@ -128,7 +128,7 @@ This section defines the high-level infra split across repositories so ownership
   - `GET /auth/logout`
 - Workspace switching uses canonical workspace navigation (`/w/{workspace_id}/`).
 - User settings in v1 are frontend-local unless/until `/api/v1/me/settings` exists.
-- Detailed execution/spec lives in `docs/SIDEBAR_USER_MENU_PLAN.md`.
+- Detailed execution/spec lives in `docs/exec-plans/backlog/SIDEBAR_USER_MENU_PLAN.md`.
 
 ## Route Family -> Service Mapping
 
