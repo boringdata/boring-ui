@@ -18,11 +18,15 @@ ids = [
 
 rows = {}
 with open(".beads/issues.jsonl", "r", encoding="utf-8") as f:
-    for line in f:
+    for lineno, line in enumerate(f, start=1):
         line = line.strip()
         if not line:
             continue
-        obj = json.loads(line)
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            print(f"invalid_json\tline={lineno}")
+            raise SystemExit(1)
         if obj.get("id") in ids:
             rows[obj["id"]] = obj
 
@@ -31,13 +35,14 @@ for issue_id in ids:
     if row is None:
         print(f"{issue_id}\tmissing")
         continue
-    print(f"{issue_id}\t{row['status']}")
+    print(f"{issue_id}\t{row.get('status', 'missing_status')}")
 
 missing = [issue_id for issue_id in ids if issue_id not in rows]
 if missing:
     raise SystemExit(1)
 
-if all(rows[issue_id]["status"] == "closed" for issue_id in ids):
+bad = [issue_id for issue_id in ids if rows[issue_id].get("status") != "closed"]
+if not bad:
     print("ALL_CLOSED")
 else:
     raise SystemExit(1)
