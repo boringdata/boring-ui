@@ -25,6 +25,10 @@ Migrates PI runtime endpoints to the canonical agent-pi route family and ensures
 - `287cb87` server hardening + decode safety + route semantics
 - `2eb3266` ensure PI routes stay canonical even when unconfigured (isConfigured only indicates remote URL presence)
 - `433ec05` extra PI route tests (null/whitespace inputs)
+- `751925e` replace brittle PI runtime-only guard with a behavior-level HTTP probe
+- `15062d8` move PI probe to `tests/integration/` + add startup retries + probe forbidden paths with GET+POST
+- `8521caf` harden PI probe health parsing + ensure killed retries are waited + avoid proxy env nondeterminism
+- `3bc55c7` tighten probe types + normalize proxy env cleanup (`NO_PROXY`/`no_proxy`, unset `ALL_PROXY`)
 
 ## Verification
 
@@ -57,7 +61,7 @@ Result: PASS (js scan) after refactoring request handler to avoid dangling-promi
 ### Python guard
 
 ```bash
-pytest -q tests/unit/test_bd_3g1g_6_3_agent_pi_runtime_surface.py
+pytest -q tests/integration/test_bd_3g1g_6_3_agent_pi_runtime_surface.py
 ```
 
 Result: PASS.
