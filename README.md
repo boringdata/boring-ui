@@ -272,15 +272,17 @@ app = create_app(routers=['files', 'git', 'pty'])
 # → /api/capabilities reflects actual availability
 ```
 
-**Available Routers:**
+**Available Routers (Mount Prefixes):**
 
-| Router           | Prefix   | Description                    |
+| Router           | Mount Prefix   | Description                    |
 |------------------|----------|--------------------------------|
 | files            | /api/v1/files | File CRUD + directory listing/search |
 | git              | /api/v1/git   | Status, diff, show                  |
 | pty              | /ws      | Shell terminal WebSocket       |
 | chat_claude_code | /ws/agent/normal | Claude stream WebSocket  |
 | approval         | /api     | Tool approval workflow         |
+
+For WebSocket routers, the mount prefix is not necessarily the full endpoint path; see the API reference table below for the canonical WS endpoints (e.g. `/ws/pty`, `/ws/agent/normal/stream`).
 
 ### Config: Deep Merge with Defaults
 
