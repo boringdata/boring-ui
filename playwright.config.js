@@ -5,6 +5,15 @@ const e2eApiPort = Number(process.env.PW_E2E_API_PORT || 8000)
 const frontendUrl = `http://127.0.0.1:${e2eFrontendPort}`
 const apiHealthUrl = `http://127.0.0.1:${e2eApiPort}/health`
 const runCrossBrowser = process.env.PW_E2E_CROSS_BROWSER === '1'
+const configuredWorkersRaw = process.env.PW_E2E_WORKERS
+const configuredWorkers = configuredWorkersRaw ? Number(configuredWorkersRaw) : null
+const workers =
+  Number.isFinite(configuredWorkers) && configuredWorkers > 0
+    ? configuredWorkers
+    : 1
+const reuseExistingServer = process.env.PW_E2E_REUSE_SERVER
+  ? process.env.PW_E2E_REUSE_SERVER === '1'
+  : !process.env.CI
 
 const projects = [
   {
@@ -60,7 +69,9 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
 
   // Number of workers
-  workers: process.env.CI ? 1 : undefined,
+  // Default to a single worker. The dev + API servers are shared and we saw
+  // flakiness/crashes with high parallelism under load.
+  workers,
 
   // Reporter configurations
   reporter: [
@@ -92,13 +103,13 @@ export default defineConfig({
     {
       command: `npm run dev -- --host 127.0.0.1 --port ${e2eFrontendPort} --strictPort`,
       url: frontendUrl,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer,
       timeout: 120000,
     },
     {
       command: `PYTHONPATH=src/back BORING_UI_WORKSPACE_ROOT=$PWD python3 -m uvicorn boring_ui.runtime:app --host 127.0.0.1 --port ${e2eApiPort}`,
       url: apiHealthUrl,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer,
       timeout: 120000,
     },
   ],
