@@ -56,6 +56,18 @@ describe("companion upstream api base URL", () => {
     );
   });
 
+  it("trims surrounding whitespace from COMPANION_URL", async () => {
+    vi.mocked(getCompanionBaseUrl).mockReturnValue("  http://companion.example/base/  ");
+
+    await api.listSessions();
+
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://companion.example/base/api/v1/agent/companion/sessions",
+      { headers: { Authorization: "Bearer test-token" } },
+    );
+  });
+
   it("uses canonical same-origin prefix when COMPANION_URL is not set", async () => {
     vi.mocked(getCompanionBaseUrl).mockReturnValue("");
 

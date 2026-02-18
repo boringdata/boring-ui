@@ -88,14 +88,14 @@ function nextId(): string {
 }
 
 function getWsUrl(sessionId: string): string {
-  const base = getCompanionBaseUrl();
+  const base = (getCompanionBaseUrl() || "").trim();
   if (base) {
     // Direct Connect: derive WS URL from configured HTTP base URL
     const url = new URL(base);
     const proto = url.protocol === "https:" ? "wss:" : "ws:";
     const token = getCompanionAuthToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    const basePath = url.pathname.replace(/\/$/, "");
+    const basePath = url.pathname.replace(/\/+$/, "");
     return `${proto}//${url.host}${basePath}/ws/agent/companion/browser/${sessionId}${qs}`;
   }
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
