@@ -215,13 +215,14 @@ test.describe('User Menu Control-Plane Flows', () => {
     await page.waitForSelector('[aria-label="User menu"]', { timeout: 15000 })
     await page.getByRole('button', { name: 'User menu' }).click()
 
-    await expect(page.getByRole('alert')).toHaveText(/Not signed in/i)
-    await expect(page.getByRole('menuitem', { name: 'Switch workspace' })).toBeDisabled()
-    await expect(page.getByRole('menuitem', { name: 'Create workspace' })).toBeDisabled()
-    await expect(page.getByRole('menuitem', { name: 'User settings' })).toBeDisabled()
-    await expect(page.getByRole('menuitem', { name: 'Logout' })).toBeDisabled()
+    const userMenu = page.getByRole('menu', { name: 'User menu' })
+    await expect(userMenu.getByRole('alert')).toHaveText(/Not signed in/i)
+    await expect(userMenu.getByRole('menuitem', { name: 'Switch workspace' })).toBeDisabled()
+    await expect(userMenu.getByRole('menuitem', { name: 'Create workspace' })).toBeDisabled()
+    await expect(userMenu.getByRole('menuitem', { name: 'User settings' })).toBeDisabled()
+    await expect(userMenu.getByRole('menuitem', { name: 'Logout' })).toBeDisabled()
 
-    await page.getByRole('button', { name: 'Retry' }).click()
+    await userMenu.getByRole('button', { name: 'Retry' }).click()
     await expect.poll(() => meCalls).toBeGreaterThan(1)
     await expect.poll(() => workspacesCalls).toBeGreaterThan(1)
 
@@ -245,10 +246,11 @@ test.describe('User Menu Control-Plane Flows', () => {
     await page.waitForSelector('[aria-label="User menu"]', { timeout: 15000 })
     await page.getByRole('button', { name: 'User menu' }).click()
 
-    await expect(page.getByRole('alert')).toHaveText(/Failed to load workspaces|boom/i)
-    await expect(page.getByRole('menuitem', { name: 'Switch workspace' })).toBeDisabled()
+    const userMenu = page.getByRole('menu', { name: 'User menu' })
+    await expect(userMenu.getByRole('alert')).toHaveText(/Failed to load workspaces|boom/i)
+    await expect(userMenu.getByRole('menuitem', { name: 'Switch workspace' })).toBeDisabled()
 
-    await page.getByRole('button', { name: 'Retry' }).click()
+    await userMenu.getByRole('button', { name: 'Retry' }).click()
     await expect.poll(() => workspacesCalls).toBeGreaterThan(1)
   })
 })

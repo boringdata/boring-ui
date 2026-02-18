@@ -90,7 +90,12 @@ export default function UserMenu({
     { key: 'logout', label: 'Logout', onClick: onLogout },
   ]
 
-  const menuId = useId()
+  const reactId = useId()
+  // React's `useId()` includes characters (like `:`) that are valid in HTML ids but
+  // awkward in CSS selectors; strip them for cleaner diagnostics and robust testing.
+  const safeId = reactId.replace(/:/g, '')
+  const triggerId = `user-menu-trigger-${safeId}`
+  const menuId = `user-menu-dropdown-${safeId}`
   const displayEmail = email || 'Signed in user'
   const workspaceNameValue = String(workspaceName || '').trim()
   const isUuidWorkspaceName = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workspaceNameValue)
@@ -140,6 +145,7 @@ export default function UserMenu({
       className={`user-menu-dropdown ${collapsed ? 'user-menu-dropdown-portal' : ''}`}
       id={menuId}
       role="menu"
+      aria-labelledby={triggerId}
       ref={dropdownRef}
       style={collapsed ? collapsedMenuStyle || undefined : undefined}
     >
@@ -197,6 +203,7 @@ export default function UserMenu({
       <button
         className={`user-menu-trigger ${collapsed ? 'compact' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
+        id={triggerId}
         aria-label="User menu"
         aria-expanded={isOpen}
         aria-haspopup="true"
