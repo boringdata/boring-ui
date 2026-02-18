@@ -312,23 +312,65 @@ export default function App() {
 
   const fetchWorkspaceList = useCallback(async () => {
     const route = routes.controlPlane.workspaces.list()
-    const { response, data } = await apiFetchJson(route.path, { query: route.query })
-    if (!response.ok) return []
-    const workspaces = normalizeWorkspaceList(data)
-    setWorkspaceOptions(workspaces)
-    return workspaces
+    try {
+      const { response, data } = await apiFetchJson(route.path, { query: route.query })
+      if (!response.ok) {
+        if (response.status === 401) {
+          setUserMenuWorkspaceError('Not signed in.')
+        } else if (response.status === 403) {
+          setUserMenuWorkspaceError('Permission denied while loading workspaces.')
+        } else {
+          setUserMenuWorkspaceError(getHttpErrorDetail(response, data, 'Failed to load workspaces'))
+        }
+        return []
+      }
+
+      setUserMenuWorkspaceError('')
+      const workspaces = normalizeWorkspaceList(data)
+      setWorkspaceOptions(workspaces)
+      return workspaces
+    } catch (error) {
+      setUserMenuWorkspaceError('Failed to reach control plane for workspaces.')
+      return []
+    }
   }, [])
 
   const refreshUserMenuData = useCallback(async () => {
     const meRoute = routes.controlPlane.me.get()
-    const [{ response: meResponse, data: meData }, workspaces] = await Promise.all([
-      apiFetchJson(meRoute.path, { query: meRoute.query }),
-      fetchWorkspaceList(),
-    ])
+    setUserMenuIdentityError('')
+
+    let meResponse = null
+    let meData = {}
+    try {
+      const result = await apiFetchJson(meRoute.path, { query: meRoute.query })
+      meResponse = result.response
+      meData = result.data
+    } catch (error) {
+      setMenuUserEmail('')
+      setUserMenuAuthStatus('error')
+      setUserMenuIdentityError('Failed to reach control plane for identity.')
+      return fetchWorkspaceList()
+    }
+
+    const workspaces = await fetchWorkspaceList()
 
     if (meResponse.ok) {
+      setUserMenuAuthStatus('authenticated')
       const email = extractUserEmail(meData)
-      if (email) setMenuUserEmail(email)
+      setMenuUserEmail(email || '')
+      return workspaces
+    }
+
+    setMenuUserEmail('')
+    if (meResponse.status === 401) {
+      setUserMenuAuthStatus('unauthenticated')
+      setUserMenuIdentityError('Not signed in.')
+    } else if (meResponse.status === 403) {
+      setUserMenuAuthStatus('error')
+      setUserMenuIdentityError('Permission denied while loading identity.')
+    } else {
+      setUserMenuAuthStatus('error')
+      setUserMenuIdentityError(getHttpErrorDetail(meResponse, meData, 'Failed to load identity'))
     }
 
     return workspaces
@@ -336,6 +378,12 @@ export default function App() {
 
   useEffect(() => {
     refreshUserMenuData().catch(() => {})
+  }, [refreshUserMenuData])
+
+  const handleUserMenuRetry = useCallback(() => {
+    setUserMenuIdentityError('')
+    setUserMenuWorkspaceError('')
+    return refreshUserMenuData()
   }, [refreshUserMenuData])
 
   const handleSwitchWorkspace = useCallback(async () => {
@@ -1021,20 +1069,24 @@ export default function App() {
           id: 'filetree',
           component: 'filetree',
           title: 'Files',
-          params: {
-            onOpenFile: openFile,
-            onOpenFileToSide: openFileToSide,
-            onOpenDiff: openDiff,
-            projectRoot,
-            activeFile,
-            activeDiffFile,
-            collapsed: collapsed.filetree,
-            onToggleCollapse: toggleFiletree,
-            userEmail: menuUserEmail,
-            workspaceName: activeWorkspaceName,
-            workspaceId: currentWorkspaceId,
-            onSwitchWorkspace: handleSwitchWorkspace,
-            onCreateWorkspace: handleCreateWorkspace,
+	          params: {
+	            onOpenFile: openFile,
+	            onOpenFileToSide: openFileToSide,
+	            onOpenDiff: openDiff,
+	            projectRoot,
+	            activeFile,
+	            activeDiffFile,
+	            collapsed: collapsed.filetree,
+	            onToggleCollapse: toggleFiletree,
+	            userEmail: menuUserEmail,
+	            userMenuStatusMessage,
+	            userMenuStatusTone,
+	            onUserMenuRetry: handleUserMenuRetry,
+	            userMenuDisabledActions,
+	            workspaceName: activeWorkspaceName,
+	            workspaceId: currentWorkspaceId,
+	            onSwitchWorkspace: handleSwitchWorkspace,
+	            onCreateWorkspace: handleCreateWorkspace,
             onOpenUserSettings: handleOpenUserSettings,
             onLogout: handleLogout,
           },
@@ -1543,21 +1595,25 @@ export default function App() {
         }
 
         // Update filetree params with callbacks (callbacks can't be serialized in layout JSON)
-        if (filetreePanel) {
-          filetreePanel.api.updateParameters({
-            onOpenFile: openFile,
-            onOpenFileToSide: openFileToSide,
-            onOpenDiff: openDiff,
-            projectRoot,
-            activeFile,
-            activeDiffFile,
-            collapsed: collapsed.filetree,
-            onToggleCollapse: toggleFiletree,
-            userEmail: menuUserEmail,
-            workspaceName: activeWorkspaceName,
-            workspaceId: currentWorkspaceId,
-            onSwitchWorkspace: handleSwitchWorkspace,
-            onCreateWorkspace: handleCreateWorkspace,
+	        if (filetreePanel) {
+	          filetreePanel.api.updateParameters({
+	            onOpenFile: openFile,
+	            onOpenFileToSide: openFileToSide,
+	            onOpenDiff: openDiff,
+	            projectRoot,
+	            activeFile,
+	            activeDiffFile,
+	            collapsed: collapsed.filetree,
+	            onToggleCollapse: toggleFiletree,
+	            userEmail: menuUserEmail,
+	            userMenuStatusMessage,
+	            userMenuStatusTone,
+	            onUserMenuRetry: handleUserMenuRetry,
+	            userMenuDisabledActions,
+	            workspaceName: activeWorkspaceName,
+	            workspaceId: currentWorkspaceId,
+	            onSwitchWorkspace: handleSwitchWorkspace,
+	            onCreateWorkspace: handleCreateWorkspace,
             onOpenUserSettings: handleOpenUserSettings,
             onLogout: handleLogout,
           })
