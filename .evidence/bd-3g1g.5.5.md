@@ -16,17 +16,18 @@ rg -n '/api/v1/files/|/api/v1/git/|/ws/pty\b' -S README.md docs/PLAN.md docs/PLA
 ```
 
 ```output
-README.md:363:| /api/v1/files/list    | GET    | List directory entries           |
-README.md:364:| /api/v1/files/read    | GET    | Read file content                |
-README.md:365:| /api/v1/files/write   | PUT    | Write file content               |
-README.md:366:| /api/v1/files/delete  | DELETE | Delete file                      |
-README.md:367:| /api/v1/files/rename  | POST   | Rename file                      |
-README.md:368:| /api/v1/files/move    | POST   | Move file                        |
-README.md:369:| /api/v1/files/search  | GET    | Search files                     |
-README.md:370:| /api/v1/git/status    | GET    | Git status                       |
-README.md:371:| /api/v1/git/diff      | GET    | Git diff                         |
-README.md:372:| /api/v1/git/show      | GET    | Git show                         |
-README.md:373:| /ws/pty               | WS     | Shell PTY (query params include `session_id`, `provider`) |
+README.md:285:For WebSocket routers, the mount prefix is not necessarily the full endpoint path; see the API reference table below for the canonical WS endpoints (e.g. `/ws/pty`, `/ws/agent/normal/stream`).
+README.md:365:| /api/v1/files/list    | GET    | List directory entries           |
+README.md:366:| /api/v1/files/read    | GET    | Read file content                |
+README.md:367:| /api/v1/files/write   | PUT    | Write file content               |
+README.md:368:| /api/v1/files/delete  | DELETE | Delete file                      |
+README.md:369:| /api/v1/files/rename  | POST   | Rename file                      |
+README.md:370:| /api/v1/files/move    | POST   | Move file                        |
+README.md:371:| /api/v1/files/search  | GET    | Search files                     |
+README.md:372:| /api/v1/git/status    | GET    | Git status                       |
+README.md:373:| /api/v1/git/diff      | GET    | Git diff                         |
+README.md:374:| /api/v1/git/show      | GET    | Git show                         |
+README.md:375:| /ws/pty               | WS     | Shell PTY (query params include `session_id`, `provider`) |
 docs/PLAN.md:207:- Files API: `GET /api/v1/files/list`, `GET /api/v1/files/read`, `PUT /api/v1/files/write`, `DELETE /api/v1/files/delete`, `POST /api/v1/files/rename`, `POST /api/v1/files/move`, `GET /api/v1/files/search`.
 docs/PLAN.md:208:- Git API: `GET /api/v1/git/status`, `GET /api/v1/git/diff`, `GET /api/v1/git/show`.
 docs/PLAN.md:209:- PTY API: `WS /ws/pty?session_id=<id>&provider=<name>`.
