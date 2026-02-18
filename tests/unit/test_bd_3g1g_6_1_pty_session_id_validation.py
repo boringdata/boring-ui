@@ -12,7 +12,9 @@ from boring_ui.api.modules.pty.service import PTYService
 @pytest.mark.asyncio
 async def test_get_or_create_session_validates_and_canonicalizes_session_id(tmp_path) -> None:
     service = PTYService()
-    command = ["bash"]
+    # This is not executed by get_or_create_session(); the PTY subprocess is only
+    # spawned when a websocket client starts the session.
+    command = ["__test_noop__"]
 
     canonical = str(uuid.uuid4())
     non_canonical = f"{{{canonical.upper()}}}"
@@ -40,3 +42,25 @@ async def test_get_or_create_session_validates_and_canonicalizes_session_id(tmp_
             cwd=tmp_path,
         )
 
+    sess3, is_new3 = await service.get_or_create_session(
+        session_id=None,
+        command=command,
+        cwd=tmp_path,
+    )
+    assert is_new3 is True
+    uuid.UUID(sess3.session_id)
+
+    sess4, is_new4 = await service.get_or_create_session(
+        session_id="   ",
+        command=command,
+        cwd=tmp_path,
+    )
+    assert is_new4 is True
+    uuid.UUID(sess4.session_id)
+
+    with pytest.raises(ValueError):
+        await service.get_or_create_session(
+            session_id=123,  # type: ignore[arg-type]
+            command=command,
+            cwd=tmp_path,
+        )
