@@ -300,7 +300,7 @@ class PTYService:
             # service registry keyed by canonical UUID strings only.
             if normalized_id is not None:
                 try:
-                    uuid.UUID(normalized_id)
+                    normalized_id = str(uuid.UUID(normalized_id))
                 except (ValueError, AttributeError, TypeError):
                     raise ValueError("Invalid session_id (must be a UUID)")
 
