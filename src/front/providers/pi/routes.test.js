@@ -12,13 +12,20 @@ describe('createPiRoutes', () => {
     expect(routes.stream('abc')).toBe('http://localhost:9100/api/v1/agent/pi/sessions/abc/stream')
   })
 
+  it('normalizes whitespace and multiple trailing slashes in service base URL', () => {
+    const routes = createPiRoutes('  http://localhost:9100///  ')
+
+    expect(routes.isConfigured).toBe(true)
+    expect(routes.sessions()).toBe('http://localhost:9100/api/v1/agent/pi/sessions')
+  })
+
   it('reports unconfigured routes when service URL is missing', () => {
     const routes = createPiRoutes('')
 
     expect(routes.isConfigured).toBe(false)
-    expect(routes.sessions()).toBe('/sessions')
-    expect(routes.history('abc')).toBe('/sessions/abc/history')
-    expect(routes.createSession()).toBe('/sessions/create')
-    expect(routes.stream('abc')).toBe('/sessions/abc/stream')
+    expect(routes.sessions()).toBe('/api/v1/agent/pi/sessions')
+    expect(routes.history('abc')).toBe('/api/v1/agent/pi/sessions/abc/history')
+    expect(routes.createSession()).toBe('/api/v1/agent/pi/sessions/create')
+    expect(routes.stream('abc')).toBe('/api/v1/agent/pi/sessions/abc/stream')
   })
 })
