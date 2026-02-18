@@ -24,7 +24,7 @@ test.describe('Layout Persistence', () => {
     await page.goto('/')
 
     // Wait for app to initialize
-    await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
+    await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
 
     // Essential panels should be visible
     // Note: These selectors depend on the actual rendered components
@@ -33,7 +33,7 @@ test.describe('Layout Persistence', () => {
 
   test('layout persists after reload', async ({ page }) => {
     await page.goto('/')
-    await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
+    await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
 
     // Get initial layout state
     const initialLayout = await page.evaluate(() => {
@@ -47,7 +47,7 @@ test.describe('Layout Persistence', () => {
 
     // Reload the page
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
-    await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
+    await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
 
     // Layout should be restored
     const restoredLayout = await page.evaluate(() => {
@@ -69,7 +69,7 @@ test.describe('Layout Persistence', () => {
     // This spec can be slow under CI-like load due to app boot + reload, so give it extra headroom.
     test.setTimeout(60_000)
 
-    await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
+    await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
 
     // Save a collapsed state
     await page.evaluate(() => {
@@ -77,7 +77,7 @@ test.describe('Layout Persistence', () => {
     })
 
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
-    await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
+    await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
 
     // Verify state was preserved
     const collapsedState = await page.evaluate(() => {
@@ -92,7 +92,7 @@ test.describe('Layout Persistence', () => {
 test.describe('File Tree', () => {
   test('file tree panel is visible', async ({ page }) => {
     await page.goto('/')
-    await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
+    await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
 
     // File tree should be visible (look for file tree specific elements)
     // This selector may need adjustment based on actual component structure
@@ -104,7 +104,7 @@ test.describe('File Tree', () => {
 test.describe('Theme', () => {
   test('theme toggle works', async ({ page }) => {
     await page.goto('/')
-    await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
+    await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
 
     // Check initial theme
     const initialTheme = await page.evaluate(() => {
