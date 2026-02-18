@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from ...config import APIConfig
+from ...policy import enforce_delegated_policy_ws_reason_or_none
 from .service import PTYService, SharedSession, _SERVICE
 
 
@@ -57,6 +58,17 @@ def create_pty_router(config: APIConfig) -> APIRouter:
                 except (ValueError, AttributeError, TypeError):
                     await websocket.close(code=4004, reason="Invalid session_id (must be a UUID)")
                     return
+
+        deny_reason = enforce_delegated_policy_ws_reason_or_none(
+            websocket.headers,
+            {"pty.session.attach"} if normalized_session_id else {"pty.session.start"},
+            operation=("pty-service.ws.attach" if normalized_session_id else "pty-service.ws.start"),
+            require_session_id=normalized_session_id is not None,
+            expected_session_id=normalized_session_id,
+        )
+        if deny_reason is not None:
+            await websocket.close(code=4004, reason=deny_reason)
+            return
 
         # Get or create session
         try:
