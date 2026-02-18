@@ -7,7 +7,7 @@ import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
-import { apiFetch, apiFetchJson } from './utils/transport'
+import { apiFetch, apiFetchJson, getHttpErrorDetail } from './utils/transport'
 import { buildApiUrl } from './utils/apiBase'
 import { routes } from './utils/routes'
 import {
@@ -146,6 +146,9 @@ export default function App() {
   const [activeFile, setActiveFile] = useState(null)
   const [activeDiffFile, setActiveDiffFile] = useState(null)
   const [menuUserEmail, setMenuUserEmail] = useState('')
+  const [userMenuAuthStatus, setUserMenuAuthStatus] = useState('unknown') // unknown | authenticated | unauthenticated | error
+  const [userMenuIdentityError, setUserMenuIdentityError] = useState('')
+  const [userMenuWorkspaceError, setUserMenuWorkspaceError] = useState('')
   const [workspaceOptions, setWorkspaceOptions] = useState([])
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState(() =>
     getWorkspaceIdFromPathname(window.location.pathname),
