@@ -28,6 +28,15 @@ coverage/
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# Agent evidence (not committed to git)
+.agent-evidence/
 .evidence/
-*.pyc
+
+# Python
 __pycache__/
+*.pyc
+.pytest_cache/
+
+# Misc
+excalidraw.log

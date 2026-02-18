@@ -1,82 +1,74 @@
+# AGENTS.md
 
+Read this first. Re-read after compaction.
 
-<!-- br-agent-instructions-v1 -->
+## Safety (non-negotiable)
 
----
+- No destructive ops without explicit instruction (no `rm -rf`, `reset --hard`, `clean -fd`, force-push).
+- No secrets in git. Do not paste tokens into commits or logs.
+- No broad rewrite scripts (codemods, "fix everything") without approval.
+- No file variants (`*_v2.*`) — edit in place.
+- Never delete files unless you have explicit written permission.
 
-## Beads Workflow Integration
+## Shared Conventions
 
-This project uses [beads_rust](https://github.com/Dicklesworthstone/beads_rust) (`br`/`bd`) for issue tracking. Issues are stored in `.beads/` and tracked in git.
+These docs define the boring-coding workflow. Read local copy if available; fall back to GitHub.
 
-### Worker Execution Loop
+| Doc | Local | GitHub |
+| --- | --- | --- |
+| Workflow | `/home/ubuntu/projects/boring-coding/docs/workflow/` | [workflow/](https://github.com/boringdata/boring-coding/blob/main/docs/workflow/) |
 
-Repeat until no beads remain:
+## Where to Find What
 
-1. **Pick & claim**: `bv --robot-next` → `br show <id>` (verify acceptance criteria + deps exist, fix before coding) → `br update <id> --claim --actor <name>` + announce in Agent Mail.
-2. **Implement**: only the scoped bead — no unrelated refactors, **no stubs** (`pass`, `TODO`, `NotImplementedError`). If a piece can't be completed, split into a new bead. Self-review changed code: "Read over all new code you just wrote and existing code you modified with fresh eyes, looking carefully for any obvious bugs, errors, problems, issues, or confusion. Fix anything you uncover. Use ultrathink." Run verification commands (tests/lints). If no tests exist, add at least one.
-3. **Commit & review**: commit only this bead's files (message MUST include bead-id + acceptance criteria). Then request a review: `roborev review HEAD` and iterate — read the review with `roborev show HEAD`, fix findings, commit the fix, review again — until the review passes (max 10 iterations). Use a cross-model reviewer (CC workers → `--agent codex`, Codex workers → `--agent claude`).
-4. **Prove**: build evidence with Showboat (see guidelines below). `showboat verify` before closing. Link to bead: `br comments add <id> --message "EVIDENCE: .evidence/<bead-id>.md; review=roborev-passed"`.
-5. **Close & notify**: `br close <id> --reason "implemented + reviewed + verified" --actor <name>`. Send Agent Mail summary (what changed, commit hash). Loop back to step 1.
+| Topic | Doc |
+| --- | --- |
+| Project context | `docs/PROJECT_CONTEXT.md` |
+| Architecture map | `docs/ARCHITECTURE.md` |
+| Core beliefs | `docs/design-docs/core-beliefs.md` |
+| Hard constraints | `docs/design-docs/boundaries.md` |
+| Design decisions (ADRs) | `docs/design-docs/decisions/` |
+| Domain deep-dives | `docs/domains/` |
+| Workflow (planning + impl) | `docs/workflow-symlinked/` |
+| Role prompts | `docs/workflow-symlinked/prompts/` |
+| Beads reference | `docs/workflow-symlinked/beads.md` |
+| Evidence conventions | `docs/workflow-symlinked/EVIDENCE.md` |
+| Session lifecycle | `docs/workflow-symlinked/OPERATIONS.md` |
+| Agent tools | `docs/workflow-symlinked/tools/` |
+| Execution plans | `docs/exec-plans/` |
+| Product specs | `docs/product-specs/` |
+| References | `docs/references/` |
+| Quality grades | `docs/QUALITY.md` |
+| Runbooks | `docs/runbooks/` |
+| Gates | `scripts/gates/` |
 
-### Evidence & Proof (Showboat + Rodney)
+## Session Startup
 
-Use [Showboat](https://simonwillison.net/2026/Feb/10/showboat-and-rodney/) to capture proof, [Rodney](https://github.com/simonw/rodney) for visual proof via CLI browser automation ([blog post](https://simonwillison.net/2026/Feb/10/showboat-and-rodney/)). Run `showboat --help` / `rodney --help` for full usage.
+1. Read `AGENTS.md` end-to-end.
+2. Read `docs/PROJECT_CONTEXT.md`.
+3. Find how to run tests, lint, dev server (see Project Commands below).
+4. Pick next bead: `bv --robot-next` or `br list --status=open`.
 
-**Rodney** is a CLI browser tool (Chrome DevTools Protocol via Rod). Key commands: `rodney start`, `rodney open <url>`, `rodney screenshot <file>`, `rodney click '<selector>'`, `rodney js '<code>'`, `rodney stop`. Install: `uvx rodney` or `uv tool install rodney`.
+For full session lifecycle (compaction, blocked, end-of-session): see `docs/workflow-symlinked/OPERATIONS.md`.
 
-```bash
-# View ready issues (unblocked, not deferred)
-br ready              # or: bd ready
+## Bead Startup (per bead)
 
-# List and search
-br list --status=open # All open issues
-br show <id>          # Full issue details with dependencies
-br search "keyword"   # Full-text search
+1. `br show <bead-id>` — goal, scope, gates, checklist, latest comments.
+2. Find latest `EVIDENCE:` path in bead comments.
+3. Inspect `.agent-evidence/beads/<bead-id>/...` for prior work.
+4. Confirm STATE + NEXT match your role.
 
-# Create and update
-br create --title="..." --description="..." --type=task --priority=2
-br update <id> --status=in_progress
-br close <id> --reason="Completed"
-br close <id1> <id2>  # Close multiple issues at once
+## Project Commands
 
-# Sync with git
-br sync --flush-only  # Export DB to JSONL
-br sync --status      # Check sync status
-```
+- Install: `npm install && uv sync`
+- Tests: `npm run test:run` (unit), `npm run test:e2e` (e2e), `pytest tests/ -v` (backend)
+- Lint: `npm run lint`
+- Dev server: `npm run dev`
+- Smoke gate: `scripts/gates/smoke.sh`
 
-### Workflow Pattern
+## Credentials
 
-1. **Start**: Run `br ready` to find actionable work
-2. **Claim**: Use `br update <id> --status=in_progress`
-3. **Work**: Implement the task
-4. **Complete**: Use `br close <id>`
-5. **Sync**: Always run `br sync --flush-only` at session end
+Fetch from Vault:
+- Supabase: `secret/agent/boring-ui-supabase-*`
+- Sprites: `secret/agent/sprites`
 
-### Key Concepts
-
-- **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
-- **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers 0-4, not words)
-- **Types**: task, bug, feature, epic, chore, docs, question
-- **Blocking**: `br dep add <issue> <depends-on>` to add dependencies
-
-### Session Protocol
-
-**Before ending any session, run this checklist:**
-
-```bash
-git status              # Check what changed
-git add <files>         # Stage code changes
-br sync --flush-only    # Export beads changes to JSONL
-git commit -m "..."     # Commit everything
-git push                # Push to remote
-```
-
-### Best Practices
-
-- Check `br ready` at session start to find available work
-- Update status as you work (in_progress → closed)
-- Create new issues with `br create` when you discover tasks
-- Use descriptive titles and set appropriate priority/type
-- Always sync before ending session
-
-<!-- end-br-agent-instructions -->
+Never commit secrets. Use env vars or `.env` (gitignored).
