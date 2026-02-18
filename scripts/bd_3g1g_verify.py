@@ -131,14 +131,17 @@ def _run_step(repo_root: Path, out_dir: Path, step: Step, *, default_timeout_sec
             try:
                 proc.terminate()
                 proc.wait(timeout=3)
-            except Exception:
+            except Exception as exc:
+                log.write(f"[bd_3g1g_verify] terminate failed: {exc}\n")
                 try:
                     proc.kill()
-                except Exception:
+                except Exception as exc2:
+                    log.write(f"[bd_3g1g_verify] kill failed: {exc2}\n")
                     pass
                 try:
                     proc.wait(timeout=3)
-                except Exception:
+                except Exception as exc3:
+                    log.write(f"[bd_3g1g_verify] wait-after-kill failed: {exc3}\n")
                     pass
             exit_code = 124
     duration = time.monotonic() - start
@@ -236,8 +239,8 @@ def main(argv: list[str] | None = None) -> int:
     results: list[StepResult] = []
     overall_ok = True
 
+    default_timeout = args.timeout_seconds if args.timeout_seconds else None
     for step in steps:
-        default_timeout = int(args.timeout_seconds) if args.timeout_seconds else None
         result = _run_step(repo_root, out_dir, step, default_timeout_seconds=default_timeout)
         results.append(result)
         if result.exit_code != 0:
