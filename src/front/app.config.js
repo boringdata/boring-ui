@@ -1,6 +1,6 @@
 export default {
   features: {
-    codeSessions: true,
-    agentRailMode: 'both',
-  },
+  codeSessions: true,
+  agentRailMode: "both"
+}
 }
