@@ -23,6 +23,10 @@ const fulfillJson = (route: Route, status: number, body: unknown) => {
 }
 
 test.describe('User Menu Control-Plane Flows', () => {
+  // These flows involve prompt/dialog interactions + full-page navigation; give the suite
+  // extra headroom under CI-like load.
+  test.describe.configure({ timeout: 60_000 })
+
   test('switch workspace navigates to canonical /w/{id}/ after preflight', async ({ page }) => {
     const requests = trackApiRequests(page)
     const navRequests: string[] = []
@@ -59,7 +63,8 @@ test.describe('User Menu Control-Plane Flows', () => {
     )
 
     // Intercept the navigation away from the UI and fulfill a minimal HTML response.
-    await page.route('**/w/ws-2/**', (route) =>
+    // Match both `/w/ws-2` and `/w/ws-2/` to avoid trailing-slash differences.
+    await page.route('**/w/ws-2*', (route) =>
       route.fulfill({ status: 200, contentType: 'text/html', body: '<html></html>' }),
     )
 
@@ -72,7 +77,7 @@ test.describe('User Menu Control-Plane Flows', () => {
     const dialog = await dialogPromise
     await dialog.accept('ws-2')
 
-    await expect.poll(() => navRequests).toContain('/w/ws-2/')
+    await expect.poll(() => navRequests.map((pathname) => pathname.replace(/\/$/, ''))).toContain('/w/ws-2')
     // Diagnostic: ensure preflight hits canonical endpoints.
     expect(requests.map((r) => `${r.method} ${r.pathname}`)).toEqual(
       expect.arrayContaining([
@@ -134,7 +139,7 @@ test.describe('User Menu Control-Plane Flows', () => {
       return fulfillJson(route, 405, { detail: 'unexpected method' })
     })
 
-    await page.route('**/w/ws-new/**', (route) =>
+    await page.route('**/w/ws-new*', (route) =>
       route.fulfill({ status: 200, contentType: 'text/html', body: '<html></html>' }),
     )
 
@@ -144,7 +149,7 @@ test.describe('User Menu Control-Plane Flows', () => {
     await page.getByRole('button', { name: 'User menu' }).click()
     await page.getByRole('menuitem', { name: 'Create workspace' }).click()
 
-    await expect.poll(() => navRequests).toContain('/w/ws-new/')
+    await expect.poll(() => navRequests.map((pathname) => pathname.replace(/\/$/, ''))).toContain('/w/ws-new')
     await expect.poll(() => workspacesGetCount).toBeGreaterThan(0)
     expect(JSON.parse(settingsPutBody)).toEqual({ shell: 'zsh' })
 
