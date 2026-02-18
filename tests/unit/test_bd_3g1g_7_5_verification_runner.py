@@ -43,3 +43,27 @@ def test_verification_runner_dry_run_emits_step_plan_json() -> None:
     assert "playwright_e2e" in names
     assert "ubs_js_only" not in names, "Expected --skip-ubs to remove UBS step"
 
+
+def test_verification_runner_only_filters_and_unknown_step_errors() -> None:
+    root = _repo_root()
+    script = root / "scripts" / "bd_3g1g_verify.py"
+
+    proc = subprocess.run(  # noqa: S603 - local repo script under test
+        ["python3", str(script), "--dry-run", "--skip-ubs", "--only=pytest_unit"],
+        cwd=str(root),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(proc.stdout)
+    names = [step.get("name") for step in payload.get("steps", []) if isinstance(step, dict)]
+    assert names == ["pytest_unit"]
+
+    bad = subprocess.run(  # noqa: S603 - local repo script under test
+        ["python3", str(script), "--dry-run", "--skip-ubs", "--only=does_not_exist"],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+    )
+    assert bad.returncode == 2
+    assert "unknown step" in (bad.stderr or "").lower()

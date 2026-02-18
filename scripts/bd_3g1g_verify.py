@@ -33,6 +33,7 @@ class Step:
     name: str
     cmd: list[str]
     env_overrides: dict[str, str]
+    timeout_seconds: int | None = None
 
 
 @dataclass
@@ -64,32 +65,38 @@ def _build_steps(repo_root: Path) -> list[Step]:
             name="static_forbidden_routes",
             cmd=[sys.executable, "scripts/check_forbidden_direct_routes.py"],
             env_overrides={},
+            timeout_seconds=120,
         ),
         Step(
             name="pytest_unit",
             cmd=[sys.executable, "-m", "pytest", "-q", "tests/unit"],
             env_overrides={},
+            timeout_seconds=10 * 60,
         ),
         Step(
             name="pytest_integration",
             cmd=[sys.executable, "-m", "pytest", "-q", "tests/integration"],
             env_overrides={},
+            timeout_seconds=15 * 60,
         ),
         Step(
             name="vitest",
             cmd=["npm", "run", "-s", "test:run"],
             env_overrides=node_env_overrides,
+            timeout_seconds=15 * 60,
         ),
         Step(
             name="playwright_e2e",
             cmd=["npm", "run", "-s", "test:e2e"],
             env_overrides=node_env_overrides,
+            timeout_seconds=20 * 60,
         ),
         # UBS is best-effort in this environment; callers can skip explicitly.
         Step(
             name="ubs_js_only",
             cmd=["ubs", "--only=js", "."],
             env_overrides={},
+            timeout_seconds=15 * 60,
         ),
     ]
 
@@ -98,7 +105,7 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _run_step(repo_root: Path, out_dir: Path, step: Step) -> StepResult:
+def _run_step(repo_root: Path, out_dir: Path, step: Step, *, default_timeout_seconds: int | None) -> StepResult:
     logs_dir = out_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     log_path = logs_dir / f"{step.name}.log"
@@ -116,7 +123,24 @@ def _run_step(repo_root: Path, out_dir: Path, step: Step) -> StepResult:
             stderr=subprocess.STDOUT,
             text=True,
         )
-        exit_code = proc.wait()
+        timeout = step.timeout_seconds if step.timeout_seconds is not None else default_timeout_seconds
+        try:
+            exit_code = proc.wait(timeout=timeout if timeout and timeout > 0 else None)
+        except subprocess.TimeoutExpired:
+            log.write(f"\n[bd_3g1g_verify] TIMEOUT after {timeout} seconds\n")
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                try:
+                    proc.wait(timeout=3)
+                except Exception:
+                    pass
+            exit_code = 124
     duration = time.monotonic() - start
 
     return StepResult(
@@ -166,6 +190,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip Vitest step.",
     )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=0,
+        help="Default per-step timeout in seconds (0 disables).",
+    )
     args = parser.parse_args(argv)
 
     repo_root = _repo_root()
@@ -186,6 +216,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: unknown step(s): {', '.join(missing)}", file=sys.stderr)
             return 2
 
+    if not steps:
+        print("error: no steps selected (check --only/--skip flags).", file=sys.stderr)
+        return 2
+
     if args.list_steps:
         for step in steps:
             print(step.name)
@@ -203,7 +237,8 @@ def main(argv: list[str] | None = None) -> int:
     overall_ok = True
 
     for step in steps:
-        result = _run_step(repo_root, out_dir, step)
+        default_timeout = int(args.timeout_seconds) if args.timeout_seconds else None
+        result = _run_step(repo_root, out_dir, step, default_timeout_seconds=default_timeout)
         results.append(result)
         if result.exit_code != 0:
             overall_ok = False
