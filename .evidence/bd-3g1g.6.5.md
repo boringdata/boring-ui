@@ -32,11 +32,3 @@ src/back/boring_ui/api/policy.py:8:delegation envelope header (`X-Scope-Context`
 tests/integration/test_bd_3g1g_6_5_cross_agent_delegation.py:44:    return {"X-Scope-Context": json.dumps(payload)}
 tests/integration/test_bd_3g1g_6_5_cross_agent_delegation.py:6:We treat the `X-Scope-Context` header as the cross-agent contract boundary:
 ```
-
-```bash
-pytest -qq tests/integration/test_bd_3g1g_6_5_cross_agent_delegation.py
-```
-
-```output
-............                                                             [100%]
-```

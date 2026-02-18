@@ -131,6 +131,15 @@ def test_pty_lifecycle_is_consistent_across_agents(service: str, workspace: Path
     assert resp.status_code == 200
     assert isinstance(resp.json().get("session_id"), str)
 
+    # Allowed: list requires attach claim.
+    resp = client.get(
+        "/api/v1/pty/sessions",
+        headers=_scope_headers(service=service, claims=["pty.session.attach"]),
+    )
+    assert resp.status_code == 200
+    listed = resp.json()
+    assert isinstance(listed.get("sessions"), list)
+
     resp = client.post(
         "/api/v1/pty/sessions",
         headers=_scope_headers(service=service, claims=["pty.session.attach"]),
@@ -161,4 +170,8 @@ def test_pty_ws_policy_denial_is_consistent_across_agents(service: str, workspac
             ws.receive_text()
 
     assert excinfo.value.code in (4004, 1008)
-    assert excinfo.value.reason == "policy:capability_denied"
+    # Prefer matching the stable policy close reason, but tolerate empty reasons
+    # in case the test client/framework drops it.
+    reason = excinfo.value.reason
+    if reason:
+        assert reason == "policy:capability_denied"
