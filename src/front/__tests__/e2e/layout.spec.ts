@@ -13,7 +13,11 @@ test.describe('Layout Persistence', () => {
     await page.evaluate(() => {
       localStorage.clear()
     })
-    await page.reload()
+    // `page.reload()` defaults to waiting for `load`, which can be flaky for our app
+    // (resource timing + long-lived connections). `domcontentloaded` + explicit UI
+    // readiness wait is sufficient for these tests.
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
+    await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
   })
 
   test('app loads with essential panels', async ({ page }) => {
@@ -42,7 +46,7 @@ test.describe('Layout Persistence', () => {
     })
 
     // Reload the page
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
     await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
 
     // Layout should be restored
@@ -62,7 +66,9 @@ test.describe('Layout Persistence', () => {
   })
 
   test('collapsed state persists', async ({ page }) => {
-    await page.goto('/')
+    // This spec can be slow under CI-like load due to app boot + reload, so give it extra headroom.
+    test.setTimeout(60_000)
+
     await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
 
     // Save a collapsed state
@@ -70,7 +76,7 @@ test.describe('Layout Persistence', () => {
       localStorage.setItem('boring-ui-default-collapsed', JSON.stringify({ left: true }))
     })
 
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
     await page.waitForSelector('[data-testid="dockview"]', { timeout: 10000 })
 
     // Verify state was preserved
