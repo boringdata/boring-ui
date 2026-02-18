@@ -329,7 +329,8 @@ export default function App() {
       const workspaces = normalizeWorkspaceList(data)
       setWorkspaceOptions(workspaces)
       return workspaces
-    } catch {
+    } catch (error) {
+      console.warn('[UserMenu] Workspaces load failed:', error)
       setUserMenuWorkspaceError('Failed to reach control plane for workspaces.')
       return []
     }
@@ -345,7 +346,8 @@ export default function App() {
       const result = await apiFetchJson(meRoute.path, { query: meRoute.query })
       meResponse = result.response
       meData = result.data
-    } catch {
+    } catch (error) {
+      console.warn('[UserMenu] Identity load failed:', error)
       setMenuUserEmail('')
       setUserMenuAuthStatus('error')
       setUserMenuIdentityError('Failed to reach control plane for identity.')
