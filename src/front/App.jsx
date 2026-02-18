@@ -347,7 +347,6 @@ export default function App() {
     )
     if (!selectedWorkspace?.id) return
     const targetWorkspaceId = selectedWorkspace.id
-    const pathname = window.location.pathname
 
     const route = await runWithPreflightFallback({
       run: async () => {
@@ -360,7 +359,7 @@ export default function App() {
         return resolveWorkspaceNavigationRouteFromPathname({
           workspaceId: targetWorkspaceId,
           runtimePayload,
-          pathname,
+          pathname: window.location.pathname,
         })
       },
       // When preflight fails we cannot safely assume runtime is initialized; route to setup.
@@ -382,7 +381,6 @@ export default function App() {
     if (!createdWorkspaceId) return
 
     await fetchWorkspaceList()
-    const pathname = window.location.pathname
     const route = await runWithPreflightFallback({
       run: async () => {
         const { runtimePayload } = await syncWorkspaceRuntimeAndSettings({
@@ -394,7 +392,7 @@ export default function App() {
         return resolveWorkspaceNavigationRouteFromPathname({
           workspaceId: createdWorkspaceId,
           runtimePayload,
-          pathname,
+          pathname: window.location.pathname,
         })
       },
       fallbackRoute: routes.controlPlane.workspaces.setup(createdWorkspaceId),

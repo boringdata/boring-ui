@@ -117,6 +117,17 @@ describe('workspaceNavigation transport regressions', () => {
     expect(
       resolveWorkspaceNavigationRouteFromPathname({
         workspaceId: 'ws-live',
+        runtimePayload: { runtime: { status: 'ready' } },
+        pathname: '',
+      }),
+    ).toEqual({
+      path: '/w/ws-live/',
+      query: undefined,
+    })
+
+    expect(
+      resolveWorkspaceNavigationRouteFromPathname({
+        workspaceId: 'ws-live',
         runtimePayload: { runtime: { status: 'failed' } },
         pathname: '/w/ws-current/app/editor',
       }),
