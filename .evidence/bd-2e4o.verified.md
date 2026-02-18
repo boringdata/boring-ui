@@ -1,7 +1,5 @@
 # Evidence: bd-2e4o
 
-**
-
 ## Problem
 `br` CLI started failing with `CONFIG_ERROR` due to invalid JSON in `.beads/issues.jsonl` (corrupt trailing line 620).
 
