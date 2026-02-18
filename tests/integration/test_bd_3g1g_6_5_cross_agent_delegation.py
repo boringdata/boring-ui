@@ -170,8 +170,4 @@ def test_pty_ws_policy_denial_is_consistent_across_agents(service: str, workspac
             ws.receive_text()
 
     assert excinfo.value.code in (4004, 1008)
-    # Prefer matching the stable policy close reason, but tolerate empty reasons
-    # in case the test client/framework drops it.
-    reason = excinfo.value.reason
-    if reason:
-        assert reason == "policy:capability_denied"
+    assert excinfo.value.reason in ("policy:capability_denied", "", None)
