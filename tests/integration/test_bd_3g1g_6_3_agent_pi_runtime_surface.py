@@ -79,9 +79,8 @@ def _wait_for_health(base_url: str, proc: subprocess.Popen, log_path: Path) -> N
             status, payload = _http_json("GET", f"{base_url}/health")
         except Exception:
             status, payload = 0, {}
-        if not isinstance(payload, dict):
-            payload = {}
-        if status == 200 and payload.get("service") == "pi-service":
+        payload_dict: dict = payload if isinstance(payload, dict) else {}
+        if status == 200 and payload_dict.get("service") == "pi-service":
             return
         time.sleep(0.1)
     log = log_path.read_text(encoding="utf-8", errors="replace")
@@ -98,7 +97,15 @@ def _start_pi_service(repo_root: Path, *, max_attempts: int = 5) -> tuple[subpro
     env["PI_SERVICE_HOST"] = "127.0.0.1"
     # Avoid inheriting proxy settings that could cause nondeterministic behavior.
     env["NO_PROXY"] = "127.0.0.1,localhost"
-    for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+    env["no_proxy"] = env["NO_PROXY"]
+    for key in (
+        "http_proxy",
+        "https_proxy",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "all_proxy",
+        "ALL_PROXY",
+    ):
         env.pop(key, None)
 
     last_error = ""
