@@ -157,7 +157,10 @@ def create_app(
         app.include_router(create_pty_lifecycle_router(config), prefix='/api/v1/pty')
 
     # agent-normal owns runtime-only session lifecycle endpoints under canonical prefix.
-    app.include_router(create_agent_normal_router(config), prefix='/api/v1/agent/normal')
+    app.include_router(
+        create_agent_normal_router(config, pty_enabled=('pty' in enabled_routers)),
+        prefix='/api/v1/agent/normal',
+    )
 
     # Workspace plugins are optional and disabled by default since they execute
     # workspace-local Python modules in-process.

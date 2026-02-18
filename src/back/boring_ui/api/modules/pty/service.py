@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -292,6 +293,14 @@ class PTYService:
                 raise ValueError('Maximum sessions reached')
 
             normalized_id = str(session_id).strip() if session_id else None
+            if normalized_id == "":
+                normalized_id = None
+
+            if normalized_id is not None:
+                try:
+                    uuid.UUID(normalized_id)
+                except (ValueError, AttributeError, TypeError):
+                    raise ValueError("Invalid session_id (must be a UUID)")
 
             # Get or create session
             if normalized_id and normalized_id in self._session_registry:
@@ -302,7 +311,6 @@ class PTYService:
                 if normalized_id:
                     new_id = normalized_id
                 else:
-                    import uuid
                     new_id = str(uuid.uuid4())
                 session = SharedSession(
                     session_id=new_id,

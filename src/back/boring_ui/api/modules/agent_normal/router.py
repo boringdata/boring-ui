@@ -27,7 +27,11 @@ def _list_stream_session_summaries() -> list[dict[str, Any]]:
     return sessions
 
 
-def create_agent_normal_router(config: APIConfig | None = None) -> APIRouter:
+def create_agent_normal_router(
+    config: APIConfig | None = None,
+    *,
+    pty_enabled: bool = True,
+) -> APIRouter:
     """Create agent-normal router.
 
     Note: config is reserved for future policy/claims enforcement; this bead
@@ -42,7 +46,7 @@ def create_agent_normal_router(config: APIConfig | None = None) -> APIRouter:
 
         PTY listing is delegated to pty-service.
         """
-        pty_sessions = list_pty_session_summaries()
+        pty_sessions = list_pty_session_summaries() if pty_enabled else []
         stream_sessions = _list_stream_session_summaries()
         return {"sessions": pty_sessions + stream_sessions}
 
@@ -52,4 +56,3 @@ def create_agent_normal_router(config: APIConfig | None = None) -> APIRouter:
         return {"session_id": str(uuid.uuid4())}
 
     return router
-
