@@ -31,7 +31,7 @@ for issue_id in ids:
     if row is None:
         print(f"{issue_id}\tmissing")
         continue
-    print(f"{issue_id}\t{row['status']}")
+    print(f"{issue_id}\t{row.get('status', 'missing_status')}")
 
 missing = [issue_id for issue_id in ids if issue_id not in rows]
 if missing:
