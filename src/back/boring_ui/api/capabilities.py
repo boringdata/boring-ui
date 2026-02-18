@@ -20,12 +20,6 @@ class RouterInfo:
     description: str = ""
     tags: list[str] = field(default_factory=list)
     required_capabilities: list[str] = field(default_factory=list)
-    # Describes which logical service owns the route family in the service-split
-    # architecture (may differ from the monolith process that currently mounts it).
-    owner_service: str = ""
-    # Canonical (contract) route families for this router. These are NOT used for
-    # mounting; `prefix` + the router's internal paths are the implementation.
-    canonical_families: list[str] = field(default_factory=list)
 
 
 class RouterRegistry:
@@ -56,8 +50,6 @@ class RouterRegistry:
         description: str = "",
         tags: list[str] | None = None,
         required_capabilities: list[str] | None = None,
-        owner_service: str = "",
-        canonical_families: list[str] | None = None,
     ) -> None:
         """Register a router factory.
 
@@ -70,22 +62,12 @@ class RouterRegistry:
             required_capabilities: Capabilities this router requires
         """
 
-        def _normalize_str_list(value: list[str] | str | None) -> list[str]:
-            # Defensive: prevent accidental `list("foo") -> ["f","o","o"]`.
-            if value is None:
-                return []
-            if isinstance(value, str):
-                return [value]
-            return list(value)
-
         info = RouterInfo(
             name=name,
             prefix=prefix,
             description=description,
-            tags=_normalize_str_list(tags),
-            required_capabilities=_normalize_str_list(required_capabilities),
-            owner_service=owner_service,
-            canonical_families=_normalize_str_list(canonical_families),
+            tags=list(tags or []),
+            required_capabilities=list(required_capabilities or []),
         )
         self._routers[name] = (info, factory)
 
@@ -125,19 +107,15 @@ def create_default_registry() -> RouterRegistry:
         'files',
         '/api/v1/files',
         create_file_router,
-        description='File system operations (read, write, rename, delete)',
+        description='[owner=workspace-core] [canonical=/api/v1/files/*] File system operations (read, write, rename, delete)',
         tags=['files'],
-        owner_service='workspace-core',
-        canonical_families=['/api/v1/files/*'],
     )
     registry.register(
         'git',
         '/api/v1/git',
         create_git_router,
-        description='Git operations (status, diff, show)',
+        description='[owner=workspace-core] [canonical=/api/v1/git/*] Git operations (status, diff, show)',
         tags=['git'],
-        owner_service='workspace-core',
-        canonical_families=['/api/v1/git/*'],
     )
 
     # Optional routers
@@ -145,19 +123,15 @@ def create_default_registry() -> RouterRegistry:
         'pty',
         '/ws',
         create_pty_router,
-        description='PTY WebSocket for shell terminals',
+        description='[owner=pty-service] [canonical=/ws/pty] PTY WebSocket for shell terminals',
         tags=['websocket', 'terminal'],
-        owner_service='pty-service',
-        canonical_families=['/ws/pty', '/api/v1/pty/*'],
     )
     registry.register(
         'chat_claude_code',
         '/ws',
         create_stream_router,
-        description='Claude stream WebSocket for AI chat',
+        description='[owner=agent-normal] [canonical=/ws/claude-stream] Claude stream WebSocket for AI chat',
         tags=['websocket', 'ai'],
-        owner_service='agent-normal',
-        canonical_families=['/ws/agent/normal/*', '/api/v1/agent/normal/*'],
     )
     # Backward compatibility alias: 'stream' -> 'chat_claude_code'
     registry.register(
@@ -166,17 +140,13 @@ def create_default_registry() -> RouterRegistry:
         create_stream_router,
         description='Claude stream WebSocket for AI chat (alias for chat_claude_code)',
         tags=['websocket', 'ai'],
-        owner_service='agent-normal',
-        canonical_families=['/ws/agent/normal/*', '/api/v1/agent/normal/*'],
     )
     registry.register(
         'approval',
         '/api',
         create_approval_router,
-        description='Approval workflow endpoints',
+        description='[owner=boring-ui] [canonical=/api/approval/*] Approval workflow endpoints',
         tags=['approval'],
-        owner_service='boring-ui',
-        canonical_families=['/api/approval/*'],
     )
 
     return registry
@@ -193,7 +163,7 @@ def create_capabilities_router(
     Args:
         enabled_features: Map of feature name -> enabled status
         registry: Optional router registry for detailed info
-        config: Optional APIConfig (includes optional contract-metadata exposure)
+        config: Optional APIConfig for services metadata
 
     Returns:
         Router with /capabilities endpoint
@@ -215,9 +185,6 @@ def create_capabilities_router(
 
         # Add router details if registry provided
         if registry:
-            include_contract_metadata = bool(
-                config and getattr(config, "capabilities_include_contract_metadata", False)
-            )
             capabilities['routers'] = [
                 {
                     'name': info.name,
@@ -225,17 +192,6 @@ def create_capabilities_router(
                     'description': info.description,
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),
-                    'contract_metadata_included': include_contract_metadata,
-                    # Keep schema stable: contract metadata is always present, but
-                    # null unless explicitly enabled.
-                    'contract_metadata': (
-                        {
-                            'owner_service': info.owner_service or None,
-                            'canonical_families': list(info.canonical_families or []),
-                        }
-                        if include_contract_metadata
-                        else None
-                    ),
                 }
                 for info, _ in registry.all()
             ]

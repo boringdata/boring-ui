@@ -71,11 +71,6 @@ class APIConfig:
     workspace_plugin_allowlist: list[str] = field(
         default_factory=_workspace_plugin_allowlist
     )
-    # Off by default: exposes internal architecture/contract hints via /api/capabilities.
-    # Enable explicitly in trusted environments only.
-    capabilities_include_contract_metadata: bool = field(
-        default_factory=lambda: _env_bool("CAPABILITIES_INCLUDE_CONTRACT_METADATA", False)
-    )
 
     def validate_path(self, path: Path | str) -> Path:
         """Validate that a path is within workspace_root.

@@ -1,9 +1,12 @@
-"""Guards for bd-3g1g.5.3 capabilities/registry metadata alignment."""
+"""Guards for bd-3g1g.5.3 capabilities/registry metadata alignment.
+
+This bead aligns router/capability metadata with the service-ownership split
+without changing the /api/capabilities response schema (no new keys).
+"""
 
 from fastapi.testclient import TestClient
 
-from boring_ui.api import create_app, RouterRegistry
-from boring_ui.api.capabilities import RouterInfo
+from boring_ui.api import create_app
 
 
 def _routers_by_name(payload: dict) -> dict[str, dict]:
@@ -19,31 +22,7 @@ def _routers_by_name(payload: dict) -> dict[str, dict]:
     return by_name
 
 
-def test_registry_register_normalizes_string_lists() -> None:
-    registry = RouterRegistry()
-
-    # Intentionally pass strings to ensure we don't create ["f","i","l","e","s"].
-    # This is a defensive normalization behavior; callers should still pass lists.
-    registry.register(
-        name="demo",
-        prefix="/api/demo",
-        factory=lambda: None,  # type: ignore[arg-type]
-        tags="files",  # type: ignore[arg-type]
-        required_capabilities="cap.demo",  # type: ignore[arg-type]
-        canonical_families="/api/demo/*",  # type: ignore[arg-type]
-    )
-
-    entry = registry.get("demo")
-    assert entry is not None
-    info, _ = entry
-    assert isinstance(info, RouterInfo)
-    assert info.tags == ["files"]
-    assert info.required_capabilities == ["cap.demo"]
-    assert info.canonical_families == ["/api/demo/*"]
-
-
-def test_capabilities_router_metadata_includes_owner_and_canonical_families(monkeypatch) -> None:
-    monkeypatch.setenv("CAPABILITIES_INCLUDE_CONTRACT_METADATA", "1")
+def test_capabilities_router_descriptions_encode_owner_and_canonical_contract() -> None:
     app = create_app()
     client = TestClient(app)
 
@@ -52,51 +31,18 @@ def test_capabilities_router_metadata_includes_owner_and_canonical_families(monk
     payload = response.json()
 
     by_name = _routers_by_name(payload)
-    for entry in by_name.values():
-        assert "contract_metadata" in entry
-        assert entry["contract_metadata_included"] is True
-        assert isinstance(entry["contract_metadata"], dict)
-        assert isinstance(entry["contract_metadata"]["canonical_families"], list)
-        assert all(isinstance(value, str) for value in entry["contract_metadata"]["canonical_families"])
 
-    files = by_name["files"]
-    assert files["contract_metadata"]["owner_service"] == "workspace-core"
-    assert files["contract_metadata"]["canonical_families"] == ["/api/v1/files/*"]
+    # Assert no new schema keys were added for this bead.
+    sample = by_name["files"]
+    assert "owner_service" not in sample
+    assert "canonical_families" not in sample
+    assert "contract_metadata" not in sample
+    assert "contract_metadata_included" not in sample
 
-    git = by_name["git"]
-    assert git["contract_metadata"]["owner_service"] == "workspace-core"
-    assert git["contract_metadata"]["canonical_families"] == ["/api/v1/git/*"]
+    # Ownership markers (machine-checkable) embedded in existing description field.
+    assert by_name["files"]["description"].startswith("[owner=workspace-core] [canonical=/api/v1/files/*] ")
+    assert by_name["git"]["description"].startswith("[owner=workspace-core] [canonical=/api/v1/git/*] ")
+    assert by_name["pty"]["description"].startswith("[owner=pty-service] [canonical=/ws/pty] ")
+    assert by_name["chat_claude_code"]["description"].startswith("[owner=agent-normal] [canonical=/ws/claude-stream] ")
+    assert by_name["approval"]["description"].startswith("[owner=boring-ui] [canonical=/api/approval/*] ")
 
-    pty = by_name["pty"]
-    assert pty["contract_metadata"]["owner_service"] == "pty-service"
-    assert "/ws/pty" in pty["contract_metadata"]["canonical_families"]
-    assert "/api/v1/pty/*" in pty["contract_metadata"]["canonical_families"]
-
-    chat = by_name["chat_claude_code"]
-    assert chat["contract_metadata"]["owner_service"] == "agent-normal"
-    assert "/ws/agent/normal/*" in chat["contract_metadata"]["canonical_families"]
-    assert "/api/v1/agent/normal/*" in chat["contract_metadata"]["canonical_families"]
-
-    stream_alias = by_name["stream"]
-    assert stream_alias["contract_metadata"]["owner_service"] == "agent-normal"
-    assert stream_alias["contract_metadata"]["canonical_families"] == chat["contract_metadata"]["canonical_families"]
-
-    approval = by_name["approval"]
-    assert approval["contract_metadata"]["owner_service"] == "boring-ui"
-    assert approval["contract_metadata"]["canonical_families"] == ["/api/approval/*"]
-
-
-def test_capabilities_contract_metadata_is_not_exposed_by_default(monkeypatch) -> None:
-    monkeypatch.delenv("CAPABILITIES_INCLUDE_CONTRACT_METADATA", raising=False)
-    app = create_app()
-    client = TestClient(app)
-
-    response = client.get("/api/capabilities")
-    assert response.status_code == 200
-    payload = response.json()
-
-    by_name = _routers_by_name(payload)
-    for entry in by_name.values():
-        assert "contract_metadata" in entry
-        assert entry["contract_metadata_included"] is False
-        assert entry["contract_metadata"] is None
