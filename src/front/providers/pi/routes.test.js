@@ -6,19 +6,19 @@ describe('createPiRoutes', () => {
     const routes = createPiRoutes('http://localhost:9100/')
 
     expect(routes.isConfigured).toBe(true)
-    expect(routes.sessions()).toBe('http://localhost:9100/api/sessions')
-    expect(routes.history('session/1')).toBe('http://localhost:9100/api/sessions/session%2F1/history')
-    expect(routes.createSession()).toBe('http://localhost:9100/api/sessions/create')
-    expect(routes.stream('abc')).toBe('http://localhost:9100/api/sessions/abc/stream')
+    expect(routes.sessions()).toBe('http://localhost:9100/api/v1/agent/pi/sessions')
+    expect(routes.history('session/1')).toBe('http://localhost:9100/api/v1/agent/pi/sessions/session%2F1/history')
+    expect(routes.createSession()).toBe('http://localhost:9100/api/v1/agent/pi/sessions/create')
+    expect(routes.stream('abc')).toBe('http://localhost:9100/api/v1/agent/pi/sessions/abc/stream')
   })
 
   it('reports unconfigured routes when service URL is missing', () => {
     const routes = createPiRoutes('')
 
     expect(routes.isConfigured).toBe(false)
-    expect(routes.sessions()).toBe('/sessions')
-    expect(routes.history('abc')).toBe('/sessions/abc/history')
-    expect(routes.createSession()).toBe('/sessions/create')
-    expect(routes.stream('abc')).toBe('/sessions/abc/stream')
+    expect(routes.sessions()).toBe('/api/v1/agent/pi/sessions')
+    expect(routes.history('abc')).toBe('/api/v1/agent/pi/sessions/abc/history')
+    expect(routes.createSession()).toBe('/api/v1/agent/pi/sessions/create')
+    expect(routes.stream('abc')).toBe('/api/v1/agent/pi/sessions/abc/stream')
   })
 })
