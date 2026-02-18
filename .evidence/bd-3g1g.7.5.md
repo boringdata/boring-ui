@@ -13,8 +13,8 @@ python3 -m pytest -q tests/unit/test_bd_3g1g_7_5_verification_runner.py | sed -E
 ```
 
 ```output
-.                                                                        [100%]
-1 passed
+..                                                                       [100%]
+2 passed
 ```
 
 ```bash
