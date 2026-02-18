@@ -101,13 +101,16 @@ export default defineConfig({
   // Web Server configuration for running tests against dev server
   webServer: [
     {
-      command: `npm run dev -- --host 127.0.0.1 --port ${e2eFrontendPort} --strictPort`,
+      command: `env -u NO_COLOR -u FORCE_COLOR npm run dev -- --host 127.0.0.1 --port ${e2eFrontendPort} --strictPort`,
       url: frontendUrl,
       reuseExistingServer,
       timeout: 120000,
     },
     {
-      command: `PYTHONPATH=src/back BORING_UI_WORKSPACE_ROOT=$PWD python3 -m uvicorn boring_ui.runtime:app --host 127.0.0.1 --port ${e2eApiPort}`,
+      // Make webserver logs deterministic for transcript verification:
+      // - suppress per-request access logs (client ephemeral ports + query params)
+      // - suppress INFO startup logs (per-run PIDs)
+      command: `env -u NO_COLOR -u FORCE_COLOR BORING_UI_PTY_CLAUDE_COMMAND=bash PYTHONPATH=src/back BORING_UI_WORKSPACE_ROOT=$PWD python3 -m uvicorn boring_ui.runtime:app --host 127.0.0.1 --port ${e2eApiPort} --log-level warning --no-access-log`,
       url: apiHealthUrl,
       reuseExistingServer,
       timeout: 120000,

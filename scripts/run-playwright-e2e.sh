@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Avoid noisy Node warnings that include per-run PIDs.
+# Node warns when both NO_COLOR and FORCE_COLOR are set (common in CI / transcript tooling).
+unset NO_COLOR FORCE_COLOR
+
 is_bun_node() {
   node -e "process.exit(process.versions?.bun ? 0 : 1)" >/dev/null 2>&1
 }
@@ -29,4 +33,4 @@ if is_bun_node; then
   fi
 fi
 
-npx playwright test "$@"
+env -u NO_COLOR -u FORCE_COLOR npx playwright test "$@"
