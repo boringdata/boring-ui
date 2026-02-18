@@ -225,15 +225,15 @@ def create_capabilities_router(
                     'description': info.description,
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),
-                    **(
+                    # Keep schema stable: contract metadata is always present, but
+                    # null unless explicitly enabled.
+                    'contract_metadata': (
                         {
-                            'contract_metadata': {
-                                'owner_service': info.owner_service or None,
-                                'canonical_families': info.canonical_families,
-                            }
+                            'owner_service': info.owner_service or None,
+                            'canonical_families': info.canonical_families,
                         }
                         if include_contract_metadata
-                        else {}
+                        else None
                     ),
                 }
                 for info, _ in registry.all()
