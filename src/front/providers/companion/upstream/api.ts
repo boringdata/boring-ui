@@ -3,7 +3,10 @@ import { getCompanionBaseUrl, getAuthHeaders } from "../config.js";
 
 function getBase(): string {
   const base = getCompanionBaseUrl();
-  return base ? `${base}/api` : "/api";
+  // Canonical agent-companion service boundary (Phase-1 contract freeze).
+  // This is not frontend-callable directly in hosted mode, but is the correct
+  // direct-connect surface when talking to an agent-companion service.
+  return base ? `${base}/api/v1/agent/companion` : "/api/v1/agent/companion";
 }
 
 async function post<T = unknown>(path: string, body?: object): Promise<T> {

@@ -28,7 +28,7 @@ describe('routes helper', () => {
   it('builds websocket route descriptors without feature-local literals', () => {
     expect(routes.ws.plugins()).toEqual({ path: '/ws/plugins', query: undefined })
     expect(routes.ws.claudeStream({ session_id: 'abc' })).toEqual({
-      path: '/ws/claude-stream',
+      path: '/ws/agent/normal/stream',
       query: { session_id: 'abc' },
     })
   })

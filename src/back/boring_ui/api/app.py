@@ -11,6 +11,8 @@ from .capabilities import (
     create_default_registry,
     create_capabilities_router,
 )
+from .modules.agent_normal import create_agent_normal_router
+from .modules.pty.lifecycle import create_pty_lifecycle_router
 from .workspace_plugins import WorkspacePluginManager
 
 
@@ -149,6 +151,14 @@ def create_app(
             args = router_args.get(router_name, ())
             app.include_router(factory(*args), prefix=info.prefix)
 
+    # Canonical service-owned lifecycle routes that do not fit the router-registry model.
+    # PTY WS remains under `/ws/pty`, but lifecycle metadata lives under `/api/v1/pty/*`.
+    if 'pty' in enabled_routers:
+        app.include_router(create_pty_lifecycle_router(config), prefix='/api/v1/pty')
+
+    # agent-normal owns runtime-only session lifecycle endpoints under canonical prefix.
+    app.include_router(create_agent_normal_router(config), prefix='/api/v1/agent/normal')
+
     # Workspace plugins are optional and disabled by default since they execute
     # workspace-local Python modules in-process.
     plugin_manager = None
@@ -192,40 +202,6 @@ def create_app(
         return {
             'root': str(config.workspace_root),
         }
-
-    @app.get('/api/sessions')
-    async def list_sessions():
-        """List active PTY and stream sessions."""
-        from .modules.stream import get_session_registry as get_stream_registry
-        from .modules.pty import get_session_registry as get_pty_registry
-
-        pty_sessions = [
-            {
-                'id': session_id,
-                'type': 'pty',
-                'alive': session.is_alive(),
-                'clients': len(session.clients),
-                'history_count': len(session.history),
-            }
-            for session_id, session in get_pty_registry().items()
-        ]
-        stream_sessions = [
-            {
-                'id': session_id,
-                'type': 'stream',
-                'alive': session.is_alive(),
-                'clients': len(session.clients),
-                'history_count': len(session.history),
-            }
-            for session_id, session in get_stream_registry().items()
-        ]
-        return {'sessions': pty_sessions + stream_sessions}
-
-    @app.post('/api/sessions')
-    async def create_session():
-        """Create a new session ID (client will connect via WebSocket)."""
-        import uuid
-        return {'session_id': str(uuid.uuid4())}
 
     if plugin_manager is not None:
         # Start file watcher after startup.

@@ -96,11 +96,15 @@ function getWsUrl(sessionId: string): string {
     const token = getCompanionAuthToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
     const basePath = url.pathname.replace(/\/$/, "");
-    return `${proto}//${url.host}${basePath}/ws/browser/${sessionId}${qs}`;
+    return `${proto}//${url.host}${basePath}/ws/agent/companion/browser/${sessionId}${qs}`;
   }
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}/ws/browser/${sessionId}`;
+  return `${proto}//${location.host}/ws/agent/companion/browser/${sessionId}`;
 }
+
+export const __companionWsTestUtils = {
+  getWsUrl,
+};
 
 function extractTextFromBlocks(blocks: ContentBlock[]): string {
   return blocks
