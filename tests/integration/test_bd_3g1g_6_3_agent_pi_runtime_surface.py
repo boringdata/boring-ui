@@ -74,11 +74,13 @@ def _wait_for_health(base_url: str, proc: subprocess.Popen, log_path: Path) -> N
             log = log_path.read_text(encoding="utf-8", errors="replace")
             raise AssertionError(f"PI service exited before becoming healthy.\n\n{log}")
         status = 0
-        payload: dict = {}
+        payload: object = {}
         try:
             status, payload = _http_json("GET", f"{base_url}/health")
         except Exception:
             status, payload = 0, {}
+        if not isinstance(payload, dict):
+            payload = {}
         if status == 200 and payload.get("service") == "pi-service":
             return
         time.sleep(0.1)
@@ -94,6 +96,10 @@ def _start_pi_service(repo_root: Path, *, max_attempts: int = 5) -> tuple[subpro
     # Satisfy server startup gate; value does not need to be valid for route probes.
     env["ANTHROPIC_API_KEY"] = "test"
     env["PI_SERVICE_HOST"] = "127.0.0.1"
+    # Avoid inheriting proxy settings that could cause nondeterministic behavior.
+    env["NO_PROXY"] = "127.0.0.1,localhost"
+    for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+        env.pop(key, None)
 
     last_error = ""
     for attempt in range(1, max_attempts + 1):
@@ -124,6 +130,7 @@ def _start_pi_service(repo_root: Path, *, max_attempts: int = 5) -> tuple[subpro
                 proc.wait(timeout=2)
             with contextlib.suppress(Exception):
                 proc.kill()
+                proc.wait(timeout=2)
             with contextlib.suppress(Exception):
                 shutil.rmtree(tmpdir, ignore_errors=True)
             continue
