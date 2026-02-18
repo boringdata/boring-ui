@@ -97,6 +97,29 @@ describe('UserMenu', () => {
       expect(screen.getByRole('menuitem', { name: 'User settings' })).toBeDisabled()
       expect(screen.getByRole('menuitem', { name: 'Logout' })).toBeDisabled()
     })
+
+    it('shows status banner, supports retry, and disables specified actions', () => {
+      const props = makeProps()
+      const onRetry = vi.fn()
+      render(
+        <UserMenu
+          {...props}
+          statusMessage="Not signed in."
+          statusTone="error"
+          onRetry={onRetry}
+          disabledActions={['switch']}
+        />
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
+      expect(screen.getByRole('alert')).toHaveTextContent('Not signed in.')
+      expect(screen.getByRole('menuitem', { name: 'Switch workspace' })).toBeDisabled()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      expect(onRetry).toHaveBeenCalledTimes(1)
+      // Retry should not close the menu (user may want to see the refreshed state).
+      expect(screen.getByRole('menu')).toBeInTheDocument()
+    })
   })
 
   describe('Accessibility and Classes', () => {

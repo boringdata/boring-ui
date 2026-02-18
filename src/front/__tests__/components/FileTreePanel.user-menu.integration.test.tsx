@@ -20,6 +20,10 @@ const makeParams = (overrides = {}) => ({
   collapsed: true,
   onToggleCollapse: vi.fn(),
   userEmail: 'john@example.com',
+  userMenuStatusMessage: '',
+  userMenuStatusTone: 'error',
+  onUserMenuRetry: vi.fn(),
+  userMenuDisabledActions: [],
   workspaceName: 'my-workspace',
   workspaceId: 'ws-123',
   onSwitchWorkspace: vi.fn(),
@@ -58,5 +62,20 @@ describe('FileTreePanel + UserMenu integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'User settings' }))
     expect(params.onOpenUserSettings).toHaveBeenCalledWith({ workspaceId: 'ws-123' })
+  })
+
+  it('renders status banner and retry wiring when provided by parent', async () => {
+    const params = makeParams({
+      userMenuStatusMessage: 'Control plane unreachable.',
+      userMenuDisabledActions: ['switch'],
+    })
+    render(<FileTreePanel params={params} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Control plane unreachable.')
+    expect(screen.getByRole('menuitem', { name: 'Switch workspace' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(params.onUserMenuRetry).toHaveBeenCalledTimes(1)
   })
 })

@@ -329,7 +329,7 @@ export default function App() {
       const workspaces = normalizeWorkspaceList(data)
       setWorkspaceOptions(workspaces)
       return workspaces
-    } catch (error) {
+    } catch {
       setUserMenuWorkspaceError('Failed to reach control plane for workspaces.')
       return []
     }
@@ -345,7 +345,7 @@ export default function App() {
       const result = await apiFetchJson(meRoute.path, { query: meRoute.query })
       meResponse = result.response
       meData = result.data
-    } catch (error) {
+    } catch {
       setMenuUserEmail('')
       setUserMenuAuthStatus('error')
       setUserMenuIdentityError('Failed to reach control plane for identity.')
@@ -1069,24 +1069,24 @@ export default function App() {
           id: 'filetree',
           component: 'filetree',
           title: 'Files',
-	          params: {
-	            onOpenFile: openFile,
-	            onOpenFileToSide: openFileToSide,
-	            onOpenDiff: openDiff,
-	            projectRoot,
-	            activeFile,
-	            activeDiffFile,
-	            collapsed: collapsed.filetree,
-	            onToggleCollapse: toggleFiletree,
-	            userEmail: menuUserEmail,
-	            userMenuStatusMessage,
-	            userMenuStatusTone,
-	            onUserMenuRetry: handleUserMenuRetry,
-	            userMenuDisabledActions,
-	            workspaceName: activeWorkspaceName,
-	            workspaceId: currentWorkspaceId,
-	            onSwitchWorkspace: handleSwitchWorkspace,
-	            onCreateWorkspace: handleCreateWorkspace,
+          params: {
+            onOpenFile: openFile,
+            onOpenFileToSide: openFileToSide,
+            onOpenDiff: openDiff,
+            projectRoot,
+            activeFile,
+            activeDiffFile,
+            collapsed: collapsed.filetree,
+            onToggleCollapse: toggleFiletree,
+            userEmail: menuUserEmail,
+            userMenuStatusMessage,
+            userMenuStatusTone,
+            onUserMenuRetry: handleUserMenuRetry,
+            userMenuDisabledActions,
+            workspaceName: activeWorkspaceName,
+            workspaceId: currentWorkspaceId,
+            onSwitchWorkspace: handleSwitchWorkspace,
+            onCreateWorkspace: handleCreateWorkspace,
             onOpenUserSettings: handleOpenUserSettings,
             onLogout: handleLogout,
           },
@@ -1595,25 +1595,25 @@ export default function App() {
         }
 
         // Update filetree params with callbacks (callbacks can't be serialized in layout JSON)
-	        if (filetreePanel) {
-	          filetreePanel.api.updateParameters({
-	            onOpenFile: openFile,
-	            onOpenFileToSide: openFileToSide,
-	            onOpenDiff: openDiff,
-	            projectRoot,
-	            activeFile,
-	            activeDiffFile,
-	            collapsed: collapsed.filetree,
-	            onToggleCollapse: toggleFiletree,
-	            userEmail: menuUserEmail,
-	            userMenuStatusMessage,
-	            userMenuStatusTone,
-	            onUserMenuRetry: handleUserMenuRetry,
-	            userMenuDisabledActions,
-	            workspaceName: activeWorkspaceName,
-	            workspaceId: currentWorkspaceId,
-	            onSwitchWorkspace: handleSwitchWorkspace,
-	            onCreateWorkspace: handleCreateWorkspace,
+        if (filetreePanel) {
+          filetreePanel.api.updateParameters({
+            onOpenFile: openFile,
+            onOpenFileToSide: openFileToSide,
+            onOpenDiff: openDiff,
+            projectRoot,
+            activeFile,
+            activeDiffFile,
+            collapsed: collapsed.filetree,
+            onToggleCollapse: toggleFiletree,
+            userEmail: menuUserEmail,
+            userMenuStatusMessage,
+            userMenuStatusTone,
+            onUserMenuRetry: handleUserMenuRetry,
+            userMenuDisabledActions,
+            workspaceName: activeWorkspaceName,
+            workspaceId: currentWorkspaceId,
+            onSwitchWorkspace: handleSwitchWorkspace,
+            onCreateWorkspace: handleCreateWorkspace,
             onOpenUserSettings: handleOpenUserSettings,
             onLogout: handleLogout,
           })
@@ -1841,6 +1841,10 @@ export default function App() {
     activeDiffFile,
     toggleFiletree,
     menuUserEmail,
+    userMenuStatusMessage,
+    userMenuStatusTone,
+    handleUserMenuRetry,
+    userMenuDisabledActions,
     activeWorkspaceName,
     currentWorkspaceId,
     handleSwitchWorkspace,
@@ -1892,6 +1896,10 @@ export default function App() {
         collapsed: collapsed.filetree,
         onToggleCollapse: toggleFiletree,
         userEmail: menuUserEmail,
+        userMenuStatusMessage,
+        userMenuStatusTone,
+        onUserMenuRetry: handleUserMenuRetry,
+        userMenuDisabledActions,
         workspaceName: activeWorkspaceName,
         workspaceId: currentWorkspaceId,
         onSwitchWorkspace: handleSwitchWorkspace,
@@ -1911,6 +1919,10 @@ export default function App() {
     collapsed.filetree,
     toggleFiletree,
     menuUserEmail,
+    userMenuStatusMessage,
+    userMenuStatusTone,
+    handleUserMenuRetry,
+    userMenuDisabledActions,
     activeWorkspaceName,
     currentWorkspaceId,
     handleSwitchWorkspace,
