@@ -2676,23 +2676,6 @@ export default function ClaudeStreamChat({
       setApprovalRequest((current) => (current && current.id === requestId ? null : current))
       return
     }
-
-    // Handle explicit permission request from stream
-    if (event?.type === 'permission') {
-      const payload = event.payload
-      const tool = payload.tool_name || payload.tool || payload.name || 'tool'
-      const filePath = payload.file_path || payload.path || ''
-      const diff = payload.diff || ''
-      const toolInput = payload.tool_input || payload.input || {}
-      setApprovalRequest({
-        id: payload.id || payload.tool_use_id || `stream-${Date.now()}`,
-        diff,
-        tool_name: tool,
-        tool_input: toolInput,
-        file_path: filePath,
-        source: 'stream',
-      })
-    }
   }, [])
 
   const handleControlMessage = useCallback((payload) => {
@@ -2857,16 +2840,6 @@ export default function ClaudeStreamChat({
     if (approvalRequest.source === 'control_request' && sendApprovalResponseRef.current) {
       // Send control_response for control_request (native permission flow)
       // Must include tool_input for CLI to execute the tool
-      sendApprovalResponseRef.current(
-        decision,
-        approvalRequest.id,
-        approvalRequest.tool_input || {},
-        option.updatedInput,
-        option.permissionSuggestions,
-        option.message
-      )
-    } else if (approvalRequest.source === 'stream' && sendApprovalResponseRef.current) {
-      // Send through WebSocket for stream-based permissions (legacy)
       sendApprovalResponseRef.current(
         decision,
         approvalRequest.id,

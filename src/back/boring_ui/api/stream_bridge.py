@@ -1457,41 +1457,6 @@ async def handle_stream_websocket(
                             }
                         )
 
-            elif msg_type == "approval_response":
-                # Legacy approval response handler - convert to control_response format
-                decision = payload.get("decision", "allow")
-                request_id = payload.get("request_id") or payload.get("tool_id")
-                tool_input = payload.get("tool_input", {})
-                print(
-                    f"[Stream] Approval response (legacy): decision={decision} request_id={request_id}"
-                )
-
-                if decision in ("allow", "always", "grant"):
-                    response_payload = {
-                        "type": "control_response",
-                        "response": {
-                            "subtype": "success",
-                            "request_id": request_id,
-                            "response": {
-                                "behavior": "allow",
-                                "updatedInput": tool_input,
-                            },
-                        },
-                    }
-                else:
-                    response_payload = {
-                        "type": "control_response",
-                        "response": {
-                            "subtype": "success",
-                            "request_id": request_id,
-                            "response": {
-                                "behavior": "deny",
-                                "message": "User denied permission",
-                            },
-                        },
-                    }
-                await session.write_json(response_payload)
-
             elif msg_type == "interrupt":
                 # Interrupt current Claude operation (like Ctrl+C)
                 await session.interrupt()
