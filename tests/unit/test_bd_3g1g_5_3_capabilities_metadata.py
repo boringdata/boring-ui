@@ -1,5 +1,7 @@
 """Guards for bd-3g1g.5.3 capabilities/registry metadata alignment."""
 
+import os
+
 from fastapi.testclient import TestClient
 
 from boring_ui.api import create_app
@@ -13,11 +15,13 @@ def _routers_by_name(payload: dict) -> dict[str, dict]:
         assert isinstance(entry, dict)
         name = entry.get("name")
         assert isinstance(name, str) and name
+        assert name not in by_name, f"Duplicate router name in capabilities payload: {name}"
         by_name[name] = entry
     return by_name
 
 
-def test_capabilities_router_metadata_includes_owner_and_canonical_families() -> None:
+def test_capabilities_router_metadata_includes_owner_and_canonical_families(monkeypatch) -> None:
+    monkeypatch.setenv("CAPABILITIES_INCLUDE_CONTRACT_METADATA", "1")
     app = create_app()
     client = TestClient(app)
 
@@ -53,3 +57,17 @@ def test_capabilities_router_metadata_includes_owner_and_canonical_families() ->
     assert approval["owner_service"] == "boring-ui"
     assert approval["canonical_families"] == ["/api/approval/*"]
 
+
+def test_capabilities_contract_metadata_is_not_exposed_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("CAPABILITIES_INCLUDE_CONTRACT_METADATA", raising=False)
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.get("/api/capabilities")
+    assert response.status_code == 200
+    payload = response.json()
+
+    by_name = _routers_by_name(payload)
+    any_router = by_name["files"]
+    assert "owner_service" not in any_router
+    assert "canonical_families" not in any_router

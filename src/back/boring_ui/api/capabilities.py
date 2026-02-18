@@ -73,10 +73,10 @@ class RouterRegistry:
             name=name,
             prefix=prefix,
             description=description,
-            tags=tags or [],
-            required_capabilities=required_capabilities or [],
+            tags=list(tags or []),
+            required_capabilities=list(required_capabilities or []),
             owner_service=owner_service,
-            canonical_families=canonical_families or [],
+            canonical_families=list(canonical_families or []),
         )
         self._routers[name] = (info, factory)
 
@@ -206,6 +206,9 @@ def create_capabilities_router(
 
         # Add router details if registry provided
         if registry:
+            include_contract_metadata = bool(
+                config and getattr(config, "capabilities_include_contract_metadata", False)
+            )
             capabilities['routers'] = [
                 {
                     'name': info.name,
@@ -213,8 +216,14 @@ def create_capabilities_router(
                     'description': info.description,
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),
-                    'owner_service': info.owner_service or None,
-                    'canonical_families': info.canonical_families,
+                    **(
+                        {
+                            'owner_service': info.owner_service or None,
+                            'canonical_families': info.canonical_families,
+                        }
+                        if include_contract_metadata
+                        else {}
+                    ),
                 }
                 for info, _ in registry.all()
             ]
