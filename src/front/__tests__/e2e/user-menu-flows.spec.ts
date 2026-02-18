@@ -63,13 +63,14 @@ test.describe('User Menu Control-Plane Flows', () => {
       route.fulfill({ status: 200, contentType: 'text/html', body: '<html></html>' }),
     )
 
-    page.on('dialog', (dialog) => dialog.accept('ws-2'))
-
     await page.goto('/')
     await page.waitForSelector('[aria-label="User menu"]', { timeout: 15000 })
 
     await page.getByRole('button', { name: 'User menu' }).click()
+    const dialogPromise = page.waitForEvent('dialog')
     await page.getByRole('menuitem', { name: 'Switch workspace' }).click()
+    const dialog = await dialogPromise
+    await dialog.accept('ws-2')
 
     await expect.poll(() => navRequests).toContain('/w/ws-2/')
     // Diagnostic: ensure preflight hits canonical endpoints.
@@ -128,7 +129,7 @@ test.describe('User Menu Control-Plane Flows', () => {
       }
       if (req.method() === 'PUT') {
         settingsPutBody = req.postData() || ''
-        return fulfillJson(route, 204, {})
+        return route.fulfill({ status: 204 })
       }
       return fulfillJson(route, 405, { detail: 'unexpected method' })
     })
@@ -145,7 +146,7 @@ test.describe('User Menu Control-Plane Flows', () => {
 
     await expect.poll(() => navRequests).toContain('/w/ws-new/')
     await expect.poll(() => workspacesGetCount).toBeGreaterThan(0)
-    expect(settingsPutBody).toBe(json({ shell: 'zsh' }))
+    expect(JSON.parse(settingsPutBody)).toEqual({ shell: 'zsh' })
 
     // Diagnostic: ensure key requests happened.
     expect(requests.map((r) => `${r.method} ${r.pathname}`)).toEqual(
