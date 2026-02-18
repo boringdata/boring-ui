@@ -52,12 +52,12 @@ describe('apiBase loopback rewrite', () => {
   })
 
   it('serializes array query values as repeated parameters for websocket URLs', () => {
-    const wsUrl = buildWsUrl('/ws/agent/normal/stream', {
+    const wsUrl = buildWsUrl('/ws/claude-stream', {
       session_id: 'abc123',
       file: ['one.txt', 'two.txt'],
     })
 
-    expect(wsUrl).toContain('/ws/agent/normal/stream?')
+    expect(wsUrl).toContain('/ws/claude-stream?')
     expect(wsUrl).toContain('session_id=abc123')
     expect(wsUrl).toContain('file=one.txt')
     expect(wsUrl).toContain('file=two.txt')
