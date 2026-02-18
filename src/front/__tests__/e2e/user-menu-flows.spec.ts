@@ -71,11 +71,14 @@ test.describe('User Menu Control-Plane Flows', () => {
     await page.goto('/')
     await page.waitForSelector('[aria-label="User menu"]', { timeout: 15000 })
 
+    // Avoid flaky Playwright dialog handling: stub prompt directly and keep the test focused
+    // on the canonical navigation + preflight request pattern.
+    await page.evaluate(() => {
+      window.prompt = () => 'ws-2'
+    })
+
     await page.getByRole('button', { name: 'User menu' }).click()
-    const dialogPromise = page.waitForEvent('dialog')
     await page.getByRole('menuitem', { name: 'Switch workspace' }).click()
-    const dialog = await dialogPromise
-    await dialog.accept('ws-2')
 
     await expect.poll(() => navRequests.map((pathname) => pathname.replace(/\/$/, ''))).toContain('/w/ws-2')
     // Diagnostic: ensure preflight hits canonical endpoints.
