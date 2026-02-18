@@ -291,12 +291,19 @@ class PTYService:
             if len(self._session_registry) >= PTY_MAX_SESSIONS:
                 raise ValueError('Maximum sessions reached')
 
+            normalized_id = str(session_id).strip() if session_id else None
+
             # Get or create session
-            if session_id and session_id in self._session_registry:
-                return self._session_registry[session_id], False
+            if normalized_id and normalized_id in self._session_registry:
+                return self._session_registry[normalized_id], False
             else:
-                import uuid
-                new_id = str(uuid.uuid4())
+                # If the client provides a session_id, honor it so callers can
+                # pre-generate IDs via lifecycle endpoints and reconnect reliably.
+                if normalized_id:
+                    new_id = normalized_id
+                else:
+                    import uuid
+                    new_id = str(uuid.uuid4())
                 session = SharedSession(
                     session_id=new_id,
                     command=command,

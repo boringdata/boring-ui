@@ -43,9 +43,9 @@ describe('transport helpers', () => {
       text: vi.fn().mockResolvedValue('{"sessions":[]}'),
     })
 
-    const { data } = await fetchJsonUrl('https://example.test/api/sessions')
+    const { data } = await fetchJsonUrl('https://example.test/api/v1/agent/normal/sessions')
 
-    expect(fetch).toHaveBeenCalledWith('https://example.test/api/sessions', {})
+    expect(fetch).toHaveBeenCalledWith('https://example.test/api/v1/agent/normal/sessions', {})
     expect(data).toEqual({ sessions: [] })
   })
 })

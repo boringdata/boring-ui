@@ -82,8 +82,8 @@ export const routes = {
     show: (targetPath) => ({ path: '/api/v1/git/show', query: { path: targetPath } }),
   },
   sessions: {
-    list: () => ({ path: '/api/sessions', query: undefined }),
-    create: () => ({ path: '/api/sessions', query: undefined }),
+    list: () => ({ path: '/api/v1/agent/normal/sessions', query: undefined }),
+    create: () => ({ path: '/api/v1/agent/normal/sessions', query: undefined }),
   },
   attachments: {
     upload: () => ({ path: '/api/attachments', query: undefined }),
@@ -91,6 +91,6 @@ export const routes = {
   ws: {
     plugins: () => ({ path: '/ws/plugins', query: undefined }),
     pty: (query) => ({ path: '/ws/pty', query: query || undefined }),
-    claudeStream: (query) => ({ path: '/ws/claude-stream', query: query || undefined }),
+    claudeStream: (query) => ({ path: '/ws/agent/normal/stream', query: query || undefined }),
   },
 }

@@ -62,7 +62,7 @@ class TestAppFactory:
     def test_app_has_api_sessions_endpoints(self, app):
         """Test that session list/create endpoints are available."""
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
-        assert '/api/sessions' in paths
+        assert '/api/v1/agent/normal/sessions' in paths
 
     def test_app_has_capabilities_endpoint(self, app):
         """Test that capabilities endpoint is available."""
@@ -280,14 +280,14 @@ class TestProjectEndpoint:
 
 
 class TestSessionsEndpoint:
-    """Integration tests for /api/sessions endpoints."""
+    """Integration tests for agent-normal session endpoints."""
 
     @pytest.mark.asyncio
     async def test_list_sessions_returns_collection(self, app):
         """Session listing should always return a sessions array."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/sessions')
+            response = await client.get('/api/v1/agent/normal/sessions')
             assert response.status_code == 200
             data = response.json()
             assert 'sessions' in data
@@ -298,7 +298,7 @@ class TestSessionsEndpoint:
         """Session create should return a generated session_id."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.post('/api/sessions')
+            response = await client.post('/api/v1/agent/normal/sessions')
             assert response.status_code == 200
             data = response.json()
             assert 'session_id' in data
@@ -388,10 +388,10 @@ class TestWebSocketRoutes:
     def test_stream_websocket_registered(self, app):
         """Test Claude stream WebSocket route is registered."""
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
-        assert '/ws/claude-stream' in paths
+        assert '/ws/agent/normal/stream' in paths
 
     def test_minimal_app_no_websockets(self, minimal_app):
         """Test minimal app doesn't have WebSocket routes."""
         paths = [r.path for r in minimal_app.routes if hasattr(r, 'path')]
         assert '/ws/pty' not in paths
-        assert '/ws/claude-stream' not in paths
+        assert '/ws/agent/normal/stream' not in paths

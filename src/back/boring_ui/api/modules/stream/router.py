@@ -574,7 +574,8 @@ def create_stream_router(config: APIConfig) -> APIRouter:
     """Create Claude stream WebSocket router (kurt-core aligned)."""
     router = APIRouter(tags=["stream"])
 
-    @router.websocket("/claude-stream")
+    # Canonical agent-normal stream endpoint (legacy `/ws/claude-stream` rewritten).
+    @router.websocket("/stream")
     async def stream_websocket(websocket: WebSocket):
         await handle_stream_websocket(websocket, cwd=str(config.workspace_root))
 
