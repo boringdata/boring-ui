@@ -71,21 +71,23 @@ describe('FileTree', () => {
     })
 
     it('retries fetch if initial load returns empty', async () => {
-      const fetchMock = vi.fn()
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ entries: [] }) })
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ entries: [] }) })
-        .mockResolvedValue({ json: () => Promise.resolve({ entries: fileTree.root }) })
-
-      vi.stubGlobal('fetch', fetchMock)
+      let listCalls = 0
+      setupApiMocks({
+        '/api/v1/files/list': () => {
+          listCalls++
+          if (listCalls <= 2) return { entries: [] }
+          return { entries: fileTree.root }
+        },
+      })
 
       render(<FileTree {...defaultProps} />)
 
-      // Wait for retries
-      await new Promise(r => setTimeout(r, 10))
-
+      // Component retries with a 300ms backoff; give it enough time deterministically.
       await waitFor(() => {
         expect(screen.getByText('README.md')).toBeInTheDocument()
-      })
+      }, { timeout: 2000 })
+
+      expect(listCalls).toBeGreaterThanOrEqual(3)
     })
   })
 
