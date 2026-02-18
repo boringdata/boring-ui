@@ -54,7 +54,10 @@ def test_capabilities_router_metadata_includes_owner_and_canonical_families(monk
     by_name = _routers_by_name(payload)
     for entry in by_name.values():
         assert "contract_metadata" in entry
+        assert entry["contract_metadata_included"] is True
         assert isinstance(entry["contract_metadata"], dict)
+        assert isinstance(entry["contract_metadata"]["canonical_families"], list)
+        assert all(isinstance(value, str) for value in entry["contract_metadata"]["canonical_families"])
 
     files = by_name["files"]
     assert files["contract_metadata"]["owner_service"] == "workspace-core"
@@ -95,4 +98,5 @@ def test_capabilities_contract_metadata_is_not_exposed_by_default(monkeypatch) -
     by_name = _routers_by_name(payload)
     for entry in by_name.values():
         assert "contract_metadata" in entry
+        assert entry["contract_metadata_included"] is False
         assert entry["contract_metadata"] is None
