@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 10.0
 DEFAULT_HEARTBEAT_INTERVAL = 30.0
+DEFAULT_TERMINATED_RETENTION = 300  # 5 minutes before evicting terminated sessions
+DEFAULT_MAX_SESSIONS = 1000  # Hard cap on tracked sessions
 
 
 class SessionState(Enum):
@@ -88,16 +90,73 @@ class SpritesExecClient:
         template_registry: ExecTemplateRegistry,
         *,
         timeout: float = DEFAULT_TIMEOUT,
+        max_sessions: int = DEFAULT_MAX_SESSIONS,
+        terminated_retention: float = DEFAULT_TERMINATED_RETENTION,
     ) -> None:
         self._config = sandbox_config
         self._base_url = build_workspace_service_url(sandbox_config)
         self._templates = template_registry
         self._timeout = timeout
+        self._max_sessions = max_sessions
+        self._terminated_retention = terminated_retention
         self._sessions: dict[str, ExecSession] = {}
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def base_url(self) -> str:
         return self._base_url
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return the shared httpx client, creating it lazily."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self._timeout)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared HTTP client and release connections."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
+
+    def _evict_terminated(self) -> int:
+        """Remove terminated/error sessions older than retention period.
+
+        Also enforces the hard cap on total tracked sessions by evicting
+        the oldest terminated sessions first.
+
+        Returns the number of evicted sessions.
+        """
+        now = time.time()
+        cutoff = now - self._terminated_retention
+        evicted = 0
+
+        # Phase 1: evict expired terminated/error sessions
+        expired_ids = [
+            sid for sid, s in self._sessions.items()
+            if s.state in (SessionState.TERMINATED, SessionState.ERROR)
+            and (s.terminated_at or s.created_at) < cutoff
+        ]
+        for sid in expired_ids:
+            del self._sessions[sid]
+            evicted += 1
+
+        # Phase 2: if still over cap, evict oldest terminated/error first
+        if len(self._sessions) > self._max_sessions:
+            terminated = sorted(
+                (
+                    (sid, s) for sid, s in self._sessions.items()
+                    if s.state in (SessionState.TERMINATED, SessionState.ERROR)
+                ),
+                key=lambda pair: pair[1].terminated_at or pair[1].created_at,
+            )
+            while terminated and len(self._sessions) > self._max_sessions:
+                sid, _ = terminated.pop(0)
+                del self._sessions[sid]
+                evicted += 1
+
+        if evicted:
+            logger.debug('Evicted %d terminated sessions', evicted)
+        return evicted
 
     def _auth_headers(self) -> dict[str, str]:
         token = generate_auth_token(self._config.api_token)
@@ -116,12 +175,12 @@ class SpritesExecClient:
         """Execute an HTTP request to the workspace service exec API."""
         url = f'{self._base_url}{path}'
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.request(
-                    method, url,
-                    headers=self._auth_headers(),
-                    json=json_body,
-                )
+            client = self._get_client()
+            resp = await client.request(
+                method, url,
+                headers=self._auth_headers(),
+                json=json_body,
+            )
             return resp
         except httpx.ConnectError:
             raise ExecClientError('Workspace service unreachable')
@@ -147,6 +206,7 @@ class SpritesExecClient:
         Raises:
             ExecClientError: If template is unknown or creation fails
         """
+        self._evict_terminated()
         validate_template_id(template_id)
 
         try:
@@ -235,6 +295,7 @@ class SpritesExecClient:
 
     async def list_sessions(self) -> list[dict]:
         """List all tracked sessions with their current state."""
+        self._evict_terminated()
         return [
             {
                 'id': s.id,

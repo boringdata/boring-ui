@@ -239,6 +239,24 @@ class TestConfigEndpoint:
             assert 'pty_providers' in data
             assert 'shell' in data['pty_providers']
 
+    @pytest.mark.asyncio
+    async def test_sandbox_config_redacts_internal_targets(self, workspace):
+        """Sandbox config should not leak service internals to browsers."""
+        config = APIConfig(workspace_root=workspace)
+        app = create_app(config, runtime_config=sandbox_runtime_config_factory())
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            response = await client.get('/api/config')
+            data = response.json()
+
+        assert data['workspace_mode'] == 'sandbox'
+        assert 'sandbox' in data
+        sandbox = data['sandbox']
+        assert sandbox['enabled'] is True
+        assert 'base_url' not in sandbox
+        assert 'sprite_name' not in sandbox
+        assert 'service_target' not in sandbox
+
 
 class TestRouterSelection:
     """Tests for selective router inclusion."""

@@ -17,7 +17,9 @@ integration.
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from urllib.parse import quote, urlencode
@@ -72,12 +74,29 @@ class DelegationResponse:
         return self.status_code >= 400
 
 
+# Session IDs must be alphanumeric with hyphens (e.g. exec-abc123def456)
+_SESSION_ID_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$')
+
+
 class DelegationError(Exception):
     """Raised when delegation fails at the transport level."""
     def __init__(self, message: str, status_code: int = 502):
         self.message = message
         self.status_code = status_code
         super().__init__(message)
+
+
+def _validate_session_id(session_id: str) -> None:
+    """Validate session_id before interpolating into URL paths.
+
+    Raises DelegationError if the ID contains path traversal
+    or injection characters.
+    """
+    if not session_id or not _SESSION_ID_PATTERN.match(session_id):
+        raise DelegationError(
+            f'Invalid session ID format',
+            status_code=400,
+        )
 
 
 # ── File route delegators ──
@@ -189,6 +208,7 @@ def delegate_list_sessions() -> DelegationRequest:
 
 def delegate_get_session(session_id: str) -> DelegationRequest:
     """Build delegation request for GET /api/sessions/{session_id}."""
+    _validate_session_id(session_id)
     return DelegationRequest(
         method=DelegationMethod.GET,
         path=f'/api/sessions/{session_id}',
@@ -208,6 +228,7 @@ def delegate_create_session(template_id: str, **kwargs: str) -> DelegationReques
 
 def delegate_terminate_session(session_id: str) -> DelegationRequest:
     """Build delegation request for DELETE /api/sessions/{session_id}."""
+    _validate_session_id(session_id)
     return DelegationRequest(
         method=DelegationMethod.DELETE,
         path=f'/api/sessions/{session_id}',
@@ -246,7 +267,6 @@ def map_upstream_status(status_code: int) -> DelegationResponse:
     normalized = normalize_http_error(error_key)
     body = error_response_body(normalized)
 
-    import json
     return DelegationResponse(
         status_code=normalized.http_status,
         headers={'content-type': 'application/json'},

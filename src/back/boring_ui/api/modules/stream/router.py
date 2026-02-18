@@ -606,8 +606,24 @@ def create_stream_router(config: APIConfig) -> APIRouter:
     """Create Claude stream WebSocket router (kurt-core aligned)."""
     router = APIRouter(tags=["stream"])
 
+    workspace_mode = os.environ.get("WORKSPACE_MODE", "local").strip().lower()
+    sprite_name = os.environ.get("SPRITES_SPRITE_NAME", "").strip()
+    sandbox_workspace = os.environ.get("SANDBOX_WORKSPACE_ROOT", "/home/sprite/workspace").strip() or "/home/sprite/workspace"
+
+    # In sandbox mode, run Claude through Sprites exec so chat executes remotely.
+    stream_cmd = "claude"
+    stream_base_args: list[str] = []
+    if workspace_mode == "sandbox" and sprite_name:
+        stream_cmd = "sprite"
+        stream_base_args = ["-s", sprite_name, "exec", "-dir", sandbox_workspace, "claude"]
+
     @router.websocket("/claude-stream")
     async def stream_websocket(websocket: WebSocket):
-        await handle_stream_websocket(websocket, cwd=str(config.workspace_root))
+        await handle_stream_websocket(
+            websocket,
+            cmd=stream_cmd,
+            base_args=stream_base_args,
+            cwd=str(config.workspace_root),
+        )
 
     return router

@@ -255,6 +255,19 @@ class TestMoveEndpoint:
             assert r.status_code == 400
             assert 'not a directory' in r.json()['detail'].lower()
 
+    @pytest.mark.asyncio
+    async def test_move_destination_exists(self, app, tmp_path_ref):
+        """Test moving to existing target path returns 409."""
+        (tmp_path_ref / 'subdir' / 'test.txt').write_text('already here')
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            r = await client.post('/api/file/move', json={
+                'src_path': 'test.txt',
+                'dest_dir': 'subdir',
+            })
+            assert r.status_code == 409
+            assert 'exists' in r.json()['detail'].lower()
+
 
 class TestSearchEndpoint:
     """Tests for GET /search endpoint."""
@@ -400,3 +413,16 @@ class TestPathTraversalRejection:
             r = await client.get('/api/file?path=/etc/passwd')
             assert r.status_code == 400
             assert 'traversal' in r.json()['detail'].lower()
+
+
+class TestTreeValidation:
+    """Validation tests for GET /tree endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_get_tree_with_file_path_returns_400(self, app):
+        """Tree endpoint should reject file paths."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            r = await client.get('/api/tree?path=test.txt')
+            assert r.status_code == 400
+            assert 'not a directory' in r.json()['detail'].lower()

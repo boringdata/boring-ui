@@ -196,13 +196,7 @@ def create_app(
         }
         if runtime_config.sandbox:
             response['sandbox'] = {
-                'base_url': runtime_config.sandbox.base_url,
-                'sprite_name': runtime_config.sandbox.sprite_name,
-                'service_target': {
-                    'host': runtime_config.sandbox.service_target.host,
-                    'port': runtime_config.sandbox.service_target.port,
-                    'path': runtime_config.sandbox.service_target.path,
-                },
+                'enabled': True,
                 'multi_tenant': runtime_config.sandbox.multi_tenant,
                 'routing_mode': runtime_config.sandbox.routing_mode,
                 'auth_identity_binding': runtime_config.sandbox.auth_identity_binding,

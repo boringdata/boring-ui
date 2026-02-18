@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import time
 from dataclasses import dataclass
 
@@ -77,6 +78,31 @@ def _sign(secret: str, message: str) -> str:
     ).hexdigest()
 
 
+def _require_non_empty_str(value: object, field: str) -> str:
+    if not isinstance(value, str):
+        raise SessionTokenError(f'Invalid {field} claim type')
+    if not value:
+        raise SessionTokenError(f'Invalid {field} claim: empty')
+    return value
+
+
+def _require_numeric(value: object, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SessionTokenError(f'Invalid {field} claim type')
+    number = float(value)
+    if not math.isfinite(number):
+        raise SessionTokenError(f'Invalid {field} claim value')
+    return number
+
+
+def _require_non_negative_int(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SessionTokenError(f'Invalid {field} claim type')
+    if value < 0:
+        raise SessionTokenError(f'Invalid {field} claim value')
+    return value
+
+
 def issue_session_token(
     secret: str,
     session_id: str,
@@ -97,6 +123,12 @@ def issue_session_token(
     Returns:
         Opaque base64url-encoded token string
     """
+    _require_non_empty_str(secret, 'secret')
+    _require_non_empty_str(session_id, 'sid')
+    _require_non_empty_str(template_id, 'tid')
+    if ttl <= 0:
+        raise SessionTokenError('Token ttl must be greater than 0')
+
     current_time = now if now is not None else time.time()
 
     header = {'ver': TOKEN_VERSION, 'alg': 'HS256'}
@@ -152,6 +184,9 @@ def validate_session_token(
     except Exception:
         raise SessionTokenError('Malformed token header')
 
+    if not isinstance(header, dict):
+        raise SessionTokenError('Malformed token header')
+
     if header.get('ver') != TOKEN_VERSION:
         raise SessionTokenError(
             f'Unsupported token version: {header.get("ver")}'
@@ -163,22 +198,34 @@ def validate_session_token(
     except Exception:
         raise SessionTokenError('Malformed token payload')
 
+    if not isinstance(payload, dict):
+        raise SessionTokenError('Malformed token payload')
+
     # Validate required fields
     required = ('sid', 'tid', 'iat', 'exp', 'rnw')
     for field in required:
         if field not in payload:
             raise SessionTokenError(f'Missing field: {field}')
 
+    session_id = _require_non_empty_str(payload['sid'], 'sid')
+    template_id = _require_non_empty_str(payload['tid'], 'tid')
+    issued_at = _require_numeric(payload['iat'], 'iat')
+    expires_at = _require_numeric(payload['exp'], 'exp')
+    renewal_count = _require_non_negative_int(payload['rnw'], 'rnw')
+
+    if issued_at > expires_at:
+        raise SessionTokenError('Invalid token window: iat must be <= exp')
+
     current_time = now if now is not None else time.time()
-    if current_time > payload['exp']:
+    if current_time > expires_at:
         raise SessionTokenError('Token expired')
 
     return SessionTokenPayload(
-        session_id=payload['sid'],
-        template_id=payload['tid'],
-        issued_at=payload['iat'],
-        expires_at=payload['exp'],
-        renewal_count=payload['rnw'],
+        session_id=session_id,
+        template_id=template_id,
+        issued_at=issued_at,
+        expires_at=expires_at,
+        renewal_count=renewal_count,
         version=header['ver'],
     )
 
@@ -209,6 +256,11 @@ def renew_session_token(
     Raises:
         SessionTokenError: If token is invalid or max renewals exceeded
     """
+    if ttl <= 0:
+        raise SessionTokenError('Token ttl must be greater than 0')
+    if max_renewals < 0:
+        raise SessionTokenError('max_renewals must be >= 0')
+
     payload = validate_session_token(token, secret, now=now)
 
     if payload.renewal_count >= max_renewals:

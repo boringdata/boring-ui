@@ -288,22 +288,22 @@ class PTYService:
             ValueError: If max sessions reached
         """
         async with self._registry_lock:
+            # Reconnecting to an existing session should be allowed even at capacity.
+            if session_id and session_id in self._session_registry:
+                return self._session_registry[session_id], False
+
             if len(self._session_registry) >= PTY_MAX_SESSIONS:
                 raise ValueError('Maximum sessions reached')
 
-            # Get or create session
-            if session_id and session_id in self._session_registry:
-                return self._session_registry[session_id], False
-            else:
-                import uuid
-                new_id = str(uuid.uuid4())
-                session = SharedSession(
-                    session_id=new_id,
-                    command=command,
-                    cwd=cwd,
-                )
-                self._session_registry[new_id] = session
-                return session, True
+            import uuid
+            new_id = str(uuid.uuid4())
+            session = SharedSession(
+                session_id=new_id,
+                command=command,
+                cwd=cwd,
+            )
+            self._session_registry[new_id] = session
+            return session, True
 
 
 # Global service instance for backwards compatibility

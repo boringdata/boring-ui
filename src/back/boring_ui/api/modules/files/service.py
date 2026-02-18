@@ -53,8 +53,11 @@ class FileService:
             dict with entries list and path
         """
         rel_path = self.validate_and_relativize(path)
-        entries = self.storage.list_dir(rel_path)
-        return {'entries': entries, 'path': path}
+        try:
+            entries = self.storage.list_dir(rel_path)
+            return {'entries': entries, 'path': path}
+        except NotADirectoryError:
+            raise HTTPException(status_code=400, detail=f'Path is not a directory: {path}')
     
     def read_file(self, path: str) -> dict:
         """Read file contents.
@@ -159,6 +162,8 @@ class FileService:
             return {'success': True, 'old_path': src_path, 'dest_path': str(new_path)}
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail=f'File not found: {src_path}')
+        except FileExistsError:
+            raise HTTPException(status_code=409, detail=f'Target exists in destination: {dest_dir}')
         except NotADirectoryError:
             raise HTTPException(status_code=400, detail=f'Destination is not a directory: {dest_dir}')
     

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import httpx
 
 from .config import SandboxConfig
+from .internal_auth import generate_auth_token
 from .workspace_contract import (
     WORKSPACE_API_VERSION_HEADER,
     CURRENT_VERSION,
@@ -45,12 +46,25 @@ def build_workspace_service_url(sandbox: SandboxConfig) -> str:
     return f'http://{target.host}:{target.port}{path}'
 
 
-async def check_healthz(base_url: str, timeout: float = 5.0) -> CheckResult:
+def build_startup_headers(sandbox: SandboxConfig) -> dict[str, str]:
+    """Build headers used for startup probes."""
+    return {
+        'X-Workspace-Internal-Auth': generate_auth_token(sandbox.api_token),
+        WORKSPACE_API_VERSION_HEADER: CURRENT_VERSION,
+    }
+
+
+async def check_healthz(
+    base_url: str,
+    timeout: float = 5.0,
+    *,
+    headers: dict[str, str] | None = None,
+) -> CheckResult:
     """Check workspace service /healthz endpoint."""
     url = f'{base_url}/healthz'
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers=headers or {})
         if resp.status_code != 200:
             return CheckResult('healthz', False, f'Status {resp.status_code}')
         data = resp.json()
@@ -66,12 +80,17 @@ async def check_healthz(base_url: str, timeout: float = 5.0) -> CheckResult:
         return CheckResult('healthz', False, f'Unexpected error: {exc}')
 
 
-async def check_version(base_url: str, timeout: float = 5.0) -> CheckResult:
+async def check_version(
+    base_url: str,
+    timeout: float = 5.0,
+    *,
+    headers: dict[str, str] | None = None,
+) -> CheckResult:
     """Check workspace service version compatibility."""
     url = f'{base_url}/__meta/version'
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers=headers or {})
         if resp.status_code != 200:
             return CheckResult('version', False, f'Status {resp.status_code}')
         data = resp.json()
@@ -113,11 +132,12 @@ async def run_startup_checks(
         StartupCheckError: If fail_fast=True and any check fails
     """
     base_url = build_workspace_service_url(sandbox)
+    probe_headers = build_startup_headers(sandbox)
     logger.info('Running startup checks against %s', base_url)
 
     results = [
-        await check_healthz(base_url, timeout=timeout),
-        await check_version(base_url, timeout=timeout),
+        await check_healthz(base_url, timeout=timeout, headers=probe_headers),
+        await check_version(base_url, timeout=timeout, headers=probe_headers),
     ]
 
     for result in results:

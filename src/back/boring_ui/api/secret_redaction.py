@@ -160,4 +160,10 @@ class RedactingFilter(logging.Filter):
                     self.redactor.redact(str(a)) if isinstance(a, str) else a
                     for a in record.args
                 )
+        # Redact exception text and stack traces (secrets can appear
+        # in connection error messages, tracebacks, etc.)
+        if record.exc_text:
+            record.exc_text = self.redactor.redact(record.exc_text)
+        if record.stack_info:
+            record.stack_info = self.redactor.redact(record.stack_info)
         return True

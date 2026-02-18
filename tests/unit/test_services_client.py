@@ -133,8 +133,8 @@ class TestCheckHealth:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_health()
         assert result['status'] == 'ok'
@@ -145,8 +145,8 @@ class TestCheckHealth:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_health()
         assert result['status'] == 'degraded'
@@ -157,8 +157,8 @@ class TestCheckHealth:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_health()
         assert result['status'] == 'unhealthy'
@@ -169,8 +169,8 @@ class TestCheckHealth:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_health()
         assert result['status'] == 'unhealthy'
@@ -181,8 +181,8 @@ class TestCheckHealth:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(side_effect=httpx_mod.ConnectError('refused'))
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_health()
         assert result['status'] == 'unhealthy'
@@ -196,8 +196,8 @@ class TestCheckHealth:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result1 = await client.check_health()
             # Second call should use cache
@@ -225,8 +225,8 @@ class TestCheckVersion:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_version()
         assert result['version'] == '0.1.0'
@@ -238,8 +238,8 @@ class TestCheckVersion:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_version()
         assert result['compatible'] is False
@@ -251,8 +251,8 @@ class TestCheckVersion:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_version()
         assert result['compatible'] is False
@@ -264,8 +264,8 @@ class TestCheckVersion:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_version()
         assert result['compatible'] is False
@@ -276,8 +276,8 @@ class TestCheckVersion:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(side_effect=httpx_mod.ConnectError('refused'))
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_version()
         assert result['compatible'] is False
@@ -289,8 +289,8 @@ class TestCheckVersion:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             r1 = await client.check_version()
             r2 = await client.check_version()
@@ -327,8 +327,8 @@ class TestIsReady:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(side_effect=side_effect)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             assert await client.is_ready() is True
 
@@ -338,8 +338,8 @@ class TestIsReady:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             assert await client.is_ready() is False
 
@@ -356,8 +356,8 @@ class TestIsReady:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(side_effect=side_effect)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             assert await client.is_ready() is False
 
@@ -374,8 +374,8 @@ class TestIsReady:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(side_effect=side_effect)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             assert await client.is_ready() is True
 
@@ -408,8 +408,8 @@ class TestRetryBehavior:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(side_effect=side_effect)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_health()
         assert result['status'] == 'ok'
@@ -438,8 +438,8 @@ class TestRetryBehavior:
         with patch('boring_ui.api.services_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(side_effect=side_effect)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.check_health()
         assert result['status'] == 'ok'
@@ -467,8 +467,8 @@ class TestCircuitBreakerIntegration:
             mock_ctx.request = AsyncMock(
                 side_effect=httpx_mod.ConnectError('refused')
             )
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             # First two calls go through (and fail), opening the circuit
             await client.check_health()
@@ -496,8 +496,8 @@ class TestCircuitBreakerIntegration:
             mock_ctx.request = AsyncMock(
                 side_effect=httpx_mod.ConnectError('refused')
             )
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             await client.check_health()
             assert client.circuit_state == CircuitState.OPEN

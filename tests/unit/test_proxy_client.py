@@ -94,6 +94,11 @@ class TestProxyResponse:
 
 class TestGuardrailValidation:
 
+    def test_defaults_allow_configured_target(self):
+        client = SpritesProxyClient(_sandbox_config())
+        # Should use sandbox_config.service_target automatically.
+        client._validate_request('GET', '/api/tree')
+
     def test_denies_unallowed_target(self):
         client = SpritesProxyClient(
             _sandbox_config(),
@@ -158,8 +163,8 @@ class TestRequestExecution:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.request('GET', '/api/tree')
         assert result.status_code == 200
@@ -171,8 +176,8 @@ class TestRequestExecution:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             await client.request('GET', '/api/tree')
 
@@ -187,8 +192,8 @@ class TestRequestExecution:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             await client.request(
                 'GET', '/api/tree',
@@ -208,8 +213,8 @@ class TestRequestExecution:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             await client.request('GET', '/api/tree', params={'path': '/'})
 
@@ -222,8 +227,8 @@ class TestRequestExecution:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             await client.request(
                 'PUT', '/api/file',
@@ -237,8 +242,8 @@ class TestRequestExecution:
     async def test_no_redirect_following(self, client):
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             # Check that AsyncClient is called with follow_redirects=False
             await client.request('GET', '/api/tree') if False else None
@@ -250,8 +255,8 @@ class TestRequestExecution:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             await client.request('GET', '/api/tree')
             mock_cls.assert_called_once_with(
@@ -280,8 +285,8 @@ class TestErrorHandling:
             mock_ctx.request = AsyncMock(
                 side_effect=httpx_mod.ConnectError('refused')
             )
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             with pytest.raises(ProxyError) as exc:
                 await client.request('GET', '/api/tree')
@@ -295,8 +300,8 @@ class TestErrorHandling:
             mock_ctx.request = AsyncMock(
                 side_effect=httpx_mod.ReadTimeout('timeout')
             )
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             with pytest.raises(ProxyError) as exc:
                 await client.request('GET', '/api/tree')
@@ -312,8 +317,8 @@ class TestErrorHandling:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             with pytest.raises(ProxyError) as exc:
                 await client.request('GET', '/api/tree')
@@ -325,11 +330,13 @@ class TestErrorHandling:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.request('GET', '/api/tree')
         assert result.status_code == 502
+        assert result.json() == {'error': 'Workspace service error'}
+        assert b'internal' not in result.body
 
     @pytest.mark.asyncio
     async def test_upstream_404_passes_through(self, client):
@@ -337,8 +344,8 @@ class TestErrorHandling:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.request('GET', '/api/file')
         assert result.status_code == 404
@@ -349,8 +356,8 @@ class TestErrorHandling:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.request('GET', '/api/file')
         assert result.status_code == 400
@@ -365,8 +372,8 @@ class TestErrorHandling:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             with pytest.raises(ProxyError) as exc:
                 await client.request('GET', '/api/tree')
@@ -388,8 +395,8 @@ class TestErrorHandling:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             with pytest.raises(ProxyError) as exc:
                 await client_small.request('GET', '/api/tree')
@@ -406,8 +413,8 @@ class TestErrorHandling:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(side_effect=RuntimeError('oops'))
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             with pytest.raises(ProxyError) as exc:
                 await client.request('GET', '/api/tree')
@@ -441,8 +448,8 @@ class TestResponseHeaderSanitization:
         with patch('boring_ui.api.proxy_client.httpx.AsyncClient') as mock_cls:
             mock_ctx = AsyncMock()
             mock_ctx.request = AsyncMock(return_value=resp)
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_ctx)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.is_closed = False
+            mock_cls.return_value = mock_ctx
 
             result = await client.request('GET', '/api/tree')
         assert 'connection' not in result.headers

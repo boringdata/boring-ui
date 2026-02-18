@@ -11,6 +11,7 @@ workspace service running inside a sprite with:
 """
 from __future__ import annotations
 
+import json as jsonlib
 import logging
 from dataclasses import dataclass
 
@@ -19,6 +20,7 @@ import httpx
 from .config import SandboxConfig
 from .internal_auth import generate_auth_token
 from .proxy_guardrails import (
+    AllowedTarget,
     ProxyGuardrailConfig,
     ProxyRequestDenied,
     ResponseTooLarge,
@@ -39,6 +41,14 @@ from .workspace_contract import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30.0
+
+
+def _default_guardrails(sandbox_config: SandboxConfig) -> ProxyGuardrailConfig:
+    """Build secure defaults bound to the configured workspace service target."""
+    target = sandbox_config.service_target
+    return ProxyGuardrailConfig(
+        allowed_targets=(AllowedTarget(host=target.host, port=target.port),),
+    )
 
 
 @dataclass
@@ -93,12 +103,28 @@ class SpritesProxyClient:
         self._config = sandbox_config
         self._base_url = build_workspace_service_url(sandbox_config)
         self._timeout = timeout
-        self._guardrails = guardrail_config or ProxyGuardrailConfig()
+        self._guardrails = guardrail_config or _default_guardrails(sandbox_config)
         self._target = sandbox_config.service_target
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def base_url(self) -> str:
         return self._base_url
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return the shared httpx client, creating it lazily."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=self._timeout,
+                follow_redirects=False,
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared HTTP client and release connections."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     def _auth_headers(self) -> dict[str, str]:
         """Generate internal auth and version headers."""
@@ -147,27 +173,25 @@ class SpritesProxyClient:
         method = method.upper()
         self._validate_request(method, path)
 
-        # Build request headers: auth + sanitized caller headers
-        req_headers = self._auth_headers()
+        # Build request headers: sanitized caller headers, then auth
+        # Auth headers applied last to prevent caller overwrite
+        req_headers: dict[str, str] = {}
         if headers:
-            sanitized = sanitize_request_headers(headers)
-            req_headers.update(sanitized)
+            req_headers.update(sanitize_request_headers(headers))
+        req_headers.update(self._auth_headers())
 
         url = f'{self._base_url}{path}'
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout,
-                follow_redirects=False,
-            ) as client:
-                resp = await client.request(
-                    method,
-                    url,
-                    headers=req_headers,
-                    params=params or {},
-                    json=json,
-                    content=content,
-                )
+            client = self._get_client()
+            resp = await client.request(
+                method,
+                url,
+                headers=req_headers,
+                params=params or {},
+                json=json,
+                content=content,
+            )
         except httpx.ConnectError:
             raise ProxyError(503, 'Workspace service unreachable')
         except httpx.TimeoutException:
@@ -211,12 +235,13 @@ class SpritesProxyClient:
         # Map upstream errors to browser-safe status codes
         if resp.status_code >= 400:
             mapped_status, mapped_detail = map_upstream_error(resp.status_code)
+            safe_body = {'error': mapped_detail}
             return ProxyResponse(
                 status_code=mapped_status,
                 headers=resp_headers,
-                body=body,
-                json_body=json_body or {'error': mapped_detail},
-                text_body=text_body,
+                body=jsonlib.dumps(safe_body).encode('utf-8'),
+                json_body=safe_body,
+                text_body='',
             )
 
         return ProxyResponse(

@@ -6,6 +6,7 @@ from boring_ui.api.startup_checks import (
     CheckResult,
     StartupCheckError,
     build_workspace_service_url,
+    build_startup_headers,
     check_healthz,
     check_version,
     run_startup_checks,
@@ -45,6 +46,11 @@ class TestBuildUrl:
         url = build_workspace_service_url(config)
         assert url == 'http://host:80'
 
+    def test_build_startup_headers(self, sandbox_config):
+        headers = build_startup_headers(sandbox_config)
+        assert 'X-Workspace-Internal-Auth' in headers
+        assert 'X-Workspace-API-Version' in headers
+
 
 class TestCheckHealthz:
 
@@ -65,6 +71,27 @@ class TestCheckHealthz:
 
         assert result.passed is True
         assert result.name == 'healthz'
+
+    @pytest.mark.asyncio
+    async def test_passes_headers(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {'status': 'ok'}
+
+        with patch('boring_ui.api.startup_checks.httpx') as mock_httpx:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_resp
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_httpx.AsyncClient.return_value = mock_client
+
+            headers = {'X-Workspace-API-Version': '0.1.0'}
+            await check_healthz('http://host:8080', headers=headers)
+
+            mock_client.get.assert_awaited_once_with(
+                'http://host:8080/healthz',
+                headers=headers,
+            )
 
     @pytest.mark.asyncio
     async def test_healthy_degraded(self):
@@ -155,6 +182,27 @@ class TestCheckVersion:
         assert result.passed is True
 
     @pytest.mark.asyncio
+    async def test_passes_headers(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {'version': '0.1.0'}
+
+        with patch('boring_ui.api.startup_checks.httpx') as mock_httpx:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_resp
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_httpx.AsyncClient.return_value = mock_client
+
+            headers = {'X-Workspace-API-Version': '0.1.0'}
+            await check_version('http://host:8080', headers=headers)
+
+            mock_client.get.assert_awaited_once_with(
+                'http://host:8080/__meta/version',
+                headers=headers,
+            )
+
+    @pytest.mark.asyncio
     async def test_incompatible_version(self):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -203,6 +251,12 @@ class TestRunStartupChecks:
 
         assert len(results) == 2
         assert all(r.passed for r in results)
+        health_kwargs = mock_health.await_args.kwargs
+        version_kwargs = mock_version.await_args.kwargs
+        assert 'headers' in health_kwargs
+        assert 'X-Workspace-Internal-Auth' in health_kwargs['headers']
+        assert 'headers' in version_kwargs
+        assert 'X-Workspace-API-Version' in version_kwargs['headers']
 
     @pytest.mark.asyncio
     async def test_fail_fast_raises(self, sandbox_config):

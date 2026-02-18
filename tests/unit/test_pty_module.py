@@ -310,6 +310,24 @@ class TestPTYService:
                 await service.get_or_create_session(None, ['bash'], Path('/tmp'))
 
     @pytest.mark.asyncio
+    async def test_get_or_create_session_allows_reconnect_at_capacity(self):
+        """Reconnect should work when the registry is at max sessions."""
+        service = PTYService()
+
+        with patch('boring_ui.api.modules.pty.service.PTY_MAX_SESSIONS', 1):
+            existing, is_new = await service.get_or_create_session(None, ['bash'], Path('/tmp'))
+            assert is_new is True
+
+            session, is_new = await service.get_or_create_session(
+                existing.session_id,
+                ['bash'],
+                Path('/tmp'),
+            )
+
+            assert is_new is False
+            assert session is existing
+
+    @pytest.mark.asyncio
     async def test_ensure_cleanup_running_starts_task(self):
         """Test ensure_cleanup_running starts cleanup task."""
         service = PTYService()

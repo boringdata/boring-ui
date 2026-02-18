@@ -156,10 +156,23 @@ class SpritesServicesClient:
         )
         self._health_cache: CachedResult | None = None
         self._version_cache: CachedResult | None = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def base_url(self) -> str:
         return self._base_url
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return the shared httpx client, creating it lazily."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self._timeout)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared HTTP client and release connections."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     @property
     def circuit_state(self) -> CircuitState:
@@ -191,8 +204,8 @@ class SpritesServicesClient:
 
         for attempt in range(self._max_retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    resp = await client.request(method, url, headers=headers or {})
+                client = self._get_client()
+                resp = await client.request(method, url, headers=headers or {})
                 self._circuit.record_success()
                 return resp
             except (httpx.ConnectError, httpx.TimeoutException) as exc:

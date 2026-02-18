@@ -55,7 +55,7 @@ class TestValidateProxyTarget:
     def test_denied_target(self, config):
         with pytest.raises(ProxyRequestDenied) as exc:
             validate_proxy_target('evil-host', 8443, config)
-        assert 'not in allowlist' in str(exc.value)
+        assert 'not allowed' in str(exc.value).lower()
 
     def test_denied_wrong_port(self, config):
         with pytest.raises(ProxyRequestDenied):
@@ -243,11 +243,17 @@ class TestSanitizeRequestHeaders:
         h = sanitize_request_headers({'authorization': 'Bearer x'})
         assert len(h) == 0
 
-    def test_preserves_internal_auth(self):
+    def test_strips_internal_auth(self):
+        """Internal auth headers from browser must be stripped to prevent spoofing.
+
+        The proxy injects its own auth headers after sanitization.
+        """
         h = sanitize_request_headers({
             'X-Workspace-Internal-Auth': 'hmac-sha256:123:abc',
+            'X-Workspace-API-Version': '0.1.0',
         })
-        assert 'X-Workspace-Internal-Auth' in h
+        assert 'X-Workspace-Internal-Auth' not in h
+        assert 'X-Workspace-API-Version' not in h
 
     def test_empty_headers(self):
         assert sanitize_request_headers({}) == {}

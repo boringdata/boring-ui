@@ -13,7 +13,9 @@ these guardrails prevent:
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +32,14 @@ HOP_BY_HOP_HEADERS = frozenset({
 })
 
 # Headers from the browser that must never reach upstream.
+# Includes internal auth headers to prevent browser-side spoofing
+# (the proxy injects its own auth headers after sanitization).
 STRIPPED_REQUEST_HEADERS = frozenset({
     'authorization',
     'cookie',
     'host',
+    'x-workspace-internal-auth',
+    'x-workspace-api-version',
     *HOP_BY_HOP_HEADERS,
 })
 
@@ -51,7 +57,7 @@ class AllowedTarget:
     port: int
 
     def matches(self, host: str, port: int) -> bool:
-        return self.host == host and self.port == port
+        return self.host.lower() == host.lower() and self.port == port
 
     def __str__(self) -> str:
         return f'{self.host}:{self.port}'
@@ -117,10 +123,28 @@ def validate_proxy_target(
     for target in config.allowed_targets:
         if target.matches(host, port):
             return
-    raise ProxyRequestDenied(
-        f'Target {host}:{port} not in allowlist: '
-        f'{[str(t) for t in config.allowed_targets]}'
+    logger.warning(
+        'Proxy target denied: %s:%d not in allowlist %s',
+        host, port, [str(t) for t in config.allowed_targets],
     )
+    raise ProxyRequestDenied('Target not allowed')
+
+
+def _normalize_path(path: str) -> str:
+    """Normalize a proxy path for safe comparison.
+
+    Decodes percent-encoding, collapses consecutive slashes,
+    and rejects null bytes. This prevents bypass via URL-encoded
+    traversal sequences like %2e%2e.
+    """
+    # Decode percent-encoding (handles %2e%2e, %2f, etc.)
+    decoded = unquote(path)
+    # Reject null bytes (can truncate path in C-based parsers)
+    if '\x00' in decoded:
+        raise ProxyRequestDenied('Null byte in path')
+    # Collapse consecutive slashes (//api// -> /api/)
+    decoded = re.sub(r'/+', '/', decoded)
+    return decoded
 
 
 def validate_proxy_path(path: str, config: ProxyGuardrailConfig) -> None:
@@ -134,17 +158,17 @@ def validate_proxy_path(path: str, config: ProxyGuardrailConfig) -> None:
             'No proxy path prefixes configured (allowed_path_prefixes is empty)'
         )
 
-    # Normalize: reject path traversal attempts
-    if '..' in path:
-        raise ProxyRequestDenied(f'Path traversal detected: {path!r}')
+    # Normalize path: decode percent-encoding, collapse slashes
+    normalized = _normalize_path(path)
+
+    # Reject path traversal attempts (check both raw and decoded)
+    if '..' in normalized:
+        raise ProxyRequestDenied('Path traversal detected')
 
     for prefix in config.allowed_path_prefixes:
-        if path.startswith(prefix) or path == prefix.rstrip('/'):
+        if normalized.startswith(prefix) or normalized == prefix.rstrip('/'):
             return
-    raise ProxyRequestDenied(
-        f'Path {path!r} does not match any allowed prefix: '
-        f'{list(config.allowed_path_prefixes)}'
-    )
+    raise ProxyRequestDenied('Path not in allowed prefixes')
 
 
 def validate_proxy_method(method: str, config: ProxyGuardrailConfig) -> None:
@@ -154,10 +178,7 @@ def validate_proxy_method(method: str, config: ProxyGuardrailConfig) -> None:
         ProxyRequestDenied: If method is not allowed.
     """
     if method.upper() not in config.allowed_methods:
-        raise ProxyRequestDenied(
-            f'Method {method!r} not in allowed set: '
-            f'{sorted(config.allowed_methods)}'
-        )
+        raise ProxyRequestDenied(f'Method {method!r} not allowed')
 
 
 def validate_response_status(status_code: int, config: ProxyGuardrailConfig) -> None:
