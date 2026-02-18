@@ -51,12 +51,21 @@ async def test_get_or_create_session_validates_and_canonicalizes_session_id(tmp_
     uuid.UUID(sess3.session_id)
 
     sess4, is_new4 = await service.get_or_create_session(
+        # Blank/whitespace IDs are treated as "unset" (equivalent to None).
         session_id="   ",
         command=command,
         cwd=tmp_path,
     )
     assert is_new4 is True
     uuid.UUID(sess4.session_id)
+
+    sess5, is_new5 = await service.get_or_create_session(
+        session_id="",
+        command=command,
+        cwd=tmp_path,
+    )
+    assert is_new5 is True
+    uuid.UUID(sess5.session_id)
 
     with pytest.raises(ValueError):
         await service.get_or_create_session(
