@@ -20,6 +20,12 @@ class RouterInfo:
     description: str = ""
     tags: list[str] = field(default_factory=list)
     required_capabilities: list[str] = field(default_factory=list)
+    # Describes which logical service owns the route family in the service-split
+    # architecture (may differ from the monolith process that currently mounts it).
+    owner_service: str = ""
+    # Canonical (contract) route families for this router. These are NOT used for
+    # mounting; `prefix` + the router's internal paths are the implementation.
+    canonical_families: list[str] = field(default_factory=list)
 
 
 class RouterRegistry:
@@ -50,6 +56,8 @@ class RouterRegistry:
         description: str = "",
         tags: list[str] | None = None,
         required_capabilities: list[str] | None = None,
+        owner_service: str = "",
+        canonical_families: list[str] | None = None,
     ) -> None:
         """Register a router factory.
 
@@ -67,6 +75,8 @@ class RouterRegistry:
             description=description,
             tags=tags or [],
             required_capabilities=required_capabilities or [],
+            owner_service=owner_service,
+            canonical_families=canonical_families or [],
         )
         self._routers[name] = (info, factory)
 
@@ -108,6 +118,8 @@ def create_default_registry() -> RouterRegistry:
         create_file_router,
         description='File system operations (read, write, rename, delete)',
         tags=['files'],
+        owner_service='workspace-core',
+        canonical_families=['/api/v1/files/*'],
     )
     registry.register(
         'git',
@@ -115,6 +127,8 @@ def create_default_registry() -> RouterRegistry:
         create_git_router,
         description='Git operations (status, diff, show)',
         tags=['git'],
+        owner_service='workspace-core',
+        canonical_families=['/api/v1/git/*'],
     )
 
     # Optional routers
@@ -124,6 +138,8 @@ def create_default_registry() -> RouterRegistry:
         create_pty_router,
         description='PTY WebSocket for shell terminals',
         tags=['websocket', 'terminal'],
+        owner_service='pty-service',
+        canonical_families=['/ws/pty', '/api/v1/pty/*'],
     )
     registry.register(
         'chat_claude_code',
@@ -131,6 +147,8 @@ def create_default_registry() -> RouterRegistry:
         create_stream_router,
         description='Claude stream WebSocket for AI chat',
         tags=['websocket', 'ai'],
+        owner_service='agent-normal',
+        canonical_families=['/ws/agent/normal/*', '/api/v1/agent/normal/*'],
     )
     # Backward compatibility alias: 'stream' -> 'chat_claude_code'
     registry.register(
@@ -139,6 +157,8 @@ def create_default_registry() -> RouterRegistry:
         create_stream_router,
         description='Claude stream WebSocket for AI chat (alias for chat_claude_code)',
         tags=['websocket', 'ai'],
+        owner_service='agent-normal',
+        canonical_families=['/ws/agent/normal/*', '/api/v1/agent/normal/*'],
     )
     registry.register(
         'approval',
@@ -146,6 +166,8 @@ def create_default_registry() -> RouterRegistry:
         create_approval_router,
         description='Approval workflow endpoints',
         tags=['approval'],
+        owner_service='boring-ui',
+        canonical_families=['/api/approval/*'],
     )
 
     return registry
@@ -191,6 +213,8 @@ def create_capabilities_router(
                     'description': info.description,
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),
+                    'owner_service': info.owner_service or None,
+                    'canonical_families': info.canonical_families,
                 }
                 for info, _ in registry.all()
             ]
