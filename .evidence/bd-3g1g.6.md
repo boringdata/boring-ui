@@ -27,9 +27,13 @@ with open(".beads/issues.jsonl", "r", encoding="utf-8") as f:
             rows[obj["id"]] = obj
 
 for issue_id in ids:
-    print(f"{issue_id}\t{rows[issue_id]['status']}")
+    row = rows.get(issue_id)
+    if row is None:
+        print(f"{issue_id}\tmissing")
+        continue
+    print(f"{issue_id}\t{row['status']}")
 
-if all(rows[issue_id]["status"] == "closed" for issue_id in ids):
+if all(rows.get(issue_id, {}).get("status") == "closed" for issue_id in ids):
     print("ALL_CLOSED")
 PY
 ```
