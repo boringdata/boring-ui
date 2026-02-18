@@ -4,6 +4,7 @@ This module provides:
 - A registry for tracking available routers/features
 - A capabilities endpoint for UI feature discovery
 """
+import os
 from dataclasses import dataclass, field
 from typing import Callable, Any, TYPE_CHECKING
 
@@ -62,12 +63,20 @@ class RouterRegistry:
             required_capabilities: Capabilities this router requires
         """
 
+        def _normalize_str_list(value: list[str] | str | None) -> list[str]:
+            # Defensive: prevent accidental `list("foo") -> ["f","o","o"]`.
+            if value is None:
+                return []
+            if isinstance(value, str):
+                return [value]
+            return list(value)
+
         info = RouterInfo(
             name=name,
             prefix=prefix,
             description=description,
-            tags=list(tags or []),
-            required_capabilities=list(required_capabilities or []),
+            tags=_normalize_str_list(tags),
+            required_capabilities=_normalize_str_list(required_capabilities),
         )
         self._routers[name] = (info, factory)
 
@@ -123,14 +132,14 @@ def create_default_registry() -> RouterRegistry:
         'pty',
         '/ws',
         create_pty_router,
-        description='[owner=pty-service] [canonical=/ws/pty] PTY WebSocket for shell terminals',
+        description='[owner=pty-service] [canonical=/ws/pty,/api/v1/pty/*] PTY WebSocket for shell terminals',
         tags=['websocket', 'terminal'],
     )
     registry.register(
         'chat_claude_code',
         '/ws',
         create_stream_router,
-        description='[owner=agent-normal] [canonical=/ws/claude-stream] Claude stream WebSocket for AI chat',
+        description='[owner=agent-normal] [canonical=/ws/agent/normal/*,/api/v1/agent/normal/*] Claude stream WebSocket for AI chat',
         tags=['websocket', 'ai'],
     )
     # Backward compatibility alias: 'stream' -> 'chat_claude_code'
@@ -138,7 +147,7 @@ def create_default_registry() -> RouterRegistry:
         'stream',
         '/ws',
         create_stream_router,
-        description='Claude stream WebSocket for AI chat (alias for chat_claude_code)',
+        description='[owner=agent-normal] [canonical=/ws/agent/normal/*,/api/v1/agent/normal/*] Claude stream WebSocket for AI chat (alias for chat_claude_code)',
         tags=['websocket', 'ai'],
     )
     registry.register(
@@ -185,6 +194,26 @@ def create_capabilities_router(
 
         # Add router details if registry provided
         if registry:
+            include_contract_metadata = os.environ.get("CAPABILITIES_INCLUDE_CONTRACT_METADATA", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+            contract_by_router: dict[str, dict[str, Any]] = {
+                "files": {"owner_service": "workspace-core", "canonical_families": ["/api/v1/files/*"]},
+                "git": {"owner_service": "workspace-core", "canonical_families": ["/api/v1/git/*"]},
+                "pty": {"owner_service": "pty-service", "canonical_families": ["/ws/pty", "/api/v1/pty/*"]},
+                "chat_claude_code": {
+                    "owner_service": "agent-normal",
+                    "canonical_families": ["/ws/agent/normal/*", "/api/v1/agent/normal/*"],
+                },
+                "stream": {
+                    "owner_service": "agent-normal",
+                    "canonical_families": ["/ws/agent/normal/*", "/api/v1/agent/normal/*"],
+                },
+                "approval": {"owner_service": "boring-ui", "canonical_families": ["/api/approval/*"]},
+            }
             capabilities['routers'] = [
                 {
                     'name': info.name,
@@ -192,6 +221,12 @@ def create_capabilities_router(
                     'description': info.description,
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),
+                    'contract_metadata_included': include_contract_metadata,
+                    'contract_metadata': (
+                        contract_by_router.get(info.name)
+                        if include_contract_metadata
+                        else None
+                    ),
                 }
                 for info, _ in registry.all()
             ]
