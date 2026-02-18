@@ -74,6 +74,12 @@ def _build_steps(repo_root: Path) -> list[Step]:
             timeout_seconds=120,
         ),
         Step(
+            name="perf_smoke",
+            cmd=[sys.executable, "scripts/perf_smoke.py"],
+            env_overrides={},
+            timeout_seconds=5 * 60,
+        ),
+        Step(
             name="pytest_unit",
             cmd=[sys.executable, "-m", "pytest", "-q", "tests/unit"],
             env_overrides={},

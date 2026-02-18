@@ -37,6 +37,7 @@ def test_verification_runner_dry_run_emits_step_plan_json() -> None:
 
     names = [step.get("name") for step in steps if isinstance(step, dict)]
     assert "static_forbidden_routes" in names
+    assert "perf_smoke" in names
     assert "pytest_unit" in names
     assert "pytest_integration" in names
     assert "vitest" in names
