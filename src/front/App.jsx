@@ -86,12 +86,16 @@ export default function App() {
   const codeSessionsEnabled = config.features?.codeSessions !== false
   const urlAgentMode = new URLSearchParams(window.location.search).get('agent_mode')
   const configAgentMode = config.features?.agentRailMode || 'both'
-  const validAgentModes = ['native', 'companion', 'pi', 'both']
+  const validAgentModes = ['native', 'companion', 'pi', 'both', 'all']
   const fallbackAgentMode = validAgentModes.includes(configAgentMode) ? configAgentMode : 'both'
   const agentRailMode = validAgentModes.includes(urlAgentMode)
     ? urlAgentMode
     : fallbackAgentMode
-  const requestedEmbeddedAgentProvider = agentRailMode === 'pi' ? 'pi' : 'companion'
+  const requestedEmbeddedAgentProvider = (
+    agentRailMode === 'pi'
+      ? 'pi'
+      : (agentRailMode === 'all' ? 'all' : 'companion')
+  )
   const nativeAgentEnabled = codeSessionsEnabled && agentRailMode !== 'companion' && agentRailMode !== 'pi'
   const companionAgentEnabled = agentRailMode !== 'native'
   const storagePrefix = config.storage?.prefix || 'kurt-web'
@@ -112,11 +116,25 @@ export default function App() {
 
   // Fetch backend capabilities for feature gating
   const { capabilities, loading: capabilitiesLoading, refetch: refetchCapabilities } = useCapabilities()
-  const embeddedAgentProvider = (
-    agentRailMode === 'both' && capabilities?.features?.companion !== true && capabilities?.features?.pi === true
-  )
-    ? 'pi'
-    : requestedEmbeddedAgentProvider
+  const embeddedAgentProvider = useMemo(() => {
+    const hasCompanion = capabilities?.features?.companion === true
+    const hasPi = capabilities?.features?.pi === true
+
+    if (agentRailMode === 'all' || agentRailMode === 'both') {
+      if (hasCompanion && hasPi) return 'all'
+      if (hasPi) return 'pi'
+      return 'companion'
+    }
+
+    return requestedEmbeddedAgentProvider
+  }, [agentRailMode, capabilities, requestedEmbeddedAgentProvider])
+
+  const embeddedAgentAvailable = useMemo(() => {
+    if (embeddedAgentProvider === 'all') {
+      return capabilities?.features?.companion === true || capabilities?.features?.pi === true
+    }
+    return capabilities?.features?.[embeddedAgentProvider] === true
+  }, [capabilities, embeddedAgentProvider])
 
   // Workspace plugin components loaded dynamically
   const [workspaceComponents, setWorkspaceComponents] = useState({})
@@ -1399,7 +1417,7 @@ export default function App() {
         // Otherwise apply constraints; the companion useEffect will handle removal later.
         const companionPanel = dockApi.getPanel('companion')
         if (companionPanel) {
-          if (!capabilitiesLoading && capabilities?.features?.[embeddedAgentProvider] !== true) {
+          if (!capabilitiesLoading && !embeddedAgentAvailable) {
             companionPanel.api.close()
           } else {
             const companionGroup = companionPanel.group
@@ -1701,7 +1719,7 @@ export default function App() {
       }
     }
 
-    const companionEnabled = companionAgentEnabled && capabilities?.features?.[embeddedAgentProvider] === true
+    const companionEnabled = companionAgentEnabled && embeddedAgentAvailable
     let existingPanel = dockApi.getPanel('companion')
     const terminalPanel = dockApi.getPanel('terminal')
     const terminalGroup = terminalPanel?.group
@@ -1773,7 +1791,7 @@ export default function App() {
       // Remove companion panel restored from saved layout when feature is disabled
       existingPanel.api.close()
     }
-  }, [dockApi, capabilities, capabilitiesLoading, companionAgentEnabled, nativeAgentEnabled, embeddedAgentProvider])
+  }, [dockApi, capabilities, capabilitiesLoading, companionAgentEnabled, nativeAgentEnabled, embeddedAgentProvider, embeddedAgentAvailable])
 
   // Restore saved tabs when dockApi and projectRoot become available
   const hasRestoredTabs = useRef(false)
