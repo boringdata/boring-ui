@@ -296,6 +296,14 @@ class PTYService:
             if normalized_id == "":
                 normalized_id = None
 
+            # Defense-in-depth: even if callers validate at the boundary, keep the
+            # service registry keyed by canonical UUID strings only.
+            if normalized_id is not None:
+                try:
+                    uuid.UUID(normalized_id)
+                except (ValueError, AttributeError, TypeError):
+                    raise ValueError("Invalid session_id (must be a UUID)")
+
             # Get or create session
             if normalized_id and normalized_id in self._session_registry:
                 return self._session_registry[normalized_id], False
