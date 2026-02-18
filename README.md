@@ -1,4 +1,4 @@
-# boring-ui
+# boring-uiddsss
 
 A composable, capability-gated UI framework for building IDE-like applications. boring-ui separates concerns into independently configurable layers that gracefully degrade when backend features are unavailable.
 
@@ -249,14 +249,16 @@ const components = getGatedComponents(createCapabilityGatedPane)
 
 **Available Panes:**
 
-| Pane ID   | Essential | Requirements          | Description              |
-|-----------|-----------|------------------------|--------------------------|
-| filetree  | Yes       | `files` feature        | File browser + git status|
-| editor    | No        | `files` feature        | TipTap markdown editor   |
-| terminal  | Yes       | `chat_claude_code`     | Claude chat sessions     |
-| shell     | Yes       | `pty` router           | Shell terminal           |
-| review    | No        | `approval` router      | Tool approval panel      |
-| empty     | No        | None                   | Placeholder              |
+
+| Pane ID  | Essential | Requirements       | Description               |
+| -------- | --------- | ------------------ | ------------------------- |
+| filetree | Yes       | `files` feature    | File browser + git status |
+| editor   | No        | `files` feature    | TipTap markdown editor    |
+| terminal | Yes       | `chat_claude_code` | Claude chat sessions      |
+| shell    | Yes       | `pty` router       | Shell terminal            |
+| review   | No        | `approval` router  | Tool approval panel       |
+| empty    | No        | None               | Placeholder               |
+
 
 ### Backend: Router Registry
 
@@ -274,13 +276,15 @@ app = create_app(routers=['files', 'git', 'pty'])
 
 **Available Routers:**
 
-| Router           | Prefix   | Description                    |
-|------------------|----------|--------------------------------|
-| files            | /api     | File CRUD + tree operations    |
-| git              | /api/git | Status, diff, show             |
-| pty              | /ws      | Shell terminal WebSocket       |
-| chat_claude_code | /ws      | Claude stream WebSocket        |
-| approval         | /api     | Tool approval workflow         |
+
+| Router           | Prefix   | Description                 |
+| ---------------- | -------- | --------------------------- |
+| files            | /api     | File CRUD + tree operations |
+| git              | /api/git | Status, diff, show          |
+| pty              | /ws      | Shell terminal WebSocket    |
+| chat_claude_code | /ws      | Claude stream WebSocket     |
+| approval         | /api     | Tool approval workflow      |
+
 
 ### Config: Deep Merge with Defaults
 
@@ -355,21 +359,23 @@ npm run preview    # Preview production build
 
 ### Backend Endpoints
 
-| Endpoint              | Method | Description                      |
-|-----------------------|--------|----------------------------------|
-| /api/capabilities     | GET    | Available features and routers   |
-| /api/config           | GET    | Workspace configuration          |
-| /api/project          | GET    | Project root path                |
-| /api/tree             | GET    | Directory tree                   |
-| /api/file             | GET    | Read file                        |
-| /api/file             | PUT    | Write file                       |
-| /api/file             | DELETE | Delete file                      |
-| /api/file/rename      | POST   | Rename file                      |
-| /api/file/move        | POST   | Move file                        |
-| /api/git/status       | GET    | Git status                       |
-| /api/git/diff         | GET    | Git diff                         |
-| /ws/pty/{session_id}  | WS     | Shell PTY                        |
-| /ws/stream/{session}  | WS     | Claude chat stream               |
+
+| Endpoint             | Method | Description                    |
+| -------------------- | ------ | ------------------------------ |
+| /api/capabilities    | GET    | Available features and routers |
+| /api/config          | GET    | Workspace configuration        |
+| /api/project         | GET    | Project root path              |
+| /api/tree            | GET    | Directory tree                 |
+| /api/file            | GET    | Read file                      |
+| /api/file            | PUT    | Write file                     |
+| /api/file            | DELETE | Delete file                    |
+| /api/file/rename     | POST   | Rename file                    |
+| /api/file/move       | POST   | Move file                      |
+| /api/git/status      | GET    | Git status                     |
+| /api/git/diff        | GET    | Git diff                       |
+| /ws/pty/{session_id} | WS     | Shell PTY                      |
+| /ws/stream/{session} | WS     | Claude chat stream             |
+
 
 ### Frontend Hooks
 
