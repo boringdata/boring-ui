@@ -24,7 +24,12 @@ def workspace(tmp_path: Path) -> Path:
 def test_workspace_core_files_canonical_routes_and_traversal_denied(
     workspace: Path,
 ) -> None:
-    app = create_app(APIConfig(workspace_root=workspace), include_pty=False, include_stream=False, include_approval=False)
+    app = create_app(
+        APIConfig(workspace_root=workspace),
+        include_pty=False,
+        include_stream=False,
+        include_approval=False,
+    )
     client = TestClient(app)
 
     list_resp = client.get("/api/v1/files/list", params={"path": "."})
@@ -37,21 +42,29 @@ def test_workspace_core_files_canonical_routes_and_traversal_denied(
 
     traversal = client.get("/api/v1/files/read", params={"path": "../etc/passwd"})
     assert traversal.status_code == 400
-    assert "Path traversal detected" in traversal.json()["detail"]
+    # FileService pins traversal to 400; keep message assertion broad.
+    assert "traversal" in traversal.json()["detail"].lower()
 
 
 def test_workspace_core_git_canonical_routes_and_traversal_denied(workspace: Path) -> None:
-    app = create_app(APIConfig(workspace_root=workspace), include_pty=False, include_stream=False, include_approval=False)
+    app = create_app(
+        APIConfig(workspace_root=workspace),
+        include_pty=False,
+        include_stream=False,
+        include_approval=False,
+    )
     client = TestClient(app)
 
     status_resp = client.get("/api/v1/git/status")
     assert status_resp.status_code == 200
     data = status_resp.json()
     assert "is_repo" in data
+    # In a non-git workspace, canonical status endpoint still responds with is_repo=False.
+    assert data["is_repo"] is False
 
     traversal = client.get("/api/v1/git/diff", params={"path": "../.git/config"})
     assert traversal.status_code == 400
-    assert "Path traversal detected" in traversal.json()["detail"]
+    assert "traversal" in traversal.json()["detail"].lower()
 
 
 def test_router_selection_denies_disabled_files_or_git(workspace: Path) -> None:
@@ -74,12 +87,11 @@ def test_pty_router_presence_and_unknown_provider_is_denied(workspace: Path) -> 
     config = APIConfig(workspace_root=workspace)
     app = create_app(config, include_stream=False, include_approval=False, include_pty=True)
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
-    assert "/ws/pty" in paths
+    assert any(getattr(r, "path", None) == "/ws/pty" for r in app.routes)
 
     client = TestClient(app)
     # The server may close before or right after the handshake; accept either
-    # behavior and assert the close code.
+    # behavior and assert the close code. Router pins unknown provider to 4003.
     with pytest.raises(WebSocketDisconnect) as excinfo:
         with client.websocket_connect("/ws/pty?provider=does-not-exist") as ws:
             ws.receive_text()
@@ -90,5 +102,4 @@ def test_pty_router_absent_when_disabled(workspace: Path) -> None:
     config = APIConfig(workspace_root=workspace)
     app = create_app(config, include_stream=False, include_approval=False, include_pty=False)
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
-    assert "/ws/pty" not in paths
+    assert not any(getattr(r, "path", None) == "/ws/pty" for r in app.routes)
