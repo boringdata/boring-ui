@@ -66,9 +66,9 @@ def test_legacy_routes_and_stream_permission_fallbacks_removed_from_active_code(
 
     # Assert legacy *callsite* usage is gone (avoid false positives from comments/docs-like strings).
     js_callsite = re.compile(
-        r"(?:\bfetch\b|\bapiFetchJson\b|\bapiFetch\b|\bopenWebSocketUrl\b|\bopenWebSocket\b)\s*\(\s*['\"]("
+        r"(?:\bfetch\b|\bapiFetchJson\b|\bapiFetch\b|\bopenWebSocketUrl\b|\bopenWebSocket\b)\s*\(\s*['\"`]("
         + "|".join(re.escape(route) for route in legacy_routes)
-        + r")(?=[\"'?#])",
+        + r")(?=[\"'`?#$])",
     )
     py_mount = re.compile(
         r"@router\.(?:get|post|put|delete|patch|websocket)\(\s*['\"]("
