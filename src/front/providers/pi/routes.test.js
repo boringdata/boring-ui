@@ -28,4 +28,14 @@ describe('createPiRoutes', () => {
     expect(routes.createSession()).toBe('/api/v1/agent/pi/sessions/create')
     expect(routes.stream('abc')).toBe('/api/v1/agent/pi/sessions/abc/stream')
   })
+
+  it('treats null/whitespace-only service URLs as unconfigured while keeping canonical paths', () => {
+    const routesNull = createPiRoutes(null)
+    expect(routesNull.isConfigured).toBe(false)
+    expect(routesNull.sessions()).toBe('/api/v1/agent/pi/sessions')
+
+    const routesWs = createPiRoutes('   ')
+    expect(routesWs.isConfigured).toBe(false)
+    expect(routesWs.sessions()).toBe('/api/v1/agent/pi/sessions')
+  })
 })
