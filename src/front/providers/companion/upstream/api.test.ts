@@ -19,6 +19,7 @@ describe("companion upstream api base URL", () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it("uses canonical /api/v1/agent/companion prefix when COMPANION_URL is set", async () => {
@@ -39,6 +40,18 @@ describe("companion upstream api base URL", () => {
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock).toHaveBeenCalledWith(
       "http://companion.example/base/api/v1/agent/companion/sessions",
+      { headers: { Authorization: "Bearer test-token" } },
+    );
+  });
+
+  it("uses canonical same-origin prefix when COMPANION_URL is not set", async () => {
+    vi.mocked(getCompanionBaseUrl).mockReturnValue("");
+
+    await api.listSessions();
+
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/agent/companion/sessions",
       { headers: { Authorization: "Bearer test-token" } },
     );
   });

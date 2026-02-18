@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
 vi.mock("../config.js", () => ({
   getCompanionBaseUrl: vi.fn(),
@@ -9,6 +9,10 @@ import { getCompanionBaseUrl, getCompanionAuthToken } from "../config.js";
 import { __companionWsTestUtils } from "./ws.js";
 
 describe("companion upstream ws URL", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("rewrites legacy /ws/browser/{id} to canonical /ws/agent/companion/browser/{id}", () => {
     vi.mocked(getCompanionBaseUrl).mockReturnValue("https://companion.example/cc/");
     vi.mocked(getCompanionAuthToken).mockReturnValue("test-token");
