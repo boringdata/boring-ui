@@ -7,16 +7,25 @@ import re
 ARTIFACT = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "bd-3g1g.2.3-api-standards-note.md"
 )
 PLAN_ARTIFACT = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "SERVICE_SPLIT_AND_LEGACY_CLEANUP_PLAN.md"
 )
 PHASE1_ARTIFACT = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "bd-3g1g-phase1-contract-freeze.md"
 )
 
@@ -115,11 +124,12 @@ def test_api_standards_note_has_service_adoption_for_all_owners() -> None:
 
 
 def test_service_contract_docs_reference_api_standards_note() -> None:
-    standards_path = "docs/bd-3g1g.2.3-api-standards-note.md"
+    standards_path = "docs/exec-plans/completed/bd-3g1g/bd-3g1g.2.3-api-standards-note.md"
     plan_text = PLAN_ARTIFACT.read_text(encoding="utf-8")
     phase1_text = PHASE1_ARTIFACT.read_text(encoding="utf-8")
 
     assert standards_path in plan_text, "Service split plan does not reference bd-3g1g.2.3 standards note"
-    assert phase1_text.count(standards_path) >= 2, (
+    legacy_standards_path = "docs/bd-3g1g.2.3-api-standards-note.md"
+    assert phase1_text.count(legacy_standards_path) >= 2, (
         "Phase-1 freeze should reference bd-3g1g.2.3 standards note for both error and mutation sections"
     )

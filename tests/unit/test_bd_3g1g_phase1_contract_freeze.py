@@ -4,7 +4,14 @@ import re
 from pathlib import Path
 
 
-ARTIFACT = Path(__file__).resolve().parents[2] / "docs" / "bd-3g1g-phase1-contract-freeze.md"
+ARTIFACT = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
+    / "bd-3g1g-phase1-contract-freeze.md"
+)
 
 
 def _extract_table_rows(text: str, heading: str) -> list[list[str]]:

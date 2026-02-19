@@ -7,6 +7,9 @@ import json
 GRAPH_ARTIFACT = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "bd-3g1g.1.3-phase-gate-dependency-graph.md"
 )
 ISSUES_JSONL = Path(__file__).resolve().parents[2] / ".beads" / "issues.jsonl"

@@ -7,7 +7,11 @@ import re
 
 INVENTORY_PATH = (
     Path(__file__).resolve().parents[2]
-    / "docs/ROUTE_CALLSITE_INVENTORY_bd-3g1g.1.1.md"
+    / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
+    / "ROUTE_CALLSITE_INVENTORY_bd-3g1g.1.1.md"
 )
 
 EXPECTED_LEDGER_FAMILIES = [

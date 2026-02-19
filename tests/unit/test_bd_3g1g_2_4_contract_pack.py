@@ -7,11 +7,17 @@ import re
 CONTRACT_PACK = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "bd-3g1g.2.4-contract-pack-v1.md"
 )
 SIGNOFF_RECORD = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "bd-3g1g.2.4-signoff.md"
 )
 

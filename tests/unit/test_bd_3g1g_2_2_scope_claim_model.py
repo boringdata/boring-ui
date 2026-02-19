@@ -7,6 +7,9 @@ import re
 ARTIFACT = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "bd-3g1g.2.2-scope-capability-claim-model.md"
 )
 

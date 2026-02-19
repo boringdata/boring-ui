@@ -6,7 +6,11 @@ import re
 
 PLAN_PATH = (
     Path(__file__).resolve().parents[2]
-    / "docs/SERVICE_SPLIT_AND_LEGACY_CLEANUP_PLAN.md"
+    / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
+    / "SERVICE_SPLIT_AND_LEGACY_CLEANUP_PLAN.md"
 )
 
 

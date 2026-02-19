@@ -7,11 +7,17 @@ import re
 INVENTORY_ARTIFACT = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "ROUTE_CALLSITE_INVENTORY_bd-3g1g.1.1.md"
 )
 MATRIX_ARTIFACT = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "bd-3g1g.1.2-canonical-ownership-matrix.md"
 )
 

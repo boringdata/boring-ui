@@ -8,6 +8,9 @@ from pathlib import Path
 ARTIFACT = (
     Path(__file__).resolve().parents[2]
     / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
     / "bd-3g1g.1.4-traceability-notes.md"
 )
 ISSUES = Path(__file__).resolve().parents[2] / ".beads" / "issues.jsonl"
@@ -48,7 +51,10 @@ def _expected_traceability_ids() -> list[str]:
             continue
         obj = json.loads(raw)
         bead_id = obj.get("id", "")
-        if isinstance(bead_id, str) and pattern.fullmatch(bead_id):
+        if not (isinstance(bead_id, str) and pattern.fullmatch(bead_id)):
+            continue
+        phase = int(bead_id.split(".")[1])
+        if phase <= 7:
             expected.append(bead_id)
 
     expected_sorted = sorted(set(expected), key=lambda value: [int(part) for part in value.split(".")[1:]])

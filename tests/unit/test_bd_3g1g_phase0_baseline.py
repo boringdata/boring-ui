@@ -4,7 +4,14 @@ from pathlib import Path
 import re
 
 
-ARTIFACT = Path(__file__).resolve().parents[2] / "docs" / "bd-3g1g-phase0-baseline.md"
+ARTIFACT = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "exec-plans"
+    / "completed"
+    / "bd-3g1g"
+    / "bd-3g1g-phase0-baseline.md"
+)
 
 
 def test_phase0_baseline_artifact_exists() -> None:
