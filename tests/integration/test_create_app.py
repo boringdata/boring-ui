@@ -64,6 +64,11 @@ class TestAppFactory:
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
         assert '/api/v1/agent/normal/sessions' in paths
 
+    def test_app_has_api_attachment_upload_endpoint(self, app):
+        """Test that canonical attachment upload endpoint is available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/api/v1/agent/normal/attachments' in paths
+
     def test_app_has_capabilities_endpoint(self, app):
         """Test that capabilities endpoint is available."""
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
@@ -239,6 +244,30 @@ class TestGitRoutes:
             ]
             for url, response in checks:
                 assert response.status_code == 404, f'{url} returned {response.status_code}'
+
+
+class TestAgentNormalAttachmentRoutes:
+    """Integration tests for canonical agent-normal attachment upload endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_attachment_upload_endpoint(self, app, workspace):
+        """POST /api/v1/agent/normal/attachments stores attachment metadata and file."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            response = await client.post(
+                '/api/v1/agent/normal/attachments',
+                files={'file': ('notes.txt', b'hello attachment', 'text/plain')},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data['name'] == 'notes.txt'
+            assert data['size'] == len(b'hello attachment')
+            assert data['file_id']
+            assert data['relative_path'].startswith('.attachments/')
+
+            saved_path = workspace / data['relative_path']
+            assert saved_path.exists()
+            assert saved_path.read_bytes() == b'hello attachment'
 
 
 class TestConfigEndpoint:

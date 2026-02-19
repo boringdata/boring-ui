@@ -33,6 +33,13 @@ describe('routes helper', () => {
     })
   })
 
+  it('builds canonical agent-normal attachment upload route descriptor', () => {
+    expect(routes.attachments.upload()).toEqual({
+      path: '/api/v1/agent/normal/attachments',
+      query: undefined,
+    })
+  })
+
   it('builds canonical control-plane route descriptors', () => {
     expect(routes.controlPlane.me.get()).toEqual({
       path: '/api/v1/me',

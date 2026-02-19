@@ -86,7 +86,7 @@ export const routes = {
     create: () => ({ path: '/api/v1/agent/normal/sessions', query: undefined }),
   },
   attachments: {
-    upload: () => ({ path: '/api/attachments', query: undefined }),
+    upload: () => ({ path: '/api/v1/agent/normal/attachments', query: undefined }),
   },
   ws: {
     plugins: () => ({ path: '/ws/plugins', query: undefined }),

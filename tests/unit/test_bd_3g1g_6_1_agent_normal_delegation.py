@@ -9,6 +9,7 @@ def test_agent_normal_exposes_canonical_routes_and_removes_legacy_families() -> 
 
     # Canonical agent-normal runtime-only families.
     assert "/api/v1/agent/normal/sessions" in paths
+    assert "/api/v1/agent/normal/attachments" in paths
     assert "/ws/agent/normal/stream" in paths
 
     # Canonical pty-service lifecycle family (agent-normal must delegate).
@@ -16,5 +17,5 @@ def test_agent_normal_exposes_canonical_routes_and_removes_legacy_families() -> 
 
     # Legacy families must not be mounted after cutover.
     assert "/api/sessions" not in paths
+    assert "/api/attachments" not in paths
     assert "/ws/claude-stream" not in paths
-
