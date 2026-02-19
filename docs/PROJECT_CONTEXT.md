@@ -53,9 +53,9 @@ pyproject.toml      Python packaging
 | APIConfig | `src/back/boring_ui/api/config.py` | Central config dataclass injected into all router factories |
 | create_app() | `src/back/boring_ui/api/app.py` | Application factory wiring routers, middleware, and capabilities |
 
-## Active Work
+## Recent Work
 
-The current branch (`control-plan-decoupling`) is focused on service split and control-plane decoupling: separating boring-ui into distinct service boundaries (workspace-core, pty-service, agent-normal, agent-companion, agent-pi) and ensuring frontend networking goes through shared transport helpers rather than hardcoding gateway patterns. See `docs/exec-plans/active/SERVICE_SPLIT_AND_LEGACY_CLEANUP_PLAN.md` for the full plan.
+The `control-plan-decoupling` branch completed the bd-3g1g epic (Service Split + Control-Plane Decoupling + Legacy Cutover). boring-ui now has distinct service boundaries (workspace-core, pty-service, agent-normal, agent-companion, agent-pi), canonical transport helpers replacing hardcoded gateway patterns, and all legacy code paths removed. See `docs/exec-plans/completed/bd-3g1g/` for the full plan and closure artifacts.
 
 ## Related Repositories
 

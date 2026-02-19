@@ -63,7 +63,7 @@ For full session lifecycle (compaction, blocked, end-of-session): see `docs/work
 - Tests: `npm run test:run` (unit), `npm run test:e2e` (e2e), `pytest tests/ -v` (backend)
 - Lint: `npm run lint`
 - Dev server: `npm run dev`
-- Smoke gate: `scripts/gates/smoke.sh`
+- Verify: `python3 scripts/bd_3g1g_verify.py`
 
 ## Credentials
 

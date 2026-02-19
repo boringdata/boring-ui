@@ -116,4 +116,4 @@ Shell -> WS /ws/pty?provider=shell -> pty/router.py -> pty/service.py -> ptyproc
 3. **Error-first degradation**: Missing capabilities show clear error states, never blank screens or silent failures.
 4. **Config deep merge**: Override only what you need; defaults always provide a working baseline.
 5. **Layout recovery chain**: Try saved -> validate -> migrate -> last-known-good -> fresh defaults.
-6. **Service separation**: Moving toward distinct service boundaries (workspace-core, pty-service, agent-*) for hosted deployment.
+6. **Service separation**: Distinct service boundaries established (workspace-core, pty-service, agent-*) for hosted deployment.

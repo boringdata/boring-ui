@@ -38,5 +38,13 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Verification / test artifacts
+.verify/
+playwright-report/
+test-results/
+
+# Rejected patch files
+.beads/*.rej
+
 # Misc
 excalidraw.log

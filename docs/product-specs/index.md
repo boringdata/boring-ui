@@ -14,7 +14,7 @@ Index of product specs for boring-ui features.
 | Companion Chat | (inline below) | Shipped |
 | PI Chat | (inline below) | Shipped |
 | User Menu | `docs/exec-plans/backlog/SIDEBAR_USER_MENU_PLAN.md` | In progress |
-| Service Split | `docs/exec-plans/active/SERVICE_SPLIT_AND_LEGACY_CLEANUP_PLAN.md` | In progress |
+| Service Split | `docs/exec-plans/completed/bd-3g1g/` | Completed |
 
 ## Feature Summaries
 

@@ -47,4 +47,6 @@
 3. **Chat inline styles**: Chat components use inline styles instead of CSS variables/classes.
 4. **Build path issue**: Pre-existing `main.jsx` path resolution issue in production build.
 5. **Backward compat aliases**: `stream` alias for `chat_claude_code` adds complexity. Clients should migrate.
-6. **No formal ADR process**: Decisions documented informally in plan files.
+6. **No formal ADR process**: Decisions documented in `docs/exec-plans/completed/` but not formalized as ADRs.
+7. **Broken artifact-path tests**: 45 tests reference old `docs/` paths from before the scaffold restructure; need updating to `docs/exec-plans/completed/bd-3g1g/`.
+8. **Vitest env issue**: `port.addListener` error in vitest environment prevents frontend test files from executing (pre-existing).
