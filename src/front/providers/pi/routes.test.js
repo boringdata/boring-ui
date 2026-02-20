@@ -1,0 +1,41 @@
+import { describe, expect, it } from 'vitest'
+import { createPiRoutes } from './routes'
+
+describe('createPiRoutes', () => {
+  it('builds canonical PI backend URLs from service base URL', () => {
+    const routes = createPiRoutes('http://localhost:9100/')
+
+    expect(routes.isConfigured).toBe(true)
+    expect(routes.sessions()).toBe('http://localhost:9100/api/v1/agent/pi/sessions')
+    expect(routes.history('session/1')).toBe('http://localhost:9100/api/v1/agent/pi/sessions/session%2F1/history')
+    expect(routes.createSession()).toBe('http://localhost:9100/api/v1/agent/pi/sessions/create')
+    expect(routes.stream('abc')).toBe('http://localhost:9100/api/v1/agent/pi/sessions/abc/stream')
+  })
+
+  it('normalizes whitespace and multiple trailing slashes in service base URL', () => {
+    const routes = createPiRoutes('  http://localhost:9100///  ')
+
+    expect(routes.isConfigured).toBe(true)
+    expect(routes.sessions()).toBe('http://localhost:9100/api/v1/agent/pi/sessions')
+  })
+
+  it('reports unconfigured routes when service URL is missing', () => {
+    const routes = createPiRoutes('')
+
+    expect(routes.isConfigured).toBe(false)
+    expect(routes.sessions()).toBe('/api/v1/agent/pi/sessions')
+    expect(routes.history('abc')).toBe('/api/v1/agent/pi/sessions/abc/history')
+    expect(routes.createSession()).toBe('/api/v1/agent/pi/sessions/create')
+    expect(routes.stream('abc')).toBe('/api/v1/agent/pi/sessions/abc/stream')
+  })
+
+  it('treats null/whitespace-only service URLs as unconfigured while keeping canonical paths', () => {
+    const routesNull = createPiRoutes(null)
+    expect(routesNull.isConfigured).toBe(false)
+    expect(routesNull.sessions()).toBe('/api/v1/agent/pi/sessions')
+
+    const routesWs = createPiRoutes('   ')
+    expect(routesWs.isConfigured).toBe(false)
+    expect(routesWs.sessions()).toBe('/api/v1/agent/pi/sessions')
+  })
+})

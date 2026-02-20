@@ -1,5 +1,6 @@
 """Configuration for boring-ui API."""
 import os
+import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,6 +35,16 @@ def _workspace_plugin_allowlist() -> list[str]:
     """Parse optional comma-separated workspace plugin allowlist."""
     raw = os.environ.get('WORKSPACE_PLUGIN_ALLOWLIST', '')
     return [item.strip() for item in raw.split(',') if item.strip()]
+
+def _env_cmd(name: str) -> list[str] | None:
+    """Parse a command list from a string env var (shell-like splitting)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+    return shlex.split(raw)
 
 
 @dataclass
@@ -71,6 +82,14 @@ class APIConfig:
     workspace_plugin_allowlist: list[str] = field(
         default_factory=_workspace_plugin_allowlist
     )
+
+    def __post_init__(self) -> None:
+        # Test harness hook: allow overriding the PTY provider commands without
+        # changing default prod behavior.
+        # Example: BORING_UI_PTY_CLAUDE_COMMAND=bash
+        claude_override = _env_cmd("BORING_UI_PTY_CLAUDE_COMMAND")
+        if claude_override and "claude" in self.pty_providers:
+            self.pty_providers["claude"] = claude_override
 
     def validate_path(self, path: Path | str) -> Path:
         """Validate that a path is within workspace_root.

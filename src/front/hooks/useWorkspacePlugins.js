@@ -9,7 +9,8 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { buildApiUrl } from '../utils/apiBase'
+import { openWebSocket } from '../utils/transport'
+import { routes } from '../utils/routes'
 
 /**
  * @param {Object} opts
@@ -34,11 +35,8 @@ export function useWorkspacePlugins({ onPluginChanged, enabled = true }) {
     const connect = () => {
       if (disposed) return
 
-      // Build WebSocket URL from API base
-      const httpUrl = buildApiUrl('/ws/plugins')
-      const wsUrl = httpUrl.replace(/^http/, 'ws')
-
-      const ws = new WebSocket(wsUrl)
+      const route = routes.ws.plugins()
+      const ws = openWebSocket(route.path, { query: route.query })
       wsRef.current = ws
 
       ws.onopen = () => {

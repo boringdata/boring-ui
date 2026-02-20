@@ -9,3 +9,6 @@
 # Temporary
 last-touched
 *.tmp
+
+# br sync backups (not part of the canonical issue export tracked in git)
+.br_history/

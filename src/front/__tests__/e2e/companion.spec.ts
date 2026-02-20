@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test'
 
+const API_BASE_URL =
+  process.env.PW_E2E_API_BASE_URL
+  || `http://127.0.0.1:${process.env.PW_E2E_API_PORT || '8000'}`
+
 /**
  * Companion Claude Integration E2E Tests
  *
@@ -11,19 +15,22 @@ import { test, expect } from '@playwright/test'
 
 test.describe('Companion Integration', () => {
   test.describe('bd-1wi2.4.1: Regression — no COMPANION_URL', () => {
-    test('capabilities has no companion feature when COMPANION_URL unset', async ({ request }) => {
-      const response = await request.get('http://localhost:8000/api/capabilities')
+    test.skip(
+      !!process.env.COMPANION_URL,
+      'This suite requires COMPANION_URL to be unset'
+    )
+
+    test('capabilities omit companion service metadata when COMPANION_URL unset', async ({ request }) => {
+      const response = await request.get(`${API_BASE_URL}/api/capabilities`)
+      expect(response.ok()).toBeTruthy()
       const data = await response.json()
 
-      // companion should be absent or false
-      const companionEnabled = data.features?.companion
-      expect(companionEnabled).toBeFalsy()
-
-      // No services block
-      expect(data.services).toBeUndefined()
+      // Embedded companion mode may still expose feature flags, but external
+      // companion service metadata should be absent when COMPANION_URL is unset.
+      expect(data.services?.companion).toBeUndefined()
     })
 
-    test('no companion panel in UI without COMPANION_URL', async ({ page }) => {
+    test('embedded companion panel renders without COMPANION_URL', async ({ page }) => {
       // Collect console errors
       const consoleErrors: string[] = []
       page.on('console', (msg) => {
@@ -35,9 +42,9 @@ test.describe('Companion Integration', () => {
       await page.goto('/')
       await page.waitForSelector('[data-testid="dockview"]', { timeout: 15000 })
 
-      // No companion panel should exist
+      // Embedded companion mode should still render companion panels.
       const companionPanel = page.locator('[data-testid="companion-panel"]')
-      await expect(companionPanel).toHaveCount(0)
+      expect(await companionPanel.count()).toBeGreaterThan(0)
 
       // No companion-related console errors
       const companionErrors = consoleErrors.filter(
@@ -62,7 +69,8 @@ test.describe('Companion Integration', () => {
     )
 
     test('capabilities includes companion service when COMPANION_URL set', async ({ request }) => {
-      const response = await request.get('http://localhost:8000/api/capabilities')
+      const response = await request.get(`${API_BASE_URL}/api/capabilities`)
+      expect(response.ok()).toBeTruthy()
       const data = await response.json()
 
       expect(data.features.companion).toBe(true)

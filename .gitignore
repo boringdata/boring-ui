@@ -28,6 +28,23 @@ coverage/
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# Agent evidence (not committed to git)
+.agent-evidence/
 .evidence/
-*.pyc
+
+# Python
 __pycache__/
+*.pyc
+.pytest_cache/
+
+# Verification / test artifacts
+.verify/
+playwright-report/
+test-results/
+
+# Rejected patch files
+.beads/*.rej
+
+# Misc
+excalidraw.log

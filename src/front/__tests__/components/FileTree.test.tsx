@@ -32,9 +32,9 @@ describe('FileTree', () => {
 
   beforeEach(() => {
     setupApiMocks({
-      '/api/tree': { entries: fileTree.root },
-      '/api/git/status': { available: true, files: gitStatus.clean },
-      '/api/search': searchResults.empty,
+      '/api/v1/files/list': { entries: fileTree.root },
+      '/api/v1/git/status': { available: true, files: gitStatus.clean },
+      '/api/v1/files/search': searchResults.empty,
     })
   })
 
@@ -71,28 +71,30 @@ describe('FileTree', () => {
     })
 
     it('retries fetch if initial load returns empty', async () => {
-      const fetchMock = vi.fn()
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ entries: [] }) })
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ entries: [] }) })
-        .mockResolvedValue({ json: () => Promise.resolve({ entries: fileTree.root }) })
-
-      vi.stubGlobal('fetch', fetchMock)
+      let listCalls = 0
+      setupApiMocks({
+        '/api/v1/files/list': () => {
+          listCalls++
+          if (listCalls <= 2) return { entries: [] }
+          return { entries: fileTree.root }
+        },
+      })
 
       render(<FileTree {...defaultProps} />)
 
-      // Wait for retries
-      await new Promise(r => setTimeout(r, 10))
-
+      // Component retries with a 300ms backoff; give it enough time deterministically.
       await waitFor(() => {
         expect(screen.getByText('README.md')).toBeInTheDocument()
-      })
+      }, { timeout: 2000 })
+
+      expect(listCalls).toBeGreaterThanOrEqual(3)
     })
   })
 
   describe('Directory Expand/Collapse', () => {
     it('expands directory on click', async () => {
       setupApiMocks({
-        '/api/tree': (url: string) => {
+        '/api/v1/files/list': (url: string) => {
           // Must match exact paths to avoid path=src matching path=src/components
           const match = url.match(/path=([^&]+)/)
           const path = match ? match[1] : '.'
@@ -100,7 +102,7 @@ describe('FileTree', () => {
           if (path === '.') return { entries: fileTree.root }
           return { entries: [] } // Unknown paths return empty
         },
-        '/api/git/status': { available: true, files: {} },
+        '/api/v1/git/status': { available: true, files: {} },
       })
 
       render(<FileTree {...defaultProps} />)
@@ -119,14 +121,14 @@ describe('FileTree', () => {
 
     it('collapses expanded directory on click', async () => {
       setupApiMocks({
-        '/api/tree': (url: string) => {
+        '/api/v1/files/list': (url: string) => {
           const match = url.match(/path=([^&]+)/)
           const path = match ? match[1] : '.'
           if (path === 'src') return { entries: fileTree.srcDir }
           if (path === '.') return { entries: fileTree.root }
           return { entries: [] }
         },
-        '/api/git/status': { available: true, files: {} },
+        '/api/v1/git/status': { available: true, files: {} },
       })
 
       render(<FileTree {...defaultProps} />)
@@ -162,14 +164,14 @@ describe('FileTree', () => {
 
     it('shows open folder icon for expanded directories', async () => {
       setupApiMocks({
-        '/api/tree': (url: string) => {
+        '/api/v1/files/list': (url: string) => {
           const match = url.match(/path=([^&]+)/)
           const path = match ? match[1] : '.'
           if (path === 'src') return { entries: fileTree.srcDir }
           if (path === '.') return { entries: fileTree.root }
           return { entries: [] }
         },
-        '/api/git/status': { available: true, files: {} },
+        '/api/v1/git/status': { available: true, files: {} },
       })
 
       render(<FileTree {...defaultProps} />)
@@ -221,9 +223,9 @@ describe('FileTree', () => {
   describe('Search', () => {
     it('shows search results when typing', async () => {
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/search': searchResults.basic,
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: {} },
+        '/api/v1/files/search': searchResults.basic,
       })
 
       render(<FileTree {...defaultProps} />)
@@ -249,9 +251,9 @@ describe('FileTree', () => {
 
     it('shows "No files found" for empty results', async () => {
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/search': { results: [] },
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: {} },
+        '/api/v1/files/search': { results: [] },
       })
 
       render(<FileTree {...defaultProps} />)
@@ -268,9 +270,9 @@ describe('FileTree', () => {
 
     it('highlights matching text in search results', async () => {
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/search': searchResults.basic,
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: {} },
+        '/api/v1/files/search': searchResults.basic,
       })
 
       render(<FileTree {...defaultProps} />)
@@ -299,9 +301,9 @@ describe('FileTree', () => {
 
     it('opens file when search result is clicked', async () => {
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/search': searchResults.basic,
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: {} },
+        '/api/v1/files/search': searchResults.basic,
       })
 
       render(<FileTree {...defaultProps} />)
@@ -325,8 +327,8 @@ describe('FileTree', () => {
   describe('Git Status', () => {
     it('shows modified badge for modified files', async () => {
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: { 'README.md': 'M' } },
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: { 'README.md': 'M' } },
       })
 
       render(<FileTree {...defaultProps} />)
@@ -340,8 +342,8 @@ describe('FileTree', () => {
 
     it('shows new badge for untracked files', async () => {
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: { 'README.md': '??' } },
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: { 'README.md': '??' } },
       })
 
       render(<FileTree {...defaultProps} />)
@@ -355,8 +357,8 @@ describe('FileTree', () => {
 
     it('shows dot indicator on directory with changed files', async () => {
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: { 'src/App.jsx': 'M' } },
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: { 'src/App.jsx': 'M' } },
       })
 
       render(<FileTree {...defaultProps} />)
@@ -493,9 +495,9 @@ describe('FileTree', () => {
 
     it('renames file on Enter', async () => {
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/file/rename': { ok: true },
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: {} },
+        '/api/v1/files/rename': { ok: true },
       })
 
       render(<FileTree {...defaultProps} />)
@@ -568,8 +570,8 @@ describe('FileTree', () => {
       vi.spyOn(window, 'confirm').mockReturnValue(true)
 
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: {} },
         // The delete endpoint should be handled
       })
 
@@ -603,9 +605,9 @@ describe('FileTree', () => {
 
     it('creates file on Enter', async () => {
       setupApiMocks({
-        '/api/tree': { entries: fileTree.root },
-        '/api/git/status': { available: true, files: {} },
-        '/api/file': {},
+        '/api/v1/files/list': { entries: fileTree.root },
+        '/api/v1/git/status': { available: true, files: {} },
+        '/api/v1/files/write': {},
       })
 
       render(<FileTree {...defaultProps} creatingFile={true} />)
@@ -733,7 +735,7 @@ describe('FileTree', () => {
 
       let srcCallCount = 0
       setupApiMocks({
-        '/api/tree': (url: string) => {
+        '/api/v1/files/list': (url: string) => {
           fetchCalls.push(url)
           const match = url.match(/path=([^&]+)/)
           const path = match ? decodeURIComponent(match[1]) : '.'
@@ -745,7 +747,7 @@ describe('FileTree', () => {
           if (path === '.') return { entries: fileTree.root }
           return { entries: [] }
         },
-        '/api/git/status': { available: true, files: {} },
+        '/api/v1/git/status': { available: true, files: {} },
         // Return config without paths so it uses flat rendering (not sectioned)
         '/api/config': { available: false },
       })
@@ -809,7 +811,7 @@ describe('FileTree', () => {
       ]
 
       setupApiMocks({
-        '/api/tree': (url: string) => {
+        '/api/v1/files/list': (url: string) => {
           const match = url.match(/path=([^&]+)/)
           const path = match ? decodeURIComponent(match[1]) : '.'
           if (path === '.') {
@@ -822,7 +824,7 @@ describe('FileTree', () => {
           }
           return { entries: [] }
         },
-        '/api/git/status': { available: true, files: {} },
+        '/api/v1/git/status': { available: true, files: {} },
         '/api/config': { available: false },
       })
 

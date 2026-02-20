@@ -109,7 +109,7 @@ class TestGetStatus:
         assert response.status_code == 200
         data = response.json()
         assert 'new_file.txt' in data['files']
-        assert data['files']['new_file.txt'] == '??'  # Untracked
+        assert data['files']['new_file.txt'] == 'U'  # Untracked (normalized)
 
     @pytest.mark.asyncio
     async def test_non_git_directory(self, temp_non_git_dir):

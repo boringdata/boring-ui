@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Editor from '../components/Editor'
 import CodeEditor from '../components/CodeEditor'
 import GitDiff from '../components/GitDiff'
-import { buildApiUrl } from '../utils/apiBase'
+import { apiFetchJson, getHttpErrorDetail } from '../utils/transport'
+import { routes } from '../utils/routes'
 
 // Check if file is markdown
 const isMarkdownFile = (filepath) => {
@@ -60,14 +61,11 @@ export default function EditorPanel({ params: initialParams, api }) {
     if (!path) return
     setDiffError('')
     try {
-      const response = await fetch(
-        buildApiUrl(`/api/git/diff?path=${encodeURIComponent(path)}`)
-      )
+      const route = routes.git.diff(path)
+      const { response, data } = await apiFetchJson(route.path, { query: route.query })
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(data.detail || 'Failed to load git diff')
+        throw new Error(getHttpErrorDetail(response, data, 'Failed to load git diff'))
       }
-      const data = await response.json()
       setDiffText(data.diff || '')
     } catch (err) {
       setDiffError(err?.message || 'Failed to load git diff')
@@ -78,14 +76,11 @@ export default function EditorPanel({ params: initialParams, api }) {
   const loadOriginalContent = useCallback(async () => {
     if (!path) return
     try {
-      const response = await fetch(
-        buildApiUrl(`/api/git/show?path=${encodeURIComponent(path)}`)
-      )
+      const route = routes.git.show(path)
+      const { response, data } = await apiFetchJson(route.path, { query: route.query })
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(data.detail || 'Failed to load original content')
+        throw new Error(getHttpErrorDetail(response, data, 'Failed to load original content'))
       }
-      const data = await response.json()
       setOriginalContent(data.is_new ? '' : (data.content || ''))
     } catch (err) {
       setOriginalContent(null)
@@ -128,11 +123,12 @@ export default function EditorPanel({ params: initialParams, api }) {
       const abortController = new AbortController()
       pollAbortRef.current = abortController
 
-      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`), {
+      const route = routes.files.read(path)
+      apiFetchJson(route.path, {
+        query: route.query,
         signal: abortController.signal,
       })
-        .then((r) => r.json())
-        .then((data) => {
+        .then(({ data }) => {
           if (!isActive || isSavingRef.current || isDirtyRef.current) return
           const nextContent = data.content || ''
           if (nextContent === contentRef.current) {
@@ -173,11 +169,16 @@ export default function EditorPanel({ params: initialParams, api }) {
     setContent(newContent)
     setIsSaving(true)
     try {
-      await fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`), {
+      const route = routes.files.write(path)
+      const { response, data } = await apiFetchJson(route.path, {
+        query: route.query,
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newContent }),
       })
+      if (!response.ok) {
+        throw new Error(getHttpErrorDetail(response, data, 'Failed to save file'))
+      }
 
       setIsDirty(false)
       setExternalChange(false) // Clear notification since we just wrote to disk
@@ -218,9 +219,9 @@ export default function EditorPanel({ params: initialParams, api }) {
 
   const reloadFromDisk = () => {
     if (!path) return
-    fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
-      .then((r) => r.json())
-      .then((data) => {
+    const route = routes.files.read(path)
+    apiFetchJson(route.path, { query: route.query })
+      .then(({ data }) => {
         setContent(data.content || '')
         setIsDirty(false)
         onDirtyChange?.(path, false)

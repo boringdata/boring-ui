@@ -531,38 +531,6 @@ async def handle_stream_websocket(
                             "mode": suggested_mode,
                         })
 
-            elif msg_type == "approval_response":
-                decision = payload.get("decision", "allow")
-                request_id = payload.get("request_id") or payload.get("tool_id")
-                tool_input = payload.get("tool_input", {})
-                print(f"[Stream] Approval response (legacy): decision={decision} request_id={request_id}")
-
-                if decision in ("allow", "always", "grant"):
-                    response_payload = {
-                        "type": "control_response",
-                        "response": {
-                            "subtype": "success",
-                            "request_id": request_id,
-                            "response": {
-                                "behavior": "allow",
-                                "updatedInput": tool_input,
-                            },
-                        },
-                    }
-                else:
-                    response_payload = {
-                        "type": "control_response",
-                        "response": {
-                            "subtype": "success",
-                            "request_id": request_id,
-                            "response": {
-                                "behavior": "deny",
-                                "message": "User denied permission",
-                            },
-                        },
-                    }
-                await session.write_json(response_payload)
-
             elif msg_type == "interrupt":
                 await session.interrupt()
                 await websocket.send_json({
@@ -606,7 +574,8 @@ def create_stream_router(config: APIConfig) -> APIRouter:
     """Create Claude stream WebSocket router (kurt-core aligned)."""
     router = APIRouter(tags=["stream"])
 
-    @router.websocket("/claude-stream")
+    # Canonical agent-normal stream endpoint (legacy `/ws/claude-stream` rewritten).
+    @router.websocket("/stream")
     async def stream_websocket(websocket: WebSocket):
         await handle_stream_websocket(websocket, cwd=str(config.workspace_root))
 

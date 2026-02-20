@@ -4,6 +4,7 @@ This module provides:
 - A registry for tracking available routers/features
 - A capabilities endpoint for UI feature discovery
 """
+import os
 from dataclasses import dataclass, field
 from typing import Callable, Any, TYPE_CHECKING
 
@@ -29,9 +30,9 @@ class RouterRegistry:
 
     Example:
         registry = RouterRegistry()
-        registry.register('files', '/api', create_file_router,
+        registry.register('files', '/api/v1/files', create_file_router,
                          description='File operations')
-        registry.register('git', '/api/git', create_git_router,
+        registry.register('git', '/api/v1/git', create_git_router,
                          description='Git operations')
 
         # Get all registered routers
@@ -55,18 +56,27 @@ class RouterRegistry:
 
         Args:
             name: Unique identifier for this router
-            prefix: URL prefix (e.g., '/api/git')
+            prefix: URL prefix (e.g., '/api/v1/git')
             factory: Function that creates the router
             description: Human-readable description
             tags: OpenAPI tags for grouping
             required_capabilities: Capabilities this router requires
         """
+
+        def _normalize_str_list(value: list[str] | str | None) -> list[str]:
+            # Defensive: prevent accidental `list("foo") -> ["f","o","o"]`.
+            if value is None:
+                return []
+            if isinstance(value, str):
+                return [value]
+            return list(value)
+
         info = RouterInfo(
             name=name,
             prefix=prefix,
             description=description,
-            tags=tags or [],
-            required_capabilities=required_capabilities or [],
+            tags=_normalize_str_list(tags),
+            required_capabilities=_normalize_str_list(required_capabilities),
         )
         self._routers[name] = (info, factory)
 
@@ -104,14 +114,14 @@ def create_default_registry() -> RouterRegistry:
     # Core routers (always included in default setup)
     registry.register(
         'files',
-        '/api',
+        '/api/v1/files',
         create_file_router,
         description='File system operations (read, write, rename, delete)',
         tags=['files'],
     )
     registry.register(
         'git',
-        '/api/git',
+        '/api/v1/git',
         create_git_router,
         description='Git operations (status, diff, show)',
         tags=['git'],
@@ -127,7 +137,7 @@ def create_default_registry() -> RouterRegistry:
     )
     registry.register(
         'chat_claude_code',
-        '/ws',
+        '/ws/agent/normal',
         create_stream_router,
         description='Claude stream WebSocket for AI chat',
         tags=['websocket', 'ai'],
@@ -135,7 +145,7 @@ def create_default_registry() -> RouterRegistry:
     # Backward compatibility alias: 'stream' -> 'chat_claude_code'
     registry.register(
         'stream',
-        '/ws',
+        '/ws/agent/normal',
         create_stream_router,
         description='Claude stream WebSocket for AI chat (alias for chat_claude_code)',
         tags=['websocket', 'ai'],
@@ -184,13 +194,55 @@ def create_capabilities_router(
 
         # Add router details if registry provided
         if registry:
+            # Read env var at request-time to keep tests simple (monkeypatch),
+            # and to allow runtime overrides in dev environments.
+            include_contract_metadata = os.environ.get("CAPABILITIES_INCLUDE_CONTRACT_METADATA", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+            contract_by_router: dict[str, dict[str, Any]] = {
+                "files": {"owner_service": "workspace-core", "canonical_families": ["/api/v1/files/*"]},
+                "git": {"owner_service": "workspace-core", "canonical_families": ["/api/v1/git/*"]},
+                "pty": {"owner_service": "pty-service", "canonical_families": ["/ws/pty", "/api/v1/pty/*"]},
+                "chat_claude_code": {
+                    "owner_service": "agent-normal",
+                    "canonical_families": ["/ws/agent/normal/*", "/api/v1/agent/normal/*"],
+                },
+                "stream": {
+                    "owner_service": "agent-normal",
+                    "canonical_families": ["/ws/agent/normal/*", "/api/v1/agent/normal/*"],
+                },
+                "approval": {"owner_service": "boring-ui", "canonical_families": ["/api/approval/*"]},
+            }
+
+            def _apply_contract_prefix(description: str, contract: dict[str, Any] | None) -> str:
+                if not contract:
+                    return description
+                owner_service = contract.get("owner_service")
+                canonical_families = contract.get("canonical_families") or []
+                canonical = ",".join(canonical_families)
+                return f"[owner={owner_service}] [canonical={canonical}] {description}"
+
             capabilities['routers'] = [
                 {
                     'name': info.name,
                     'prefix': info.prefix,
-                    'description': info.description,
+                    'description': (
+                        _apply_contract_prefix(info.description, contract_by_router.get(info.name))
+                        if include_contract_metadata
+                        else info.description
+                    ),
                     'tags': info.tags,
                     'enabled': enabled_features.get(info.name, False),
+                    'contract_metadata': (
+                        contract_by_router.get(info.name) if include_contract_metadata else None
+                    ),
+                    # Per-entry indicator: avoids confusing "enabled globally but missing for this router" states.
+                    'contract_metadata_included': (
+                        include_contract_metadata and info.name in contract_by_router
+                    ),
                 }
                 for info, _ in registry.all()
             ]

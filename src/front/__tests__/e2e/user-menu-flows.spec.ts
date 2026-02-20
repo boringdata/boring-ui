@@ -1,0 +1,256 @@
+import { expect, test } from '@playwright/test'
+import type { Page, Route } from '@playwright/test'
+
+const json = (value: unknown) => JSON.stringify(value)
+
+const trackApiRequests = (page: Page) => {
+  const requests: { method: string; pathname: string }[] = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (url.pathname.startsWith('/api/v1/') || url.pathname === '/auth/logout') {
+      requests.push({ method: request.method(), pathname: url.pathname })
+    }
+  })
+  return requests
+}
+
+const fulfillJson = (route: Route, status: number, body: unknown) => {
+  route.fulfill({
+    status,
+    contentType: 'application/json',
+    body: json(body),
+  })
+}
+
+test.describe('User Menu Control-Plane Flows', () => {
+  // These flows involve prompt/dialog interactions + full-page navigation; give the suite
+  // extra headroom under CI-like load.
+  test.describe.configure({ timeout: 60_000 })
+
+  test('switch workspace navigates to canonical /w/{id}/ after preflight', async ({ page }) => {
+    const requests = trackApiRequests(page)
+    const navRequests: string[] = []
+
+    page.on('request', (request) => {
+      const url = new URL(request.url())
+      if (url.pathname.startsWith('/w/')) {
+        navRequests.push(url.pathname)
+      }
+    })
+
+    await page.route('**/api/v1/me', (route) =>
+      fulfillJson(route, 200, { email: 'john@example.com' }),
+    )
+
+    await page.route('**/api/v1/workspaces', async (route) => {
+      const req = route.request()
+      if (req.method() === 'GET') {
+        return fulfillJson(route, 200, {
+          workspaces: [
+            { id: 'ws-1', name: 'One' },
+            { id: 'ws-2', name: 'Two' },
+          ],
+        })
+      }
+      return fulfillJson(route, 405, { detail: 'unexpected method' })
+    })
+
+    await page.route('**/api/v1/workspaces/ws-2/runtime', (route) =>
+      fulfillJson(route, 200, { runtime: { status: 'ready' } }),
+    )
+    await page.route('**/api/v1/workspaces/ws-2/settings', (route) =>
+      fulfillJson(route, 200, { data: { workspace_settings: { shell: 'zsh' } } }),
+    )
+
+    // Intercept the navigation away from the UI and fulfill a minimal HTML response.
+    // Match both `/w/ws-2` and `/w/ws-2/` to avoid trailing-slash differences.
+    await page.route('**/w/ws-2*', (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<html></html>' }),
+    )
+
+    await page.goto('/')
+    await page.waitForSelector('[aria-label="User menu"]', { timeout: 15000 })
+
+    // Avoid flaky Playwright dialog handling: stub prompt directly and keep the test focused
+    // on the canonical navigation + preflight request pattern.
+    await page.evaluate(() => {
+      window.prompt = () => 'ws-2'
+    })
+
+    await page.getByRole('button', { name: 'User menu' }).click()
+    await page.getByRole('menuitem', { name: 'Switch workspace' }).click()
+
+    await expect.poll(() => navRequests.map((pathname) => pathname.replace(/\/$/, ''))).toContain('/w/ws-2')
+    // Diagnostic: ensure preflight hits canonical endpoints.
+    expect(requests.map((r) => `${r.method} ${r.pathname}`)).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/me',
+        'GET /api/v1/workspaces',
+        'GET /api/v1/workspaces/ws-2/runtime',
+        'GET /api/v1/workspaces/ws-2/settings',
+      ]),
+    )
+  })
+
+  test('create workspace writes settings and navigates to canonical /w/{id}/', async ({ page }) => {
+    const requests = trackApiRequests(page)
+    const navRequests: string[] = []
+
+    page.on('request', (request) => {
+      const url = new URL(request.url())
+      if (url.pathname.startsWith('/w/')) {
+        navRequests.push(url.pathname)
+      }
+    })
+
+    await page.route('**/api/v1/me', (route) =>
+      fulfillJson(route, 200, { email: 'john@example.com' }),
+    )
+
+    let workspacesGetCount = 0
+    await page.route('**/api/v1/workspaces', async (route) => {
+      const req = route.request()
+      if (req.method() === 'POST') {
+        return fulfillJson(route, 200, { id: 'ws-new', name: 'New' })
+      }
+      if (req.method() === 'GET') {
+        workspacesGetCount += 1
+        return fulfillJson(route, 200, {
+          workspaces: [
+            { id: 'ws-new', name: 'New' },
+            { id: 'ws-old', name: 'Old' },
+          ],
+        })
+      }
+      return fulfillJson(route, 405, { detail: 'unexpected method' })
+    })
+
+    await page.route('**/api/v1/workspaces/ws-new/runtime', (route) =>
+      fulfillJson(route, 200, { runtime: { status: 'ready' } }),
+    )
+
+    let settingsPutBody = ''
+    await page.route('**/api/v1/workspaces/ws-new/settings', async (route) => {
+      const req = route.request()
+      if (req.method() === 'GET') {
+        return fulfillJson(route, 200, { data: { workspace_settings: { shell: 'zsh' } } })
+      }
+      if (req.method() === 'PUT') {
+        settingsPutBody = req.postData() || ''
+        return route.fulfill({ status: 204 })
+      }
+      return fulfillJson(route, 405, { detail: 'unexpected method' })
+    })
+
+    await page.route('**/w/ws-new*', (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<html></html>' }),
+    )
+
+    await page.goto('/')
+    await page.waitForSelector('[aria-label="User menu"]', { timeout: 15000 })
+
+    await page.getByRole('button', { name: 'User menu' }).click()
+    await page.getByRole('menuitem', { name: 'Create workspace' }).click()
+
+    await expect.poll(() => navRequests.map((pathname) => pathname.replace(/\/$/, ''))).toContain('/w/ws-new')
+    await expect.poll(() => workspacesGetCount).toBeGreaterThan(0)
+    expect(JSON.parse(settingsPutBody)).toEqual({ shell: 'zsh' })
+
+    // Diagnostic: ensure key requests happened.
+    expect(requests.map((r) => `${r.method} ${r.pathname}`)).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/workspaces',
+        'GET /api/v1/workspaces',
+        'GET /api/v1/workspaces/ws-new/runtime',
+        'GET /api/v1/workspaces/ws-new/settings',
+        'PUT /api/v1/workspaces/ws-new/settings',
+      ]),
+    )
+  })
+
+  test('logout uses canonical /auth/logout route', async ({ page }) => {
+    const requests = trackApiRequests(page)
+
+    await page.route('**/api/v1/me', (route) =>
+      fulfillJson(route, 200, { email: 'john@example.com' }),
+    )
+    await page.route('**/api/v1/workspaces', (route) =>
+      fulfillJson(route, 200, { workspaces: [{ id: 'ws-1', name: 'One' }] }),
+    )
+    await page.route('**/auth/logout', (route) =>
+      route.fulfill({ status: 204, body: '' }),
+    )
+
+    await page.goto('/')
+    await page.waitForSelector('[aria-label="User menu"]', { timeout: 15000 })
+
+    const logoutRequest = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === '/auth/logout',
+    )
+    await page.getByRole('button', { name: 'User menu' }).click()
+    await page.getByRole('menuitem', { name: 'Logout' }).click()
+    await logoutRequest
+
+    expect(requests.map((r) => `${r.method} ${r.pathname}`)).toEqual(
+      expect.arrayContaining(['GET /api/v1/me', 'GET /api/v1/workspaces', 'GET /auth/logout']),
+    )
+  })
+
+  test('unauthenticated identity shows banner and disables actions, retry re-requests control plane', async ({ page }) => {
+    const requests = trackApiRequests(page)
+    let meCalls = 0
+    let workspacesCalls = 0
+
+    await page.route('**/api/v1/me', (route) => {
+      meCalls += 1
+      return fulfillJson(route, 401, { detail: 'not signed in' })
+    })
+
+    await page.route('**/api/v1/workspaces', (route) => {
+      workspacesCalls += 1
+      return fulfillJson(route, 401, { detail: 'not signed in' })
+    })
+
+    await page.goto('/')
+    await page.waitForSelector('[aria-label="User menu"]', { timeout: 15000 })
+    await page.getByRole('button', { name: 'User menu' }).click()
+
+    const userMenu = page.getByRole('menu', { name: 'User menu' })
+    await expect(userMenu.getByRole('alert')).toHaveText(/Not signed in/i)
+    await expect(userMenu.getByRole('menuitem', { name: 'Switch workspace' })).toBeDisabled()
+    await expect(userMenu.getByRole('menuitem', { name: 'Create workspace' })).toBeDisabled()
+    await expect(userMenu.getByRole('menuitem', { name: 'User settings' })).toBeDisabled()
+    await expect(userMenu.getByRole('menuitem', { name: 'Logout' })).toBeDisabled()
+
+    await userMenu.getByRole('button', { name: 'Retry' }).click()
+    await expect.poll(() => meCalls).toBeGreaterThan(1)
+    await expect.poll(() => workspacesCalls).toBeGreaterThan(1)
+
+    // Diagnostic: prove requests were made through canonical endpoints.
+    expect(requests.map((r) => r.pathname)).toEqual(
+      expect.arrayContaining(['/api/v1/me', '/api/v1/workspaces']),
+    )
+  })
+
+  test('workspaces transient failure disables switch and shows retry banner', async ({ page }) => {
+    let workspacesCalls = 0
+    await page.route('**/api/v1/me', (route) =>
+      fulfillJson(route, 200, { email: 'john@example.com' }),
+    )
+    await page.route('**/api/v1/workspaces', (route) => {
+      workspacesCalls += 1
+      return fulfillJson(route, 500, { detail: 'boom' })
+    })
+
+    await page.goto('/')
+    await page.waitForSelector('[aria-label="User menu"]', { timeout: 15000 })
+    await page.getByRole('button', { name: 'User menu' }).click()
+
+    const userMenu = page.getByRole('menu', { name: 'User menu' })
+    await expect(userMenu.getByRole('alert')).toHaveText(/Failed to load workspaces|boom/i)
+    await expect(userMenu.getByRole('menuitem', { name: 'Switch workspace' })).toBeDisabled()
+
+    await userMenu.getByRole('button', { name: 'Retry' }).click()
+    await expect.poll(() => workspacesCalls).toBeGreaterThan(1)
+  })
+})

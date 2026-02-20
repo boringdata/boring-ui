@@ -62,7 +62,12 @@ class TestAppFactory:
     def test_app_has_api_sessions_endpoints(self, app):
         """Test that session list/create endpoints are available."""
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
-        assert '/api/sessions' in paths
+        assert '/api/v1/agent/normal/sessions' in paths
+
+    def test_app_has_api_attachment_upload_endpoint(self, app):
+        """Test that canonical attachment upload endpoint is available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/api/v1/agent/normal/attachments' in paths
 
     def test_app_has_capabilities_endpoint(self, app):
         """Test that capabilities endpoint is available."""
@@ -166,10 +171,10 @@ class TestFileRoutes:
 
     @pytest.mark.asyncio
     async def test_tree_endpoint(self, app, workspace):
-        """Test /api/tree returns directory listing."""
+        """Test /api/v1/files/list returns directory listing."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/tree?path=.')
+            response = await client.get('/api/v1/files/list?path=.')
             assert response.status_code == 200
             data = response.json()
             names = [e['name'] for e in data['entries']]
@@ -178,25 +183,91 @@ class TestFileRoutes:
 
     @pytest.mark.asyncio
     async def test_file_read_endpoint(self, app, workspace):
-        """Test /api/file returns file contents."""
+        """Test /api/v1/files/read returns file contents."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/file?path=README.md')
+            response = await client.get('/api/v1/files/read?path=README.md')
             assert response.status_code == 200
             data = response.json()
             assert data['content'] == '# Test Project'
 
     @pytest.mark.asyncio
     async def test_file_write_endpoint(self, app, workspace):
-        """Test PUT /api/file writes file contents."""
+        """Test PUT /api/v1/files/write writes file contents."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
             response = await client.put(
-                '/api/file?path=new.txt',
+                '/api/v1/files/write?path=new.txt',
                 json={'content': 'new content'}
             )
             assert response.status_code == 200
             assert (workspace / 'new.txt').read_text() == 'new content'
+
+    @pytest.mark.asyncio
+    async def test_legacy_file_routes_not_found(self, app):
+        """Legacy /api file route family should be unavailable."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            checks = [
+                ('GET /api/tree?path=.', await client.get('/api/tree?path=.')),
+                ('GET /api/file?path=README.md', await client.get('/api/file?path=README.md')),
+                ('PUT /api/file?path=README.md', await client.put('/api/file?path=README.md', json={'content': 'x'})),
+                ('DELETE /api/file?path=README.md', await client.delete('/api/file?path=README.md')),
+                ('POST /api/file/rename', await client.post('/api/file/rename', json={'old_path': 'a', 'new_path': 'b'})),
+                ('POST /api/file/move', await client.post('/api/file/move', json={'src_path': 'a', 'dest_dir': '.'})),
+                ('GET /api/search?q=README', await client.get('/api/search?q=README')),
+            ]
+            for url, response in checks:
+                assert response.status_code == 404, f'{url} returned {response.status_code}'
+
+
+class TestGitRoutes:
+    """Integration tests for canonical git endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_git_status_endpoint(self, app):
+        """Canonical /api/v1/git/status endpoint should be available."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            response = await client.get('/api/v1/git/status')
+            assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_legacy_git_routes_not_found(self, app):
+        """Legacy /api/git route family should be unavailable."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            checks = [
+                ('GET /api/git/status', await client.get('/api/git/status')),
+                ('GET /api/git/diff?path=README.md', await client.get('/api/git/diff?path=README.md')),
+                ('GET /api/git/show?path=README.md', await client.get('/api/git/show?path=README.md')),
+            ]
+            for url, response in checks:
+                assert response.status_code == 404, f'{url} returned {response.status_code}'
+
+
+class TestAgentNormalAttachmentRoutes:
+    """Integration tests for canonical agent-normal attachment upload endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_attachment_upload_endpoint(self, app, workspace):
+        """POST /api/v1/agent/normal/attachments stores attachment metadata and file."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            response = await client.post(
+                '/api/v1/agent/normal/attachments',
+                files={'file': ('notes.txt', b'hello attachment', 'text/plain')},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data['name'] == 'notes.txt'
+            assert data['size'] == len(b'hello attachment')
+            assert data['file_id']
+            assert data['relative_path'].startswith('.attachments/')
+
+            saved_path = workspace / data['relative_path']
+            assert saved_path.exists()
+            assert saved_path.read_bytes() == b'hello attachment'
 
 
 class TestConfigEndpoint:
@@ -238,14 +309,14 @@ class TestProjectEndpoint:
 
 
 class TestSessionsEndpoint:
-    """Integration tests for /api/sessions endpoints."""
+    """Integration tests for agent-normal session endpoints."""
 
     @pytest.mark.asyncio
     async def test_list_sessions_returns_collection(self, app):
         """Session listing should always return a sessions array."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.get('/api/sessions')
+            response = await client.get('/api/v1/agent/normal/sessions')
             assert response.status_code == 200
             data = response.json()
             assert 'sessions' in data
@@ -256,7 +327,7 @@ class TestSessionsEndpoint:
         """Session create should return a generated session_id."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url='http://test') as client:
-            response = await client.post('/api/sessions')
+            response = await client.post('/api/v1/agent/normal/sessions')
             assert response.status_code == 200
             data = response.json()
             assert 'session_id' in data
@@ -306,6 +377,34 @@ class TestRouterSelection:
             assert data['features']['stream'] is True
             assert data['features']['chat_claude_code'] is True
 
+    @pytest.mark.asyncio
+    async def test_custom_registry_prefixes_for_files_and_git(self, workspace):
+        """Custom registry prefixes should be honored for files/git routers."""
+        from boring_ui.api.capabilities import RouterRegistry
+        from boring_ui.api.modules.files import create_file_router
+        from boring_ui.api.modules.git import create_git_router
+
+        config = APIConfig(workspace_root=workspace)
+        registry = RouterRegistry()
+        registry.register('files', '/custom/files', create_file_router, tags=['files'])
+        registry.register('git', '/custom/git', create_git_router, tags=['git'])
+
+        app = create_app(config, registry=registry, routers=['files', 'git'])
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as client:
+            files_response = await client.get('/custom/files/list?path=.')
+            git_response = await client.get('/custom/git/status')
+            default_response = await client.get('/api/v1/files/list?path=.')
+
+            assert files_response.status_code == 200
+            assert git_response.status_code == 200
+            assert default_response.status_code == 404
+            assert 'entries' in files_response.json()
+            git_data = git_response.json()
+            assert 'is_repo' in git_data
+            assert 'files' in git_data
+
 
 class TestWebSocketRoutes:
     """Integration tests for WebSocket route availability."""
@@ -318,10 +417,10 @@ class TestWebSocketRoutes:
     def test_stream_websocket_registered(self, app):
         """Test Claude stream WebSocket route is registered."""
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
-        assert '/ws/claude-stream' in paths
+        assert '/ws/agent/normal/stream' in paths
 
     def test_minimal_app_no_websockets(self, minimal_app):
         """Test minimal app doesn't have WebSocket routes."""
         paths = [r.path for r in minimal_app.routes if hasattr(r, 'path')]
         assert '/ws/pty' not in paths
-        assert '/ws/claude-stream' not in paths
+        assert '/ws/agent/normal/stream' not in paths

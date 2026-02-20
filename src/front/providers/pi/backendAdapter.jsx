@@ -3,6 +3,8 @@ import {
   publishPiSessionState,
   subscribePiSessionActions,
 } from './sessionBus'
+import { fetchJsonUrl, fetchUrl } from '../../utils/transport'
+import { createPiRoutes } from './routes'
 
 const EMPTY_STATE = { currentSessionId: '', sessions: [] }
 
@@ -28,8 +30,7 @@ async function readJson(response) {
 }
 
 export default function PiBackendAdapter({ serviceUrl }) {
-  const baseUrl = useMemo(() => String(serviceUrl || '').replace(/\/+$/, ''), [serviceUrl])
-  const apiBase = useMemo(() => (baseUrl ? `${baseUrl}/api` : ''), [baseUrl])
+  const piRoutes = useMemo(() => createPiRoutes(serviceUrl), [serviceUrl])
   const [sessions, setSessions] = useState([])
   const [currentSessionId, setCurrentSessionId] = useState('')
   const [messages, setMessages] = useState([])
@@ -57,29 +58,27 @@ export default function PiBackendAdapter({ serviceUrl }) {
   }, [])
 
   const listSessions = useCallback(async () => {
-    const response = await fetch(`${apiBase}/sessions`)
+    const { response, data: payload } = await fetchJsonUrl(piRoutes.sessions())
     if (!response.ok) {
       throw new Error(`Failed to list PI sessions (${response.status})`)
     }
-    const payload = await readJson(response)
     return Array.isArray(payload.sessions) ? payload.sessions : []
-  }, [apiBase])
+  }, [piRoutes])
 
   const loadHistory = useCallback(async (sessionId) => {
     if (!sessionId) return
-    const response = await fetch(`${apiBase}/sessions/${encodeURIComponent(sessionId)}/history`)
+    const { response, data: payload } = await fetchJsonUrl(piRoutes.history(sessionId))
     if (!response.ok) {
       throw new Error(`Failed to load PI history (${response.status})`)
     }
-    const payload = await readJson(response)
     const nextMessages = Array.isArray(payload.messages)
       ? payload.messages.map(toDisplayMessage).filter(Boolean)
       : []
     setMessages(nextMessages)
-  }, [apiBase])
+  }, [piRoutes])
 
   const createSession = useCallback(async () => {
-    const response = await fetch(`${apiBase}/sessions/create`, {
+    const { response, data: payload } = await fetchJsonUrl(piRoutes.createSession(), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
@@ -87,7 +86,6 @@ export default function PiBackendAdapter({ serviceUrl }) {
     if (!response.ok) {
       throw new Error(`Failed to create PI session (${response.status})`)
     }
-    const payload = await readJson(response)
     const created = payload?.session
     if (!created?.id) {
       throw new Error('PI service returned no session id')
@@ -102,7 +100,7 @@ export default function PiBackendAdapter({ serviceUrl }) {
     setStreamText('')
     publishState(nextSessions, created.id)
     return created.id
-  }, [apiBase, publishState])
+  }, [piRoutes, publishState])
 
   const switchSession = useCallback(async (sessionId) => {
     if (!sessionId) return
@@ -136,7 +134,7 @@ export default function PiBackendAdapter({ serviceUrl }) {
   }, [createSession, listSessions, loadHistory, publishState])
 
   useEffect(() => {
-    if (!apiBase) {
+    if (!piRoutes.isConfigured) {
       setError('PI backend URL is not configured.')
       publishPiSessionState(EMPTY_STATE)
       return undefined
@@ -169,7 +167,7 @@ export default function PiBackendAdapter({ serviceUrl }) {
       disposed = true
       unsubscribe()
     }
-  }, [apiBase, createSession, publishState, refreshSessions, switchSession])
+  }, [piRoutes, createSession, publishState, refreshSessions, switchSession])
 
   useEffect(() => {
     if (!listRef.current) return
@@ -194,7 +192,7 @@ export default function PiBackendAdapter({ serviceUrl }) {
     ])
 
     try {
-      const response = await fetch(`${apiBase}/sessions/${encodeURIComponent(currentSessionId)}/stream`, {
+      const response = await fetchUrl(piRoutes.stream(currentSessionId), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ message: text }),
@@ -275,7 +273,7 @@ export default function PiBackendAdapter({ serviceUrl }) {
       setIsSending(false)
       setStreamText('')
     }
-  }, [apiBase, currentSessionId, input, isSending, listSessions, publishState])
+  }, [currentSessionId, input, isSending, listSessions, piRoutes, publishState])
 
   return (
     <div className="pi-backend-chat" data-testid="pi-backend-app">

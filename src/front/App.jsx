@@ -7,7 +7,20 @@ import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
+import { apiFetch, apiFetchJson, getHttpErrorDetail } from './utils/transport'
 import { buildApiUrl } from './utils/apiBase'
+import { routes } from './utils/routes'
+import {
+  extractUserEmail,
+  extractWorkspaceId,
+  getWorkspaceIdFromPathname,
+  normalizeWorkspaceList,
+  runWithPreflightFallback,
+} from './utils/controlPlane'
+import {
+  resolveWorkspaceNavigationRouteFromPathname,
+  syncWorkspaceRuntimeAndSettings,
+} from './utils/workspaceNavigation'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -132,6 +145,14 @@ export default function App() {
   const [approvalsLoaded, setApprovalsLoaded] = useState(false)
   const [activeFile, setActiveFile] = useState(null)
   const [activeDiffFile, setActiveDiffFile] = useState(null)
+  const [menuUserEmail, setMenuUserEmail] = useState('')
+  const [userMenuAuthStatus, setUserMenuAuthStatus] = useState('unknown') // unknown | authenticated | unauthenticated | error
+  const [userMenuIdentityError, setUserMenuIdentityError] = useState('')
+  const [userMenuWorkspaceError, setUserMenuWorkspaceError] = useState('')
+  const [workspaceOptions, setWorkspaceOptions] = useState([])
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState(() =>
+    getWorkspaceIdFromPathname(window.location.pathname),
+  )
   const [collapsed, setCollapsed] = useState(() => {
     const saved = loadCollapsedState(storagePrefix)
     return { filetree: false, terminal: false, shell: false, companion: false, ...saved }
@@ -159,6 +180,26 @@ export default function App() {
   panelCollapsedRef.current = { ...panelCollapsed, companion: rightRailDefaults.companionCollapsed }
   const panelMinRef = useRef({ ...panelMin, companion: rightRailDefaults.companionMin })
   panelMinRef.current = { ...panelMin, companion: rightRailDefaults.companionMin }
+  const activeWorkspaceName = useMemo(() => {
+    const match = workspaceOptions.find((workspace) => workspace.id === currentWorkspaceId)
+    if (match?.name) return match.name
+    if (!currentWorkspaceId && projectRoot) {
+      return projectRoot.split('/').filter(Boolean).pop() || ''
+    }
+    return ''
+  }, [workspaceOptions, currentWorkspaceId, projectRoot])
+
+  const userMenuStatusMessage = userMenuIdentityError || userMenuWorkspaceError
+  const userMenuStatusTone = userMenuStatusMessage ? 'error' : ''
+  const userMenuDisabledActions = useMemo(() => {
+    if (userMenuAuthStatus === 'unauthenticated') {
+      return ['switch', 'create', 'settings', 'logout']
+    }
+    if (userMenuWorkspaceError) {
+      return ['switch']
+    }
+    return []
+  }, [userMenuAuthStatus, userMenuWorkspaceError])
 
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
@@ -257,6 +298,194 @@ export default function App() {
     window.dispatchEvent(new CustomEvent('theme-toggle-request'))
   }, [])
 
+  const syncWorkspacePathContext = useCallback(() => {
+    setCurrentWorkspaceId(getWorkspaceIdFromPathname(window.location.pathname))
+  }, [])
+
+  useEffect(() => {
+    syncWorkspacePathContext()
+    window.addEventListener('popstate', syncWorkspacePathContext)
+    return () => {
+      window.removeEventListener('popstate', syncWorkspacePathContext)
+    }
+  }, [syncWorkspacePathContext])
+
+  const fetchWorkspaceList = useCallback(async () => {
+    const route = routes.controlPlane.workspaces.list()
+    try {
+      const { response, data } = await apiFetchJson(route.path, { query: route.query })
+      if (!response.ok) {
+        if (response.status === 401) {
+          setUserMenuWorkspaceError('Not signed in.')
+        } else if (response.status === 403) {
+          setUserMenuWorkspaceError('Permission denied while loading workspaces.')
+        } else {
+          setUserMenuWorkspaceError(getHttpErrorDetail(response, data, 'Failed to load workspaces'))
+        }
+        return []
+      }
+
+      setUserMenuWorkspaceError('')
+      const workspaces = normalizeWorkspaceList(data)
+      setWorkspaceOptions(workspaces)
+      return workspaces
+    } catch (error) {
+      console.warn('[UserMenu] Workspaces load failed:', error)
+      setUserMenuWorkspaceError('Failed to reach control plane for workspaces.')
+      return []
+    }
+  }, [])
+
+  const refreshUserMenuData = useCallback(async () => {
+    const meRoute = routes.controlPlane.me.get()
+    setUserMenuIdentityError('')
+
+    let meResponse = null
+    let meData = {}
+    try {
+      const result = await apiFetchJson(meRoute.path, { query: meRoute.query })
+      meResponse = result.response
+      meData = result.data
+    } catch (error) {
+      console.warn('[UserMenu] Identity load failed:', error)
+      setMenuUserEmail('')
+      setUserMenuAuthStatus('error')
+      setUserMenuIdentityError('Failed to reach control plane for identity.')
+      return fetchWorkspaceList()
+    }
+
+    const workspaces = await fetchWorkspaceList()
+
+    if (meResponse.ok) {
+      setUserMenuAuthStatus('authenticated')
+      const email = extractUserEmail(meData)
+      setMenuUserEmail(email || '')
+      return workspaces
+    }
+
+    setMenuUserEmail('')
+    if (meResponse.status === 401) {
+      setUserMenuAuthStatus('unauthenticated')
+      setUserMenuIdentityError('Not signed in.')
+    } else if (meResponse.status === 403) {
+      setUserMenuAuthStatus('error')
+      setUserMenuIdentityError('Permission denied while loading identity.')
+    } else {
+      setUserMenuAuthStatus('error')
+      setUserMenuIdentityError(getHttpErrorDetail(meResponse, meData, 'Failed to load identity'))
+    }
+
+    return workspaces
+  }, [fetchWorkspaceList])
+
+  useEffect(() => {
+    refreshUserMenuData().catch(() => {})
+  }, [refreshUserMenuData])
+
+  const handleUserMenuRetry = useCallback(() => {
+    setUserMenuIdentityError('')
+    setUserMenuWorkspaceError('')
+    return refreshUserMenuData()
+  }, [refreshUserMenuData])
+
+  const handleSwitchWorkspace = useCallback(async () => {
+    const workspaces = await fetchWorkspaceList()
+    const candidateWorkspaces = workspaces.filter(
+      (workspace) => workspace.id && workspace.id !== currentWorkspaceId,
+    )
+    if (candidateWorkspaces.length === 0) return
+
+    const defaultId = candidateWorkspaces[0].id
+    const optionsText = candidateWorkspaces
+      .map((workspace) => `- ${workspace.name || workspace.id} (${workspace.id})`)
+      .join('\n')
+    const promptValue = window.prompt(
+      `Select workspace id to switch:\n${optionsText}`,
+      defaultId,
+    )
+    if (!promptValue) return
+    const selectedId = promptValue.trim()
+    if (!selectedId || selectedId === currentWorkspaceId) return
+
+    const selectedWorkspace = candidateWorkspaces.find(
+      (workspace) => workspace.id === selectedId || workspace.name === selectedId,
+    )
+    if (!selectedWorkspace?.id) return
+    const targetWorkspaceId = selectedWorkspace.id
+
+    const route = await runWithPreflightFallback({
+      run: async () => {
+        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings({
+          workspaceId: targetWorkspaceId,
+          writeSettings: false,
+          apiFetchJson,
+          apiFetch,
+        })
+        return resolveWorkspaceNavigationRouteFromPathname({
+          workspaceId: targetWorkspaceId,
+          runtimePayload,
+          pathname: window.location.pathname,
+        })
+      },
+      // When preflight fails we cannot safely assume runtime is initialized; route to setup.
+      fallbackRoute: routes.controlPlane.workspaces.setup(targetWorkspaceId),
+      warningMessage: '[UserMenu] Switch workspace preflight failed:',
+    })
+    window.location.assign(buildApiUrl(route.path, route.query))
+  }, [currentWorkspaceId, fetchWorkspaceList])
+
+  const handleCreateWorkspace = useCallback(async () => {
+    const createRoute = routes.controlPlane.workspaces.create()
+    const { response, data } = await apiFetchJson(createRoute.path, {
+      query: createRoute.query,
+      method: 'POST',
+    })
+    if (!response.ok) return
+
+    const createdWorkspaceId = extractWorkspaceId(data)
+    if (!createdWorkspaceId) return
+
+    await fetchWorkspaceList()
+    const route = await runWithPreflightFallback({
+      run: async () => {
+        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings({
+          workspaceId: createdWorkspaceId,
+          writeSettings: true,
+          apiFetchJson,
+          apiFetch,
+        })
+        return resolveWorkspaceNavigationRouteFromPathname({
+          workspaceId: createdWorkspaceId,
+          runtimePayload,
+          pathname: window.location.pathname,
+        })
+      },
+      fallbackRoute: routes.controlPlane.workspaces.setup(createdWorkspaceId),
+      warningMessage: '[UserMenu] Create workspace preflight failed:',
+    })
+    window.location.assign(buildApiUrl(route.path, route.query))
+  }, [fetchWorkspaceList])
+
+  const handleOpenUserSettings = useCallback(() => {
+    const key = getStorageKey(storagePrefix, projectRoot, 'user-settings-intent')
+    const detail = {
+      source: 'sidebar-user-menu',
+      workspace_id: currentWorkspaceId || null,
+      timestamp: Date.now(),
+    }
+    try {
+      localStorage.setItem(key, JSON.stringify(detail))
+    } catch {
+      // ignore storage errors for local-only settings intent
+    }
+    window.dispatchEvent(new CustomEvent('boring-ui:user-settings-open', { detail }))
+  }, [storagePrefix, projectRoot, currentWorkspaceId])
+
+  const handleLogout = useCallback(() => {
+    const route = routes.controlPlane.auth.logout()
+    window.location.assign(buildApiUrl(route.path, route.query))
+  }, [])
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     toggleFiletree,
@@ -317,10 +546,10 @@ export default function App() {
         })
         filetreeGroup.api.setSize({ width: panelCollapsedRef.current.filetree })
       } else {
-        // Use Infinity to explicitly clear max constraint and allow resizing
+        // Use Number.MAX_SAFE_INTEGER to clear max constraint and allow resizing
         filetreeGroup.api.setConstraints({
           minimumWidth: panelMinRef.current.filetree,
-          maximumWidth: Infinity,
+          maximumWidth: Number.MAX_SAFE_INTEGER,
         })
         // Only set size on subsequent runs (user toggled), not on initial load
         if (!isFirstRun) {
@@ -338,10 +567,10 @@ export default function App() {
         })
         terminalGroup.api.setSize({ width: panelCollapsedRef.current.terminal })
       } else {
-        // Use Infinity to explicitly clear max constraint and allow resizing
+        // Use Number.MAX_SAFE_INTEGER to clear max constraint and allow resizing
         terminalGroup.api.setConstraints({
           minimumWidth: panelMinRef.current.terminal,
-          maximumWidth: Infinity,
+          maximumWidth: Number.MAX_SAFE_INTEGER,
         })
         if (!isFirstRun) {
           terminalGroup.api.setSize({ width: panelSizesRef.current.terminal })
@@ -360,7 +589,7 @@ export default function App() {
       } else {
         companionGroup.api.setConstraints({
           minimumWidth: panelMinRef.current.companion,
-          maximumWidth: Infinity,
+          maximumWidth: Number.MAX_SAFE_INTEGER,
         })
         if (!isFirstRun) {
           companionGroup.api.setSize({ width: panelSizesRef.current.companion })
@@ -380,10 +609,10 @@ export default function App() {
         })
         shellGroup.api.setSize({ height: panelCollapsedRef.current.shell })
       } else {
-        // Clear height constraints to allow resizing (use Infinity to explicitly remove max)
+        // Clear height constraints to allow resizing (use Number.MAX_SAFE_INTEGER as open-ended max)
         shellGroup.api.setConstraints({
           minimumHeight: panelMinRef.current.shell,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
         // Only set size on subsequent runs (user toggled), not on initial load
         if (!isFirstRun) {
@@ -403,9 +632,9 @@ export default function App() {
     let isActive = true
 
     const fetchApprovals = () => {
-      fetch(buildApiUrl('/api/approval/pending'))
-        .then((r) => r.json())
-        .then((data) => {
+      const route = routes.approval.pending()
+      apiFetchJson(route.path, { query: route.query })
+        .then(({ data }) => {
           if (!isActive) return
           const requests = Array.isArray(data.requests) ? data.requests : []
           const filtered = requests.filter(
@@ -441,7 +670,9 @@ export default function App() {
         setApprovals([])
       }
       try {
-        await fetch(buildApiUrl('/api/approval/decision'), {
+        const route = routes.approval.decision()
+        await apiFetch(route.path, {
+          query: route.query,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ request_id: requestId, decision, reason }),
@@ -548,17 +779,17 @@ export default function App() {
         if (panel?.group) {
           panel.group.header.hidden = false
           centerGroupRef.current = panel.group
-          // Apply minimum height constraint to center group (use Infinity to allow resize)
+          // Apply minimum height constraint to center group (use Number.MAX_SAFE_INTEGER to allow resize)
           panel.group.api.setConstraints({
             minimumHeight: panelMinRef.current.center,
-            maximumHeight: Infinity,
+            maximumHeight: Number.MAX_SAFE_INTEGER,
           })
         }
       }
 
-      fetch(buildApiUrl(`/api/file?path=${encodeURIComponent(path)}`))
-        .then((r) => r.json())
-        .then((data) => {
+      const route = routes.files.read(path)
+      apiFetchJson(route.path, { query: route.query })
+        .then(({ data }) => {
           addEditorPanel(data.content || '')
         })
         .catch(() => {
@@ -754,10 +985,10 @@ export default function App() {
       if (panel?.group) {
         panel.group.header.hidden = false
         centerGroupRef.current = panel.group
-        // Apply minimum height constraint to center group (use Infinity to allow resize)
+        // Apply minimum height constraint to center group (use Number.MAX_SAFE_INTEGER to allow resize)
         panel.group.api.setConstraints({
           minimumHeight: panelMinRef.current.center,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
       }
     })
@@ -786,7 +1017,7 @@ export default function App() {
         filetreeGroup.header.hidden = true
         filetreeGroup.api.setConstraints({
           minimumWidth: panelMinRef.current.filetree,
-          maximumWidth: Infinity,
+          maximumWidth: Number.MAX_SAFE_INTEGER,
         })
       }
 
@@ -797,7 +1028,7 @@ export default function App() {
           terminalGroup.header.hidden = true
           terminalGroup.api.setConstraints({
             minimumWidth: panelMinRef.current.terminal,
-            maximumWidth: Infinity,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
           })
         }
       }
@@ -809,7 +1040,7 @@ export default function App() {
           companionGroup.header.hidden = true
           companionGroup.api.setConstraints({
             minimumWidth: panelMinRef.current.companion,
-            maximumWidth: Infinity,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
           })
         }
       }
@@ -820,7 +1051,7 @@ export default function App() {
         // Don't lock or hide header - shell has collapse button
         shellGroup.api.setConstraints({
           minimumHeight: panelMinRef.current.shell,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
       }
     }
@@ -840,7 +1071,27 @@ export default function App() {
           id: 'filetree',
           component: 'filetree',
           title: 'Files',
-          params: { onOpenFile: () => {} },
+          params: {
+            onOpenFile: openFile,
+            onOpenFileToSide: openFileToSide,
+            onOpenDiff: openDiff,
+            projectRoot,
+            activeFile,
+            activeDiffFile,
+            collapsed: collapsed.filetree,
+            onToggleCollapse: toggleFiletree,
+            userEmail: menuUserEmail,
+            userMenuStatusMessage,
+            userMenuStatusTone,
+            onUserMenuRetry: handleUserMenuRetry,
+            userMenuDisabledActions,
+            workspaceName: activeWorkspaceName,
+            workspaceId: currentWorkspaceId,
+            onSwitchWorkspace: handleSwitchWorkspace,
+            onCreateWorkspace: handleCreateWorkspace,
+            onOpenUserSettings: handleOpenUserSettings,
+            onLogout: handleLogout,
+          },
         })
       }
 
@@ -890,10 +1141,10 @@ export default function App() {
       if (emptyPanel?.group) {
         emptyPanel.group.header.hidden = true
         centerGroupRef.current = emptyPanel.group
-        // Set minimum height for the center group (use Infinity to allow resize)
+        // Set minimum height for the center group (use Number.MAX_SAFE_INTEGER to allow resize)
         emptyPanel.group.api.setConstraints({
           minimumHeight: panelMinRef.current.center,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
       }
 
@@ -1089,7 +1340,7 @@ export default function App() {
         emptyPanel.group.header.hidden = true
         emptyPanel.group.api.setConstraints({
           minimumHeight: panelMinRef.current.center,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
       }
     })
@@ -1193,9 +1444,9 @@ export default function App() {
     let fallbackApplied = false
     const maxRetries = 6 // ~3 seconds total before initial fallback
     const fetchProjectRoot = () => {
-      fetch(buildApiUrl('/api/project'))
-        .then((r) => r.json())
-        .then((data) => {
+      const route = routes.project.root()
+      apiFetchJson(route.path, { query: route.query })
+        .then(({ data }) => {
           const root = data.root || ''
           // Don't update projectRoot after fallback to avoid overwriting project-scoped state
           // (layout/tabs were restored from fallback key; updating root would save to wrong location)
@@ -1277,7 +1528,7 @@ export default function App() {
                 ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
                 ftApi.setSize({ width: panelCollapsedRef.current.filetree })
               } else {
-                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Infinity })
+                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Number.MAX_SAFE_INTEGER })
                 ftApi.setSize({ width: panelSizesRef.current.filetree })
               }
             }
@@ -1289,7 +1540,7 @@ export default function App() {
                 tApi.setConstraints({ minimumWidth: panelCollapsedRef.current.terminal, maximumWidth: panelCollapsedRef.current.terminal })
                 tApi.setSize({ width: panelCollapsedRef.current.terminal })
               } else {
-                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Infinity })
+                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Number.MAX_SAFE_INTEGER })
                 tApi.setSize({ width: panelSizesRef.current.terminal })
               }
             }
@@ -1301,7 +1552,7 @@ export default function App() {
                 cApi.setConstraints({ minimumWidth: panelCollapsedRef.current.companion, maximumWidth: panelCollapsedRef.current.companion })
                 cApi.setSize({ width: panelCollapsedRef.current.companion })
               } else {
-                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Infinity })
+                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Number.MAX_SAFE_INTEGER })
                 cApi.setSize({ width: panelSizesRef.current.companion })
               }
             }
@@ -1313,7 +1564,7 @@ export default function App() {
                 sApi.setConstraints({ minimumHeight: panelCollapsedRef.current.shell, maximumHeight: panelCollapsedRef.current.shell })
                 sApi.setSize({ height: panelCollapsedRef.current.shell })
               } else {
-                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
+                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Number.MAX_SAFE_INTEGER })
                 // Ensure shell height respects minimum constraint
                 const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
                 sApi.setSize({ height: shellHeight })
@@ -1356,6 +1607,17 @@ export default function App() {
             activeDiffFile,
             collapsed: collapsed.filetree,
             onToggleCollapse: toggleFiletree,
+            userEmail: menuUserEmail,
+            userMenuStatusMessage,
+            userMenuStatusTone,
+            onUserMenuRetry: handleUserMenuRetry,
+            userMenuDisabledActions,
+            workspaceName: activeWorkspaceName,
+            workspaceId: currentWorkspaceId,
+            onSwitchWorkspace: handleSwitchWorkspace,
+            onCreateWorkspace: handleCreateWorkspace,
+            onOpenUserSettings: handleOpenUserSettings,
+            onLogout: handleLogout,
           })
         }
 
@@ -1372,7 +1634,7 @@ export default function App() {
           shellGroup.header.hidden = false
           shellGroup.api.setConstraints({
             minimumHeight: panelMinRef.current.shell,
-            maximumHeight: Infinity,
+            maximumHeight: Number.MAX_SAFE_INTEGER,
           })
           // Enforce minimum height if saved layout has invalid dimensions
           // (between collapsed 36px and minimum 100px)
@@ -1403,7 +1665,7 @@ export default function App() {
               } else {
                 companionGroup.api.setConstraints({
                   minimumWidth: panelMinRef.current.companion,
-                  maximumWidth: Infinity,
+                  maximumWidth: Number.MAX_SAFE_INTEGER,
                 })
                 companionGroup.api.setSize({ width: panelSizesRef.current.companion })
               }
@@ -1423,7 +1685,7 @@ export default function App() {
               piGroup.header.hidden = true
               piGroup.api.setConstraints({
                 minimumWidth: panelMinRef.current.companion,
-                maximumWidth: Infinity,
+                maximumWidth: Number.MAX_SAFE_INTEGER,
               })
               piGroup.api.setSize({ width: panelSizesRef.current.companion })
             }
@@ -1447,7 +1709,7 @@ export default function App() {
             centerGroupRef.current = editorPanel.group
             editorPanel.group.api.setConstraints({
               minimumHeight: panelMinRef.current.center,
-              maximumHeight: Infinity,
+              maximumHeight: Number.MAX_SAFE_INTEGER,
             })
           }
           // Close empty-center if it exists
@@ -1483,10 +1745,10 @@ export default function App() {
         const emptyPanel = dockApi.getPanel('empty-center')
         if (emptyPanel?.group) {
           centerGroupRef.current = emptyPanel.group
-          // Set minimum height for the center group (use Infinity to allow resize)
+          // Set minimum height for the center group (use Number.MAX_SAFE_INTEGER to allow resize)
           emptyPanel.group.api.setConstraints({
             minimumHeight: panelMinRef.current.center,
-            maximumHeight: Infinity,
+            maximumHeight: Number.MAX_SAFE_INTEGER,
           })
         }
 
@@ -1512,7 +1774,7 @@ export default function App() {
                 ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
                 ftApi.setSize({ width: panelCollapsedRef.current.filetree })
               } else {
-                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Infinity })
+                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Number.MAX_SAFE_INTEGER })
                 ftApi.setSize({ width: panelSizesRef.current.filetree })
               }
             }
@@ -1524,7 +1786,7 @@ export default function App() {
                 tApi.setConstraints({ minimumWidth: panelCollapsedRef.current.terminal, maximumWidth: panelCollapsedRef.current.terminal })
                 tApi.setSize({ width: panelCollapsedRef.current.terminal })
               } else {
-                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Infinity })
+                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Number.MAX_SAFE_INTEGER })
                 tApi.setSize({ width: panelSizesRef.current.terminal })
               }
             }
@@ -1536,7 +1798,7 @@ export default function App() {
                 cApi.setConstraints({ minimumWidth: panelCollapsedRef.current.companion, maximumWidth: panelCollapsedRef.current.companion })
                 cApi.setSize({ width: panelCollapsedRef.current.companion })
               } else {
-                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Infinity })
+                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Number.MAX_SAFE_INTEGER })
                 cApi.setSize({ width: panelSizesRef.current.companion })
               }
             }
@@ -1548,7 +1810,7 @@ export default function App() {
                 sApi.setConstraints({ minimumHeight: panelCollapsedRef.current.shell, maximumHeight: panelCollapsedRef.current.shell })
                 sApi.setSize({ height: panelCollapsedRef.current.shell })
               } else {
-                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
+                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Number.MAX_SAFE_INTEGER })
                 // Ensure shell height respects minimum constraint
                 const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
                 sApi.setSize({ height: shellHeight })
@@ -1580,6 +1842,17 @@ export default function App() {
     activeFile,
     activeDiffFile,
     toggleFiletree,
+    menuUserEmail,
+    userMenuStatusMessage,
+    userMenuStatusTone,
+    handleUserMenuRetry,
+    userMenuDisabledActions,
+    activeWorkspaceName,
+    currentWorkspaceId,
+    handleSwitchWorkspace,
+    handleCreateWorkspace,
+    handleOpenUserSettings,
+    handleLogout,
     companionAgentEnabled,
     nativeAgentEnabled,
     piAgentEnabled,
@@ -1624,9 +1897,41 @@ export default function App() {
         activeDiffFile,
         collapsed: collapsed.filetree,
         onToggleCollapse: toggleFiletree,
+        userEmail: menuUserEmail,
+        userMenuStatusMessage,
+        userMenuStatusTone,
+        onUserMenuRetry: handleUserMenuRetry,
+        userMenuDisabledActions,
+        workspaceName: activeWorkspaceName,
+        workspaceId: currentWorkspaceId,
+        onSwitchWorkspace: handleSwitchWorkspace,
+        onCreateWorkspace: handleCreateWorkspace,
+        onOpenUserSettings: handleOpenUserSettings,
+        onLogout: handleLogout,
       })
     }
-  }, [dockApi, openFile, openFileToSide, openDiff, projectRoot, activeFile, activeDiffFile, collapsed.filetree, toggleFiletree])
+  }, [
+    dockApi,
+    openFile,
+    openFileToSide,
+    openDiff,
+    projectRoot,
+    activeFile,
+    activeDiffFile,
+    collapsed.filetree,
+    toggleFiletree,
+    menuUserEmail,
+    userMenuStatusMessage,
+    userMenuStatusTone,
+    handleUserMenuRetry,
+    userMenuDisabledActions,
+    activeWorkspaceName,
+    currentWorkspaceId,
+    handleSwitchWorkspace,
+    handleCreateWorkspace,
+    handleOpenUserSettings,
+    handleLogout,
+  ])
 
   // Helper to focus a review panel
   const focusReviewPanel = useCallback(
@@ -1810,7 +2115,7 @@ export default function App() {
           panel.group.header.hidden = true
           panel.group.api.setConstraints({
             minimumWidth: panelMinRef.current.companion,
-            maximumWidth: Infinity,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
           })
           if (!collapsed.companion) {
             panel.group.api.setSize({ width: panelSizesRef.current.companion })
@@ -1846,7 +2151,7 @@ export default function App() {
           panel.group.header.hidden = true
           panel.group.api.setConstraints({
             minimumWidth: panelMinRef.current.companion,
-            maximumWidth: Infinity,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
           })
           panel.group.api.setSize({ width: panelSizesRef.current.companion })
         }

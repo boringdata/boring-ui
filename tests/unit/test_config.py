@@ -44,6 +44,12 @@ class TestAPIConfig:
         config = APIConfig(workspace_root=tmp_path, pty_providers=providers)
         assert config.pty_providers == providers
 
+    def test_pty_claude_command_env_override(self, tmp_path, monkeypatch):
+        """Test BORING_UI_PTY_CLAUDE_COMMAND overrides the default claude provider."""
+        monkeypatch.setenv("BORING_UI_PTY_CLAUDE_COMMAND", "bash")
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.pty_providers["claude"] == ["bash"]
+
     def test_companion_url_from_env(self, tmp_path, monkeypatch):
         """Test companion_url reads from COMPANION_URL env var."""
         monkeypatch.setenv('COMPANION_URL', 'http://localhost:3456')

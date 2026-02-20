@@ -2,6 +2,8 @@
 import asyncio
 import json
 import os
+import shutil
+import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -32,6 +34,18 @@ class PTYSession:
             cwd: Working directory
             env: Environment variables (merged with os.environ)
         """
+        if not command:
+            raise FileNotFoundError("PTY command is empty")
+
+        exe = command[0]
+        if "/" in exe:
+            exe_path = Path(exe)
+            if not exe_path.exists() or not os.access(str(exe_path), os.X_OK):
+                raise FileNotFoundError(f"The command was not found or was not executable: {exe}.")
+        else:
+            if shutil.which(exe) is None:
+                raise FileNotFoundError(f"The command was not found or was not executable: {exe}.")
+
         try:
             import ptyprocess
         except ImportError as e:
@@ -114,6 +128,7 @@ class SharedSession:
     clients: set[WebSocket] = field(default_factory=set)
     history: deque = field(default_factory=lambda: deque(maxlen=PTY_HISTORY_BYTES))
     last_activity: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    start_error: dict[str, Any] | None = None
     _started: bool = False
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _read_task: asyncio.Task | None = None
@@ -123,7 +138,34 @@ class SharedSession:
         if self._started:
             return
 
-        await self.pty.spawn(self.command, self.cwd)
+        try:
+            await self.pty.spawn(self.command, self.cwd)
+        except FileNotFoundError:
+            # Avoid noisy ASGI tracebacks for missing commands (common in test harnesses).
+            # Emit an error envelope that the frontend terminal can render.
+            cmd = self.command[0] if self.command else "<empty>"
+            self._started = True
+            self.start_error = {
+                "type": "error",
+                "session_id": self.session_id,
+                "error": {
+                    "type": "spawn_failed",
+                    "reason": f"PTY command not found or not executable: {cmd}",
+                },
+            }
+            return
+        except Exception as e:
+            self._started = True
+            self.start_error = {
+                "type": "error",
+                "session_id": self.session_id,
+                "error": {
+                    "type": "spawn_failed",
+                    "reason": f"PTY spawn failed: {type(e).__name__}: {e}",
+                },
+            }
+            return
+
         self._started = True
 
         # Start reading output
@@ -180,13 +222,19 @@ class SharedSession:
             if not self._started:
                 await self.start()
 
-            self.clients.add(websocket)
+            # Controlled error: inform client and keep the WS open to avoid reconnect spam.
+            # The terminal UI will render the message (payload.type === 'error').
+            if self.start_error is not None:
+                await websocket.send_json(self.start_error)
+                return
 
             # Send session info
             await websocket.send_json({
                 'type': 'session',
                 'session_id': self.session_id,
             })
+
+            self.clients.add(websocket)
 
             # Send history
             if self.history:
@@ -291,12 +339,28 @@ class PTYService:
             if len(self._session_registry) >= PTY_MAX_SESSIONS:
                 raise ValueError('Maximum sessions reached')
 
+            normalized_id = str(session_id).strip() if session_id else None
+            if normalized_id == "":
+                normalized_id = None
+
+            # Defense-in-depth: even if callers validate at the boundary, keep the
+            # service registry keyed by canonical UUID strings only.
+            if normalized_id is not None:
+                try:
+                    normalized_id = str(uuid.UUID(normalized_id))
+                except (ValueError, AttributeError, TypeError):
+                    raise ValueError("Invalid session_id (must be a UUID)")
+
             # Get or create session
-            if session_id and session_id in self._session_registry:
-                return self._session_registry[session_id], False
+            if normalized_id and normalized_id in self._session_registry:
+                return self._session_registry[normalized_id], False
             else:
-                import uuid
-                new_id = str(uuid.uuid4())
+                # If the client provides a session_id, honor it so callers can
+                # pre-generate IDs via lifecycle endpoints and reconnect reliably.
+                if normalized_id:
+                    new_id = normalized_id
+                else:
+                    new_id = str(uuid.uuid4())
                 session = SharedSession(
                     session_id=new_id,
                     command=command,

@@ -1,14 +1,26 @@
 """PTY WebSocket router for boring-ui API."""
 import json
+import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from ...config import APIConfig
+from ...policy import enforce_delegated_policy_ws_reason_or_none
 from .service import PTYService, SharedSession, _SERVICE
 
 
 # Use the singleton service instance from service.py
 _pty_service = _SERVICE
+
+
+def _pty_start_error_message(exc: Exception, provider: str, command: list[str]) -> str:
+    # Keep the message stable and human-readable; avoid dumping stack traces into clients.
+    cmd_str = " ".join(command) if command else "<empty>"
+    exc_name = type(exc).__name__
+    detail = str(exc).strip()
+    if detail:
+        return f"PTY provider '{provider}' failed to start ({exc_name}): {detail} (command: {cmd_str})"
+    return f"PTY provider '{provider}' failed to start ({exc_name}) (command: {cmd_str})"
 
 
 def create_pty_router(config: APIConfig) -> APIRouter:
@@ -47,10 +59,31 @@ def create_pty_router(config: APIConfig) -> APIRouter:
 
         command = config.pty_providers[provider]
 
+        normalized_session_id: str | None = None
+        if session_id is not None:
+            candidate = str(session_id).strip()
+            if candidate:
+                try:
+                    normalized_session_id = str(uuid.UUID(candidate))
+                except (ValueError, AttributeError, TypeError):
+                    await websocket.close(code=4004, reason="Invalid session_id (must be a UUID)")
+                    return
+
+        deny_reason = enforce_delegated_policy_ws_reason_or_none(
+            websocket.headers,
+            {"pty.session.attach"} if normalized_session_id else {"pty.session.start"},
+            operation=("pty-service.ws.attach" if normalized_session_id else "pty-service.ws.start"),
+            require_session_id=normalized_session_id is not None,
+            expected_session_id=normalized_session_id,
+        )
+        if deny_reason is not None:
+            await websocket.close(code=4004, reason=deny_reason)
+            return
+
         # Get or create session
         try:
             session, is_new = await _pty_service.get_or_create_session(
-                session_id=session_id,
+                session_id=normalized_session_id,
                 command=command,
                 cwd=config.workspace_root,
             )
@@ -60,7 +93,27 @@ def create_pty_router(config: APIConfig) -> APIRouter:
 
         # Accept WebSocket
         await websocket.accept()
-        await session.add_client(websocket)
+        try:
+            await session.add_client(websocket)
+        except Exception as exc:
+            # Defensive behavior: PTY spawn can fail (missing binary, missing ptyprocess, etc).
+            # Ensure we don't leak an ASGI traceback into server logs and that the client
+            # receives a test-assertable error envelope.
+            try:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "data": _pty_start_error_message(exc, provider, command),
+                        "session_id": session.session_id,
+                    }
+                )
+            except Exception:
+                pass
+            try:
+                await websocket.close(code=1011, reason="PTY start failed")
+            except Exception:
+                pass
+            return
 
         try:
             # Message loop

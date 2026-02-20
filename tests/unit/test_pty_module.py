@@ -248,6 +248,54 @@ class TestSharedSession:
         mock_task.cancel.assert_called_once()
         mock_process.terminate.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_start_handles_missing_command_without_raising(self, tmp_path):
+        """Missing PTY command should not crash the websocket handler."""
+        session = SharedSession(
+            session_id='test-123',
+            command=['__missing__'],
+            cwd=tmp_path,
+        )
+
+        async def _boom(*_args, **_kwargs):
+            raise FileNotFoundError("not found")
+
+        session.pty.spawn = _boom  # type: ignore[method-assign]
+
+        await session.start()
+
+        assert session._started is True
+        assert session.start_error is not None
+        assert session._read_task is None
+
+    @pytest.mark.asyncio
+    async def test_add_client_sends_controlled_error_on_spawn_failure(self, tmp_path):
+        session = SharedSession(
+            session_id='test-123',
+            command=['__missing__'],
+            cwd=tmp_path,
+        )
+
+        async def _boom(*_args, **_kwargs):
+            raise FileNotFoundError("not found")
+
+        session.pty.spawn = _boom  # type: ignore[method-assign]
+
+        ws = MagicMock()
+        ws.send_json = AsyncMock()
+        ws.close = AsyncMock()
+
+        await session.add_client(ws)
+
+        assert ws.send_json.await_count == 1
+        payload = ws.send_json.await_args_list[0].args[0]
+        assert payload.get("type") == "error"
+        err = payload.get("error") or {}
+        assert err.get("type") == "spawn_failed"
+        ws.close.assert_not_called()
+        # Do not register failed clients.
+        assert ws not in session.clients
+
 
 class TestPTYService:
     """Tests for PTYService class."""

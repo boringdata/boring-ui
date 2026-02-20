@@ -23,7 +23,9 @@ import GrepToolRenderer from './GrepToolRenderer'
 import ToolUseBlock, { ToolOutput } from './ToolUseBlock'
 import PermissionPanel from './PermissionPanel'
 import './styles.css'
-import { buildApiUrl, getWsBase } from '../../utils/apiBase'
+import { buildWsUrl } from '../../utils/apiBase'
+import { apiFetch, apiFetchJson, openWebSocketUrl } from '../../utils/transport'
+import { routes } from '../../utils/routes'
 
 // Generate a valid UUID, with fallback for environments without crypto.randomUUID
 const generateUUID = () => {
@@ -193,7 +195,39 @@ const buildFileSpec = (attachment) => {
   return `${attachment.fileId}:${attachment.relativePath}`
 }
 
-const buildWsUrl = (
+const optionalQueryString = (value) =>
+  value === undefined || value === null || value === '' ? undefined : String(value)
+
+const optionalQueryNumberLike = (value) =>
+  value === undefined || value === null || value === '' || typeof value === 'boolean'
+    ? undefined
+    : value
+
+const buildClaudeStreamQuery = (
+  sessionId,
+  mode,
+  forceNew = false,
+  resume = false,
+  options = {},
+  fileSpecs = [],
+) => {
+  const files = Array.isArray(fileSpecs) ? fileSpecs.filter(Boolean) : []
+  return {
+    session_id: optionalQueryString(sessionId),
+    mode: optionalQueryString(mode),
+    force_new: forceNew ? '1' : undefined,
+    resume: resume ? '1' : undefined,
+    model: optionalQueryString(options?.model),
+    max_thinking_tokens: optionalQueryNumberLike(options?.maxThinkingTokens),
+    max_turns: optionalQueryNumberLike(options?.maxTurns),
+    max_budget_usd: optionalQueryNumberLike(options?.maxBudgetUsd),
+    allowed_tools: optionalQueryString(options?.allowedTools),
+    disallowed_tools: optionalQueryString(options?.disallowedTools),
+    file: files.length ? files : undefined,
+  }
+}
+
+const buildClaudeStreamWsUrl = (
   sessionId,
   mode,
   forceNew = false,
@@ -201,31 +235,18 @@ const buildWsUrl = (
   options = {},
   fileSpecs = []
 ) => {
-  const queryParams = new URLSearchParams()
-  if (sessionId) queryParams.set('session_id', sessionId)
-  if (mode) queryParams.set('mode', mode)
-  if (forceNew) queryParams.set('force_new', '1')
-  if (resume) queryParams.set('resume', '1')
-  if (options?.model) queryParams.set('model', options.model)
-  if (options?.maxThinkingTokens) queryParams.set('max_thinking_tokens', options.maxThinkingTokens)
-  if (options?.maxTurns) queryParams.set('max_turns', options.maxTurns)
-  if (options?.maxBudgetUsd) queryParams.set('max_budget_usd', options.maxBudgetUsd)
-  if (options?.allowedTools) queryParams.set('allowed_tools', options.allowedTools)
-  if (options?.disallowedTools) queryParams.set('disallowed_tools', options.disallowedTools)
-  if (Array.isArray(fileSpecs)) {
-    fileSpecs.forEach((spec) => {
-      if (spec) queryParams.append('file', spec)
-    })
-  }
-  const params = queryParams.toString() ? `?${queryParams.toString()}` : ''
-  const wsBase = getWsBase()
-  return `${wsBase}/ws/claude-stream${params}`
+  const route = routes.ws.claudeStream(
+    buildClaudeStreamQuery(sessionId, mode, forceNew, resume, options, fileSpecs),
+  )
+  return buildWsUrl(route.path, route.query)
 }
 
 const uploadAttachment = async (file) => {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(buildApiUrl('/api/attachments'), {
+  const route = routes.attachments.upload()
+  const res = await apiFetch(route.path, {
+    query: route.query,
     method: 'POST',
     body: formData,
   })
@@ -237,9 +258,10 @@ const uploadAttachment = async (file) => {
 
 const fetchSessions = async () => {
   try {
-    const res = await fetch(buildApiUrl('/api/sessions'))
+    const route = routes.sessions.list()
+    const { response, data } = await apiFetchJson(route.path, { query: route.query })
+    const res = response
     if (!res.ok) return []
-    const data = await res.json()
     return data.sessions || []
   } catch {
     return []
@@ -249,7 +271,9 @@ const fetchSessions = async () => {
 const searchFiles = async (query, onError) => {
   if (!query || query.length < 1) return []
   try {
-    const res = await fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}`))
+    const route = routes.files.search(query)
+    const { response, data } = await apiFetchJson(route.path, { query: route.query })
+    const res = response
     if (!res.ok) {
       onError?.({
         title: 'File search failed',
@@ -261,7 +285,6 @@ const searchFiles = async (query, onError) => {
       }, { showBanner: false })
       return []
     }
-    const data = await res.json()
     return (data.results || []).map((f) => ({
       id: f.path,
       label: f.name,
@@ -283,7 +306,9 @@ const searchFiles = async (query, onError) => {
 
 const fetchMentionDefaults = async (onError) => {
   try {
-    const res = await fetch(buildApiUrl('/api/tree?path=.'))
+    const route = routes.files.list('.')
+    const { response, data } = await apiFetchJson(route.path, { query: route.query })
+    const res = response
     if (!res.ok) {
       onError?.({
         title: 'File list failed',
@@ -295,7 +320,6 @@ const fetchMentionDefaults = async (onError) => {
       }, { showBanner: false })
       return []
     }
-    const data = await res.json()
     const entries = Array.isArray(data.entries) ? data.entries : []
     const files = entries.filter((entry) => !entry.is_dir)
     return files.map((file) => ({
@@ -319,9 +343,10 @@ const fetchMentionDefaults = async (onError) => {
 
 const createNewSession = async () => {
   try {
-    const res = await fetch(buildApiUrl('/api/sessions'), { method: 'POST' })
+    const route = routes.sessions.create()
+    const { response, data } = await apiFetchJson(route.path, { query: route.query, method: 'POST' })
+    const res = response
     if (!res.ok) return null
-    const data = await res.json()
     return data.session_id
   } catch {
     return null
@@ -541,9 +566,16 @@ const useClaudeStreamRuntime = (
 
     return new Promise((resolve, reject) => {
       const shouldForceNew = optionsChanged || attachmentsChanged
-      const url = buildWsUrl(sessionId, useMode, shouldForceNew, shouldResume, optionsRef.current, fileSpecs)
+      const url = buildClaudeStreamWsUrl(
+        sessionId,
+        useMode,
+        shouldForceNew,
+        shouldResume,
+        optionsRef.current,
+        fileSpecs,
+      )
       console.log('[ClaudeStream] Connecting to:', url)
-      const ws = new WebSocket(url)
+      const ws = openWebSocketUrl(url)
       wsRef.current = ws
       closedRef.current = false
 
@@ -726,7 +758,7 @@ const useClaudeStreamRuntime = (
       .map((attachment) => buildFileSpec(attachment))
       .filter(Boolean)
     // Reconnect with force_new to restart CLI with new settings
-    const wsUrl = buildWsUrl(
+    const wsUrl = buildClaudeStreamWsUrl(
       currentSessionId,
       modeRef.current,
       true,
@@ -734,7 +766,7 @@ const useClaudeStreamRuntime = (
       optionsRef.current,
       fileSpecs,
     ) // force_new=true
-    const ws = new WebSocket(wsUrl)
+    const ws = openWebSocketUrl(wsUrl)
     wsRef.current = ws
     ws.onopen = () => {
       if (wsRef.current !== ws) return
@@ -2644,23 +2676,6 @@ export default function ClaudeStreamChat({
       setApprovalRequest((current) => (current && current.id === requestId ? null : current))
       return
     }
-
-    // Handle explicit permission request from stream
-    if (event?.type === 'permission') {
-      const payload = event.payload
-      const tool = payload.tool_name || payload.tool || payload.name || 'tool'
-      const filePath = payload.file_path || payload.path || ''
-      const diff = payload.diff || ''
-      const toolInput = payload.tool_input || payload.input || {}
-      setApprovalRequest({
-        id: payload.id || payload.tool_use_id || `stream-${Date.now()}`,
-        diff,
-        tool_name: tool,
-        tool_input: toolInput,
-        file_path: filePath,
-        source: 'stream',
-      })
-    }
   }, [])
 
   const handleControlMessage = useCallback((payload) => {
@@ -2825,16 +2840,6 @@ export default function ClaudeStreamChat({
     if (approvalRequest.source === 'control_request' && sendApprovalResponseRef.current) {
       // Send control_response for control_request (native permission flow)
       // Must include tool_input for CLI to execute the tool
-      sendApprovalResponseRef.current(
-        decision,
-        approvalRequest.id,
-        approvalRequest.tool_input || {},
-        option.updatedInput,
-        option.permissionSuggestions,
-        option.message
-      )
-    } else if (approvalRequest.source === 'stream' && sendApprovalResponseRef.current) {
-      // Send through WebSocket for stream-based permissions (legacy)
       sendApprovalResponseRef.current(
         decision,
         approvalRequest.id,

@@ -53,6 +53,14 @@ async function readJsonBody(req) {
   }
 }
 
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return null
+  }
+}
+
 function pickDefaultModel() {
   return (
     getModel('anthropic', DEFAULT_MODEL)
@@ -163,7 +171,13 @@ function listSortedSessions() {
 }
 
 async function handleStream(req, res, session) {
-  const payload = await readJsonBody(req)
+  let payload = {}
+  try {
+    payload = await readJsonBody(req)
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) })
+    return
+  }
   const prompt = String(payload?.message || '').trim()
   if (!prompt) {
     sendJson(res, 400, { error: 'message is required' })
@@ -200,7 +214,14 @@ async function handleStream(req, res, session) {
     closed = true
     unsubscribe()
     if (session.agent.state.isStreaming) {
-      session.agent.abort()
+      try {
+        const result = session.agent.abort()
+        if (result && typeof result.catch === 'function') {
+          result.catch(() => {})
+        }
+      } catch {
+        // Ignore abort errors during client disconnect.
+      }
     }
   })
 
@@ -227,7 +248,7 @@ async function handleStream(req, res, session) {
   }
 }
 
-const server = http.createServer(async (req, res) => {
+async function handleHttpRequest(req, res) {
   if (!req.url || !req.method) {
     sendJson(res, 400, { error: 'invalid request' })
     return
@@ -259,7 +280,7 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (req.method === 'POST' && path === '/api/sessions/create') {
+  if (req.method === 'POST' && path === '/api/v1/agent/pi/sessions/create') {
     try {
       const session = createSession()
       sendJson(res, 201, { session: toSessionSummary(session) })
@@ -269,14 +290,18 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (req.method === 'GET' && path === '/api/sessions') {
+  if (req.method === 'GET' && path === '/api/v1/agent/pi/sessions') {
     sendJson(res, 200, { sessions: listSortedSessions() })
     return
   }
 
-  const historyMatch = path.match(/^\/api\/sessions\/([^/]+)\/history$/)
+  const historyMatch = path.match(/^\/api\/v1\/agent\/pi\/sessions\/([^/]+)\/history$/)
   if (req.method === 'GET' && historyMatch) {
-    const sessionId = decodeURIComponent(historyMatch[1])
+    const sessionId = safeDecodeURIComponent(historyMatch[1])
+    if (!sessionId) {
+      sendJson(res, 400, { error: 'invalid session id' })
+      return
+    }
     const session = sessions.get(sessionId)
     if (!session) {
       sendJson(res, 404, { error: 'session not found' })
@@ -289,9 +314,13 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  const stopMatch = path.match(/^\/api\/sessions\/([^/]+)\/stop$/)
+  const stopMatch = path.match(/^\/api\/v1\/agent\/pi\/sessions\/([^/]+)\/stop$/)
   if (req.method === 'POST' && stopMatch) {
-    const sessionId = decodeURIComponent(stopMatch[1])
+    const sessionId = safeDecodeURIComponent(stopMatch[1])
+    if (!sessionId) {
+      sendJson(res, 400, { error: 'invalid session id' })
+      return
+    }
     const session = sessions.get(sessionId)
     if (!session) {
       sendJson(res, 404, { error: 'session not found' })
@@ -303,15 +332,39 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  const streamMatch = path.match(/^\/api\/sessions\/([^/]+)\/stream$/)
+  const streamMatch = path.match(/^\/api\/v1\/agent\/pi\/sessions\/([^/]+)\/stream$/)
   if (req.method === 'POST' && streamMatch) {
-    const sessionId = decodeURIComponent(streamMatch[1])
+    const sessionId = safeDecodeURIComponent(streamMatch[1])
+    if (!sessionId) {
+      sendJson(res, 400, { error: 'invalid session id' })
+      return
+    }
     const session = getOrCreateSession(sessionId)
-    await handleStream(req, res, session)
+    try {
+      await handleStream(req, res, session)
+    } catch (error) {
+      console.error('[pi-service] stream handler failed', error)
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: 'internal server error' })
+      } else {
+        res.end()
+      }
+    }
     return
   }
 
   sendJson(res, 404, { error: 'not found' })
+}
+
+const server = http.createServer((req, res) => {
+  handleHttpRequest(req, res).catch((error) => {
+    console.error('[pi-service] request handler failed', error)
+    if (!res.headersSent) {
+      sendJson(res, 500, { error: 'internal server error' })
+    } else {
+      res.end()
+    }
+  })
 })
 
 server.listen(PORT, HOST, () => {
