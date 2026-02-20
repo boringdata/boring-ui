@@ -44,6 +44,23 @@ def _node_binary() -> str:
     pytest.skip("node is required to run PI service surface test")
 
 
+def _has_pi_runtime_deps(repo_root: Path) -> bool:
+    check_script = (
+        "Promise.all(["
+        "import('@mariozechner/pi-agent-core'),"
+        "import('@mariozechner/pi-ai')"
+        "]).then(()=>process.exit(0)).catch(()=>process.exit(1));"
+    )
+    result = subprocess.run(  # noqa: S603 - test-only local subprocess
+        [_node_binary(), "-e", check_script],
+        cwd=str(repo_root),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
 def _http_json(method: str, url: str, payload: dict | None = None) -> tuple[int, dict]:
     data = None
     headers: dict[str, str] = {}
@@ -147,6 +164,8 @@ def _start_pi_service(repo_root: Path, *, max_attempts: int = 5) -> tuple[subpro
 
 def test_pi_service_surface_is_canonical_and_runtime_only() -> None:
     repo_root = _repo_root()
+    if not _has_pi_runtime_deps(repo_root):
+        pytest.skip("PI runtime npm deps are not installed (run npm install)")
     proc, base, tmpdir_path = _start_pi_service(repo_root)
     log_path = tmpdir_path / "pi_service.log"
     try:
