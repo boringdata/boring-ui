@@ -546,10 +546,10 @@ export default function App() {
         })
         filetreeGroup.api.setSize({ width: panelCollapsedRef.current.filetree })
       } else {
-        // Use Infinity to explicitly clear max constraint and allow resizing
+        // Use Number.MAX_SAFE_INTEGER to clear max constraint and allow resizing
         filetreeGroup.api.setConstraints({
           minimumWidth: panelMinRef.current.filetree,
-          maximumWidth: Infinity,
+          maximumWidth: Number.MAX_SAFE_INTEGER,
         })
         // Only set size on subsequent runs (user toggled), not on initial load
         if (!isFirstRun) {
@@ -567,10 +567,10 @@ export default function App() {
         })
         terminalGroup.api.setSize({ width: panelCollapsedRef.current.terminal })
       } else {
-        // Use Infinity to explicitly clear max constraint and allow resizing
+        // Use Number.MAX_SAFE_INTEGER to clear max constraint and allow resizing
         terminalGroup.api.setConstraints({
           minimumWidth: panelMinRef.current.terminal,
-          maximumWidth: Infinity,
+          maximumWidth: Number.MAX_SAFE_INTEGER,
         })
         if (!isFirstRun) {
           terminalGroup.api.setSize({ width: panelSizesRef.current.terminal })
@@ -589,7 +589,7 @@ export default function App() {
       } else {
         companionGroup.api.setConstraints({
           minimumWidth: panelMinRef.current.companion,
-          maximumWidth: Infinity,
+          maximumWidth: Number.MAX_SAFE_INTEGER,
         })
         if (!isFirstRun) {
           companionGroup.api.setSize({ width: panelSizesRef.current.companion })
@@ -609,10 +609,10 @@ export default function App() {
         })
         shellGroup.api.setSize({ height: panelCollapsedRef.current.shell })
       } else {
-        // Clear height constraints to allow resizing (use Infinity to explicitly remove max)
+        // Clear height constraints to allow resizing (use Number.MAX_SAFE_INTEGER as open-ended max)
         shellGroup.api.setConstraints({
           minimumHeight: panelMinRef.current.shell,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
         // Only set size on subsequent runs (user toggled), not on initial load
         if (!isFirstRun) {
@@ -779,10 +779,10 @@ export default function App() {
         if (panel?.group) {
           panel.group.header.hidden = false
           centerGroupRef.current = panel.group
-          // Apply minimum height constraint to center group (use Infinity to allow resize)
+          // Apply minimum height constraint to center group (use Number.MAX_SAFE_INTEGER to allow resize)
           panel.group.api.setConstraints({
             minimumHeight: panelMinRef.current.center,
-            maximumHeight: Infinity,
+            maximumHeight: Number.MAX_SAFE_INTEGER,
           })
         }
       }
@@ -985,10 +985,10 @@ export default function App() {
       if (panel?.group) {
         panel.group.header.hidden = false
         centerGroupRef.current = panel.group
-        // Apply minimum height constraint to center group (use Infinity to allow resize)
+        // Apply minimum height constraint to center group (use Number.MAX_SAFE_INTEGER to allow resize)
         panel.group.api.setConstraints({
           minimumHeight: panelMinRef.current.center,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
       }
     })
@@ -1017,7 +1017,7 @@ export default function App() {
         filetreeGroup.header.hidden = true
         filetreeGroup.api.setConstraints({
           minimumWidth: panelMinRef.current.filetree,
-          maximumWidth: Infinity,
+          maximumWidth: Number.MAX_SAFE_INTEGER,
         })
       }
 
@@ -1028,7 +1028,7 @@ export default function App() {
           terminalGroup.header.hidden = true
           terminalGroup.api.setConstraints({
             minimumWidth: panelMinRef.current.terminal,
-            maximumWidth: Infinity,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
           })
         }
       }
@@ -1040,7 +1040,7 @@ export default function App() {
           companionGroup.header.hidden = true
           companionGroup.api.setConstraints({
             minimumWidth: panelMinRef.current.companion,
-            maximumWidth: Infinity,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
           })
         }
       }
@@ -1051,7 +1051,7 @@ export default function App() {
         // Don't lock or hide header - shell has collapse button
         shellGroup.api.setConstraints({
           minimumHeight: panelMinRef.current.shell,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
       }
     }
@@ -1141,10 +1141,10 @@ export default function App() {
       if (emptyPanel?.group) {
         emptyPanel.group.header.hidden = true
         centerGroupRef.current = emptyPanel.group
-        // Set minimum height for the center group (use Infinity to allow resize)
+        // Set minimum height for the center group (use Number.MAX_SAFE_INTEGER to allow resize)
         emptyPanel.group.api.setConstraints({
           minimumHeight: panelMinRef.current.center,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
       }
 
@@ -1340,7 +1340,7 @@ export default function App() {
         emptyPanel.group.header.hidden = true
         emptyPanel.group.api.setConstraints({
           minimumHeight: panelMinRef.current.center,
-          maximumHeight: Infinity,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
         })
       }
     })
@@ -1528,7 +1528,7 @@ export default function App() {
                 ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
                 ftApi.setSize({ width: panelCollapsedRef.current.filetree })
               } else {
-                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Infinity })
+                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Number.MAX_SAFE_INTEGER })
                 ftApi.setSize({ width: panelSizesRef.current.filetree })
               }
             }
@@ -1540,7 +1540,7 @@ export default function App() {
                 tApi.setConstraints({ minimumWidth: panelCollapsedRef.current.terminal, maximumWidth: panelCollapsedRef.current.terminal })
                 tApi.setSize({ width: panelCollapsedRef.current.terminal })
               } else {
-                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Infinity })
+                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Number.MAX_SAFE_INTEGER })
                 tApi.setSize({ width: panelSizesRef.current.terminal })
               }
             }
@@ -1552,7 +1552,7 @@ export default function App() {
                 cApi.setConstraints({ minimumWidth: panelCollapsedRef.current.companion, maximumWidth: panelCollapsedRef.current.companion })
                 cApi.setSize({ width: panelCollapsedRef.current.companion })
               } else {
-                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Infinity })
+                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Number.MAX_SAFE_INTEGER })
                 cApi.setSize({ width: panelSizesRef.current.companion })
               }
             }
@@ -1564,7 +1564,7 @@ export default function App() {
                 sApi.setConstraints({ minimumHeight: panelCollapsedRef.current.shell, maximumHeight: panelCollapsedRef.current.shell })
                 sApi.setSize({ height: panelCollapsedRef.current.shell })
               } else {
-                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
+                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Number.MAX_SAFE_INTEGER })
                 // Ensure shell height respects minimum constraint
                 const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
                 sApi.setSize({ height: shellHeight })
@@ -1634,7 +1634,7 @@ export default function App() {
           shellGroup.header.hidden = false
           shellGroup.api.setConstraints({
             minimumHeight: panelMinRef.current.shell,
-            maximumHeight: Infinity,
+            maximumHeight: Number.MAX_SAFE_INTEGER,
           })
           // Enforce minimum height if saved layout has invalid dimensions
           // (between collapsed 36px and minimum 100px)
@@ -1665,7 +1665,7 @@ export default function App() {
               } else {
                 companionGroup.api.setConstraints({
                   minimumWidth: panelMinRef.current.companion,
-                  maximumWidth: Infinity,
+                  maximumWidth: Number.MAX_SAFE_INTEGER,
                 })
                 companionGroup.api.setSize({ width: panelSizesRef.current.companion })
               }
@@ -1685,7 +1685,7 @@ export default function App() {
               piGroup.header.hidden = true
               piGroup.api.setConstraints({
                 minimumWidth: panelMinRef.current.companion,
-                maximumWidth: Infinity,
+                maximumWidth: Number.MAX_SAFE_INTEGER,
               })
               piGroup.api.setSize({ width: panelSizesRef.current.companion })
             }
@@ -1709,7 +1709,7 @@ export default function App() {
             centerGroupRef.current = editorPanel.group
             editorPanel.group.api.setConstraints({
               minimumHeight: panelMinRef.current.center,
-              maximumHeight: Infinity,
+              maximumHeight: Number.MAX_SAFE_INTEGER,
             })
           }
           // Close empty-center if it exists
@@ -1745,10 +1745,10 @@ export default function App() {
         const emptyPanel = dockApi.getPanel('empty-center')
         if (emptyPanel?.group) {
           centerGroupRef.current = emptyPanel.group
-          // Set minimum height for the center group (use Infinity to allow resize)
+          // Set minimum height for the center group (use Number.MAX_SAFE_INTEGER to allow resize)
           emptyPanel.group.api.setConstraints({
             minimumHeight: panelMinRef.current.center,
-            maximumHeight: Infinity,
+            maximumHeight: Number.MAX_SAFE_INTEGER,
           })
         }
 
@@ -1774,7 +1774,7 @@ export default function App() {
                 ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
                 ftApi.setSize({ width: panelCollapsedRef.current.filetree })
               } else {
-                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Infinity })
+                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Number.MAX_SAFE_INTEGER })
                 ftApi.setSize({ width: panelSizesRef.current.filetree })
               }
             }
@@ -1786,7 +1786,7 @@ export default function App() {
                 tApi.setConstraints({ minimumWidth: panelCollapsedRef.current.terminal, maximumWidth: panelCollapsedRef.current.terminal })
                 tApi.setSize({ width: panelCollapsedRef.current.terminal })
               } else {
-                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Infinity })
+                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Number.MAX_SAFE_INTEGER })
                 tApi.setSize({ width: panelSizesRef.current.terminal })
               }
             }
@@ -1798,7 +1798,7 @@ export default function App() {
                 cApi.setConstraints({ minimumWidth: panelCollapsedRef.current.companion, maximumWidth: panelCollapsedRef.current.companion })
                 cApi.setSize({ width: panelCollapsedRef.current.companion })
               } else {
-                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Infinity })
+                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Number.MAX_SAFE_INTEGER })
                 cApi.setSize({ width: panelSizesRef.current.companion })
               }
             }
@@ -1810,7 +1810,7 @@ export default function App() {
                 sApi.setConstraints({ minimumHeight: panelCollapsedRef.current.shell, maximumHeight: panelCollapsedRef.current.shell })
                 sApi.setSize({ height: panelCollapsedRef.current.shell })
               } else {
-                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Infinity })
+                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Number.MAX_SAFE_INTEGER })
                 // Ensure shell height respects minimum constraint
                 const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
                 sApi.setSize({ height: shellHeight })
@@ -2115,7 +2115,7 @@ export default function App() {
           panel.group.header.hidden = true
           panel.group.api.setConstraints({
             minimumWidth: panelMinRef.current.companion,
-            maximumWidth: Infinity,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
           })
           if (!collapsed.companion) {
             panel.group.api.setSize({ width: panelSizesRef.current.companion })
@@ -2151,7 +2151,7 @@ export default function App() {
           panel.group.header.hidden = true
           panel.group.api.setConstraints({
             minimumWidth: panelMinRef.current.companion,
-            maximumWidth: Infinity,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
           })
           panel.group.api.setSize({ width: panelSizesRef.current.companion })
         }
