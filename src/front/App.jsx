@@ -280,18 +280,32 @@ export default function App() {
     })
   }
 
+  const getLeftSidebarGroups = useCallback((api) => {
+    if (!api) return []
+    const groups = []
+    const seen = new Set()
+    ;['data-catalog', 'filetree'].forEach((panelId) => {
+      const group = api.getPanel(panelId)?.group
+      if (!group || seen.has(group.id)) return
+      seen.add(group.id)
+      groups.push(group)
+    })
+    return groups
+  }, [])
+
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
     if (!collapsed.filetree && dockApi) {
-      // Capture current size before collapsing
-      const filetreePanel = dockApi.getPanel('filetree')
-      const filetreeGroup = filetreePanel?.group
-      if (filetreeGroup) {
-        const currentWidth = filetreeGroup.api.width
-        if (currentWidth > panelCollapsedRef.current.filetree) {
+      // Capture current left-column size before collapsing.
+      const leftGroups = getLeftSidebarGroups(dockApi)
+      const currentWidth = leftGroups[0]?.api?.width
+      const collapsedWidth = Math.max(
+        panelCollapsedRef.current.filetree ?? 48,
+        panelCollapsedRef.current.dataCatalog ?? panelCollapsedRef.current.filetree ?? 48,
+      )
+      if (Number.isFinite(currentWidth) && currentWidth > collapsedWidth) {
           panelSizesRef.current = { ...panelSizesRef.current, filetree: currentWidth }
           savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
-        }
       }
     }
     setCollapsed((prev) => {
@@ -299,7 +313,7 @@ export default function App() {
       saveCollapsedState(next, storagePrefixRef.current)
       return next
     })
-  }, [collapsed.filetree, dockApi])
+  }, [collapsed.filetree, dockApi, getLeftSidebarGroups])
 
   const toggleTerminal = useCallback(() => {
     if (!nativeAgentEnabled) return
@@ -612,27 +626,41 @@ export default function App() {
       collapsedEffectRan.current = true
     }
 
-    const filetreePanel = dockApi.getPanel('filetree')
+    const leftGroups = getLeftSidebarGroups(dockApi)
     const terminalPanel = dockApi.getPanel('terminal')
     const companionPanel = dockApi.getPanel('companion')
 
-    const filetreeGroup = filetreePanel?.group
-    if (filetreeGroup) {
+    if (leftGroups.length > 0) {
+      const collapsedWidth = Math.max(
+        panelCollapsedRef.current.filetree ?? 48,
+        panelCollapsedRef.current.dataCatalog ?? panelCollapsedRef.current.filetree ?? 48,
+      )
+      const minWidth = Math.max(
+        panelMinRef.current.filetree ?? 180,
+        panelMinRef.current.dataCatalog ?? panelMinRef.current.filetree ?? 180,
+      )
       if (collapsed.filetree) {
-        filetreeGroup.api.setConstraints({
-          minimumWidth: panelCollapsedRef.current.filetree,
-          maximumWidth: panelCollapsedRef.current.filetree,
+        leftGroups.forEach((group) => {
+          group.api.setConstraints({
+            minimumWidth: collapsedWidth,
+            maximumWidth: collapsedWidth,
+          })
+          group.api.setSize({ width: collapsedWidth })
         })
-        filetreeGroup.api.setSize({ width: panelCollapsedRef.current.filetree })
       } else {
-        // Use Number.MAX_SAFE_INTEGER to clear max constraint and allow resizing
-        filetreeGroup.api.setConstraints({
-          minimumWidth: panelMinRef.current.filetree,
-          maximumWidth: Number.MAX_SAFE_INTEGER,
+        leftGroups.forEach((group) => {
+          // Use Number.MAX_SAFE_INTEGER to clear max constraint and allow resizing
+          group.api.setConstraints({
+            minimumWidth: minWidth,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
+          })
         })
-        // Only set size on subsequent runs (user toggled), not on initial load
+        // Only set size on subsequent runs (user toggled), not on initial load.
         if (!isFirstRun) {
-          filetreeGroup.api.setSize({ width: panelSizesRef.current.filetree })
+          const expandedWidth = Math.max(panelSizesRef.current.filetree ?? minWidth, minWidth)
+          leftGroups.forEach((group) => {
+            group.api.setSize({ width: expandedWidth })
+          })
         }
       }
     }
@@ -702,7 +730,7 @@ export default function App() {
         }
       }
     }
-  }, [dockApi, collapsed])
+  }, [dockApi, collapsed, getLeftSidebarGroups])
 
   // Git status polling removed - not currently used in UI
 
@@ -990,6 +1018,68 @@ export default function App() {
     [dockApi, openFileAtPosition]
   )
 
+  const openSeries = useCallback(
+    (seriesId) => {
+      if (!dockApi || !seriesId) return false
+
+      const panelId = `chart-${seriesId}`
+      const existingPanel = dockApi.getPanel(panelId)
+      if (existingPanel) {
+        existingPanel.api.setActive()
+        return true
+      }
+
+      const emptyPanel = dockApi.getPanel('empty-center')
+      const shellPanel = dockApi.getPanel('shell')
+      const centerGroup = centerGroupRef.current
+      const allPanels = Array.isArray(dockApi.panels) ? dockApi.panels : []
+      const existingContentPanel = allPanels.find(
+        (panel) =>
+          panel.id.startsWith('editor-')
+          || panel.id.startsWith('review-')
+          || panel.id.startsWith('chart-'),
+      )
+
+      let position
+      if (existingContentPanel?.group) {
+        position = { referenceGroup: existingContentPanel.group }
+      } else if (centerGroup) {
+        position = { referenceGroup: centerGroup }
+      } else if (emptyPanel?.group) {
+        position = { referenceGroup: emptyPanel.group }
+      } else if (shellPanel?.group) {
+        position = { direction: 'above', referenceGroup: shellPanel.group }
+      } else {
+        position = { direction: 'right', referencePanel: 'filetree' }
+      }
+
+      const panel = dockApi.addPanel({
+        id: panelId,
+        component: 'chart-canvas',
+        title: seriesId,
+        position,
+        params: { seriesId, mode: 'chart' },
+      })
+
+      if (emptyPanel) {
+        emptyPanel.api.close()
+      }
+      if (panel?.group) {
+        panel.group.header.hidden = false
+        centerGroupRef.current = panel.group
+        panel.group.api.setConstraints({
+          minimumHeight: panelMinRef.current.center,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
+        })
+      }
+      if (panel?.api) {
+        panel.api.setActive()
+      }
+      return true
+    },
+    [dockApi],
+  )
+
   useEffect(() => {
     if (!dockApi || !approvalsLoaded) return
     const pendingIds = new Set(approvals.map((req) => req.id))
@@ -1141,6 +1231,12 @@ export default function App() {
 
     const getDefaultParams = (panelId) => {
       switch (panelId) {
+        case 'data-catalog':
+          return {
+            collapsed: collapsed.filetree,
+            onToggleCollapse: toggleFiletree,
+            onOpenSeries: openSeries,
+          }
         case 'filetree':
           return {
             onOpenFile: openFile,
@@ -1401,15 +1497,23 @@ export default function App() {
         centerGroupRef.current = firstCenterPanel.group
       }
 
-      if (firstCenterPanel?.group && !api.getPanel('empty-center')) {
+      if (!api.getPanel('empty-center')) {
+        const rightRailPanel = api.getPanel('terminal') || api.getPanel('companion')
+        const emptyPosition = firstCenterPanel?.group
+          ? { referenceGroup: firstCenterPanel.group }
+          : rightRailPanel
+            ? { direction: 'left', referencePanel: rightRailPanel.id }
+            : { direction: 'right', referencePanel: 'filetree' }
+
         const emptyCenterPanel = api.addPanel({
           id: 'empty-center',
           component: 'empty',
           title: '',
-          position: { referenceGroup: firstCenterPanel.group },
+          position: emptyPosition,
         })
         if (emptyCenterPanel?.group) {
           emptyCenterPanel.group.header.hidden = true
+          centerGroupRef.current = emptyCenterPanel.group
           emptyCenterPanel.group.api.setConstraints({
             minimumHeight: panelMinRef.current.center,
             maximumHeight: Number.MAX_SAFE_INTEGER,
@@ -1518,13 +1622,16 @@ export default function App() {
       const existingEmpty = api.getPanel('empty-center')
       if (existingEmpty) return
 
-      // Check if there are any editor or review panels left anywhere
+      // Check if there are any center-content panels left anywhere
       const allPanels = Array.isArray(api.panels) ? api.panels : []
-      const hasEditors = allPanels.some(p => p.id.startsWith('editor-'))
-      const hasReviews = allPanels.some(p => p.id.startsWith('review-'))
+      const hasCenterPanels = allPanels.some(p =>
+        p.id.startsWith('editor-')
+        || p.id.startsWith('review-')
+        || p.id.startsWith('chart-')
+      )
 
-      // If there are still editors or reviews, don't add empty panel
-      if (hasEditors || hasReviews) return
+      // If there are still center panels open, don't add empty panel
+      if (hasCenterPanels) return
 
       // Need to add empty panel - find the right position
       // Try to use centerGroupRef if it still exists and has panels
@@ -1605,6 +1712,7 @@ export default function App() {
       const companionPanel = api.getPanel('companion')
       const shellPanel = api.getPanel('shell')
 
+      const leftGroups = getLeftSidebarGroups(api)
       const filetreeGroup = filetreePanel?.group
       const terminalGroup = terminalPanel?.group
       const companionGroup = companionPanel?.group
@@ -1614,9 +1722,14 @@ export default function App() {
       let changed = false
 
       // Only save if not collapsed (width/height > collapsed size)
-      if (filetreeGroup && filetreeGroup.api.width > panelCollapsedRef.current.filetree) {
-        if (newSizes.filetree !== filetreeGroup.api.width) {
-          newSizes.filetree = filetreeGroup.api.width
+      const leftCollapsedWidth = Math.max(
+        panelCollapsedRef.current.filetree ?? 48,
+        panelCollapsedRef.current.dataCatalog ?? panelCollapsedRef.current.filetree ?? 48,
+      )
+      const leftWidth = leftGroups[0]?.api?.width ?? filetreeGroup?.api?.width
+      if (Number.isFinite(leftWidth) && leftWidth > leftCollapsedWidth) {
+        if (newSizes.filetree !== leftWidth) {
+          newSizes.filetree = leftWidth
           changed = true
         }
       }
@@ -1775,6 +1888,7 @@ export default function App() {
 
         // After restoring, apply locked panels and cleanup
         const filetreePanel = dockApi.getPanel('filetree')
+        const dataCatalogPanel = dockApi.getPanel('data-catalog')
         const terminalPanel = dockApi.getPanel('terminal')
         const shellPanel = dockApi.getPanel('shell')
 
@@ -1782,6 +1896,12 @@ export default function App() {
         if (filetreeGroup) {
           filetreeGroup.locked = true
           filetreeGroup.header.hidden = true
+        }
+
+        const dataCatalogGroup = dataCatalogPanel?.group
+        if (dataCatalogGroup) {
+          dataCatalogGroup.locked = true
+          dataCatalogGroup.header.hidden = true
         }
 
         // Update filetree params with callbacks (callbacks can't be serialized in layout JSON)
@@ -1806,6 +1926,14 @@ export default function App() {
             onCreateWorkspace: handleCreateWorkspace,
             onOpenUserSettings: handleOpenUserSettings,
             onLogout: handleLogout,
+          })
+        }
+
+        if (dataCatalogPanel) {
+          dataCatalogPanel.api.updateParameters({
+            collapsed: collapsed.filetree,
+            onToggleCollapse: toggleFiletree,
+            onOpenSeries: openSeries,
           })
         }
 
@@ -1949,23 +2077,34 @@ export default function App() {
         // Apply saved panel sizes, respecting collapsed state
         // collapsed state is loaded from localStorage at init, so we can check it here
         requestAnimationFrame(() => {
-          const ftGroup = dockApi.getPanel('filetree')?.group
+          const leftGroups = getLeftSidebarGroups(dockApi)
           const tGroup = dockApi.getPanel('terminal')?.group
           const cGroup = dockApi.getPanel('companion')?.group
           const sGroup = dockApi.getPanel('shell')?.group
 
           // For collapsed panels, set collapsed size; for expanded, use saved size
-          if (ftGroup) {
-            const ftApi = dockApi.getGroup(ftGroup.id)?.api
-            if (ftApi) {
+          if (leftGroups.length > 0) {
+            const collapsedWidth = Math.max(
+              panelCollapsedRef.current.filetree ?? 48,
+              panelCollapsedRef.current.dataCatalog ?? panelCollapsedRef.current.filetree ?? 48,
+            )
+            const minWidth = Math.max(
+              panelMinRef.current.filetree ?? 180,
+              panelMinRef.current.dataCatalog ?? panelMinRef.current.filetree ?? 180,
+            )
+            const expandedWidth = Math.max(panelSizesRef.current.filetree ?? minWidth, minWidth)
+
+            leftGroups.forEach((group) => {
+              const groupApi = dockApi.getGroup(group.id)?.api
+              if (!groupApi) return
               if (collapsed.filetree) {
-                ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
-                ftApi.setSize({ width: panelCollapsedRef.current.filetree })
+                groupApi.setConstraints({ minimumWidth: collapsedWidth, maximumWidth: collapsedWidth })
+                groupApi.setSize({ width: collapsedWidth })
               } else {
-                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Number.MAX_SAFE_INTEGER })
-                ftApi.setSize({ width: panelSizesRef.current.filetree })
+                groupApi.setConstraints({ minimumWidth: minWidth, maximumWidth: Number.MAX_SAFE_INTEGER })
+                groupApi.setSize({ width: expandedWidth })
               }
-            }
+            })
           }
           if (tGroup) {
             const tApi = dockApi.getGroup(tGroup.id)?.api
@@ -2027,6 +2166,7 @@ export default function App() {
     openFile,
     openFileToSide,
     openDiff,
+    openSeries,
     activeFile,
     activeDiffFile,
     toggleFiletree,
@@ -2044,6 +2184,7 @@ export default function App() {
     companionAgentEnabled,
     nativeAgentEnabled,
     piAgentEnabled,
+    getLeftSidebarGroups,
   ])
 
   // Track active panel to highlight in file tree and sync URL
@@ -2075,6 +2216,7 @@ export default function App() {
   useEffect(() => {
     if (!dockApi) return
     const filetreePanel = dockApi.getPanel('filetree')
+    const dataCatalogPanel = dockApi.getPanel('data-catalog')
     if (filetreePanel) {
       filetreePanel.api.updateParameters({
         onOpenFile: openFile,
@@ -2098,6 +2240,13 @@ export default function App() {
         onLogout: handleLogout,
       })
     }
+    if (dataCatalogPanel) {
+      dataCatalogPanel.api.updateParameters({
+        collapsed: collapsed.filetree,
+        onToggleCollapse: toggleFiletree,
+        onOpenSeries: openSeries,
+      })
+    }
   }, [
     dockApi,
     openFile,
@@ -2119,6 +2268,7 @@ export default function App() {
     handleCreateWorkspace,
     handleOpenUserSettings,
     handleLogout,
+    openSeries,
   ])
 
   // Helper to focus a review panel
