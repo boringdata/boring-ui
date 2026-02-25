@@ -202,6 +202,80 @@ export default function App() {
     return []
   }, [userMenuAuthStatus, userMenuWorkspaceError])
 
+  const applyInitialSizes = (
+    api,
+    panelSizesRefArg,
+    panelMinRefArg,
+    panelCollapsedRefArg,
+    collapsedState,
+    registry,
+  ) => {
+    requestAnimationFrame(() => {
+      const paneConfigs = typeof registry?.list === 'function' ? registry.list() : []
+      const seenGroups = new Set()
+
+      paneConfigs.forEach((paneConfig) => {
+        const panelId = paneConfig?.id
+        if (!panelId) return
+
+        const defaultSize = panelSizesRefArg?.current?.[panelId]
+        if (!Number.isFinite(defaultSize)) return
+
+        const panel = api.getPanel(panelId)
+        const group = panel?.group
+        if (!group || seenGroups.has(group.id)) return
+        seenGroups.add(group.id)
+
+        const groupApi = api.getGroup(group.id)?.api
+        if (!groupApi) return
+
+        const collapsedSize = panelCollapsedRefArg?.current?.[panelId]
+        const minSize = panelMinRefArg?.current?.[panelId]
+        const isCollapsed = !!collapsedState?.[panelId]
+        const sizeAxis = paneConfig?.placement === 'bottom' ? 'height' : 'width'
+
+        if (isCollapsed && Number.isFinite(collapsedSize)) {
+          if (sizeAxis === 'height') {
+            groupApi.setConstraints({
+              minimumHeight: collapsedSize,
+              maximumHeight: collapsedSize,
+            })
+            groupApi.setSize({ height: collapsedSize })
+          } else {
+            groupApi.setConstraints({
+              minimumWidth: collapsedSize,
+              maximumWidth: collapsedSize,
+            })
+            groupApi.setSize({ width: collapsedSize })
+          }
+          return
+        }
+
+        const size = Number.isFinite(minSize)
+          ? Math.max(defaultSize, minSize)
+          : defaultSize
+        if (sizeAxis === 'height') {
+          if (Number.isFinite(minSize)) {
+            groupApi.setConstraints({
+              minimumHeight: minSize,
+              maximumHeight: Number.MAX_SAFE_INTEGER,
+            })
+          }
+          groupApi.setSize({ height: size })
+          return
+        }
+
+        if (Number.isFinite(minSize)) {
+          groupApi.setConstraints({
+            minimumWidth: minSize,
+            maximumWidth: Number.MAX_SAFE_INTEGER,
+          })
+        }
+        groupApi.setSize({ width: size })
+      })
+    })
+  }
+
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
     if (!collapsed.filetree && dockApi) {
@@ -1061,22 +1135,10 @@ export default function App() {
       })
     }
 
-    const ensureCorePanels = () => {
-      // Layout goal: [filetree | [editor / shell] | right-rail-agent]
-      //
-      // Strategy: Create in order that establishes correct hierarchy
-      // 1. filetree (left)
-      // 2. right-rail panel anchor (terminal for native, agent for web-agent-only)
-      // 3. empty-center (left of right rail) - center column for editors
-      // 4. shell (below empty-center) - bottom of center
-
-      let filetreePanel = api.getPanel('filetree')
-      if (!filetreePanel) {
-        filetreePanel = api.addPanel({
-          id: 'filetree',
-          component: 'filetree',
-          title: 'Files',
-          params: {
+    const getDefaultParams = (panelId) => {
+      switch (panelId) {
+        case 'filetree':
+          return {
             onOpenFile: openFile,
             onOpenFileToSide: openFileToSide,
             onOpenDiff: openDiff,
@@ -1096,7 +1158,40 @@ export default function App() {
             onCreateWorkspace: handleCreateWorkspace,
             onOpenUserSettings: handleOpenUserSettings,
             onLogout: handleLogout,
-          },
+          }
+        case 'shell':
+          return {
+            collapsed: false,
+            onToggleCollapse: () => {},
+          }
+        case 'companion':
+          return {
+            collapsed: collapsed.companion,
+            onToggleCollapse: toggleCompanion,
+            provider: 'companion',
+            lockProvider: true,
+          }
+        default:
+          return {}
+      }
+    }
+
+    const ensureCorePanels = () => {
+      // Layout goal: [filetree | [editor / shell] | right-rail-agent]
+      //
+      // Strategy: Create in order that establishes correct hierarchy
+      // 1. filetree (left)
+      // 2. right-rail panel anchor (terminal for native, agent for web-agent-only)
+      // 3. empty-center (left of right rail) - center column for editors
+      // 4. shell (below empty-center) - bottom of center
+
+      let filetreePanel = api.getPanel('filetree')
+      if (!filetreePanel) {
+        filetreePanel = api.addPanel({
+          id: 'filetree',
+          component: 'filetree',
+          title: 'Files',
+          params: getDefaultParams('filetree'),
         })
       }
 
@@ -1119,12 +1214,7 @@ export default function App() {
           component: 'companion',
           title: 'Agent',
           position: { direction: 'right', referencePanel: 'filetree' },
-          params: {
-            collapsed: collapsed.companion,
-            onToggleCollapse: toggleCompanion,
-            provider: 'companion',
-            lockProvider: true,
-          },
+          params: getDefaultParams('companion'),
         })
       }
 
@@ -1163,10 +1253,7 @@ export default function App() {
           tabComponent: shellPaneConfig?.tabComponent,
           title: 'Shell',
           position: { direction: 'below', referenceGroup: emptyPanel.group },
-          params: {
-            collapsed: false,
-            onToggleCollapse: () => {},
-          },
+          params: getDefaultParams('shell'),
         })
       }
 
@@ -1195,6 +1282,138 @@ export default function App() {
         paneRegistry,
         { nativeAgentEnabled, companionAgentEnabled },
         panelMinRef,
+      )
+      applyInitialSizes(
+        api,
+        panelSizesRef,
+        panelMinRef,
+        panelCollapsedRef,
+        collapsed,
+        paneRegistry,
+      )
+    }
+
+    const buildLayoutFromConfig = (api, config, registry, capabilities) => {
+      const layoutPanels = config?.defaultLayout?.panels
+      if (!Array.isArray(layoutPanels)) {
+        console.error('[Layout] defaultLayout.panels must be an array, falling back to stock layout')
+        ensureCorePanels()
+        return
+      }
+
+      const createdPanels = new Map()
+      const orderedCreated = []
+
+      layoutPanels.forEach((entry) => {
+        const id = entry?.id
+        if (!id || typeof id !== 'string') {
+          console.warn('[Layout] Invalid panel entry (missing id), skipping', entry)
+          return
+        }
+
+        const paneConfig = registry?.get?.(id)
+        if (!paneConfig) {
+          console.warn(`[Layout] Panel "${id}" not registered in PaneRegistry, skipping`)
+          return
+        }
+
+        const existingPanel = api.getPanel(id)
+        if (existingPanel) {
+          createdPanels.set(id, existingPanel)
+          orderedCreated.push({ id, panel: existingPanel, paneConfig })
+          return
+        }
+
+        const requirementsMet = typeof registry?.checkRequirements === 'function'
+          ? registry.checkRequirements(id, capabilities)
+          : true
+        if (!requirementsMet) {
+          console.warn(`[Layout] Panel "${id}" skipped - required capabilities not available`)
+          return
+        }
+
+        let position
+        const ref = entry?.ref
+        if (ref) {
+          const referencedPanel = createdPanels.get(ref)
+          if (!referencedPanel) {
+            console.warn(`[Layout] Panel "${id}" references unknown ref "${ref}", skipping`)
+            return
+          }
+
+          const direction = entry?.position
+          if (direction === 'left' || direction === 'right') {
+            position = { direction, referencePanel: ref }
+          } else if (direction === 'above' || direction === 'below') {
+            const referenceGroup = api.getPanel(ref)?.group
+            if (!referenceGroup) {
+              console.warn(`[Layout] Panel "${id}" references panel "${ref}" without a group, skipping`)
+              return
+            }
+            position = { direction, referenceGroup }
+          } else if (direction === 'tab') {
+            position = { referencePanel: ref }
+          } else {
+            console.warn(`[Layout] Panel "${id}" has invalid position "${direction}", skipping`)
+            return
+          }
+        }
+
+        const panel = api.addPanel({
+          id,
+          component: id,
+          title: paneConfig.title,
+          tabComponent: paneConfig.tabComponent,
+          position,
+          params: getDefaultParams(id),
+        })
+        if (!panel) return
+
+        createdPanels.set(id, panel)
+        orderedCreated.push({ id, panel, paneConfig })
+      })
+
+      if (orderedCreated.length === 0) {
+        ensureCorePanels()
+        return
+      }
+
+      const firstCenterPanel = orderedCreated.find(
+        ({ paneConfig, panel }) => paneConfig?.placement === 'center' && panel?.group,
+      )?.panel
+      if (firstCenterPanel?.group) {
+        centerGroupRef.current = firstCenterPanel.group
+      }
+
+      if (firstCenterPanel?.group && !api.getPanel('empty-center')) {
+        const emptyCenterPanel = api.addPanel({
+          id: 'empty-center',
+          component: 'empty',
+          title: '',
+          position: { referenceGroup: firstCenterPanel.group },
+        })
+        if (emptyCenterPanel?.group) {
+          emptyCenterPanel.group.header.hidden = true
+          emptyCenterPanel.group.api.setConstraints({
+            minimumHeight: panelMinRef.current.center,
+            maximumHeight: Number.MAX_SAFE_INTEGER,
+          })
+        }
+      }
+
+      applyPanelConstraints(
+        api,
+        registry,
+        { nativeAgentEnabled, companionAgentEnabled },
+        panelMinRef,
+      )
+      applyInitialSizes(
+        api,
+        panelSizesRef,
+        panelMinRef,
+        panelCollapsedRef,
+        collapsed,
+        paneRegistry,
       )
     }
 
@@ -1247,33 +1466,16 @@ export default function App() {
 
     // Only create fresh panels if no saved layout exists
     // Otherwise, layout restoration will handle panel creation
+    const shouldUseConfigLayout = Array.isArray(config?.defaultLayout?.panels)
+      ? config.defaultLayout.panels.length > 0
+      : config?.defaultLayout && Object.prototype.hasOwnProperty.call(config.defaultLayout, 'panels')
+    const panelBuilder = shouldUseConfigLayout
+      ? () => buildLayoutFromConfig(api, config, paneRegistry, capabilities)
+      : ensureCorePanels
     if (!hasSavedLayout || invalidLayoutFound) {
-      ensureCorePanels()
+      panelBuilder()
     }
-    ensureCorePanelsRef.current = ensureCorePanels
-
-    // Apply initial panel sizes for fresh layout
-    // (Restored layouts will have sizes reapplied in the layout restoration effect)
-    requestAnimationFrame(() => {
-      const filetreeGroup = api.getPanel('filetree')?.group
-      const terminalGroup = api.getPanel('terminal')?.group
-      const companionGroup = api.getPanel('companion')?.group
-      const shellGroup = api.getPanel('shell')?.group
-      if (filetreeGroup) {
-        api.getGroup(filetreeGroup.id)?.api.setSize({ width: panelSizesRef.current.filetree })
-      }
-      if (terminalGroup) {
-        api.getGroup(terminalGroup.id)?.api.setSize({ width: panelSizesRef.current.terminal })
-      }
-      if (companionGroup) {
-        api.getGroup(companionGroup.id)?.api.setSize({ width: panelSizesRef.current.companion })
-      }
-      if (shellGroup) {
-        // Ensure shell height respects minimum constraint
-        const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
-        api.getGroup(shellGroup.id)?.api.setSize({ height: shellHeight })
-      }
-    })
+    ensureCorePanelsRef.current = panelBuilder
 
     // Handle panel close to clean up tabs state
     api.onDidRemovePanel((e) => {
@@ -1504,6 +1706,12 @@ export default function App() {
     // projectRoot === null means not loaded yet
     if (!dockApi || projectRoot === null || layoutRestorationRan.current) return
     layoutRestorationRan.current = true
+    const collapsedState = {
+      filetree: collapsed.filetree,
+      terminal: collapsed.terminal,
+      companion: collapsed.companion,
+      shell: collapsed.shell,
+    }
 
     if (!nativeAgentEnabled) {
       try {
@@ -1523,65 +1731,15 @@ export default function App() {
       if (ensureCorePanelsRef.current) {
         ensureCorePanelsRef.current()
         layoutRestored.current = true
-        requestAnimationFrame(() => {
-          const ftGroup = dockApi.getPanel('filetree')?.group
-          const tGroup = dockApi.getPanel('terminal')?.group
-          const cGroup = dockApi.getPanel('companion')?.group
-          const sGroup = dockApi.getPanel('shell')?.group
-
-          if (ftGroup) {
-            const ftApi = dockApi.getGroup(ftGroup.id)?.api
-            if (ftApi) {
-              if (collapsed.filetree) {
-                ftApi.setConstraints({ minimumWidth: panelCollapsedRef.current.filetree, maximumWidth: panelCollapsedRef.current.filetree })
-                ftApi.setSize({ width: panelCollapsedRef.current.filetree })
-              } else {
-                ftApi.setConstraints({ minimumWidth: panelMinRef.current.filetree, maximumWidth: Number.MAX_SAFE_INTEGER })
-                ftApi.setSize({ width: panelSizesRef.current.filetree })
-              }
-            }
-          }
-          if (tGroup) {
-            const tApi = dockApi.getGroup(tGroup.id)?.api
-            if (tApi) {
-              if (collapsed.terminal) {
-                tApi.setConstraints({ minimumWidth: panelCollapsedRef.current.terminal, maximumWidth: panelCollapsedRef.current.terminal })
-                tApi.setSize({ width: panelCollapsedRef.current.terminal })
-              } else {
-                tApi.setConstraints({ minimumWidth: panelMinRef.current.terminal, maximumWidth: Number.MAX_SAFE_INTEGER })
-                tApi.setSize({ width: panelSizesRef.current.terminal })
-              }
-            }
-          }
-          if (cGroup) {
-            const cApi = dockApi.getGroup(cGroup.id)?.api
-            if (cApi) {
-              if (collapsed.companion) {
-                cApi.setConstraints({ minimumWidth: panelCollapsedRef.current.companion, maximumWidth: panelCollapsedRef.current.companion })
-                cApi.setSize({ width: panelCollapsedRef.current.companion })
-              } else {
-                cApi.setConstraints({ minimumWidth: panelMinRef.current.companion, maximumWidth: Number.MAX_SAFE_INTEGER })
-                cApi.setSize({ width: panelSizesRef.current.companion })
-              }
-            }
-          }
-          if (sGroup) {
-            const sApi = dockApi.getGroup(sGroup.id)?.api
-            if (sApi) {
-              if (collapsed.shell) {
-                sApi.setConstraints({ minimumHeight: panelCollapsedRef.current.shell, maximumHeight: panelCollapsedRef.current.shell })
-                sApi.setSize({ height: panelCollapsedRef.current.shell })
-              } else {
-                sApi.setConstraints({ minimumHeight: panelMinRef.current.shell, maximumHeight: Number.MAX_SAFE_INTEGER })
-                // Ensure shell height respects minimum constraint
-                const shellHeight = Math.max(panelSizesRef.current.shell, panelMinRef.current.shell)
-                sApi.setSize({ height: shellHeight })
-              }
-            }
-          }
-
-          collapsedEffectRan.current = true
-        })
+        applyInitialSizes(
+          dockApi,
+          panelSizesRef,
+          panelMinRef,
+          panelCollapsedRef,
+          collapsedState,
+          paneRegistry,
+        )
+        collapsedEffectRan.current = true
       }
       return
     }

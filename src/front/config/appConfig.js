@@ -54,6 +54,9 @@ const DEFAULT_CONFIG = {
     },
   },
 
+  // Optional initial DockView layout override
+  defaultLayout: null,
+
   // API configuration
   api: {
     baseUrl: '',
