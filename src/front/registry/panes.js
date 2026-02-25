@@ -64,6 +64,7 @@ import CompanionPanel from '../panels/CompanionPanel'
  * @property {boolean} [essential] - If true, pane must exist in layout (default: false)
  * @property {boolean} [locked] - If true, pane group is locked (no close button) (default: false)
  * @property {boolean} [hideHeader] - If true, group header is hidden (default: false)
+ * @property {string} [tabComponent] - Optional Dockview tab component key
  * @property {Object} [constraints] - Size constraints { minWidth, minHeight, collapsedWidth, collapsedHeight }
  * @property {string[]} [requiresFeatures] - Backend features this pane requires.
  *   Checked against capabilities.features from /api/capabilities.
@@ -344,6 +345,7 @@ const createDefaultRegistry = () => {
   registry.register({
     id: 'shell',
     component: ShellTerminalPanel,
+    tabComponent: 'noClose',
     title: 'Shell',
     placement: 'bottom',
     essential: true,

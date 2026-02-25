@@ -39,7 +39,8 @@ import {
 import ThemeToggle from './components/ThemeToggle'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
-import {
+import paneRegistry, {
+  getPane,
   registerPane,
   getGatedComponents,
   getKnownComponents,
@@ -1006,54 +1007,58 @@ export default function App() {
     const api = event.api
     setDockApi(api)
 
-    const applyLockedPanels = () => {
-      const filetreePanel = api.getPanel('filetree')
-      const terminalPanel = api.getPanel('terminal')
-      const companionPanel = api.getPanel('companion')
+    const applyPanelConstraints = (api, registry, capabilityFlags, panelMinRef) => {
+      const paneConfigs = typeof registry?.list === 'function' ? registry.list() : []
 
-      const filetreeGroup = filetreePanel?.group
-      if (filetreeGroup) {
-        filetreeGroup.locked = true
-        filetreeGroup.header.hidden = true
-        filetreeGroup.api.setConstraints({
-          minimumWidth: panelMinRef.current.filetree,
-          maximumWidth: Number.MAX_SAFE_INTEGER,
-        })
-      }
+      paneConfigs.forEach((paneConfig) => {
+        const panel = api.getPanel(paneConfig.id)
+        const group = panel?.group
+        if (!group) return
 
-      if (nativeAgentEnabled) {
-        const terminalGroup = terminalPanel?.group
-        if (terminalGroup) {
-          terminalGroup.locked = true
-          terminalGroup.header.hidden = true
-          terminalGroup.api.setConstraints({
-            minimumWidth: panelMinRef.current.terminal,
-            maximumWidth: Number.MAX_SAFE_INTEGER,
-          })
+        const isTerminal = paneConfig.id === 'terminal'
+        const isCompanion = paneConfig.id === 'companion'
+        if (isTerminal && !capabilityFlags.nativeAgentEnabled) {
+          return
         }
-      }
 
-      if (companionAgentEnabled) {
-        const companionGroup = companionPanel?.group
-        if (companionGroup) {
-          companionGroup.locked = true
-          companionGroup.header.hidden = true
-          companionGroup.api.setConstraints({
-            minimumWidth: panelMinRef.current.companion,
-            maximumWidth: Number.MAX_SAFE_INTEGER,
-          })
+        const effectiveLocked = isCompanion && capabilityFlags.companionAgentEnabled
+          ? true
+          : paneConfig.locked
+        if (typeof effectiveLocked === 'boolean') {
+          group.locked = effectiveLocked
         }
-      }
 
-      const shellPanel = api.getPanel('shell')
-      const shellGroup = shellPanel?.group
-      if (shellGroup) {
-        // Don't lock or hide header - shell has collapse button
-        shellGroup.api.setConstraints({
-          minimumHeight: panelMinRef.current.shell,
-          maximumHeight: Number.MAX_SAFE_INTEGER,
-        })
-      }
+        if (paneConfig.hideHeader === true) {
+          group.header.hidden = true
+        } else if (paneConfig.hideHeader === false) {
+          // Explicit reset prevents stale hidden state from saved layouts.
+          group.header.hidden = false
+        }
+
+        const configMin = panelMinRef?.current?.[paneConfig.id]
+        const hasConfigMin = Number.isFinite(configMin)
+        const fallbackMinWidth = paneConfig.constraints?.minWidth
+        const fallbackMinHeight = paneConfig.constraints?.minHeight
+        const minimumWidth = Number.isFinite(fallbackMinWidth)
+          ? (hasConfigMin ? configMin : fallbackMinWidth)
+          : undefined
+        const minimumHeight = Number.isFinite(fallbackMinHeight)
+          ? (hasConfigMin ? configMin : fallbackMinHeight)
+          : undefined
+        const constraints = {}
+
+        if (Number.isFinite(minimumWidth)) {
+          constraints.minimumWidth = minimumWidth
+          constraints.maximumWidth = Number.MAX_SAFE_INTEGER
+        }
+        if (Number.isFinite(minimumHeight)) {
+          constraints.minimumHeight = minimumHeight
+          constraints.maximumHeight = Number.MAX_SAFE_INTEGER
+        }
+        if (Object.keys(constraints).length > 0) {
+          group.api.setConstraints(constraints)
+        }
+      })
     }
 
     const ensureCorePanels = () => {
@@ -1150,11 +1155,12 @@ export default function App() {
 
       // Add shell panel BELOW the center group - splits only center column
       let shellPanel = api.getPanel('shell')
+      const shellPaneConfig = getPane('shell')
       if (!shellPanel && emptyPanel?.group) {
         shellPanel = api.addPanel({
           id: 'shell',
           component: 'shell',
-          tabComponent: 'noClose',
+          tabComponent: shellPaneConfig?.tabComponent,
           title: 'Shell',
           position: { direction: 'below', referenceGroup: emptyPanel.group },
           params: {
@@ -1184,7 +1190,12 @@ export default function App() {
       }
       // centerGroupRef was already set above when creating empty-center if no editors
 
-      applyLockedPanels()
+      applyPanelConstraints(
+        api,
+        paneRegistry,
+        { nativeAgentEnabled, companionAgentEnabled },
+        panelMinRef,
+      )
     }
 
     // Check if there's a saved layout - if so, DON'T create panels here
@@ -1239,10 +1250,7 @@ export default function App() {
     if (!hasSavedLayout || invalidLayoutFound) {
       ensureCorePanels()
     }
-    ensureCorePanelsRef.current = () => {
-      ensureCorePanels()
-      applyLockedPanels()
-    }
+    ensureCorePanelsRef.current = ensureCorePanels
 
     // Apply initial panel sizes for fresh layout
     // (Restored layouts will have sizes reapplied in the layout restoration effect)
