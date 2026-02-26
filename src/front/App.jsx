@@ -584,16 +584,20 @@ export default function App() {
   }, [collapsed.companion, dockApi])
 
   const SECTION_HEADER_HEIGHT = 28
+  const LEFT_PANE_HEADER_HEIGHT = 24
   const sectionSizesRef = useRef({})
 
   const toggleSectionCollapse = useCallback((panelId) => {
     if (!dockApi) return
     const panel = dockApi.getPanel(panelId)
     const group = panel?.group
+    // First sidebar panel renders LeftPaneHeader, so its collapsed height is taller
+    const isFirstPanel = leftSidebarPanelIds[0] === panelId
+    const collapsedHeight = SECTION_HEADER_HEIGHT + (isFirstPanel ? LEFT_PANE_HEADER_HEIGHT : 0)
     if (group && !sectionCollapsed[panelId]) {
       // Capture current height before collapsing
       const currentHeight = group.api.height
-      if (currentHeight > SECTION_HEADER_HEIGHT) {
+      if (currentHeight > collapsedHeight) {
         sectionSizesRef.current = { ...sectionSizesRef.current, [panelId]: currentHeight }
       }
     }
@@ -603,10 +607,10 @@ export default function App() {
       if (group) {
         if (next[panelId]) {
           group.api.setConstraints({
-            minimumHeight: SECTION_HEADER_HEIGHT,
-            maximumHeight: SECTION_HEADER_HEIGHT,
+            minimumHeight: collapsedHeight,
+            maximumHeight: collapsedHeight,
           })
-          group.api.setSize({ height: SECTION_HEADER_HEIGHT })
+          group.api.setSize({ height: collapsedHeight })
         } else {
           group.api.setConstraints({
             minimumHeight: 60,
@@ -620,7 +624,7 @@ export default function App() {
       }
       return next
     })
-  }, [dockApi, sectionCollapsed])
+  }, [dockApi, sectionCollapsed, leftSidebarPanelIds])
 
   const toggleShell = useCallback(() => {
     if (!collapsed.shell && dockApi) {
