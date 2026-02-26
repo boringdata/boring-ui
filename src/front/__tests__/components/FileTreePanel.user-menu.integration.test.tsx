@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import FileTreePanel from '../../panels/FileTreePanel'
+import { ThemeProvider } from '../../hooks/useTheme'
 
 vi.mock('../../components/FileTree', () => ({
   default: () => <div data-testid="file-tree">File tree</div>,
@@ -33,10 +34,12 @@ const makeParams = (overrides = {}) => ({
   ...overrides,
 })
 
+const renderWithTheme = (ui) => render(<ThemeProvider>{ui}</ThemeProvider>)
+
 describe('FileTreePanel + UserMenu integration', () => {
   it('renders real collapsed menu and triggers action callbacks', async () => {
     const params = makeParams()
-    render(<FileTreePanel params={params} />)
+    renderWithTheme(<FileTreePanel params={params} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
     expect(screen.getByRole('menu')).toBeInTheDocument()
@@ -49,7 +52,7 @@ describe('FileTreePanel + UserMenu integration', () => {
 
   it('passes workspace context for switch/create/settings actions', async () => {
     const params = makeParams()
-    render(<FileTreePanel params={params} />)
+    renderWithTheme(<FileTreePanel params={params} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Switch workspace' }))
@@ -69,7 +72,7 @@ describe('FileTreePanel + UserMenu integration', () => {
       userMenuStatusMessage: 'Control plane unreachable.',
       userMenuDisabledActions: ['switch'],
     })
-    render(<FileTreePanel params={params} />)
+    renderWithTheme(<FileTreePanel params={params} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Control plane unreachable.')

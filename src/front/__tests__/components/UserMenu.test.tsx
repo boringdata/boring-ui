@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import UserMenu from '../../components/UserMenu'
+import { ThemeProvider } from '../../hooks/useTheme'
 
 const makeProps = () => ({
   email: 'john@example.com',
@@ -12,22 +13,24 @@ const makeProps = () => ({
   onLogout: vi.fn(),
 })
 
+const renderWithTheme = (ui) => render(<ThemeProvider>{ui}</ThemeProvider>)
+
 describe('UserMenu', () => {
   describe('Avatar Rendering', () => {
     it('renders first letter of email as avatar', () => {
-      render(<UserMenu {...makeProps()} />)
+      renderWithTheme(<UserMenu {...makeProps()} />)
       expect(screen.getByRole('button', { name: 'User menu' })).toHaveTextContent('J')
     })
 
     it('renders question mark when email is missing', () => {
-      render(<UserMenu {...makeProps()} email="" />)
+      renderWithTheme(<UserMenu {...makeProps()} email="" />)
       expect(screen.getByRole('button', { name: 'User menu' })).toHaveTextContent('?')
     })
   })
 
   describe('Dropdown Toggle', () => {
     it('opens and closes when trigger is clicked', () => {
-      render(<UserMenu {...makeProps()} />)
+      renderWithTheme(<UserMenu {...makeProps()} />)
 
       const trigger = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(trigger)
@@ -38,7 +41,7 @@ describe('UserMenu', () => {
     })
 
     it('closes when clicking outside', () => {
-      render(
+      renderWithTheme(
         <div>
           <UserMenu {...makeProps()} />
           <button data-testid="outside">Outside</button>
@@ -55,7 +58,7 @@ describe('UserMenu', () => {
 
   describe('Dropdown Content', () => {
     it('shows identity/workspace details and expected shell controls', () => {
-      render(<UserMenu {...makeProps()} />)
+      renderWithTheme(<UserMenu {...makeProps()} />)
       fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
 
       const menu = screen.getByRole('menu')
@@ -69,7 +72,7 @@ describe('UserMenu', () => {
 
     it('invokes callbacks and closes when action is selected', () => {
       const props = makeProps()
-      render(<UserMenu {...props} />)
+      renderWithTheme(<UserMenu {...props} />)
       fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
       fireEvent.click(screen.getByRole('menuitem', { name: 'Switch workspace' }))
 
@@ -80,7 +83,7 @@ describe('UserMenu', () => {
     it('safely handles async callback rejection paths', () => {
       const props = makeProps()
       props.onSwitchWorkspace = vi.fn().mockRejectedValue(new Error('network failure'))
-      render(<UserMenu {...props} />)
+      renderWithTheme(<UserMenu {...props} />)
       fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
       fireEvent.click(screen.getByRole('menuitem', { name: 'Switch workspace' }))
 
@@ -89,7 +92,7 @@ describe('UserMenu', () => {
     })
 
     it('renders disabled action items when callbacks are not provided', () => {
-      render(<UserMenu email="john@example.com" workspaceName="My Workspace" workspaceId="ws-123" />)
+      renderWithTheme(<UserMenu email="john@example.com" workspaceName="My Workspace" workspaceId="ws-123" />)
       fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
 
       expect(screen.getByRole('menuitem', { name: 'Switch workspace' })).toBeDisabled()
@@ -101,7 +104,7 @@ describe('UserMenu', () => {
     it('shows status banner, supports retry, and disables specified actions', () => {
       const props = makeProps()
       const onRetry = vi.fn()
-      render(
+      renderWithTheme(
         <UserMenu
           {...props}
           statusMessage="Not signed in."
@@ -124,14 +127,14 @@ describe('UserMenu', () => {
 
   describe('Accessibility and Classes', () => {
     it('sets expected aria attributes', () => {
-      render(<UserMenu {...makeProps()} />)
+      renderWithTheme(<UserMenu {...makeProps()} />)
       const trigger = screen.getByRole('button', { name: 'User menu' })
       expect(trigger).toHaveAttribute('aria-haspopup', 'true')
       expect(trigger).toHaveAttribute('aria-expanded', 'false')
     })
 
     it('applies expected shell class names', () => {
-      const { container } = render(<UserMenu {...makeProps()} />)
+      const { container } = renderWithTheme(<UserMenu {...makeProps()} />)
       fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
 
       expect(container.querySelector('.user-menu')).toBeInTheDocument()
