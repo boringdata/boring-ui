@@ -51,16 +51,6 @@ export default function FileTreePanel({ params }) {
   if (collapsed) {
     return (
       <div className="panel-content filetree-panel filetree-collapsed">
-        <button
-          type="button"
-          className="sidebar-toggle-btn"
-          onClick={onToggleCollapse}
-          title="Expand sidebar"
-          aria-label="Expand sidebar"
-        >
-          <ChevronRight size={12} />
-        </button>
-        <div className="sidebar-collapsed-label">{viewMode === 'files' ? 'Files' : 'Changes'}</div>
         <div className="filetree-collapsed-footer">
           <UserMenu
             email={userEmail}
