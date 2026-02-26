@@ -83,24 +83,7 @@ export default function FileTreePanel({ params }) {
 
   return (
     <div className="panel-content filetree-panel">
-      {showSidebarToggle && (
-        <LeftPaneHeader onToggleSidebar={onToggleCollapse}>
-          <UserMenu
-            email={userEmail}
-            workspaceName={workspaceName}
-            workspaceId={workspaceId}
-            statusMessage={userMenuStatusMessage}
-            statusTone={userMenuStatusTone}
-            onRetry={onUserMenuRetry}
-            disabledActions={userMenuDisabledActions}
-            onSwitchWorkspace={onSwitchWorkspace}
-            onCreateWorkspace={onCreateWorkspace}
-            onOpenUserSettings={onOpenUserSettings}
-            onLogout={onLogout}
-            collapsed
-          />
-        </LeftPaneHeader>
-      )}
+      {showSidebarToggle && <LeftPaneHeader onToggleSidebar={onToggleCollapse} />}
       <SidebarSectionHeader
         title="Files"
         sectionCollapsed={sectionCollapsed}
@@ -156,23 +139,21 @@ export default function FileTreePanel({ params }) {
           )}
         </div>
       )}
-      {!showSidebarToggle && (
-        <div className="filetree-footer">
-          <UserMenu
-            email={userEmail}
-            workspaceName={workspaceName}
-            workspaceId={workspaceId}
-            statusMessage={userMenuStatusMessage}
-            statusTone={userMenuStatusTone}
-            onRetry={onUserMenuRetry}
-            disabledActions={userMenuDisabledActions}
-            onSwitchWorkspace={onSwitchWorkspace}
-            onCreateWorkspace={onCreateWorkspace}
-            onOpenUserSettings={onOpenUserSettings}
-            onLogout={onLogout}
-          />
-        </div>
-      )}
+      <div className="filetree-footer">
+        <UserMenu
+          email={userEmail}
+          workspaceName={workspaceName}
+          workspaceId={workspaceId}
+          statusMessage={userMenuStatusMessage}
+          statusTone={userMenuStatusTone}
+          onRetry={onUserMenuRetry}
+          disabledActions={userMenuDisabledActions}
+          onSwitchWorkspace={onSwitchWorkspace}
+          onCreateWorkspace={onCreateWorkspace}
+          onOpenUserSettings={onOpenUserSettings}
+          onLogout={onLogout}
+        />
+      </div>
     </div>
   )
 }
