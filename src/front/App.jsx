@@ -1682,11 +1682,11 @@ export default function App() {
       let provider = sourceProvider
 
       if (!component) {
-        if (nativeAgentEnabled) {
-          component = 'terminal'
-        } else if (companionAgentEnabled && capabilities?.features?.companion === true) {
+        if (companionAgentEnabled && capabilities?.features?.companion === true) {
           component = 'companion'
           provider = 'companion'
+        } else if (nativeAgentEnabled) {
+          component = 'terminal'
         } else if (piAgentEnabled && capabilities?.features?.pi === true) {
           component = 'companion'
           provider = 'pi'

@@ -44,7 +44,7 @@ test.describe('Companion Integration', () => {
 
       // Embedded companion mode should still render companion panels.
       const companionPanel = page.locator('[data-testid="companion-panel"]')
-      expect(await companionPanel.count()).toBeGreaterThan(0)
+      await expect(companionPanel.first()).toBeVisible({ timeout: 10000 })
 
       // No companion-related console errors
       const companionErrors = consoleErrors.filter(

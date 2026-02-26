@@ -39,6 +39,16 @@ export default [
     },
   },
   {
+    files: ['src/front/__tests__/fixtures/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.es2021,
+      },
+    },
+  },
+  {
     ignores: ['dist/**', 'node_modules/**'],
   },
 ]
