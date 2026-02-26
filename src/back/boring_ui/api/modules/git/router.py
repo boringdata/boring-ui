@@ -1,4 +1,6 @@
 """Git operation routes for boring-ui API."""
+import asyncio
+
 from fastapi import APIRouter, Request
 
 from ...config import APIConfig
@@ -8,20 +10,20 @@ from .service import GitService
 
 def create_git_router(config: APIConfig) -> APIRouter:
     """Create git operations router.
-    
+
     Args:
         config: API configuration with workspace_root
-        
+
     Returns:
         FastAPI router with git endpoints
     """
     router = APIRouter(tags=['git'])
     service = GitService(config)
-    
+
     @router.get('/status')
     async def get_status(request: Request):
         """Get git repository status.
-        
+
         Returns:
             dict with is_repo (bool) and files (dict of status entries)
         """
@@ -32,15 +34,15 @@ def create_git_router(config: APIConfig) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.get_status()
-    
+        return await asyncio.to_thread(service.get_status)
+
     @router.get('/diff')
     async def get_diff(request: Request, path: str):
         """Get diff for a specific file against HEAD.
-        
+
         Args:
             path: File path relative to workspace root
-            
+
         Returns:
             dict with diff content and path
         """
@@ -51,15 +53,15 @@ def create_git_router(config: APIConfig) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.get_diff(path)
-    
+        return await asyncio.to_thread(service.get_diff, path)
+
     @router.get('/show')
     async def get_show(request: Request, path: str):
         """Get file contents at HEAD.
-        
+
         Args:
             path: File path relative to workspace root
-            
+
         Returns:
             dict with content at HEAD (or null if not tracked)
         """
@@ -70,6 +72,6 @@ def create_git_router(config: APIConfig) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.get_show(path)
-    
+        return await asyncio.to_thread(service.get_show, path)
+
     return router

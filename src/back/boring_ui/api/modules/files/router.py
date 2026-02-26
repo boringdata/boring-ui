@@ -1,4 +1,6 @@
 """File operation routes for boring-ui API."""
+import asyncio
+
 from fastapi import APIRouter, Query, Request
 
 from ...config import APIConfig
@@ -10,17 +12,17 @@ from .service import FileService
 
 def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
     """Create file operations router.
-    
+
     Args:
         config: API configuration (for path validation)
         storage: Storage backend
-        
+
     Returns:
         Configured APIRouter with file endpoints
     """
     router = APIRouter(tags=['files'])
     service = FileService(config, storage)
-    
+
     @router.get('/list')
     async def list_files(request: Request, path: str = '.'):
         """List directory contents."""
@@ -31,8 +33,8 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.list_directory(path)
-    
+        return await asyncio.to_thread(service.list_directory, path)
+
     @router.get('/read')
     async def read_file(request: Request, path: str):
         """Read file contents."""
@@ -43,8 +45,8 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.read_file(path)
-    
+        return await asyncio.to_thread(service.read_file, path)
+
     @router.put('/write')
     async def write_file(request: Request, path: str, body: FileContent):
         """Write file contents."""
@@ -55,8 +57,8 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.write_file(path, body.content)
-    
+        return await asyncio.to_thread(service.write_file, path, body.content)
+
     @router.delete('/delete')
     async def delete_file(request: Request, path: str):
         """Delete file."""
@@ -67,18 +69,11 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.delete_file(path)
-    
+        return await asyncio.to_thread(service.delete_file, path)
+
     @router.post('/rename')
     async def rename_file(request: Request, body: RenameRequest):
-        """Rename file.
-        
-        Args:
-            body: Request with old_path and new_path
-            
-        Returns:
-            dict with success status and new path
-        """
+        """Rename file."""
         deny = enforce_delegated_policy_or_none(
             request,
             {"workspace.files.write"},
@@ -86,18 +81,11 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.rename_file(body.old_path, body.new_path)
-    
+        return await asyncio.to_thread(service.rename_file, body.old_path, body.new_path)
+
     @router.post('/move')
     async def move_file(request: Request, body: MoveRequest):
-        """Move file to a different directory.
-        
-        Args:
-            body: Request with src_path and dest_dir
-            
-        Returns:
-            dict with success status and new path
-        """
+        """Move file to a different directory."""
         deny = enforce_delegated_policy_or_none(
             request,
             {"workspace.files.write"},
@@ -105,25 +93,15 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.move_file(body.src_path, body.dest_dir)
-    
+        return await asyncio.to_thread(service.move_file, body.src_path, body.dest_dir)
+
     @router.get('/search')
     async def search_files(
         request: Request,
         q: str = Query(..., min_length=1, description='Search pattern (glob-style)'),
         path: str = Query('.', description='Directory to search in'),
     ):
-        """Search files by name pattern.
-        
-        Uses glob-style pattern matching (e.g., *.py, test_*).
-        
-        Args:
-            q: Search pattern
-            path: Directory to search in
-            
-        Returns:
-            dict with matches list
-        """
+        """Search files by name pattern."""
         deny = enforce_delegated_policy_or_none(
             request,
             {"workspace.files.read"},
@@ -131,6 +109,6 @@ def create_file_router(config: APIConfig, storage: Storage) -> APIRouter:
         )
         if deny is not None:
             return deny
-        return service.search_files(q, path)
-    
+        return await asyncio.to_thread(service.search_files, q, path)
+
     return router
