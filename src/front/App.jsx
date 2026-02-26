@@ -1160,25 +1160,49 @@ export default function App() {
     [normalizeApprovalPath],
   )
 
+  const isLeftSidebarGroup = useCallback((group) => {
+    if (!group) return false
+    const groupPanels = Array.isArray(group.panels) ? group.panels : []
+    return groupPanels.some((panel) => {
+      const panelId = typeof panel?.id === 'string' ? panel.id : ''
+      return leftSidebarPanelIds.includes(panelId)
+    })
+  }, [leftSidebarPanelIds])
+
+  const findCenterAnchorPanel = useCallback((api) => {
+    if (!api) return null
+    const allPanels = Array.isArray(api.panels) ? api.panels : []
+    return allPanels.find((panel) => {
+      if (!panel?.group || isLeftSidebarGroup(panel.group)) return false
+      const panelId = typeof panel?.id === 'string' ? panel.id : ''
+      return (
+        panelId.startsWith('editor-')
+        || panelId.startsWith('review-')
+        || panelId.startsWith('deck-')
+        || panelId.startsWith('chart-')
+      )
+    }) || null
+  }, [isLeftSidebarGroup])
+
   const getLiveCenterGroup = useCallback((api) => {
     if (!api) return null
     const candidate = centerGroupRef.current
     if (!candidate) return null
 
     const groups = Array.isArray(api.groups) ? api.groups : []
-    if (groups.includes(candidate)) {
+    if (groups.includes(candidate) && !isLeftSidebarGroup(candidate)) {
       return candidate
     }
     if (candidate.id) {
       const matchingGroup = groups.find((group) => group?.id === candidate.id)
-      if (matchingGroup) {
+      if (matchingGroup && !isLeftSidebarGroup(matchingGroup)) {
         centerGroupRef.current = matchingGroup
         return matchingGroup
       }
     }
     centerGroupRef.current = null
     return null
-  }, [])
+  }, [isLeftSidebarGroup])
 
   // Open file in a specific position (used for drag-drop)
   const openFileAtPosition = useCallback(
@@ -1280,17 +1304,14 @@ export default function App() {
       const emptyPanel = dockApi.getPanel('empty-center')
       const shellPanel = dockApi.getPanel('shell')
       const centerGroup = getLiveCenterGroup(dockApi)
-
-      // Find existing editor panels to add as sibling tab
-      const allPanels = Array.isArray(dockApi.panels) ? dockApi.panels : []
-      const existingEditorPanel = allPanels.find(p => p.id.startsWith('editor-') || p.id.startsWith('review-'))
+      const existingCenterPanel = findCenterAnchorPanel(dockApi)
 
       let position
-      if (existingEditorPanel?.group) {
-        // Add as tab next to existing editors/reviews
-        position = { referenceGroup: existingEditorPanel.group }
-      } else if (centerGroup) {
+      if (centerGroup) {
         position = { referenceGroup: centerGroup }
+      } else if (existingCenterPanel?.group) {
+        // Add as tab next to existing center editors/charts/reviews.
+        position = { referenceGroup: existingCenterPanel.group }
       } else if (emptyPanel?.group) {
         position = { referenceGroup: emptyPanel.group }
       } else if (shellPanel?.group) {
@@ -1303,7 +1324,7 @@ export default function App() {
       openFileAtPosition(path, position)
       return true
     },
-    [dockApi, getLiveCenterGroup, openFileAtPosition]
+    [dockApi, findCenterAnchorPanel, getLiveCenterGroup, openFileAtPosition]
   )
 
   const openFileToSide = useCallback(
@@ -1323,12 +1344,17 @@ export default function App() {
       const centerGroup = getLiveCenterGroup(dockApi)
       let position
 
-      if (activePanel && activePanel.id.startsWith('editor-')) {
+      if (activePanel && activePanel.id.startsWith('editor-') && !isLeftSidebarGroup(activePanel.group)) {
         // Split to the right of the current editor
         position = { direction: 'right', referencePanel: activePanel.id }
       } else if (centerGroup) {
-        // Use center group if no editor is active
-        position = { direction: 'right', referenceGroup: centerGroup }
+        // Split against a concrete center panel id to avoid docking drift.
+        const anchorPanelId = centerGroup.activePanel?.id || centerGroup.panels?.[0]?.id
+        if (anchorPanelId) {
+          position = { direction: 'right', referencePanel: anchorPanelId }
+        } else {
+          position = { referenceGroup: centerGroup }
+        }
       } else {
         // Fallback: to the right of filetree (but will be left of terminal)
         position = { direction: 'right', referencePanel: 'filetree' }
@@ -1336,7 +1362,7 @@ export default function App() {
 
       openFileAtPosition(path, position)
     },
-    [dockApi, getLiveCenterGroup, openFileAtPosition]
+    [dockApi, getLiveCenterGroup, isLeftSidebarGroup, openFileAtPosition]
   )
 
   const openDiff = useCallback(
@@ -1694,7 +1720,7 @@ export default function App() {
         ? 'Code Sessions'
         : provider === 'pi'
           ? 'PI Agent'
-          : 'Companion'
+          : 'Agent'
       const matchingPanels = listDockPanels(dockApi).filter(
         (panel) =>
           getPanelComponent(panel) === component
@@ -1743,6 +1769,17 @@ export default function App() {
         position = { referenceGroup: sourcePanel.group }
       } else if (defaultReferencePanel?.group) {
         position = { referenceGroup: defaultReferencePanel.group }
+      } else if (mode === 'split') {
+        const emptyCenter = dockApi.getPanel('empty-center')
+        if (emptyCenter) {
+          position = { direction: 'right', referencePanel: emptyCenter.id }
+        } else if (centerGroup?.activePanel?.id) {
+          position = { direction: 'right', referencePanel: centerGroup.activePanel.id }
+        } else if (centerGroup?.panels?.[0]?.id) {
+          position = { direction: 'right', referencePanel: centerGroup.panels[0].id }
+        } else if (centerGroup) {
+          position = { referenceGroup: centerGroup }
+        }
       } else if (centerGroup) {
         position = { referenceGroup: centerGroup }
       } else if (shellGroup) {
@@ -2021,7 +2058,7 @@ export default function App() {
           ? api.getPanels()
           : []
       const editorPanels = panels.filter((panel) =>
-        panel.id.startsWith('editor-'),
+        panel.id.startsWith('editor-') && !isLeftSidebarGroup(panel.group),
       )
       if (editorPanels.length > 0) {
         centerGroupRef.current = editorPanels[0].group
@@ -3107,7 +3144,7 @@ export default function App() {
     // does not trigger re-creation until a full reload.
     startupChatOpened.current = true
     if (countAllAgentPanels(dockApi) === 0) {
-      addChatPanel({ mode: 'tab' })
+      addChatPanel({ mode: 'split' })
     }
   }, [dockApi, capabilitiesLoading, projectRoot, addChatPanel])
 
