@@ -23,6 +23,7 @@ export default function FileTreePanel({ params }) {
     workspaceName,
     workspaceId,
     onSwitchWorkspace,
+    showSwitchWorkspace,
     onCreateWorkspace,
     onOpenUserSettings,
     onLogout,
@@ -72,6 +73,7 @@ export default function FileTreePanel({ params }) {
             statusTone={userMenuStatusTone}
             onRetry={onUserMenuRetry}
             disabledActions={userMenuDisabledActions}
+            showSwitchWorkspace={showSwitchWorkspace}
             onSwitchWorkspace={onSwitchWorkspace}
             onCreateWorkspace={onCreateWorkspace}
             onOpenUserSettings={onOpenUserSettings}
@@ -159,6 +161,7 @@ export default function FileTreePanel({ params }) {
           statusTone={userMenuStatusTone}
           onRetry={onUserMenuRetry}
           disabledActions={userMenuDisabledActions}
+          showSwitchWorkspace={showSwitchWorkspace}
           onSwitchWorkspace={onSwitchWorkspace}
           onCreateWorkspace={onCreateWorkspace}
           onOpenUserSettings={onOpenUserSettings}

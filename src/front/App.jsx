@@ -475,6 +475,12 @@ export default function App() {
 
   const userMenuStatusMessage = userMenuIdentityError || userMenuWorkspaceError
   const userMenuStatusTone = userMenuStatusMessage ? 'error' : ''
+  const userMenuCanSwitchWorkspace = useMemo(() => {
+    if (!currentWorkspaceId) return false
+    return workspaceOptions.some(
+      (workspace) => workspace?.id && workspace.id !== currentWorkspaceId,
+    )
+  }, [workspaceOptions, currentWorkspaceId])
   const userMenuDisabledActions = useMemo(() => {
     if (userMenuAuthStatus === 'unauthenticated') {
       return ['switch', 'create', 'settings', 'logout']
@@ -899,6 +905,8 @@ export default function App() {
       // ignore storage errors for local-only settings intent
     }
     window.dispatchEvent(new CustomEvent('boring-ui:user-settings-open', { detail }))
+    const route = routes.controlPlane.auth.settings()
+    window.location.assign(buildApiUrl(route.path, route.query))
   }, [storagePrefix, projectRoot, currentWorkspaceId])
 
   const handleLogout = useCallback(() => {
@@ -1946,6 +1954,7 @@ export default function App() {
             userMenuStatusTone,
             onUserMenuRetry: handleUserMenuRetry,
             userMenuDisabledActions,
+            showSwitchWorkspace: userMenuCanSwitchWorkspace,
             workspaceName: activeWorkspaceName,
             workspaceId: currentWorkspaceId,
             onSwitchWorkspace: handleSwitchWorkspace,
@@ -2619,6 +2628,7 @@ export default function App() {
             userMenuStatusTone,
             onUserMenuRetry: handleUserMenuRetry,
             userMenuDisabledActions,
+            showSwitchWorkspace: userMenuCanSwitchWorkspace,
             workspaceName: activeWorkspaceName,
             workspaceId: currentWorkspaceId,
             onSwitchWorkspace: handleSwitchWorkspace,
@@ -2947,6 +2957,7 @@ export default function App() {
         userMenuStatusTone,
         onUserMenuRetry: handleUserMenuRetry,
         userMenuDisabledActions,
+        showSwitchWorkspace: userMenuCanSwitchWorkspace,
         workspaceName: activeWorkspaceName,
         workspaceId: currentWorkspaceId,
         onSwitchWorkspace: handleSwitchWorkspace,
@@ -2985,6 +2996,7 @@ export default function App() {
     userMenuStatusTone,
     handleUserMenuRetry,
     userMenuDisabledActions,
+    userMenuCanSwitchWorkspace,
     activeWorkspaceName,
     currentWorkspaceId,
     handleSwitchWorkspace,

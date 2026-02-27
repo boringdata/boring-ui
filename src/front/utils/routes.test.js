@@ -120,6 +120,10 @@ describe('routes helper', () => {
       path: '/auth/logout',
       query: undefined,
     })
+    expect(routes.controlPlane.auth.settings()).toEqual({
+      path: '/auth/settings',
+      query: undefined,
+    })
   })
 
   it('builds canonical workspace navigation paths', () => {

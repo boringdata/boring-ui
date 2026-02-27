@@ -13,6 +13,7 @@ export const routes = {
   controlPlane: {
     auth: {
       logout: () => ({ path: '/auth/logout', query: undefined }),
+      settings: () => ({ path: '/auth/settings', query: undefined }),
     },
     me: {
       get: () => ({ path: '/api/v1/me', query: undefined }),

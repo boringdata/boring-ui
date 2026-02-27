@@ -25,6 +25,7 @@ export default function UserMenu({
   statusTone = 'error',
   onRetry,
   disabledActions = [],
+  showSwitchWorkspace = true,
   onSwitchWorkspace,
   onCreateWorkspace,
   onOpenUserSettings,
@@ -88,7 +89,9 @@ export default function UserMenu({
   }
 
   const actionItems = [
-    { key: 'switch', label: 'Switch workspace', onClick: onSwitchWorkspace },
+    ...(showSwitchWorkspace
+      ? [{ key: 'switch', label: 'Switch workspace', onClick: onSwitchWorkspace }]
+      : []),
     { key: 'create', label: 'Create workspace', onClick: onCreateWorkspace },
     { key: 'settings', label: 'User settings', onClick: onOpenUserSettings },
     { key: 'logout', label: 'Logout', onClick: onLogout },
