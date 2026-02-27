@@ -319,14 +319,7 @@ export default {
 git clone <repo> boring-ui
 cd boring-ui
 npm install
-
-# Start frontend dev server
-npm run dev
-
-# In another terminal, start backend
-cd src/back
-pip install -e .
-python -m boring_ui.api
+uv sync
 ```
 
 ### Minimal Configuration
@@ -348,9 +341,27 @@ export default {
 ### Running
 
 ```bash
-npm run dev        # Development server at localhost:5173
-npm run build      # Production build
-npm run preview    # Preview production build
+# Terminal 1: frontend dev server (Vite HMR)
+npm run dev
+
+# Terminal 2: backend API server
+uv run python -m boring_ui.api
+
+# Optional production build + preview
+npm run build
+npm run preview
+```
+
+### Shared Packaging Helper (Downstream Apps)
+
+Downstream apps that embed boring-ui can reuse this helper to build frontend assets and stage runtime files:
+
+```bash
+python3 scripts/package_app_assets.py \
+  --frontend-dir /path/to/app/frontend \
+  --static-dir /path/to/app/runtime_static \
+  --companion-source /path/to/boring-ui/src/companion_service/launch.sh \
+  --companion-target /path/to/app/runtime_companion/launch.sh
 ```
 
 ## API Reference
