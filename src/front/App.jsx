@@ -3056,6 +3056,7 @@ export default function App() {
     const shellPanel = dockApi.getPanel('shell')
     if (shellPanel) {
       shellPanel.api.updateParameters({
+        panelId: shellPanel.id,
         collapsed: collapsed.shell,
         onToggleCollapse: toggleShell,
       })

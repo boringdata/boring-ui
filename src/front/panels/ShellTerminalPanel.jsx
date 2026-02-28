@@ -4,6 +4,12 @@ import Terminal from '../components/Terminal'
 
 const SESSION_STORAGE_KEY = 'kurt-web-shell-sessions'
 const ACTIVE_SESSION_KEY = 'kurt-web-shell-active'
+const DEFAULT_PANEL_STORAGE_SCOPE = 'shell'
+
+const scopedStorageKey = (baseKey, panelId) => {
+  const scope = String(panelId || DEFAULT_PANEL_STORAGE_SCOPE)
+  return `${baseKey}-${scope}`
+}
 
 const isUuid = (value) =>
   typeof value === 'string'
@@ -33,9 +39,9 @@ const createSessionId = () => {
   return fallbackUuidV4()
 }
 
-const loadSessions = () => {
+const loadSessions = (panelId) => {
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+    const raw = localStorage.getItem(scopedStorageKey(SESSION_STORAGE_KEY, panelId))
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed) || parsed.length === 0) return null
@@ -45,9 +51,9 @@ const loadSessions = () => {
   }
 }
 
-const loadActiveSession = () => {
+const loadActiveSession = (panelId) => {
   try {
-    const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
+    const raw = localStorage.getItem(scopedStorageKey(ACTIVE_SESSION_KEY, panelId))
     if (!raw) return null
     const id = Number(raw)
     return Number.isNaN(id) ? null : id
@@ -73,10 +79,13 @@ const serializeSessions = (sessions) =>
   // eslint-disable-next-line no-unused-vars
   sessions.map(({ bannerMessage, resume, ...session }) => session)
 
-export default function ShellTerminalPanel() {
+export default function ShellTerminalPanel({ params }) {
+  const panelId = params?.panelId
   const terminalCounter = useRef(1)
+  const sessionStorageKey = scopedStorageKey(SESSION_STORAGE_KEY, panelId)
+  const activeSessionKey = scopedStorageKey(ACTIVE_SESSION_KEY, panelId)
   const [sessions, setSessions] = useState(() => {
-    const saved = loadSessions()
+    const saved = loadSessions(panelId)
     if (saved) {
       return saved.map((session, index) => ({
         ...normalizeSession(session, index + 1),
@@ -94,7 +103,7 @@ export default function ShellTerminalPanel() {
     ]
   })
   const [activeId, setActiveId] = useState(() => {
-    const saved = loadActiveSession()
+    const saved = loadActiveSession(panelId)
     if (saved) return saved
     if (saved === 0) return 0
     return null
@@ -185,19 +194,19 @@ export default function ShellTerminalPanel() {
   useEffect(() => {
     try {
       if (sessions.length === 0) {
-        localStorage.removeItem(SESSION_STORAGE_KEY)
+        localStorage.removeItem(sessionStorageKey)
       } else {
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(serializeSessions(sessions)))
+        localStorage.setItem(sessionStorageKey, JSON.stringify(serializeSessions(sessions)))
       }
       if (activeId == null) {
-        localStorage.removeItem(ACTIVE_SESSION_KEY)
+        localStorage.removeItem(activeSessionKey)
       } else {
-        localStorage.setItem(ACTIVE_SESSION_KEY, String(activeId))
+        localStorage.setItem(activeSessionKey, String(activeId))
       }
     } catch {
       // Ignore storage errors
     }
-  }, [sessions, activeId])
+  }, [sessions, activeId, sessionStorageKey, activeSessionKey])
 
   return (
     <div className="panel-content shell-panel-content">

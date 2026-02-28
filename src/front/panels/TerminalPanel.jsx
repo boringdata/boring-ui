@@ -7,6 +7,12 @@ const SESSION_STORAGE_KEY = 'kurt-web-terminal-sessions'
 const ACTIVE_SESSION_KEY = 'kurt-web-terminal-active'
 const CHAT_INTERFACE_KEY = 'kurt-web-terminal-chat-interface'
 const DEFAULT_PROVIDER = 'claude'
+const DEFAULT_PANEL_STORAGE_SCOPE = 'terminal'
+
+const scopedStorageKey = (baseKey, panelId) => {
+  const scope = String(panelId || DEFAULT_PANEL_STORAGE_SCOPE)
+  return `${baseKey}-${scope}`
+}
 
 const createSessionId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -21,9 +27,9 @@ const createSessionId = () => {
   })
 }
 
-const loadSessions = () => {
+const loadSessions = (panelId) => {
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+    const raw = localStorage.getItem(scopedStorageKey(SESSION_STORAGE_KEY, panelId))
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed) || parsed.length === 0) return null
@@ -33,9 +39,9 @@ const loadSessions = () => {
   }
 }
 
-const loadActiveSession = () => {
+const loadActiveSession = (panelId) => {
   try {
-    const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
+    const raw = localStorage.getItem(scopedStorageKey(ACTIVE_SESSION_KEY, panelId))
     if (!raw) return null
     const id = Number(raw)
     return Number.isNaN(id) ? null : id
@@ -81,15 +87,18 @@ export default function TerminalPanel({ params }) {
     normalizeApprovalPath,
   } = params || {}
   const terminalCounter = useRef(1)
+  const sessionStorageKey = scopedStorageKey(SESSION_STORAGE_KEY, panelId)
+  const activeSessionKey = scopedStorageKey(ACTIVE_SESSION_KEY, panelId)
+  const chatInterfaceKey = scopedStorageKey(CHAT_INTERFACE_KEY, panelId)
   const [chatInterface, setChatInterface] = useState(() => {
     try {
-      return localStorage.getItem(CHAT_INTERFACE_KEY) || 'web'
+      return localStorage.getItem(chatInterfaceKey) || 'web'
     } catch {
       return 'web'
     }
   })
   const [sessions, setSessions] = useState(() => {
-    const saved = loadSessions()
+    const saved = loadSessions(panelId)
     if (saved) {
       return saved.map((session, index) => ({
         ...normalizeSession(session, index + 1),
@@ -107,7 +116,7 @@ export default function TerminalPanel({ params }) {
     ]
   })
   const [activeId, setActiveId] = useState(() => {
-    const saved = loadActiveSession()
+    const saved = loadActiveSession(panelId)
     if (saved) return saved
     if (saved === 0) return 0
     return null
@@ -199,28 +208,28 @@ export default function TerminalPanel({ params }) {
   useEffect(() => {
     try {
       if (sessions.length === 0) {
-        localStorage.removeItem(SESSION_STORAGE_KEY)
+        localStorage.removeItem(sessionStorageKey)
       } else {
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(serializeSessions(sessions)))
+        localStorage.setItem(sessionStorageKey, JSON.stringify(serializeSessions(sessions)))
       }
       if (activeId == null) {
-        localStorage.removeItem(ACTIVE_SESSION_KEY)
+        localStorage.removeItem(activeSessionKey)
       } else {
-        localStorage.setItem(ACTIVE_SESSION_KEY, String(activeId))
+        localStorage.setItem(activeSessionKey, String(activeId))
       }
     } catch {
       // Ignore storage errors
     }
-  }, [sessions, activeId])
+  }, [sessions, activeId, sessionStorageKey, activeSessionKey])
 
   // Save chat interface preference
   useEffect(() => {
     try {
-      localStorage.setItem(CHAT_INTERFACE_KEY, chatInterface)
+      localStorage.setItem(chatInterfaceKey, chatInterface)
     } catch {
       // Ignore storage errors
     }
-  }, [chatInterface])
+  }, [chatInterface, chatInterfaceKey])
 
   return (
     <div className="panel-content terminal-panel-content" data-testid="terminal-panel">
