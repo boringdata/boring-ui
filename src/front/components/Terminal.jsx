@@ -287,7 +287,11 @@ export default function Terminal({
         }
 
         if (payload.type === 'error') {
-          term.writeln(`\r\n[bridge] ${payload.data}\r\n`)
+          const bridgeError =
+            typeof payload.data === 'string' && payload.data.trim().length > 0
+              ? payload.data
+              : 'Unexpected bridge error'
+          term.writeln(`\r\n[bridge] ${bridgeError}\r\n`)
         }
 
         if (payload.type === 'exit') {

@@ -38,7 +38,11 @@ import {
 } from './layout'
 import ThemeToggle from './components/ThemeToggle'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
-import { CapabilitiesContext, createCapabilityGatedPane } from './components/CapabilityGate'
+import {
+  CapabilitiesContext,
+  CapabilitiesStatusContext,
+  createCapabilityGatedPane,
+} from './components/CapabilityGate'
 import paneRegistry, {
   getPane,
   registerPane,
@@ -335,8 +339,16 @@ export default function App() {
     return next
   }, [nativeAgentEnabled, workspaceComponents])
 
+  const capabilitiesFeatureCount = Object.keys(capabilities?.features || {}).length
+  const capabilitiesPending = capabilitiesLoading
+    || !capabilities
+    || (
+      capabilities?.version === 'unknown'
+      && capabilitiesFeatureCount === 0
+    )
+
   // Check for unavailable essential panes
-  const unavailableEssentials = capabilities
+  const unavailableEssentials = !capabilitiesPending && capabilities
     ? getUnavailableEssentialPanes(capabilities).filter(
         (pane) => nativeAgentEnabled || pane.id !== 'terminal',
       )
@@ -3293,19 +3305,21 @@ export default function App() {
             Missing capabilities for: {unavailableEssentials.map(p => p.title || p.id).join(', ')}.
           </div>
         )}
-        <CapabilitiesContext.Provider value={capabilities}>
-          <div data-testid="dockview" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-            <DockviewReact
-              className={dockviewClassName}
-              components={components}
-              tabComponents={tabComponents}
-              rightHeaderActionsComponent={RightHeaderActions}
-              onReady={onReady}
-              showDndOverlay={showDndOverlay}
-              onDidDrop={onDidDrop}
-            />
-          </div>
-        </CapabilitiesContext.Provider>
+        <CapabilitiesStatusContext.Provider value={{ pending: capabilitiesPending }}>
+          <CapabilitiesContext.Provider value={capabilities}>
+            <div data-testid="dockview" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+              <DockviewReact
+                className={dockviewClassName}
+                components={components}
+                tabComponents={tabComponents}
+                rightHeaderActionsComponent={RightHeaderActions}
+                onReady={onReady}
+                showDndOverlay={showDndOverlay}
+                onDidDrop={onDidDrop}
+              />
+            </div>
+          </CapabilitiesContext.Provider>
+        </CapabilitiesStatusContext.Provider>
       </div>
     </ThemeProvider>
   )

@@ -98,8 +98,12 @@ class PaneRegistry {
       throw new Error('Pane config must have id and component')
     }
     this._panes.set(config.id, config)
-    if (config.essential) {
-      this._essentials.add(config.id)
+    if (Object.prototype.hasOwnProperty.call(config, 'essential')) {
+      if (config.essential) {
+        this._essentials.add(config.id)
+      } else {
+        this._essentials.delete(config.id)
+      }
     }
   }
 

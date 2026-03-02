@@ -435,6 +435,7 @@ html {
 }
 
 /* Pane Error State - shown when required capabilities are missing */
+.pane-loading-state,
 .pane-error-state {
   display: flex;
   flex-direction: column;
@@ -445,6 +446,25 @@ html {
   text-align: center;
   background: var(--color-canvas-subtle);
   color: var(--color-fg-muted);
+}
+
+.pane-loading-icon {
+  color: var(--color-accent-fg, #0969da);
+  margin-bottom: var(--space-4);
+  animation: pane-loading-spin 1s linear infinite;
+}
+
+.pane-loading-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--color-fg-default);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.pane-loading-message {
+  font-size: var(--text-sm);
+  margin: 0;
+  max-width: 320px;
 }
 
 .pane-error-icon {
@@ -486,6 +506,15 @@ html {
   color: var(--color-fg-muted);
   margin: 0;
   max-width: 280px;
+}
+
+@keyframes pane-loading-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Theme Toggle Button */

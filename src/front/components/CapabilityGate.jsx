@@ -9,18 +9,21 @@
 
 import { useContext, createContext } from 'react'
 import PaneErrorState from './PaneErrorState'
+import PaneLoadingState from './PaneLoadingState'
 import { getPane, checkRequirements } from '../registry/panes'
 
 /**
  * Context for passing capabilities to pane wrappers.
  */
 export const CapabilitiesContext = createContext(null)
+export const CapabilitiesStatusContext = createContext(null)
 
 /**
  * Hook to access capabilities from context.
  * @returns {Object|null} Capabilities object or null
  */
 export const useCapabilitiesContext = () => useContext(CapabilitiesContext)
+export const useCapabilitiesStatusContext = () => useContext(CapabilitiesStatusContext)
 
 /**
  * Create a capability-gated version of a pane component.
@@ -32,7 +35,15 @@ export const useCapabilitiesContext = () => useContext(CapabilitiesContext)
 export function createCapabilityGatedPane(paneId, Component) {
   function CapabilityGatedPane(props) {
     const capabilities = useCapabilitiesContext()
+    const capabilitiesStatus = useCapabilitiesStatusContext()
     const paneConfig = getPane(paneId)
+    const capabilitiesPending = capabilitiesStatus?.pending === true
+
+    // During capability bootstrap/retry, render a loading state instead of
+    // a transient "missing capability" error.
+    if (capabilitiesPending) {
+      return <PaneLoadingState paneId={paneId} paneTitle={paneConfig?.title} />
+    }
 
     // If no capabilities context, render component (backwards compatibility)
     if (!capabilities) {
