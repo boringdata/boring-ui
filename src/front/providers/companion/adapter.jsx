@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useStore } from './upstream/store'
-import { connectSession } from './upstream/ws'
+import { connectSession, disconnectSession } from './upstream/ws'
 import CompanionApp from './upstream/App'
 import { api } from './upstream/api'
 import './overrides.css'
@@ -17,7 +17,7 @@ export default function CompanionAdapter() {
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
   const setTaskPanelOpen = useStore((s) => s.setTaskPanelOpen)
   const hasLoadedSessions = useRef(false)
-  const missingCountsRef = useRef(new Map())
+  const relaunchAttemptsRef = useRef(new Set())
 
   useEffect(() => {
     let active = true
@@ -94,29 +94,53 @@ export default function CompanionAdapter() {
     if (!hasLoadedSessions.current) return
     const knownIds = new Set(knownSessions.map((s) => s.session_id))
     if (knownIds.has(currentSessionId)) {
-      missingCountsRef.current.delete(currentSessionId)
       return
     }
-    const nextCount = (missingCountsRef.current.get(currentSessionId) || 0) + 1
-    missingCountsRef.current.set(currentSessionId, nextCount)
-    if (nextCount >= 2) {
-      missingCountsRef.current.delete(currentSessionId)
-      setCurrentSession(null)
-    }
+    // Stale restored session id: stop reconnect loop immediately.
+    disconnectSession(currentSessionId)
+    setCurrentSession(null)
   }, [currentSessionId, knownSessions, setCurrentSession])
 
   useEffect(() => {
-    missingCountsRef.current.clear()
-  }, [currentSessionId])
+    if (!currentSessionId) return
+    if (!hasLoadedSessions.current) return
+
+    const currentSdk = sdkSessions.find((session) => session.sessionId === currentSessionId)
+    if (!currentSdk || currentSdk.archived) {
+      relaunchAttemptsRef.current.delete(currentSessionId)
+      return
+    }
+
+    if (currentSdk.state !== 'exited') {
+      relaunchAttemptsRef.current.delete(currentSessionId)
+      connectSession(currentSessionId)
+      return
+    }
+
+    if (relaunchAttemptsRef.current.has(currentSessionId)) return
+    relaunchAttemptsRef.current.add(currentSessionId)
+
+    api.relaunchSession(currentSessionId)
+      .then(() => {
+        connectSession(currentSessionId)
+      })
+      .catch(() => {
+        // Fall back to Home if restore/relaunch fails.
+        setCurrentSession(null)
+      })
+  }, [currentSessionId, sdkSessions, setCurrentSession])
 
   useEffect(() => {
     if (currentSessionId) return
     if (!hasLoadedSessions.current) return
-    if (knownSessions.length === 0) return
-    const nextId = knownSessions[0].session_id
+    const activeSdkSessions = [...sdkSessions]
+      .filter((session) => !session.archived && session.state !== 'exited')
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    if (activeSdkSessions.length === 0) return
+    const nextId = activeSdkSessions[0].sessionId
     setCurrentSession(nextId)
     connectSession(nextId)
-  }, [currentSessionId, knownSessions, setCurrentSession])
+  }, [currentSessionId, sdkSessions, setCurrentSession])
 
   return (
     <div className="companion-wrapper">
