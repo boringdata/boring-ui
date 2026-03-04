@@ -32,10 +32,11 @@ External references, API docs, and third-party documentation relevant to boring-
 | Guide | Description |
 |---|---|
 | [Extension Guide](EXTENSION_GUIDE.md) | Extending boring-ui with custom panels, routers, and configuration |
+| [Ownership Audit](OWNERSHIP_AUDIT.md) | Final keep-vs-move audit and sandbox cleanup checklist for service ownership split |
 
 ## Related Projects
 
 | Project | Relationship |
 |---|---|
-| boring-sandbox | Control plane, gateway, auth, workspace lifecycle |
+| boring-sandbox | Optional edge proxy/orchestration (routing/provisioning/token injection) |
 | boring-coding | Shared workflow docs, agent conventions, tooling |

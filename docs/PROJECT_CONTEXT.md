@@ -21,12 +21,12 @@ The key design property: you compose the backend from independent routers and th
 - **Backend**: Python 3, FastAPI, uvicorn, ptyprocess (PTY), websockets
 - **Tests**: Vitest (unit), Playwright (e2e), pytest (backend)
 - **Build**: Vite for frontend (dev + lib modes), pip/pyproject.toml for backend
-- **Deploy**: Local dev server or hosted mode with boring-sandbox control plane
+- **Deploy**: Core mode (single `boring-ui` backend) or optional edge-proxy mode with `boring-sandbox`
 
 ## Two Operating Modes
 
-- **LOCAL mode**: Backend runs in-process alongside the frontend dev server. File/git/PTY operations go directly to the local filesystem. No auth required.
-- **HOSTED mode**: Backend runs behind a control plane (boring-sandbox). Auth via OIDC, workspace-scoped routing, capability tokens for privileged operations. Frontend rewrites API paths from `/api/*` to `/api/v1/*`.
+- **LOCAL mode**: Backend runs in-process alongside the frontend dev server. File/git/PTY operations go directly to the local filesystem. Auth/session can be disabled for local development.
+- **PROXY mode (optional)**: `boring-ui` remains the business-logic authority while `boring-sandbox` can sit at the edge for proxy/routing/provisioning/token injection.
 
 ## Repo Layout
 
@@ -59,5 +59,5 @@ The `control-plan-decoupling` branch completed the bd-3g1g epic (Service Split +
 
 ## Related Repositories
 
-- **boring-sandbox**: Control plane, gateway, auth, workspace lifecycle, sprite sandboxes
+- **boring-sandbox**: Optional edge proxy/orchestration layer (routing/provisioning/token injection) with no duplicated workspace business logic
 - **boring-coding**: Shared workflow docs, agent conventions, tooling

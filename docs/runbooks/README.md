@@ -2,6 +2,10 @@
 
 Operational runbooks for common tasks.
 
+## Ownership Migration
+
+- [Ownership Migration Cutover and Rollback](./OWNERSHIP_CUTOVER.md)
+
 ## Development
 
 ### Start Local Dev Environment
@@ -60,6 +64,48 @@ npm run build:lib
 npm run preview
 ```
 
+### Launch Full Stack by Deployment Mode
+
+```bash
+# Core mode (single backend; default)
+python3 scripts/run_full_app.py --config app.full.toml --deploy-mode core
+
+# Sandbox-proxy mode (frontend points at edge proxy)
+python3 scripts/run_full_app.py \
+  --config app.full.toml \
+  --deploy-mode sandbox-proxy \
+  --sandbox-proxy-url http://127.0.0.1:8080
+
+# Shell wrapper (supports positional config + same flags)
+bash scripts/run_full_app.sh app.full.toml --deploy-mode core
+```
+
+Smoke-check canonical control-plane ownership after boot:
+
+```bash
+curl -i http://127.0.0.1:8000/auth/session
+curl -i http://127.0.0.1:8000/api/v1/me
+curl -i http://127.0.0.1:8000/api/v1/workspaces
+```
+
+### Mode Compatibility Matrix
+
+| Mode | Frontend API base (`VITE_API_URL`) | Request path owner | Expected behavior |
+| --- | --- | --- | --- |
+| Core (frontend-only workspace wiring) | `boring-ui` backend URL | `boring-ui` directly | Canonical `/auth/*`, `/api/v1/me*`, `/api/v1/workspaces*`, `/api/v1/files*`, `/api/v1/git*` routes served by core. |
+| Sandbox-proxy (front+back with edge proxy) | `boring-sandbox` proxy URL | `boring-sandbox` pass-through -> `boring-ui` | Same canonical routes; sandbox only proxies/routing/provisioning/token injection (no workspace/user business logic). |
+
+Verification commands:
+
+```bash
+# Unit compatibility checks (deploy mode env contract + control-plane route helpers)
+PATH="/usr/bin:/bin:$PATH" npm run test:run -- -t "transport|controlPlane|workspaceNavigation"
+pytest tests/ -v -k "run_full_app or deployment or control_plane or workspace"
+
+# E2E canonical transport + user menu control-plane flows
+npm run test:e2e -- --grep "Canonical Transport Regression|User Menu Control-Plane Flows"
+```
+
 ## Downstream Packaging Helper
 
 For apps embedding boring-ui (for example `boring-macro`), use:
@@ -85,6 +131,11 @@ python3 scripts/package_app_assets.py \
 | `PI_MODE` | PI rendering: `embedded` or `iframe` | `embedded` |
 | `WORKSPACE_PLUGINS_ENABLED` | Enable workspace plugins | `false` |
 | `WORKSPACE_PLUGIN_ALLOWLIST` | Comma-separated allowed plugins | (empty = all if enabled) |
+| `BORING_UI_SESSION_SECRET` | HMAC secret for `/auth/session` cookie signing | auto-generated (ephemeral) |
+| `AUTH_SESSION_COOKIE_NAME` | Session cookie name for `/auth/*` routes | `boring_session` |
+| `AUTH_SESSION_TTL_SECONDS` | Session cookie TTL in seconds | `86400` |
+| `AUTH_SESSION_SECURE_COOKIE` | Set session cookie `Secure` flag | `false` |
+| `AUTH_DEV_LOGIN_ENABLED` | Enable query-param local login/callback adapter | `false` |
 | `LOCAL_PARITY_MODE` | `http` to exercise hosted code path locally | (unset) |
 
 ### Hosted Mode (Parity Testing)
@@ -94,6 +145,102 @@ To test hosted-mode code paths locally:
 ```bash
 export LOCAL_PARITY_MODE=http
 # Frontend will rewrite /api/* to /api/v1/* as in hosted mode
+```
+
+### Local Auth Session Flow
+
+For local control-plane testing, `boring-ui` provides core-owned auth/session routes:
+
+```bash
+# Enable local dev login adapter and set a deterministic local secret
+export AUTH_DEV_LOGIN_ENABLED=true
+export BORING_UI_SESSION_SECRET="dev-only-local-secret"
+
+# Login shortcut (creates session cookie and redirects)
+curl -i "http://localhost:8000/auth/login?user_id=u1&email=user@example.com&redirect_uri=/"
+
+# Inspect current authenticated session
+curl -i --cookie "boring_session=<cookie-value>" http://localhost:8000/auth/session
+
+# Logout and clear cookie
+curl -i --cookie "boring_session=<cookie-value>" http://localhost:8000/auth/logout
+```
+
+Expected unauthenticated behavior:
+- `GET /auth/session` returns `401` with code `SESSION_REQUIRED` when no cookie is present.
+- Invalid or expired cookies return `401` with code `SESSION_INVALID` or `SESSION_EXPIRED`.
+
+### Workspace Lifecycle/Settings Control Plane
+
+`boring-ui` core also owns canonical workspace lifecycle/settings routes:
+
+- `GET /api/v1/workspaces`
+- `POST /api/v1/workspaces`
+- `GET /api/v1/workspaces/{workspace_id}/runtime`
+- `POST /api/v1/workspaces/{workspace_id}/runtime/retry`
+- `GET /api/v1/workspaces/{workspace_id}/settings`
+- `PUT /api/v1/workspaces/{workspace_id}/settings`
+
+User identity/settings routes are also core-owned:
+
+- `GET /api/v1/me`
+- `GET /api/v1/me/settings`
+- `PUT /api/v1/me/settings`
+
+Collaboration routes are core-owned:
+
+- `GET /api/v1/workspaces/{workspace_id}/members`
+- `PUT /api/v1/workspaces/{workspace_id}/members/{user_id}`
+- `GET /api/v1/workspaces/{workspace_id}/invites`
+- `POST /api/v1/workspaces/{workspace_id}/invites`
+- `POST /api/v1/workspaces/{workspace_id}/invites/{invite_id}/accept`
+
+Workspace boundary routes are core-owned:
+
+- `GET /w/{workspace_id}/setup`
+- `GET /w/{workspace_id}/runtime`
+- `POST /w/{workspace_id}/runtime/retry`
+- `GET/PUT /w/{workspace_id}/settings`
+- `GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS /w/{workspace_id}/{path}` (allowed internal families only, reserved subpaths take precedence)
+
+### Macro Domain Boundary
+
+`boring-macro` is an extension-only surface and must not re-own workspace/user/collaboration logic.
+
+- Allowed macro extension family: `/api/v1/macro/*`
+- Core-owned workspace/control-plane families remain in `boring-ui`:
+  - `/auth/*`
+  - `/api/v1/me*`
+  - `/api/v1/workspaces*`
+  - `/api/v1/files/*`
+  - `/api/v1/git/*`
+
+Boundary validation commands:
+
+```bash
+pytest tests/ -v -k "macro and boundary"
+python3 scripts/check_forbidden_direct_routes.py
+```
+
+### Sandbox Edge Pass-Through Contract (Optional)
+
+If `boring-sandbox` is used in front of `boring-ui`, keep it edge-only:
+
+1. Proxy canonical routes without re-owning business logic:
+   - `/auth/*`
+   - `/api/v1/me*`
+   - `/api/v1/workspaces*`
+   - `/api/v1/files/*`
+   - `/api/v1/git/*`
+   - `/w/{workspace_id}/*`
+2. Preserve session/auth context (`Cookie`, `Authorization`) and request tracing headers.
+3. Do not rewrite control-plane response envelopes, status codes, or ownership semantics.
+4. Keep provisioning/routing/token-injection concerns in sandbox; keep workspace/user/collaboration logic in `boring-ui`.
+
+Quick validation:
+
+```bash
+pytest tests/ -v -k "edge or sandbox or passthrough"
 ```
 
 ## Troubleshooting

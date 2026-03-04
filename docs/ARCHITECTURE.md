@@ -9,6 +9,7 @@ Browser                            Backend (FastAPI)                   External
 │  ┌────────────────┐  │ ──────── │  ├── /api/capabilities   │ ───── │ Git repos │
 │  │ PaneRegistry   │  │          │  ├── modules/files/      │       │ PTY procs │
 │  │ LayoutManager  │  │  WS      │  ├── modules/git/        │       └──────────┘
+│  │ ControlPlane   │  │          │  ├── modules/control_plane│
 │  │ ConfigProvider │  │ ──────── │  ├── modules/pty/        │
 │  │ CapabilityGate │  │          │  ├── modules/stream/     │       ┌──────────┐
 │  └────────────────┘  │          │  ├── modules/agent_normal│       │ Claude   │
@@ -73,6 +74,26 @@ Dirty/autosave decisions compare against `savedContent`, not the transient live 
 - `utils/controlPlane.js`: Control-plane-aware URL building (hosted mode)
 - `utils/workspaceNavigation.js`: Workspace-scoped navigation helpers
 
+### Ownership Contract (vNext)
+
+Route and service ownership follows the `boring-ui` core contract in `docs/exec-plans/backlog/boring-ui-core-ownership-contract.md`:
+
+1. `boring-ui` core owns auth/session (`/auth/*`), user identity (`/api/v1/me`), workspace lifecycle/settings, membership/invites, and workspace-level files/git authority.
+2. `boring-macro` is domain-only and must stay under `/api/v1/macro/*`.
+3. `boring-sandbox` is optional edge infrastructure only (proxy/routing/provisioning/token injection) and must not duplicate workspace/user business logic.
+
+Enforcement notes:
+1. `create_app()` does not mount `/api/v1/macro/*` routes in core.
+2. Macro boundary guardrail tests live in `tests/unit/test_macro_boundary_guardrails.py`.
+3. Workspace boundary pass-through (`/w/{workspace_id}/{path}`) only forwards `/auth/*`, `/api/v1/me*`, `/api/v1/workspaces*`, `/api/v1/files*`, and `/api/v1/git*`.
+4. Final keep-vs-move + sandbox cleanup tracking is documented in `docs/references/OWNERSHIP_AUDIT.md`.
+5. Cutover and rollback operations are documented in `docs/runbooks/OWNERSHIP_CUTOVER.md`.
+
+Deployment can run in:
+
+1. Core mode: frontend routes directly to `boring-ui`.
+2. Proxy mode: frontend keeps canonical routes while `boring-sandbox` pass-through sits at the edge.
+
 ## Backend Architecture
 
 ### Application Factory
@@ -96,6 +117,17 @@ modules/
 ├── git/            Git operations: status, diff, show
 │   ├── router.py
 │   └── service.py
+├── control_plane/  Workspace/user/collab metadata foundation
+│   ├── router.py   Foundation API at /api/v1/control-plane/*
+│   ├── auth_router.py Auth/session routes at /auth/*
+│   ├── me_router.py User identity/settings at /api/v1/me*
+│   ├── workspace_router.py Workspace lifecycle/settings at /api/v1/workspaces*
+│   ├── collaboration_router.py Membership/invite routes at /api/v1/workspaces/{id}/{members,invites}*
+│   ├── workspace_boundary_router.py Reserved + pass-through routes at /w/{workspace_id}/...
+│   ├── auth_session.py HMAC session cookie primitives
+│   ├── service.py  Domain facade for users/workspaces/members/invites/settings/runtime
+│   ├── repository.py JSON-backed repository contracts + local implementation
+│   └── models.py   Persisted state model
 ├── pty/            PTY terminal sessions via WebSocket
 │   ├── router.py   WS endpoint at /ws/pty
 │   ├── lifecycle.py REST lifecycle at /api/v1/pty/*
