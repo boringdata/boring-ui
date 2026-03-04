@@ -6,6 +6,7 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_API_URL || 'http://localhost:8000'
+  const proxyApiTarget = env.VITE_PROXY_API_TARGET || apiTarget
   const companionTarget = env.VITE_COMPANION_PROXY_TARGET
   // When using boring-sandbox gateway, set VITE_GATEWAY_URL=http://localhost:8080
   const gatewayTarget = env.VITE_GATEWAY_URL || apiTarget
@@ -89,11 +90,11 @@ export default defineConfig(({ mode }) => {
       },
       proxy: {
         '/api': {
-          target: apiTarget,
+          target: proxyApiTarget,
           changeOrigin: true,
         },
         '/ws': {
-          target: apiTarget,
+          target: proxyApiTarget,
           changeOrigin: true,
           ws: true,
         },

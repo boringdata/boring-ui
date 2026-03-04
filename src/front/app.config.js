@@ -1,6 +1,6 @@
 export default {
   features: {
     codeSessions: true,
-    agentRailMode: 'all',
+    agentRailMode: import.meta.env.VITE_AGENT_RAIL_MODE || 'all',
   },
 }
