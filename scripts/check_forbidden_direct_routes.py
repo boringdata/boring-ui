@@ -23,6 +23,7 @@ ALLOWLIST_PATHS = {
     Path("src/front/utils/routes.js"),
     Path("src/front/utils/transport.js"),
     Path("src/front/providers/pi/routes.js"),
+    Path("src/front/providers/data/httpProvider.js"),
 }
 
 

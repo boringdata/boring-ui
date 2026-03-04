@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 import uvicorn
 
@@ -16,11 +17,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include-pty", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--include-stream", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--include-approval", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--deploy-mode",
+        choices=["core", "sandbox-proxy"],
+        default=os.environ.get("DEPLOY_MODE", "core"),
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    os.environ["DEPLOY_MODE"] = args.deploy_mode
     app = create_app(
         include_pty=args.include_pty,
         include_stream=args.include_stream,

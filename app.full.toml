@@ -28,6 +28,13 @@ port = 5176
 vite_api_url = "http://100.68.199.114:8010"
 # vite_gateway_url = "http://localhost:8080"
 
+[deployment]
+# Supported modes: "core" (frontend -> boring-ui directly) or
+# "sandbox-proxy" (frontend -> boring-sandbox edge proxy -> boring-ui).
+mode = "core"
+# Optional override for sandbox proxy base URL in sandbox-proxy mode.
+# sandbox_proxy_url = "http://localhost:8080"
+
 [ui]
 # This table is serialized to app.config.js as-is.
 # Example:

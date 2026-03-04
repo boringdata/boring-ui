@@ -22,6 +22,9 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib  # type: ignore
 
+DEPLOY_MODE_CORE = "core"
+DEPLOY_MODE_SANDBOX_PROXY = "sandbox-proxy"
+
 
 def load_config(path: Path) -> dict:
     with path.open("rb") as f:
@@ -89,6 +92,79 @@ def _apply_extra_env(base_env: dict, extra: dict | None) -> dict:
     return env
 
 
+def _normalize_deploy_mode(raw_mode: str | None) -> str:
+    value = str(raw_mode or "").strip().lower()
+    if value in {"", DEPLOY_MODE_CORE, "direct"}:
+        return DEPLOY_MODE_CORE
+    if value in {
+        DEPLOY_MODE_SANDBOX_PROXY,
+        "sandbox_proxy",
+        "sandbox-proxy",
+        "proxy",
+        "sandbox",
+    }:
+        return DEPLOY_MODE_SANDBOX_PROXY
+    raise ValueError(
+        f"Unsupported deploy mode '{raw_mode}'. Use '{DEPLOY_MODE_CORE}' or '{DEPLOY_MODE_SANDBOX_PROXY}'."
+    )
+
+
+def _resolve_deploy_mode(
+    *,
+    cli_mode: str | None,
+    cli_proxy_url: str | None,
+    cfg: dict,
+    env: dict[str, str],
+) -> tuple[str, str | None]:
+    deployment_cfg = cfg.get("deployment", {})
+    deploy_mode = _normalize_deploy_mode(
+        cli_mode
+        or env.get("DEPLOY_MODE")
+        or deployment_cfg.get("mode")
+        or DEPLOY_MODE_CORE
+    )
+    proxy_url = (
+        cli_proxy_url
+        or env.get("SANDBOX_PROXY_URL")
+        or deployment_cfg.get("sandbox_proxy_url")
+        or cfg.get("frontend", {}).get("vite_gateway_url")
+    )
+    if proxy_url:
+        proxy_url = str(proxy_url).strip().rstrip("/")
+    return deploy_mode, proxy_url
+
+
+def _resolve_frontend_env(
+    *,
+    base_env: dict[str, str],
+    frontend_cfg: dict,
+    deploy_mode: str,
+    sandbox_proxy_url: str | None,
+    backend_port: int,
+) -> dict[str, str]:
+    fe_env = base_env.copy()
+    vite_api_url = frontend_cfg.get("vite_api_url", f"http://localhost:{backend_port}")
+    companion_proxy_target = frontend_cfg.get("companion_proxy_target")
+
+    if deploy_mode == DEPLOY_MODE_SANDBOX_PROXY:
+        gateway_url = sandbox_proxy_url or "http://127.0.0.1:8080"
+        fe_env["VITE_API_URL"] = gateway_url
+        fe_env["VITE_GATEWAY_URL"] = gateway_url
+    else:
+        fe_env["VITE_API_URL"] = vite_api_url
+        configured_gateway = frontend_cfg.get("vite_gateway_url")
+        if configured_gateway:
+            fe_env["VITE_GATEWAY_URL"] = str(configured_gateway).strip().rstrip("/")
+        else:
+            fe_env.pop("VITE_GATEWAY_URL", None)
+
+    if companion_proxy_target:
+        fe_env["VITE_COMPANION_PROXY_TARGET"] = companion_proxy_target
+    else:
+        fe_env.pop("VITE_COMPANION_PROXY_TARGET", None)
+    return fe_env
+
+
 def _start_process(name: str, cmd: list[str], env: dict, procs: list[tuple[str, subprocess.Popen]]):
     print(f"Starting {name}: {' '.join(cmd)}")
     # Start each service in its own process group so shutdown can reliably
@@ -100,6 +176,17 @@ def _start_process(name: str, cmd: list[str], env: dict, procs: list[tuple[str, 
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="app.full.toml")
+    parser.add_argument(
+        "--deploy-mode",
+        choices=[DEPLOY_MODE_CORE, DEPLOY_MODE_SANDBOX_PROXY],
+        default=None,
+        help="Deployment mode override (default: DEPLOY_MODE env, [deployment].mode, else core).",
+    )
+    parser.add_argument(
+        "--sandbox-proxy-url",
+        default=None,
+        help="Sandbox proxy base URL for sandbox-proxy mode (default: SANDBOX_PROXY_URL env or config).",
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config).resolve()
@@ -112,6 +199,12 @@ def run():
     frontend = cfg.get("frontend", {})
     services = cfg.get("services", {})
     ui = cfg.get("ui", {})
+    deploy_mode, sandbox_proxy_url = _resolve_deploy_mode(
+        cli_mode=args.deploy_mode,
+        cli_proxy_url=args.sandbox_proxy_url,
+        cfg=cfg,
+        env=os.environ,
+    )
     companion_service = services.get("companion", {})
     pi_service = services.get("pi", {})
 
@@ -121,6 +214,9 @@ def run():
 
     # Backend env
     env = os.environ.copy()
+    env["DEPLOY_MODE"] = deploy_mode
+    if sandbox_proxy_url:
+        env["SANDBOX_PROXY_URL"] = sandbox_proxy_url
     companion_enabled = bool(companion_service.get("enabled", False))
     companion_port = int(companion_service.get("port") or _port_from_url(server.get("companion_url"), 3456))
     companion_url = server.get("companion_url") or companion_service.get("url")
@@ -166,16 +262,13 @@ def run():
     # Frontend command
     fe_host = frontend.get("host", "0.0.0.0")
     fe_port = int(frontend.get("port", 5173))
-    vite_api_url = frontend.get("vite_api_url", f"http://localhost:{port}")
-    vite_gateway_url = frontend.get("vite_gateway_url")
-    companion_proxy_target = frontend.get("companion_proxy_target")
-
-    fe_env = env.copy()
-    fe_env["VITE_API_URL"] = vite_api_url
-    if vite_gateway_url:
-        fe_env["VITE_GATEWAY_URL"] = vite_gateway_url
-    if companion_proxy_target:
-        fe_env["VITE_COMPANION_PROXY_TARGET"] = companion_proxy_target
+    fe_env = _resolve_frontend_env(
+        base_env=env,
+        frontend_cfg=frontend,
+        deploy_mode=deploy_mode,
+        sandbox_proxy_url=sandbox_proxy_url,
+        backend_port=port,
+    )
 
     frontend_cmd = ["npm", "run", "dev", "--", "--host", fe_host, "--port", str(fe_port)]
 
@@ -205,6 +298,11 @@ def run():
     signal.signal(signal.SIGTERM, signal_handler)
 
     print(f"Wrote {app_config_path}")
+    print(f"Deployment mode: {deploy_mode}")
+    if deploy_mode == DEPLOY_MODE_SANDBOX_PROXY:
+        print(f"Sandbox proxy URL: {fe_env['VITE_API_URL']}")
+    else:
+        print(f"Backend API URL: {fe_env['VITE_API_URL']}")
 
     try:
         if companion_enabled:
