@@ -70,9 +70,19 @@ export default {
   branding: { name: 'My IDE', logo: 'M' },
   storage: { prefix: 'myide' },
   panels: { defaults: { filetree: 300 } },
-  styles: { light: { accent: '#8b5cf6' } },
+  data: {
+    backend: 'lightningfs', // 'http' | 'lightningfs' | custom registered factory
+    strictBackend: true,    // throw on unknown backend instead of fallback
+    lightningfs: { name: 'myide-fs' },
+  },
+  styles: { light: { accent: '#2563eb' } },
 }
 ```
+
+For quick standalone backend testing without editing config:
+- `?data_backend=http`
+- `?data_backend=lightningfs`
+- `?data_backend=lightningfs&data_fs=myide-fs-alt`
 
 ## Project Structure
 
