@@ -25,7 +25,6 @@ class TestAPIConfig:
         assert 'http://localhost:5173' in config.cors_origins
         assert 'http://localhost:5174' in config.cors_origins
         assert 'http://localhost:3000' in config.cors_origins
-        assert '*' in config.cors_origins  # Allow all in dev
         assert 'shell' in config.pty_providers
         assert 'claude' in config.pty_providers
         assert config.pty_providers['shell'] == ['bash']
@@ -39,6 +38,7 @@ class TestAPIConfig:
         assert config.auth_dev_login_enabled is False
         assert isinstance(config.auth_session_secret, str)
         assert len(config.auth_session_secret) >= 32
+        assert config.supabase_jwt_secret is None
 
     def test_custom_cors_origins(self, tmp_path):
         """Test custom CORS origins."""
