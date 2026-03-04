@@ -26,6 +26,7 @@ import './styles.css'
 import { buildWsUrl } from '../../utils/apiBase'
 import { apiFetch, apiFetchJson, openWebSocketUrl } from '../../utils/transport'
 import { routes } from '../../utils/routes'
+import { getDataProvider, createHttpProvider } from '../../providers/data'
 
 // Generate a valid UUID, with fallback for environments without crypto.randomUUID
 const generateUUID = () => {
@@ -268,29 +269,41 @@ const fetchSessions = async () => {
   }
 }
 
+// Module-level helpers cannot use React hooks, so they access the provider
+// through singleton state (with HTTP fallback when no pre-mount provider is set).
+const getActiveDataProvider = (() => {
+  /** @type {ReturnType<typeof createHttpProvider> | null} */
+  let fallbackProvider = null
+  return () => {
+    const provider = getDataProvider()
+    if (provider) return provider
+    if (!fallbackProvider) {
+      fallbackProvider = createHttpProvider()
+    }
+    return fallbackProvider
+  }
+})()
+
 const searchFiles = async (query, onError) => {
   if (!query || query.length < 1) return []
   try {
-    const route = routes.files.search(query)
-    const { response, data } = await apiFetchJson(route.path, { query: route.query })
-    const res = response
-    if (!res.ok) {
-      onError?.({
-        title: 'File search failed',
-        detail: 'The backend returned an error while searching files.',
-        suggestions: ['Check the backend status and retry.'],
-        source: 'search',
-        canRetry: true,
-        canRestart: false,
-      }, { showBanner: false })
-      return []
-    }
-    return (data.results || []).map((f) => ({
-      id: f.path,
-      label: f.name,
-      path: f.path,
-      dir: f.dir,
-    }))
+    const provider = getActiveDataProvider()
+    const response = await provider.files.search(query)
+    const results = Array.isArray(response)
+      ? response
+      : (Array.isArray(response?.results) ? response.results : [])
+    return results
+      .map((f) => {
+        const path = typeof f?.path === 'string' ? f.path : ''
+        const inferredName = path ? path.split('/').pop() : ''
+        return {
+          id: path || inferredName,
+          label: f?.name || inferredName,
+          path,
+          dir: f?.dir || (path.includes('/') ? path.split('/').slice(0, -1).join('/') : ''),
+        }
+      })
+      .filter((item) => item.path)
   } catch (error) {
     onError?.({
       title: 'File search failed',
@@ -306,27 +319,17 @@ const searchFiles = async (query, onError) => {
 
 const fetchMentionDefaults = async (onError) => {
   try {
-    const route = routes.files.list('.')
-    const { response, data } = await apiFetchJson(route.path, { query: route.query })
-    const res = response
-    if (!res.ok) {
-      onError?.({
-        title: 'File list failed',
-        detail: 'The backend returned an error while listing files.',
-        suggestions: ['Check the backend status and retry.'],
-        source: 'search',
-        canRetry: true,
-        canRestart: false,
-      }, { showBanner: false })
-      return []
-    }
-    const entries = Array.isArray(data.entries) ? data.entries : []
+    const provider = getActiveDataProvider()
+    const response = await provider.files.list('.')
+    const entries = Array.isArray(response)
+      ? response
+      : (Array.isArray(response?.entries) ? response.entries : [])
     const files = entries.filter((entry) => !entry.is_dir)
     return files.map((file) => ({
-      id: file.path,
-      label: file.name,
-      path: file.path,
-      dir: file.path.includes('/') ? file.path.split('/').slice(0, -1).join('/') : '',
+      id: file.path || file.name,
+      label: file.name || file.path,
+      path: file.path || file.name,
+      dir: (file.path || '').includes('/') ? file.path.split('/').slice(0, -1).join('/') : '',
     }))
   } catch (error) {
     onError?.({
@@ -340,6 +343,13 @@ const fetchMentionDefaults = async (onError) => {
     return []
   }
 }
+
+export const __claudeStreamChatTestUtils = import.meta.env.MODE === 'test'
+  ? {
+      searchFiles,
+      fetchMentionDefaults,
+    }
+  : undefined
 
 const createNewSession = async () => {
   try {
