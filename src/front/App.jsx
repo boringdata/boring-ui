@@ -330,8 +330,26 @@ export default function App() {
     return Math.max(...widths)
   }, [leftSidebarPanelIds, panelMin])
 
-  // Fetch backend capabilities for feature gating
-  const { capabilities, loading: capabilitiesLoading, refetch: refetchCapabilities } = useCapabilities()
+  // Fetch backend capabilities for feature gating.
+  // config.capabilities provides static overrides for browser-only mode
+  // (no server). When present, server-fetched capabilities are merged on top.
+  const staticCapabilities = config.capabilities || null
+  const { capabilities: serverCapabilities, loading: capabilitiesLoading, refetch: refetchCapabilities } = useCapabilities()
+  const capabilities = useMemo(() => {
+    if (!staticCapabilities) return serverCapabilities
+    if (!serverCapabilities || serverCapabilities.version === 'unknown') {
+      return {
+        version: staticCapabilities.version || 'static',
+        features: { ...staticCapabilities.features },
+        routers: staticCapabilities.routers || [],
+        ...(staticCapabilities.macro_catalog ? { macro_catalog: staticCapabilities.macro_catalog } : {}),
+      }
+    }
+    return {
+      ...serverCapabilities,
+      features: { ...staticCapabilities.features, ...serverCapabilities.features },
+    }
+  }, [staticCapabilities, serverCapabilities])
   const capabilitiesRef = useRef(capabilities)
   const capabilitiesLoadingRef = useRef(capabilitiesLoading)
   capabilitiesRef.current = capabilities
@@ -350,12 +368,14 @@ export default function App() {
   }, [nativeAgentEnabled, workspaceComponents])
 
   const capabilitiesFeatureCount = Object.keys(capabilities?.features || {}).length
-  const capabilitiesPending = capabilitiesLoading
-    || !capabilities
-    || (
-      capabilities?.version === 'unknown'
-      && capabilitiesFeatureCount === 0
-    )
+  const capabilitiesPending = staticCapabilities
+    ? false
+    : (capabilitiesLoading
+      || !capabilities
+      || (
+        capabilities?.version === 'unknown'
+        && capabilitiesFeatureCount === 0
+      ))
 
   // Check for unavailable essential panes
   const unavailableEssentials = !capabilitiesPending && capabilities
