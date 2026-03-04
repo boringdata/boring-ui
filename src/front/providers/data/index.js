@@ -34,5 +34,10 @@ export {
   useGitShow,
 } from './queries'
 
-// HTTP provider factory
+// Provider factories
 export { createHttpProvider } from './httpProvider'
+export { createLightningFsProvider } from './lightningFsProvider'
+export { createIsomorphicGitProvider } from './isomorphicGitProvider'
+
+// Shared LightningFS instance (for direct access if needed)
+export { fs as lightningFs, pfs as lightningPfs } from './lightningFs'
