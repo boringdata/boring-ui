@@ -56,13 +56,17 @@ import {
   getDataProvider,
   getDataProviderFactory,
   createHttpProvider,
+  createLightningDataProvider,
   queryKeys,
 } from './providers/data'
 import DataContext from './providers/data/DataContext'
 import { PI_LIST_TABS_BRIDGE, PI_OPEN_FILE_BRIDGE } from './providers/pi/uiBridge'
 
+const URL_PARAMS = new URLSearchParams(window.location.search)
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
-const POC_MODE = new URLSearchParams(window.location.search).get('poc')
+const POC_MODE = URL_PARAMS.get('poc')
+const DATA_BACKEND_OVERRIDE = String(URL_PARAMS.get('data_backend') || '').trim().toLowerCase()
+const DATA_FS_OVERRIDE = String(URL_PARAMS.get('data_fs') || '').trim()
 
 // Debounce helper - delays function execution until after wait ms of inactivity
 const debounce = (fn, wait) => {
@@ -438,9 +442,14 @@ export default function App() {
   // If setDataProvider() was called before mount (poc1/poc2), use that;
   // otherwise resolve from config.data.backend (with HTTP fallback).
   const queryClient = useMemo(() => getQueryClient(), [])
-  const configuredDataBackend = String(config.data?.backend || 'http')
+  const configuredDataBackend = String(DATA_BACKEND_OVERRIDE || config.data?.backend || 'http')
     .trim()
     .toLowerCase()
+  const configuredLightningFsName = String(
+    DATA_FS_OVERRIDE || config.data?.lightningfs?.name || 'boring-fs',
+  )
+    .trim()
+  const strictDataBackend = Boolean(config.data?.strictBackend)
   const dataProvider = useMemo(
     () => {
       const injected = getDataProvider()
@@ -450,15 +459,25 @@ export default function App() {
         return createHttpProvider()
       }
 
+      if (configuredDataBackend === 'lightningfs' || configuredDataBackend === 'lightning-fs') {
+        return createLightningDataProvider({ fsName: configuredLightningFsName })
+      }
+
       const factory = getDataProviderFactory(configuredDataBackend)
       if (factory) return factory()
+
+      if (strictDataBackend) {
+        throw new Error(
+          `[DataProvider] Unknown configured backend "${configuredDataBackend}" (strict mode enabled)`,
+        )
+      }
 
       console.warn(
         `[DataProvider] Unknown configured backend "${configuredDataBackend}", falling back to http`,
       )
       return createHttpProvider()
     },
-    [configuredDataBackend],
+    [configuredDataBackend, configuredLightningFsName, strictDataBackend],
   )
 
   useEffect(() => {
@@ -1772,7 +1791,7 @@ export default function App() {
   }, [])
 
   const addChatPanel = useCallback(
-    ({ mode = 'tab', sourcePanelId = '' } = {}) => {
+    ({ mode = 'tab', sourcePanelId = '', piSessionBootstrap = 'latest' } = {}) => {
       if (!dockApi) return false
 
       const sourcePanel = sourcePanelId ? dockApi.getPanel(sourcePanelId) : null
@@ -1817,6 +1836,11 @@ export default function App() {
           ? 'pi-agent-chat'
           : 'companion-chat'
       const panelId = createUniquePanelId(dockApi, panelIdPrefix)
+      const piInitialSessionId = component === 'companion'
+        && provider === 'pi'
+        && piSessionBootstrap === 'new'
+        ? `pi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+        : ''
       const title = component === 'terminal'
         ? 'Code Sessions'
         : provider === 'pi'
@@ -1909,6 +1933,9 @@ export default function App() {
               onToggleCollapse: undefined,
               provider: provider || 'companion',
               lockProvider: true,
+              ...(provider === 'pi'
+                ? { piSessionBootstrap, piInitialSessionId }
+                : {}),
             },
       })
       if (!panel) return false
@@ -1966,9 +1993,13 @@ export default function App() {
     addChatPanel({ mode: 'split' })
   }, [addChatPanel])
 
-  const handleSplitChatPanel = useCallback((panelId) => {
+  const handleSplitChatPanel = useCallback((panelId, options = {}) => {
     if (!panelId) return
-    addChatPanel({ mode: 'split', sourcePanelId: panelId })
+    addChatPanel({
+      mode: 'split',
+      sourcePanelId: panelId,
+      piSessionBootstrap: options.piSessionBootstrap || 'latest',
+    })
   }, [addChatPanel])
 
   const onReady = (event) => {
