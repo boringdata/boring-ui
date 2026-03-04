@@ -19,6 +19,7 @@ class TestRouterRegistry:
         assert 'files' in router_names
         assert 'git' in router_names
         assert 'ui_state' in router_names
+        assert 'control_plane' in router_names
         assert 'pty' in router_names
         assert 'stream' in router_names
         assert 'approval' in router_names
@@ -94,6 +95,7 @@ class TestCapabilitiesEndpoint:
         assert 'files' in features
         assert 'git' in features
         assert 'ui_state' in features
+        assert 'control_plane' in features
         assert 'pty' in features
         assert 'stream' in features
         assert 'approval' in features
@@ -165,6 +167,7 @@ class TestCapabilitiesEndpoint:
         assert features['files'] is True
         assert features['git'] is True
         assert features['ui_state'] is False
+        assert features['control_plane'] is False
         assert features['pty'] is False
         assert features['stream'] is False
         assert features['approval'] is False
@@ -181,6 +184,7 @@ class TestCapabilitiesEndpoint:
         assert features['files'] is True
         assert features['git'] is False
         assert features['ui_state'] is False
+        assert features['control_plane'] is False
         assert features['pty'] is False
         assert features['stream'] is False
         assert features['approval'] is True
@@ -282,6 +286,7 @@ class TestHealthEndpointFeatures:
         assert features['files'] is True
         assert features['git'] is True
         assert features['ui_state'] is True
+        assert features['control_plane'] is True
         assert features['pty'] is True
         assert features['stream'] is True
         assert features['approval'] is True
@@ -298,6 +303,7 @@ class TestHealthEndpointFeatures:
         assert features['files'] is True
         assert features['git'] is True
         assert features['ui_state'] is False
+        assert features['control_plane'] is False
         assert features['pty'] is False
         assert features['stream'] is False
         assert features['approval'] is False

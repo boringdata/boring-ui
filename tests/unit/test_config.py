@@ -31,6 +31,14 @@ class TestAPIConfig:
         assert config.pty_providers['shell'] == ['bash']
         assert config.workspace_plugins_enabled is False
         assert config.workspace_plugin_allowlist == []
+        assert config.control_plane_enabled is True
+        assert config.control_plane_state_relpath == '.boring/control-plane/state.json'
+        assert config.auth_session_cookie_name == 'boring_session'
+        assert config.auth_session_ttl_seconds == 86400
+        assert config.auth_session_secure_cookie is False
+        assert config.auth_dev_login_enabled is False
+        assert isinstance(config.auth_session_secret, str)
+        assert len(config.auth_session_secret) >= 32
 
     def test_custom_cors_origins(self, tmp_path):
         """Test custom CORS origins."""
@@ -97,6 +105,32 @@ class TestAPIConfig:
         monkeypatch.setenv('WORKSPACE_PLUGIN_ALLOWLIST', 'alpha, beta,gamma ')
         config = APIConfig(workspace_root=tmp_path)
         assert config.workspace_plugin_allowlist == ['alpha', 'beta', 'gamma']
+
+    def test_control_plane_enabled_from_env(self, tmp_path, monkeypatch):
+        """Test control-plane feature flag is parsed from env."""
+        monkeypatch.setenv('CONTROL_PLANE_ENABLED', 'false')
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.control_plane_enabled is False
+
+    def test_control_plane_state_relpath_from_env(self, tmp_path, monkeypatch):
+        """Test control-plane state path can be overridden via env."""
+        monkeypatch.setenv('CONTROL_PLANE_STATE_RELPATH', '.control/state.json')
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.control_plane_state_relpath == '.control/state.json'
+
+    def test_auth_session_config_from_env(self, tmp_path, monkeypatch):
+        """Test auth/session config fields are parsed from env vars."""
+        monkeypatch.setenv('AUTH_SESSION_COOKIE_NAME', 'custom_session')
+        monkeypatch.setenv('AUTH_SESSION_TTL_SECONDS', '1800')
+        monkeypatch.setenv('AUTH_SESSION_SECURE_COOKIE', 'true')
+        monkeypatch.setenv('AUTH_DEV_LOGIN_ENABLED', 'true')
+        monkeypatch.setenv('BORING_UI_SESSION_SECRET', 'super-secret')
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.auth_session_cookie_name == 'custom_session'
+        assert config.auth_session_ttl_seconds == 1800
+        assert config.auth_session_secure_cookie is True
+        assert config.auth_dev_login_enabled is True
+        assert config.auth_session_secret == 'super-secret'
 
 
 class TestValidatePath:

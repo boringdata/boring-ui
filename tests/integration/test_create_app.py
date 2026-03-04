@@ -69,6 +69,45 @@ class TestAppFactory:
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
         assert '/api/project' in paths
 
+    def test_app_has_auth_session_endpoints(self, app):
+        """Test that control-plane auth/session endpoints are available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/auth/login' in paths
+        assert '/auth/callback' in paths
+        assert '/auth/logout' in paths
+        assert '/auth/session' in paths
+
+    def test_app_has_user_identity_endpoints(self, app):
+        """Test that canonical user identity/settings endpoints are available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/api/v1/me' in paths
+        assert '/api/v1/me/settings' in paths
+
+    def test_app_has_workspace_lifecycle_endpoints(self, app):
+        """Test that canonical workspace lifecycle/settings endpoints are available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/api/v1/workspaces' in paths
+        assert '/api/v1/workspaces/{workspace_id}/runtime' in paths
+        assert '/api/v1/workspaces/{workspace_id}/runtime/retry' in paths
+        assert '/api/v1/workspaces/{workspace_id}/settings' in paths
+
+    def test_app_has_collaboration_endpoints(self, app):
+        """Test that canonical membership/invite endpoints are available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/api/v1/workspaces/{workspace_id}/members' in paths
+        assert '/api/v1/workspaces/{workspace_id}/members/{user_id}' in paths
+        assert '/api/v1/workspaces/{workspace_id}/invites' in paths
+        assert '/api/v1/workspaces/{workspace_id}/invites/{invite_id}/accept' in paths
+
+    def test_app_has_workspace_boundary_endpoints(self, app):
+        """Test that workspace boundary routes are available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/w/{workspace_id}/setup' in paths
+        assert '/w/{workspace_id}/runtime' in paths
+        assert '/w/{workspace_id}/runtime/retry' in paths
+        assert '/w/{workspace_id}/settings' in paths
+        assert '/w/{workspace_id}/{path:path}' in paths
+
     def test_app_has_workspace_core_ui_state_endpoints(self, app):
         """Test that canonical workspace-core UI-state endpoints are available."""
         paths = [r.path for r in app.routes if hasattr(r, 'path')]
@@ -80,6 +119,12 @@ class TestAppFactory:
         assert '/api/v1/ui/commands' in paths
         assert '/api/v1/ui/commands/next' in paths
         assert '/api/v1/ui/focus' in paths
+
+    def test_app_has_control_plane_foundation_endpoints(self, app):
+        """Test that control-plane foundation endpoints are available."""
+        paths = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert '/api/v1/control-plane/health' in paths
+        assert '/api/v1/control-plane/snapshot' in paths
 
     def test_app_has_api_sessions_endpoints(self, app):
         """Test that session list/create endpoints are available."""
@@ -122,6 +167,7 @@ class TestHealthEndpoint:
             assert features['files'] is True
             assert features['git'] is True
             assert features['ui_state'] is True
+            assert features['control_plane'] is True
             assert features['pty'] is True
             assert features['chat_claude_code'] is True
             assert features['stream'] is True  # Backward compat alias
@@ -138,6 +184,7 @@ class TestHealthEndpoint:
             assert features['files'] is True
             assert features['git'] is True
             assert features['ui_state'] is True
+            assert features['control_plane'] is True
             assert features['pty'] is False
             assert features['chat_claude_code'] is False
             assert features['stream'] is False
@@ -189,6 +236,7 @@ class TestCapabilitiesEndpoint:
             assert 'files' in router_names
             assert 'git' in router_names
             assert 'ui_state' in router_names
+            assert 'control_plane' in router_names
 
 
 class TestFileRoutes:
