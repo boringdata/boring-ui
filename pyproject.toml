@@ -16,7 +16,7 @@ dependencies = [
     "websockets>=11.0",
     "aiofiles>=23.0.0",
     "httpx>=0.24",
-    "PyJWT>=2.8.0",
+    "PyJWT[crypto]>=2.8.0",
     "asyncpg>=0.29.0",
 ]
 
