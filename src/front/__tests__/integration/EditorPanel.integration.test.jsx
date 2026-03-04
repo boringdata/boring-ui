@@ -27,11 +27,21 @@ vi.mock('../../components/GitDiff', () => ({
   default: () => <div data-testid="git-diff-stub" />,
 }))
 
-const createApiStub = () => ({
-  onDidParametersChange: vi.fn(() => ({ dispose: vi.fn() })),
-})
+const createApiStub = () => {
+  let handler = null
+  return {
+    onDidParametersChange: vi.fn((nextHandler) => {
+      handler = nextHandler
+      return { dispose: vi.fn() }
+    }),
+    emitParametersChange: (params) => {
+      if (handler) handler({ params })
+    },
+  }
+}
 
 const renderWithProvider = (provider, params = {}) => {
+  const api = createApiStub()
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -43,14 +53,14 @@ const renderWithProvider = (provider, params = {}) => {
     <QueryClientProvider client={queryClient}>
       <DataContext.Provider value={provider}>
         <EditorPanel
-          api={createApiStub()}
+          api={api}
           params={{ path: 'README.md', initialContent: '', ...(params || {}) }}
         />
       </DataContext.Provider>
     </QueryClientProvider>,
   )
 
-  return { ...view, queryClient }
+  return { ...view, queryClient, api }
 }
 
 const createProviderWithDeferredRead = () => {
@@ -110,6 +120,45 @@ describe('EditorPanel integration + cancellation', () => {
 
     await waitFor(() => {
       expect(readSignals.some((signal) => signal.aborted)).toBe(true)
+    })
+  })
+
+  it('keeps autosaved content instead of resyncing stale initialContent', async () => {
+    const { provider } = createProviderWithDeferredRead()
+    renderWithProvider(provider)
+
+    expect(screen.getByTestId('editor-content')).toHaveTextContent('')
+
+    fireEvent.click(screen.getByTestId('editor-change'))
+    fireEvent.click(screen.getByTestId('editor-autosave'))
+
+    await waitFor(() => {
+      expect(provider.files.write).toHaveBeenCalledWith('README.md', 'next content')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-content')).toHaveTextContent('next content')
+    })
+  })
+
+  it('keeps unsaved markdown in panel state across callback-only param updates', async () => {
+    const { provider } = createProviderWithDeferredRead()
+    const { api } = renderWithProvider(provider)
+
+    expect(screen.getByTestId('editor-content')).toHaveTextContent('')
+
+    fireEvent.click(screen.getByTestId('editor-change'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-content')).toHaveTextContent('next content')
+    })
+
+    api.emitParametersChange({
+      onDirtyChange: vi.fn(),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-content')).toHaveTextContent('next content')
     })
   })
 })

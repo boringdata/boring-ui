@@ -57,6 +57,14 @@ For PI native only:
 
 Backend agent surfaces exposed through API endpoints (`agent-companion`, `agent-pi`, `agent-normal`) should use the frontend command API contract, not browser `window` bridge tools.
 
+### Editor Content Sync Guardrails
+
+Markdown editor state in `panels/EditorPanel.jsx` keeps two content tracks:
+- live editor content (`content`)
+- last persisted baseline (`savedContent`)
+
+Dirty/autosave decisions compare against `savedContent`, not the transient live value. Parent parameter sync only reapplies content when the incoming `contentVersion` is newer than local. This prevents stale `initialContent` from resetting typed markdown after autosave or callback-only panel parameter updates.
+
 ### Frontend Networking
 
 - `utils/apiBase.js`: Base URL resolution

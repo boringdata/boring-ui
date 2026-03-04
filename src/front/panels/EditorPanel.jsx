@@ -41,6 +41,7 @@ export default function EditorPanel({ params: initialParams, api }) {
   } = params || {}
 
   const [content, setContent] = useState(initialContent || '')
+  const [savedContent, setSavedContent] = useState(initialContent || '')
   const [contentVersion, setContentVersion] = useState(initialVersion || 1)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -103,13 +104,18 @@ export default function EditorPanel({ params: initialParams, api }) {
     }
   }, [gitAvailable, initialMode, initialModeApplied])
 
-  // Sync content from parent when it changes
+  // Sync content from parent only when a newer external contentVersion arrives.
+  // Avoid reapplying stale initialContent after local autosave.
   useEffect(() => {
-    if (initialContent !== undefined && initialContent !== content && !isDirty) {
+    if (initialVersion === undefined) return
+    if (isDirty || isSaving) return
+    if (initialVersion <= contentVersion) return
+    if (initialContent !== undefined && initialContent !== savedContent) {
       setContent(initialContent)
-      setContentVersion((v) => v + 1)
+      setSavedContent(initialContent)
+      setContentVersion(initialVersion)
     }
-  }, [initialContent, content, isDirty])
+  }, [initialContent, initialVersion, savedContent, contentVersion, isDirty, isSaving])
 
   useEffect(() => {
     if (!path || !hasDiskContent || isDirty || isSaving) return
@@ -138,6 +144,7 @@ export default function EditorPanel({ params: initialParams, api }) {
     try {
       await fileWriteMutation.mutateAsync({ path, content: newContent })
 
+      setSavedContent(newContent)
       setIsDirty(false)
       setExternalChange(false) // Clear notification since we just wrote to disk
       onContentChange?.(path, newContent)
@@ -154,13 +161,14 @@ export default function EditorPanel({ params: initialParams, api }) {
   }
 
   const handleChange = (newContent) => {
-    const dirty = newContent !== content
+    setContent(newContent)
+    const dirty = newContent !== savedContent
     setIsDirty(dirty)
     onDirtyChange?.(path, dirty)
   }
 
   const handleAutoSave = (newContent) => {
-    if (newContent === content) return
+    if (newContent === savedContent) return
     save(newContent)
   }
 
@@ -177,6 +185,7 @@ export default function EditorPanel({ params: initialParams, api }) {
       const result = await refetchDiskContent()
       const nextContent = typeof result?.data === 'string' ? result.data : ''
       setContent(nextContent)
+      setSavedContent(nextContent)
       setIsDirty(false)
       onDirtyChange?.(path, false)
       setExternalChange(false)
