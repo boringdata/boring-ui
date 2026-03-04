@@ -84,6 +84,33 @@ def _is_dev_mode() -> bool:
     return env in {"dev", "development", "local", "test"}
 
 
+def _supabase_authorize_redirect(
+    *,
+    request: Request,
+    config: APIConfig,
+    screen_hint: str | None = None,
+) -> RedirectResponse | JSONResponse:
+    if not config.supabase_url:
+        return _error(
+            request,
+            status_code=501,
+            error="not_implemented",
+            code="LOGIN_NOT_CONFIGURED",
+            message="Supabase login is not configured",
+        )
+
+    callback = f"{_public_origin(request).rstrip('/')}/auth/callback"
+    redirect_after = _safe_redirect_path(request.query_params.get("redirect_uri"))
+    redirect_to = f"{callback}?redirect_uri={quote(redirect_after, safe='')}"
+    params = {"provider": "email", "redirect_to": redirect_to}
+    if screen_hint:
+        params["screen_hint"] = screen_hint
+    return RedirectResponse(
+        url=f"{config.supabase_url.rstrip('/')}/auth/v1/authorize?{urlencode(params)}",
+        status_code=302,
+    )
+
+
 def _create_session_from_query(request: Request, config: APIConfig) -> tuple[str, str] | JSONResponse:
     user_id = str(request.query_params.get("user_id", "")).strip()
     email = str(request.query_params.get("email", "")).strip().lower()
@@ -164,22 +191,14 @@ def create_auth_session_router_supabase(config: APIConfig) -> APIRouter:
             _set_session_cookie(response, token, config)
             return response
 
-        if not config.supabase_url:
-            return _error(
-                request,
-                status_code=501,
-                error="not_implemented",
-                code="LOGIN_NOT_CONFIGURED",
-                message="Supabase login is not configured",
-            )
+        return _supabase_authorize_redirect(request=request, config=config)
 
-        callback = f"{_public_origin(request).rstrip('/')}/auth/callback"
-        redirect_after = _safe_redirect_path(request.query_params.get("redirect_uri"))
-        redirect_to = f"{callback}?redirect_uri={quote(redirect_after, safe='')}"
-        params = urlencode({"provider": "email", "redirect_to": redirect_to})
-        return RedirectResponse(
-            url=f"{config.supabase_url.rstrip('/')}/auth/v1/authorize?{params}",
-            status_code=302,
+    @router.get("/signup")
+    async def auth_signup(request: Request):
+        return _supabase_authorize_redirect(
+            request=request,
+            config=config,
+            screen_hint="signup",
         )
 
     @router.get("/callback")

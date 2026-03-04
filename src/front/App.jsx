@@ -62,7 +62,7 @@ import {
   queryKeys,
 } from './providers/data'
 import DataContext from './providers/data/DataContext'
-import { PI_LIST_TABS_BRIDGE, PI_OPEN_FILE_BRIDGE } from './providers/pi/uiBridge'
+import { PI_LIST_TABS_BRIDGE, PI_OPEN_FILE_BRIDGE, PI_OPEN_PANEL_BRIDGE } from './providers/pi/uiBridge'
 
 const URL_PARAMS = new URLSearchParams(window.location.search)
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
@@ -1478,25 +1478,107 @@ export default function App() {
     [dockApi, findCenterAnchorPanel, getLiveCenterGroup, openFileAtPosition]
   )
 
+  const openPanel = useCallback(
+    (rawPayload) => {
+      if (!dockApi) return false
+      const payload = rawPayload && typeof rawPayload === 'object' ? rawPayload : {}
+
+      const id = String(payload.id || '').trim()
+      const component = String(payload.component || '').trim()
+      if (!id || !component) return false
+
+      const title = String(payload.title || id)
+      const panelParams = payload.params && typeof payload.params === 'object'
+        ? payload.params
+        : {}
+
+      const existingPanel = dockApi.getPanel(id)
+      if (existingPanel) {
+        if (Object.keys(panelParams).length > 0) {
+          existingPanel.api.updateParameters(panelParams)
+        }
+        existingPanel.api.setActive()
+        return true
+      }
+
+      const emptyPanel = dockApi.getPanel('empty-center')
+      const companionPanel = dockApi.getPanel('companion')
+      const centerGroup = getLiveCenterGroup(dockApi)
+      const existingCenterPanel = findCenterAnchorPanel(dockApi)
+
+      let position = payload.position && typeof payload.position === 'object'
+        ? payload.position
+        : null
+
+      if (!position) {
+        if (centerGroup) {
+          position = { referenceGroup: centerGroup }
+        } else if (existingCenterPanel?.group) {
+          position = { referenceGroup: existingCenterPanel.group }
+        } else if (emptyPanel?.group) {
+          position = { referenceGroup: emptyPanel.group }
+        } else if (companionPanel) {
+          position = { direction: 'left', referencePanel: companionPanel.id }
+        } else {
+          position = { direction: 'right', referencePanel: 'filetree' }
+        }
+      }
+
+      const panel = dockApi.addPanel({
+        id,
+        component,
+        title,
+        position,
+        params: panelParams,
+      })
+
+      if (panel?.group) {
+        panel.group.locked = false
+        panel.group.header.hidden = false
+        centerGroupRef.current = panel.group
+        panel.group.api?.setConstraints({
+          minimumHeight: panelMinRef.current.center,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
+        })
+      }
+      panel?.api?.setActive()
+
+      if (emptyPanel) {
+        requestAnimationFrame(() => {
+          const staleEmpty = dockApi.getPanel('empty-center')
+          if (staleEmpty) staleEmpty.api.close()
+        })
+      }
+
+      return true
+    },
+    [dockApi, findCenterAnchorPanel, getLiveCenterGroup],
+  )
+
   useEffect(() => {
     const openFileBridge = (path) => openFile(String(path || '').trim())
+    const openPanelBridge = (payload) => openPanel(payload)
     const listTabsBridge = () => ({
       activeFile: activeFile || '',
       tabs: Object.keys(tabs),
     })
 
     window[PI_OPEN_FILE_BRIDGE] = openFileBridge
+    window[PI_OPEN_PANEL_BRIDGE] = openPanelBridge
     window[PI_LIST_TABS_BRIDGE] = listTabsBridge
 
     return () => {
       if (window[PI_OPEN_FILE_BRIDGE] === openFileBridge) {
         delete window[PI_OPEN_FILE_BRIDGE]
       }
+      if (window[PI_OPEN_PANEL_BRIDGE] === openPanelBridge) {
+        delete window[PI_OPEN_PANEL_BRIDGE]
+      }
       if (window[PI_LIST_TABS_BRIDGE] === listTabsBridge) {
         delete window[PI_LIST_TABS_BRIDGE]
       }
     }
-  }, [activeFile, openFile, tabs])
+  }, [activeFile, openFile, openPanel, tabs])
 
   const openFileToSide = useCallback(
     (path) => {

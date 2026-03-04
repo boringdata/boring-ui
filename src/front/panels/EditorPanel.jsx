@@ -141,8 +141,30 @@ export default function EditorPanel({ params: initialParams, api }) {
       setExternalChange(false)
       return
     }
-    setExternalChange(true)
-  }, [diskContent, hasDiskContent, isDirty, isSaving, path])
+    // Auto-sync external disk changes when editor buffer is clean.
+    setContent(nextContent)
+    setSavedContent(nextContent)
+    setIsDirty(false)
+    onDirtyChange?.(path, false)
+    setExternalChange(false)
+    setContentVersion((v) => v + 1)
+
+    if (editorMode === 'git-diff') {
+      refetchGitDiff()
+    } else if (editorMode === 'diff') {
+      refetchGitShow()
+    }
+  }, [
+    diskContent,
+    editorMode,
+    hasDiskContent,
+    isDirty,
+    isSaving,
+    onDirtyChange,
+    path,
+    refetchGitDiff,
+    refetchGitShow,
+  ])
 
   useEffect(() => {
     if (!gitAvailable && editorMode === 'git-diff') {

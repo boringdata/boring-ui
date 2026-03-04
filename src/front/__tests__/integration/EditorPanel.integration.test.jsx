@@ -121,6 +121,31 @@ const createProviderWithStaleReadDuringSave = () => {
   return { provider, secondRead }
 }
 
+const createProviderWithExternalDiskChange = () => {
+  let readCount = 0
+  const provider = {
+    files: {
+      list: vi.fn(),
+      read: vi.fn(() => {
+        readCount += 1
+        if (readCount === 1) return Promise.resolve('old content')
+        return Promise.resolve('updated on disk')
+      }),
+      write: vi.fn(async () => undefined),
+      delete: vi.fn(),
+      rename: vi.fn(),
+      move: vi.fn(),
+      search: vi.fn(),
+    },
+    git: {
+      status: vi.fn(async () => ({ available: true, files: [] })),
+      diff: vi.fn(async () => ''),
+      show: vi.fn(async () => ''),
+    },
+  }
+  return { provider }
+}
+
 describe('EditorPanel integration + cancellation', () => {
   it('save cancels in-flight read poll before write completes', async () => {
     const { provider, readSignals } = createProviderWithDeferredRead()
@@ -221,5 +246,20 @@ describe('EditorPanel integration + cancellation', () => {
     await waitFor(() => {
       expect(screen.queryByText('File changed on disk.')).not.toBeInTheDocument()
     })
+  })
+
+  it('auto-syncs content when file changes on disk and editor is clean', async () => {
+    const { provider } = createProviderWithExternalDiskChange()
+    renderWithProvider(provider, { initialContent: 'old content' })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-content')).toHaveTextContent('old content')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-content')).toHaveTextContent('updated on disk')
+    }, { timeout: 5000 })
+
+    expect(screen.queryByText('File changed on disk.')).not.toBeInTheDocument()
   })
 })
