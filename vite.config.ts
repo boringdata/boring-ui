@@ -89,20 +89,37 @@ export default defineConfig(({ mode }) => {
         allow: ['.', ...(workspaceRoot ? [workspaceRoot] : [])],
       },
       proxy: {
+        ...(companionTarget
+          ? {
+              // Dedicated chat-auth endpoints must stay browser-reachable in sandbox mode.
+              '/api/v1/chat/auth': {
+                target: companionTarget,
+                changeOrigin: false,
+              },
+            }
+          : {}),
         '/api': {
           target: proxyApiTarget,
-          changeOrigin: true,
+          changeOrigin: false,
+        },
+        '/auth': {
+          target: proxyApiTarget,
+          changeOrigin: false,
+        },
+        '/w': {
+          target: proxyApiTarget,
+          changeOrigin: false,
         },
         '/ws': {
           target: proxyApiTarget,
-          changeOrigin: true,
+          changeOrigin: false,
           ws: true,
         },
         ...(companionTarget
           ? {
               '/companion': {
                 target: companionTarget,
-                changeOrigin: true,
+                changeOrigin: false,
                 ws: true,
                 rewrite: (path: string) => path.replace(/^\/companion/, ''),
               },
