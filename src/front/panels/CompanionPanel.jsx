@@ -11,7 +11,14 @@ import '../providers/companion/upstream.css'
 import '../providers/companion/theme-bridge.css'
 
 export default function CompanionPanel({ params }) {
-  const { panelId, onSplitPanel, provider, lockProvider = false } = params || {}
+  const {
+    panelId,
+    onSplitPanel,
+    provider,
+    lockProvider = false,
+    piSessionBootstrap = 'latest',
+    piInitialSessionId = '',
+  } = params || {}
   const capabilities = useCapabilitiesContext()
   const initialProvider = provider === 'pi' ? 'pi' : 'companion'
   const companionAvailable = capabilities?.features?.companion === true
@@ -90,8 +97,20 @@ export default function CompanionPanel({ params }) {
               ? (
                 <div className="provider-companion provider-pi-native" data-testid="pi-app">
                   {piBackendEnabled
-                    ? <PiBackendAdapter serviceUrl={piServiceUrl} />
-                    : <PiNativeAdapter />}
+                    ? (
+                      <PiBackendAdapter
+                        serviceUrl={piServiceUrl}
+                        panelId={panelId}
+                        sessionBootstrap={piSessionBootstrap}
+                      />
+                      )
+                    : (
+                      <PiNativeAdapter
+                        panelId={panelId}
+                        sessionBootstrap={piSessionBootstrap}
+                        initialSessionId={piInitialSessionId}
+                      />
+                      )}
                 </div>
                 )
               : (

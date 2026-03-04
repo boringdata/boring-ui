@@ -29,7 +29,7 @@ async function readJson(response) {
   }
 }
 
-export default function PiBackendAdapter({ serviceUrl }) {
+export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap = 'latest' }) {
   const piRoutes = useMemo(() => createPiRoutes(serviceUrl), [serviceUrl])
   const [sessions, setSessions] = useState([])
   const [currentSessionId, setCurrentSessionId] = useState('')
@@ -51,11 +51,11 @@ export default function PiBackendAdapter({ serviceUrl }) {
   }, [currentSessionId])
 
   const publishState = useCallback((nextSessions, nextSessionId) => {
-    publishPiSessionState({
+    publishPiSessionState(panelId, {
       currentSessionId: nextSessionId || '',
       sessions: Array.isArray(nextSessions) ? nextSessions : [],
     })
-  }, [])
+  }, [panelId])
 
   const listSessions = useCallback(async () => {
     const { response, data: payload } = await fetchJsonUrl(piRoutes.sessions())
@@ -112,6 +112,11 @@ export default function PiBackendAdapter({ serviceUrl }) {
   }, [loadHistory, publishState])
 
   const refreshSessions = useCallback(async () => {
+    if (sessionBootstrap === 'new' && !currentSessionIdRef.current) {
+      await createSession()
+      return
+    }
+
     const listed = await listSessions()
     if (listed.length === 0) {
       const newId = await createSession()
@@ -131,12 +136,12 @@ export default function PiBackendAdapter({ serviceUrl }) {
     setCurrentSessionId(active)
     await loadHistory(active)
     publishState(listed, active)
-  }, [createSession, listSessions, loadHistory, publishState])
+  }, [createSession, listSessions, loadHistory, publishState, sessionBootstrap])
 
   useEffect(() => {
     if (!piRoutes.isConfigured) {
       setError('PI backend URL is not configured.')
-      publishPiSessionState(EMPTY_STATE)
+      publishPiSessionState(panelId, EMPTY_STATE)
       return undefined
     }
 
@@ -147,7 +152,7 @@ export default function PiBackendAdapter({ serviceUrl }) {
       setError(err instanceof Error ? err.message : String(err))
     })
 
-    const unsubscribe = subscribePiSessionActions({
+    const unsubscribe = subscribePiSessionActions(panelId, {
       onSwitch: (sessionId) => {
         switchSession(sessionId).catch((err) => {
           setError(err instanceof Error ? err.message : String(err))
@@ -167,7 +172,7 @@ export default function PiBackendAdapter({ serviceUrl }) {
       disposed = true
       unsubscribe()
     }
-  }, [piRoutes, createSession, publishState, refreshSessions, switchSession])
+  }, [piRoutes, panelId, createSession, publishState, refreshSessions, switchSession])
 
   useEffect(() => {
     if (!listRef.current) return
