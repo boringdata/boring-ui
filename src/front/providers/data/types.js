@@ -13,7 +13,7 @@
  * - 'U' = untracked
  * - 'A' = added (staged)
  * - 'D' = deleted
- * - 'C' = copied
+ * - 'C' = conflict
  *
  * @typedef {'M'|'U'|'A'|'D'|'C'} GitStatusCode
  */

@@ -37,6 +37,7 @@ export {
 // Provider factories
 export { createHttpProvider } from './httpProvider'
 export { createLightningFsProvider } from './lightningFsProvider'
+export { createLightningDataProvider } from './lightningDataProvider'
 export { createIsomorphicGitProvider } from './isomorphicGitProvider'
 
 // Shared LightningFS instance (for direct access if needed)

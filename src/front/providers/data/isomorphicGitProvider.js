@@ -9,17 +9,15 @@
 import git from 'isomorphic-git'
 import { fs, pfs } from './lightningFs.js'
 
-const gitOpts = { fs, dir: '/' }
-
 const throwIfAborted = (signal) => {
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 }
 
-const absPath = (relativePath) => {
-  const trimmed = String(relativePath || '').trim()
-  if (!trimmed || trimmed === '.') return '/'
-  if (trimmed.startsWith('/')) return trimmed
-  return `/${trimmed}`
+const joinPath = (baseDir, relativePath) => {
+  const base = String(baseDir || '/').replace(/\/+$/, '') || '/'
+  const rel = String(relativePath || '').replace(/^\/+/, '')
+  if (!rel) return base
+  return base === '/' ? `/${rel}` : `${base}/${rel}`
 }
 
 const simpleDiff = (oldText, newText, path) => {
@@ -33,15 +31,6 @@ const simpleDiff = (oldText, newText, path) => {
   return lines.join('\n')
 }
 
-const isGitRepo = async () => {
-  try {
-    await pfs.stat('/.git')
-    return true
-  } catch {
-    return false
-  }
-}
-
 /** @param {number} head @param {number} workdir @param {number} stage */
 const normalizeStatus = (head, workdir, stage) => {
   if (head === 0 && workdir === 2 && stage === 0) return 'U'
@@ -50,74 +39,92 @@ const normalizeStatus = (head, workdir, stage) => {
   if (head === 1 && workdir === 1 && stage === 1) return null
   if (head === 1 && workdir === 2) return 'M'
   if (head === 1 && workdir === 1 && (stage === 2 || stage === 3)) return 'M'
-  return 'C'
+  // Fallback to modified when matrix state doesn't map cleanly.
+  return 'M'
 }
 
 /**
  * Create an isomorphic-git-backed GitProvider.
  *
+ * @param {{ fs?: any, pfs?: any, dir?: string }} [opts]
  * @returns {import('./types').GitProvider}
  */
-export const createIsomorphicGitProvider = () => ({
-  status: async (opts = {}) => {
-    throwIfAborted(opts.signal)
+export const createIsomorphicGitProvider = (opts = {}) => {
+  const fsApi = opts.fs || fs
+  const fsPromises = opts.pfs || pfs
+  const dir = String(opts.dir || '/')
+  const gitOpts = { fs: fsApi, dir }
 
-    if (!(await isGitRepo())) {
-      return { available: true, is_repo: false, files: [] }
-    }
-
-    const matrix = await git.statusMatrix(gitOpts)
-    throwIfAborted(opts.signal)
-
-    const files = []
-    for (const [path, head, workdir, stage] of matrix) {
-      const status = normalizeStatus(head, workdir, stage)
-      if (!status) continue
-      files.push({ path, status })
-    }
-
-    return { available: true, is_repo: true, files }
-  },
-
-  diff: async (path, opts = {}) => {
-    throwIfAborted(opts.signal)
-    if (!(await isGitRepo())) return ''
-
-    const repoPath = String(path || '').replace(/^\//, '')
-
-    let currentContent = ''
+  const isGitRepo = async () => {
     try {
-      const next = await pfs.readFile(absPath(repoPath), { encoding: 'utf8' })
-      currentContent = typeof next === 'string' ? next : String(next || '')
+      await fsPromises.stat(joinPath(dir, '.git'))
+      return true
     } catch {
-      currentContent = ''
+      return false
     }
+  }
 
-    let headContent = ''
-    try {
-      const oid = await git.resolveRef({ ...gitOpts, ref: 'HEAD' })
-      const { blob } = await git.readBlob({ ...gitOpts, oid, filepath: repoPath })
-      headContent = new TextDecoder().decode(blob)
-    } catch {
-      headContent = ''
-    }
+  return {
+    status: async (statusOpts = {}) => {
+      throwIfAborted(statusOpts.signal)
 
-    throwIfAborted(opts.signal)
-    return simpleDiff(headContent, currentContent, repoPath)
-  },
+      if (!(await isGitRepo())) {
+        return { available: true, is_repo: false, files: [] }
+      }
 
-  show: async (path, opts = {}) => {
-    throwIfAborted(opts.signal)
-    if (!(await isGitRepo())) return ''
+      const matrix = await git.statusMatrix(gitOpts)
+      throwIfAborted(statusOpts.signal)
 
-    const repoPath = String(path || '').replace(/^\//, '')
-    try {
-      const oid = await git.resolveRef({ ...gitOpts, ref: 'HEAD' })
-      const { blob } = await git.readBlob({ ...gitOpts, oid, filepath: repoPath })
-      throwIfAborted(opts.signal)
-      return new TextDecoder().decode(blob)
-    } catch {
-      return ''
-    }
-  },
-})
+      const files = []
+      for (const [path, head, workdir, stage] of matrix) {
+        const status = normalizeStatus(head, workdir, stage)
+        if (!status) continue
+        files.push({ path, status })
+      }
+
+      return { available: true, is_repo: true, files }
+    },
+
+    diff: async (path, diffOpts = {}) => {
+      throwIfAborted(diffOpts.signal)
+      if (!(await isGitRepo())) return ''
+
+      const repoPath = String(path || '').replace(/^\//, '')
+
+      let currentContent = ''
+      try {
+        const next = await fsPromises.readFile(joinPath(dir, repoPath), { encoding: 'utf8' })
+        currentContent = typeof next === 'string' ? next : String(next || '')
+      } catch {
+        currentContent = ''
+      }
+
+      let headContent = ''
+      try {
+        const oid = await git.resolveRef({ ...gitOpts, ref: 'HEAD' })
+        const { blob } = await git.readBlob({ ...gitOpts, oid, filepath: repoPath })
+        headContent = new TextDecoder().decode(blob)
+      } catch {
+        headContent = ''
+      }
+
+      throwIfAborted(diffOpts.signal)
+      return simpleDiff(headContent, currentContent, repoPath)
+    },
+
+    show: async (path, showOpts = {}) => {
+      throwIfAborted(showOpts.signal)
+      if (!(await isGitRepo())) return ''
+
+      const repoPath = String(path || '').replace(/^\//, '')
+      try {
+        const oid = await git.resolveRef({ ...gitOpts, ref: 'HEAD' })
+        const { blob } = await git.readBlob({ ...gitOpts, oid, filepath: repoPath })
+        throwIfAborted(showOpts.signal)
+        return new TextDecoder().decode(blob)
+      } catch {
+        return ''
+      }
+    },
+  }
+}
