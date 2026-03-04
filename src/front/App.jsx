@@ -2012,7 +2012,7 @@ export default function App() {
   )
 
   const handleOpenChatTab = useCallback(() => {
-    addChatPanel({ mode: 'split' })
+    addChatPanel({ mode: 'split', piSessionBootstrap: 'new' })
   }, [addChatPanel])
 
   const handleSplitChatPanel = useCallback((panelId, options = {}) => {
