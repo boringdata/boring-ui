@@ -16,20 +16,27 @@ This runbook defines production rollout and rollback for the ownership split:
 `boring-sandbox` remains optional. If not needed, remove it from request path entirely.
 
 For local containerized mode checks owned by this repo:
+this compose setup validates deployment topology and routing before rollout.
 
 ```bash
-# Core mode
-docker compose -f deploy/docker/docker-compose.yml up --build backend frontend-core
+# Front mode
+docker compose -f deploy/docker/docker-compose.front.yml up --build backend frontend
 
-# Proxy mode
-docker compose -f deploy/docker/docker-compose.yml --profile sandbox-proxy \
-  up --build backend edge-proxy frontend-sandbox-proxy
+# Sandbox mode (sandbox artifact service + frontend)
+mkdir -p artifacts
+BUNDLE_OUTPUT="$PWD/artifacts/boring-macro-bundle.tar.gz" \
+  bash deploy/sandbox/scripts/build_macro_bundle.sh /home/ubuntu/projects/boring-macro
+docker compose -f deploy/docker/docker-compose.sandbox.yml up --build sandbox frontend
+```
 
-# Proxy mode with external boring-sandbox gateway
-SANDBOX_VITE_API_URL=http://host.docker.internal:8081 \
-SANDBOX_VITE_GATEWAY_URL=http://host.docker.internal:8081 \
-docker compose -f deploy/docker/docker-compose.yml --profile sandbox-proxy \
-  up --build backend frontend-sandbox-proxy
+Modal deploy helpers:
+
+```bash
+# Front/core mode
+modal deploy deploy/modal/modal_app_front.py::core
+
+# Sandbox mode (reuse boring-sandbox Modal entrypoint)
+bash deploy/modal/deploy_sandbox_mode.sh gateway
 ```
 
 ## Pre-Cutover Checklist

@@ -83,30 +83,59 @@ bash scripts/run_full_app.sh app.full.toml --deploy-mode core
 ### Docker Compose Ownership (boring-ui)
 
 `boring-ui` now owns a local Docker Compose harness for deployment-mode testing:
+this validates production topology and routing contracts, while the frontend
+container itself is still Vite-based for fast smoke verification.
 
 ```bash
-# Core mode (frontend -> boring-ui backend directly)
-docker compose -f deploy/docker/docker-compose.yml up --build backend frontend-core
+# Front mode (frontend -> boring-ui backend directly)
+docker compose -f deploy/docker/docker-compose.front.yml up --build backend frontend
 
-# Sandbox-proxy mode (frontend -> edge proxy -> boring-ui backend)
-docker compose -f deploy/docker/docker-compose.yml --profile sandbox-proxy \
-  up --build backend edge-proxy frontend-sandbox-proxy
+# Sandbox mode (frontend -> sandbox artifact service)
+# 1) Build/refresh the macro artifact in boring-ui-owned path
+mkdir -p artifacts
+BUNDLE_OUTPUT="$PWD/artifacts/boring-macro-bundle.tar.gz" \
+  bash deploy/sandbox/scripts/build_macro_bundle.sh /home/ubuntu/projects/boring-macro
+# 2) Start sandbox + frontend from boring-ui compose
+docker compose -f deploy/docker/docker-compose.sandbox.yml up --build sandbox frontend
+```
 
-# Sandbox-proxy mode against external boring-sandbox gateway (optional)
-SANDBOX_VITE_API_URL=http://host.docker.internal:8081 \
-SANDBOX_VITE_GATEWAY_URL=http://host.docker.internal:8081 \
-docker compose -f deploy/docker/docker-compose.yml --profile sandbox-proxy \
-  up --build backend frontend-sandbox-proxy
+### Modal Deployment
+
+```bash
+# Front/core mode (boring-ui control-plane owner)
+modal deploy deploy/modal/modal_app_front.py::core
+
+# Sandbox mode (reuse existing boring-sandbox Modal app)
+bash deploy/modal/deploy_sandbox_mode.sh gateway
+# optional light entrypoint:
+# bash deploy/modal/deploy_sandbox_mode.sh gateway_ui_light
+```
+
+Supabase-backed control-plane (same model as legacy sandbox) is enabled in compose by default.
+Set the following env vars before boot:
+
+```bash
+export SUPABASE_URL="https://<project>.supabase.co"
+export SUPABASE_ANON_KEY="<anon-key>"
+export SUPABASE_SERVICE_ROLE_KEY="<service-role-key>"
+export SUPABASE_DB_URL="postgresql://..."
+export BORING_SETTINGS_KEY="<settings-encryption-key>"
+export BORING_UI_SESSION_SECRET="<cookie-signing-secret>"
+```
+
+Initialize schema once per database:
+
+```bash
+psql "$SUPABASE_DB_URL" -f deploy/sql/control_plane_supabase_schema.sql
 ```
 
 Endpoints:
-- Core frontend: `http://localhost:5173`
-- Sandbox-proxy frontend: `http://localhost:5174`
-- Backend API: `http://localhost:8000`
-- Edge proxy: `http://localhost:8080`
+- Front mode frontend: `http://localhost:5173`
+- Sandbox mode frontend: `http://localhost:5174`
+- Front mode backend API: `http://localhost:8000`
+- Sandbox mode API/gateway: `http://localhost:8081`
 
-The `edge-proxy` service is a pass-through compatibility harness for proxy mode.
-If you need the full `boring-sandbox` control plane (auth/workspace/provisioning stack), run that repo separately and point proxy-mode frontend env to that gateway URL.
+`boring-sandbox` remains optional for edge provisioning/proxy/token-injection concerns only.
 
 Smoke-check canonical control-plane ownership after boot:
 
@@ -144,6 +173,23 @@ python3 scripts/package_app_assets.py \
   --static-dir /path/to/app/runtime_static \
   --companion-source /path/to/boring-ui/src/companion_service/launch.sh \
   --companion-target /path/to/app/runtime_companion/launch.sh
+```
+
+`boring-macro` can call boring-ui-owned deploy scripts directly (recommended):
+
+```make
+BORING_UI_REPO ?= ../boring-ui
+
+up-frontend:
+	docker compose -f $(BORING_UI_REPO)/deploy/docker/docker-compose.front.yml up --build backend frontend
+
+bundle-sandbox:
+	mkdir -p $(BORING_UI_REPO)/artifacts
+	BUNDLE_OUTPUT="$(BORING_UI_REPO)/artifacts/boring-macro-bundle.tar.gz" \
+	  bash $(BORING_UI_REPO)/deploy/sandbox/scripts/build_macro_bundle.sh $(CURDIR)
+
+up-sandbox: bundle-sandbox
+	docker compose -f $(BORING_UI_REPO)/deploy/docker/docker-compose.sandbox.yml up --build sandbox frontend
 ```
 
 ## Configuration
