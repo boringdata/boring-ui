@@ -70,8 +70,8 @@ async function runMarkdownRoundtripCheck() {
   await page.locator('.file-item', { hasText: file }).first().click()
   const editor = page.locator('.ProseMirror:visible').first()
   await editor.waitFor({ state: 'visible', timeout: 10000 })
-  await editor.click()
-  await page.keyboard.type(payload)
+  await page.locator('.ProseMirror:visible p').first().click()
+  await editor.type(payload)
   await sleep(1500)
 
   const typed = await editor.innerText()
@@ -122,11 +122,37 @@ async function runPiPythonBestEffort() {
   await input.press('Enter')
   await page.waitForTimeout(25000)
 
-  const bodyText = await page.locator('pi-chat-panel').innerText()
-  if (bodyText.toLowerCase().includes('py-ok')) {
+  const pythonResultSeen = await page.evaluate(() => {
+    const queryDeep = (root, selector) => {
+      const out = []
+      const walk = (node) => {
+        if (!node) return
+        if (typeof node.querySelectorAll === 'function') {
+          try { out.push(...node.querySelectorAll(selector)) } catch {}
+        }
+        const children = node.children ? Array.from(node.children) : []
+        for (const child of children) {
+          if (child.shadowRoot) walk(child.shadowRoot)
+          walk(child)
+        }
+      }
+      walk(root)
+      return out
+    }
+
+    const panel = queryDeep(document, 'pi-chat-panel')[0]
+    const messages = Array.isArray(panel?.agent?.state?.messages) ? panel.agent.state.messages : []
+    return messages.some((message) => {
+      if (message?.role !== 'toolResult' || message?.toolName !== 'python_exec') return false
+      const content = Array.isArray(message?.content) ? message.content : []
+      return content.some((part) => String(part?.text || '').includes('py-ok'))
+    })
+  })
+
+  if (pythonResultSeen) {
     log('pi python tool check ok')
   } else {
-    log('pi python tool check inconclusive (no py-ok found)')
+    log('pi python tool check inconclusive (no python_exec py-ok tool result found)')
   }
 
   await browser.close()
