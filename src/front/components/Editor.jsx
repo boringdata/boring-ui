@@ -28,6 +28,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { diffLines, diffWords } from 'diff'
 import GitDiff from './GitDiff'
 import FrontmatterEditor, { parseFrontmatter, reconstructContent } from './FrontmatterEditor'
+import { consumeInitialUpdateGuard } from './editorUpdateGuard'
 
 // Create lowlight instance with common languages
 const lowlight = createLowlight(common)
@@ -572,6 +573,7 @@ export default function Editor({
   // after layout restoration when params are updated with new callbacks
   const onChangeRef = useRef(onChange)
   const onAutoSaveRef = useRef(onAutoSave)
+  const ignoreNextEditorUpdateRef = useRef(true)
   onChangeRef.current = onChange
   onAutoSaveRef.current = onAutoSave
 
@@ -588,6 +590,15 @@ export default function Editor({
     // Auto-expand if there's frontmatter, collapse if not
     setFrontmatterCollapsed(!frontmatter || frontmatter.trim() === '')
   }, [content, contentVersion])
+
+  // Clear initial guard quickly so the first real user edit is never ignored
+  // in cases where the editor emits no initialization update event.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      ignoreNextEditorUpdateRef.current = false
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Base extensions used for both the editor and for normalizing original content
   // This ensures both sides go through the exact same Tiptap schema
@@ -691,6 +702,7 @@ export default function Editor({
       // Use editor.getMarkdown() from @tiptap/markdown
       const bodyMarkdown = editorInstance.getMarkdown()
       setCurrentBody(bodyMarkdown)
+      if (consumeInitialUpdateGuard(ignoreNextEditorUpdateRef)) return
       // Use refs to get latest values (avoids stale closures after layout restore)
       const fullContent = reconstructContent(currentFrontmatterRef.current, bodyMarkdown)
 
@@ -742,7 +754,12 @@ export default function Editor({
     if (contentVersion === undefined) return
     // Parse body directly from content prop (not state) to ensure we have latest value
     const { body } = parseFrontmatter(content || '')
+    ignoreNextEditorUpdateRef.current = true
     editor.commands.setContent(body || '', { contentType: 'markdown' })
+    const timer = setTimeout(() => {
+      ignoreNextEditorUpdateRef.current = false
+    }, 0)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentVersion, editor])
 
