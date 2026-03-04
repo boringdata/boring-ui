@@ -201,6 +201,25 @@ def create_app(
             },
         }
 
+    @app.get('/api/v1/config/provider-keys')
+    async def config_provider_keys():
+        """Return AI provider API keys from environment for browser-side PI agent.
+
+        Keys are read from standard environment variables so the host app
+        can populate them via .env, Vault, or any secret management system.
+        """
+        import os as _os
+        keys = {}
+        for env_key, provider in [
+            ('OPENAI_API_KEY', 'openai'),
+            ('ANTHROPIC_API_KEY', 'anthropic'),
+            ('GOOGLE_AI_API_KEY', 'google'),
+        ]:
+            val = _os.environ.get(env_key, '').strip()
+            if val:
+                keys[provider] = val
+        return keys
+
     @app.get('/api/project')
     async def get_project():
         """Get project root for the frontend."""
