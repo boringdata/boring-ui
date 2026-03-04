@@ -157,6 +157,20 @@ function isAuthFailureText(text: string): boolean {
   );
 }
 
+function normalizeAuthFailureMessage(text: string): string {
+  const value = String(text || "").trim();
+  if (!value) return "Authentication required";
+  const lower = value.toLowerCase();
+  if (
+    lower.includes("please run /login")
+    || lower.includes("run /login")
+    || lower.includes("not logged in")
+  ) {
+    return "Authentication required. Use Login to Claude in the auth panel."
+  }
+  return value;
+}
+
 function handleMessage(sessionId: string, event: MessageEvent) {
   const store = useStore.getState();
   let data: BrowserIncomingMessage;
@@ -199,7 +213,7 @@ function handleMessage(sessionId: string, event: MessageEvent) {
       };
       store.appendMessage(sessionId, chatMsg);
       if (isAuthFailureText(textContent)) {
-        store.setAuthRequired(sessionId, textContent);
+        store.setAuthRequired(sessionId, normalizeAuthFailureMessage(textContent));
       }
       store.setStreaming(sessionId, null);
       store.setSessionStatus(sessionId, "running");

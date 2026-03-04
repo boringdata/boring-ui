@@ -64,7 +64,9 @@ describe("companion auth-required transitions", () => {
         },
       },
     });
-    expect(useStore.getState().authRequired.get(sessionId)).toContain("Please run /login");
+    expect(useStore.getState().authRequired.get(sessionId)).toBe(
+      "Authentication required. Use Login to Claude in the auth panel.",
+    );
   });
 
   it("does not clear auth required on cli/session lifecycle events", () => {

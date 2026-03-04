@@ -6,14 +6,13 @@ import { Composer } from "./Composer.js";
 import { PermissionBanner } from "./PermissionBanner.js";
 import { EnvManager } from "./EnvManager.js";
 
-function getWorkspaceBasePath(pathname: string = ""): string {
-  const match = String(pathname || "").match(/^\/w\/[^/]+/);
-  return match ? match[0] : "";
-}
-
 function getWorkspaceId(pathname: string = ""): string | null {
   const match = String(pathname || "").match(/^\/w\/([^/]+)/);
   return match?.[1] ? String(match[1]) : null;
+}
+
+function getManagedAuthBase(): string {
+  return "/api/v1/chat/auth";
 }
 
 export function ChatView({ sessionId }: { sessionId: string }) {
@@ -37,11 +36,10 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       if (typeof window === "undefined") return;
 
       const pathname = window.location?.pathname || "";
-      const workspaceBase = getWorkspaceBasePath(pathname);
       const workspaceId = getWorkspaceId(pathname);
 
       try {
-        const statusResp = await fetch(`${workspaceBase}/api/v1/chat/auth/status`);
+        const statusResp = await fetch(`${getManagedAuthBase()}/status`);
         const statusData = await statusResp.json().catch(() => ({}));
         if (statusResp.ok && statusData?.logged_in) {
           return;

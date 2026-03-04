@@ -14,20 +14,27 @@ interface VarRow {
   value: string;
 }
 
-function getWorkspaceBasePath(pathname: string = ""): string {
-  const match = String(pathname || "").match(/^\/w\/[^/]+/);
-  return match ? match[0] : "";
-}
-
 function getWorkspaceId(pathname: string = ""): string | null {
   const match = String(pathname || "").match(/^\/w\/([^/]+)/);
   return match?.[1] ? String(match[1]) : null;
 }
 
 function getManagedAuthBase(): string {
-  if (typeof window === "undefined") return "/api/v1/chat/auth";
-  const workspaceBase = getWorkspaceBasePath(window.location?.pathname || "");
-  return `${workspaceBase}/api/v1/chat/auth`;
+  return "/api/v1/chat/auth";
+}
+
+function normalizeLegacyAuthMessage(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes("please run /login")
+    || lower.includes("run /login")
+    || lower.includes("not logged in")
+  ) {
+    return "Authentication required. Use Login to Claude and complete browser sign-in."
+  }
+  return raw;
 }
 
 export function EnvManager({
@@ -65,10 +72,8 @@ export function EnvManager({
   const [apiKeyBusy, setApiKeyBusy] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState("");
   const [apiKeyStatusError, setApiKeyStatusError] = useState(false);
-  const [managedCode, setManagedCode] = useState("");
-  const [copyStatus, setCopyStatus] = useState("");
-  const [copyStatusError, setCopyStatusError] = useState(false);
   const authAutoLaunchStartedRef = useRef(false);
+  const statusPollRef = useRef<number | null>(null);
 
   const refresh = () => {
     api.listEnvs().then(setEnvs).catch(() => {}).finally(() => setLoading(false));
@@ -124,8 +129,6 @@ export function EnvManager({
         if (sessionId) setManagedSessionId(sessionId);
         const loginUrl = String(active?.url || "").trim();
         if (loginUrl) setManagedLoginUrl(loginUrl);
-        const loginCode = String(active?.code || "").trim();
-        if (loginCode) setManagedCode(loginCode);
       }
       if (data.logged_in) {
         setManagedStatus(`${managedProviderLabel} login is active in this runtime.`);
@@ -148,6 +151,20 @@ export function EnvManager({
     }
   }
 
+  function stopStatusPolling() {
+    if (statusPollRef.current !== null) {
+      window.clearInterval(statusPollRef.current);
+      statusPollRef.current = null;
+    }
+  }
+
+  function startStatusPolling() {
+    stopStatusPolling();
+    statusPollRef.current = window.setInterval(() => {
+      checkManagedAuthStatus(true).catch(() => {});
+    }, 3000);
+  }
+
   async function startManagedClaudeLogin() {
     if (!managedSupported) return;
     setManagedBusy(true);
@@ -155,7 +172,6 @@ export function EnvManager({
     setManagedStatusError(false);
     setManagedLoginUrl("");
     setManagedSessionId("");
-    setManagedCode("");
     try {
       const resp = await fetch(`${getManagedAuthBase()}/login-url`, {
         method: "POST",
@@ -169,6 +185,7 @@ export function EnvManager({
         return;
       }
       if (data?.already_logged_in || data?.logged_in) {
+        stopStatusPolling();
         setManagedStatus(`${managedProviderLabel} login is already active in this runtime.`);
         setManagedStatusError(false);
         setManagedSessionId("");
@@ -179,16 +196,14 @@ export function EnvManager({
         setManagedStatusError(true);
         return;
       }
-      setManagedLoginUrl(String(data.url));
+      const loginUrl = String(data.url);
+      setManagedLoginUrl(loginUrl);
       const maybeSessionId = String(data?.session_id || "").trim();
       if (maybeSessionId) {
         setManagedSessionId(maybeSessionId);
       }
-      const maybeCode = String(data?.code || "").trim();
-      if (maybeCode) {
-        setManagedCode(maybeCode);
-      }
       if (data?.running === false) {
+        stopStatusPolling();
         if (data?.logged_in) {
           setManagedStatus(`${managedProviderLabel} login is active in this runtime.`);
           setManagedStatusError(false);
@@ -201,7 +216,13 @@ export function EnvManager({
         setManagedStatusError(true);
         return;
       }
-      setManagedStatus("Open the login link, complete sign-in, paste code if prompted, then click Finish Login.");
+      const opened = window.open(loginUrl, "_blank", "noopener,noreferrer");
+      startStatusPolling();
+      setManagedStatus(
+        opened
+          ? "Complete sign-in in the browser tab. This panel checks status automatically."
+          : "Popup blocked. Click Login to Claude again to open the sign-in tab.",
+      );
       setManagedStatusError(false);
     } catch {
       setManagedStatus("Unable to start managed login.");
@@ -211,71 +232,12 @@ export function EnvManager({
     }
   }
 
-  async function finishManagedClaudeLogin() {
-    if (!managedSupported) return;
-    setManagedBusy(true);
-    setManagedStatus(`Completing ${managedProviderLabel} login...`);
-    setManagedStatusError(false);
-    try {
-      const resp = await fetch(`${getManagedAuthBase()}/submit-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: managedCode.trim() || undefined,
-          session_id: managedSessionId || undefined,
-        }),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        const message = String(data?.message || "Unable to complete managed login.");
-        if (/timed out/i.test(message)) {
-          await checkManagedAuthStatus(true).catch(() => {});
-          setManagedStatus(
-            "Login is still in progress. Complete browser sign-in, then click Finish Login again.",
-          );
-          setManagedStatusError(false);
-          return;
-        }
-        setManagedStatus(message);
-        setManagedStatusError(true);
-        return;
-      }
-
-      const maybeSessionId = String(data?.session_id || "").trim();
-      if (maybeSessionId) {
-        setManagedSessionId(maybeSessionId);
-      }
-      const maybeUrl = String(data?.url || "").trim();
-      if (maybeUrl) {
-        setManagedLoginUrl(maybeUrl);
-      }
-      const maybeCode = String(data?.code || "").trim();
-      if (maybeCode) {
-        setManagedCode(maybeCode);
-      }
-
-      if (data?.finished) {
-        if (data?.logged_in) {
-          setManagedStatus(`${managedProviderLabel} login is active in this runtime.`);
-          setManagedStatusError(false);
-          setManagedSessionId("");
-          if (authOnly) {
-            window.setTimeout(() => onClose(), 400);
-          }
-          return;
-        }
-        setManagedStatus(String(data?.message || `${managedProviderLabel} authentication did not complete.`));
-        setManagedStatusError(true);
-        return;
-      }
-
-      setManagedStatus(String(data?.message || "Waiting for login process to complete."));
+  function openManagedLoginLink() {
+    if (!managedLoginUrl) return;
+    const opened = window.open(managedLoginUrl, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      setManagedStatus("Popup blocked. Allow popups, then click Login to Claude again.");
       setManagedStatusError(false);
-    } catch {
-      setManagedStatus("Unable to complete managed login.");
-      setManagedStatusError(true);
-    } finally {
-      setManagedBusy(false);
     }
   }
 
@@ -321,17 +283,6 @@ export function EnvManager({
     }
   }
 
-  async function copyText(value: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopyStatus("Copied to clipboard.");
-      setCopyStatusError(false);
-    } catch {
-      setCopyStatus("Could not copy automatically. Copy it manually.");
-      setCopyStatusError(true);
-    }
-  }
-
   useEffect(() => {
     (async () => {
       const meta = await loadManagedAuthMeta().catch(() => ({ supported: true }));
@@ -346,8 +297,13 @@ export function EnvManager({
       if (!loggedIn && !hasActiveSession) {
         authAutoLaunchStartedRef.current = true;
         await startManagedClaudeLogin().catch(() => {});
+      } else if (hasActiveSession) {
+        startStatusPolling();
       }
     })();
+    return () => {
+      stopStatusPolling();
+    };
   }, [authOnly]);
 
   function startEdit(env: CompanionEnv) {
@@ -414,7 +370,7 @@ export function EnvManager({
   }
 
   const title = authOnly ? `Authenticate with ${managedProviderLabel}` : "Manage Environments";
-  const authErrorMessage = String(authError || "").trim();
+  const authErrorMessage = normalizeLegacyAuthMessage(String(authError || "").trim());
 
   const panel = (
     <div
@@ -444,7 +400,7 @@ export function EnvManager({
               {authErrorMessage && (
                 <p className="text-cc-error">Latest error: {authErrorMessage}</p>
               )}
-              <p>Workflow: Launch Login, open the login link, paste code only if prompted, finish login, then check status.</p>
+              <p>Workflow: Login to Claude, complete sign-in in browser, then wait for automatic status update.</p>
             </div>
           )}
 
@@ -476,9 +432,20 @@ export function EnvManager({
                 disabled={!managedSupported}
                 className="w-full px-2 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
               />
+              <div className="text-[11px] text-cc-muted">
+                {managedLoginUrl
+                  ? "Complete sign-in in the browser tab. Status refreshes automatically."
+                  : "Sign in to Claude to enable the chat assistant."}
+              </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={startManagedClaudeLogin}
+                  onClick={() => {
+                    if (managedLoginUrl) {
+                      openManagedLoginLink();
+                      return;
+                    }
+                    startManagedClaudeLogin().catch(() => {});
+                  }}
                   disabled={managedBusy || !managedSupported}
                   className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                     managedBusy || !managedSupported
@@ -486,91 +453,12 @@ export function EnvManager({
                       : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
                   }`}
                 >
-                  Launch Login
-                </button>
-                <button
-                  onClick={finishManagedClaudeLogin}
-                  disabled={managedBusy || !managedSupported || (!managedSessionId && !managedLoginUrl)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                    managedBusy || !managedSupported || (!managedSessionId && !managedLoginUrl)
-                      ? "bg-cc-hover text-cc-muted cursor-not-allowed"
-                      : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
-                  }`}
-                >
-                  Finish Login
-                </button>
-                <button
-                  onClick={() => checkManagedAuthStatus(false)}
-                  disabled={managedBusy || !managedSupported}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                    managedBusy || !managedSupported
-                      ? "bg-cc-hover text-cc-muted cursor-not-allowed"
-                      : "bg-cc-input-bg border border-cc-border text-cc-fg hover:bg-cc-hover cursor-pointer"
-                  }`}
-                >
-                  Check Status
+                  Login to Claude
                 </button>
               </div>
-              <div className="space-y-1">
-                <div className="text-[11px] text-cc-muted">Auth code (paste only if Claude asks for one):</div>
-                <input
-                  type="text"
-                  value={managedCode}
-                  onChange={(e) => setManagedCode(e.target.value)}
-                  placeholder="Paste auth code (if prompted)"
-                  className="w-full px-2 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
-                />
-              </div>
-              {managedLoginUrl && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={managedLoginUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex px-2.5 py-1 text-[11px] bg-cc-input-bg border border-cc-border text-cc-fg rounded-md hover:bg-cc-hover cursor-pointer"
-                    >
-                      Open Login Link
-                    </a>
-                    <button
-                      onClick={() => copyText(managedLoginUrl)}
-                      className="inline-flex px-2.5 py-1 text-[11px] bg-cc-input-bg border border-cc-border text-cc-fg rounded-md hover:bg-cc-hover cursor-pointer"
-                    >
-                      Copy Link
-                    </button>
-                  </div>
-                  <div className="text-[11px] text-cc-muted break-all">{managedLoginUrl}</div>
-                </div>
-              )}
-              {managedSessionId && (
-                <div className="text-[11px] text-cc-muted break-all">
-                  Active login session: <code>{managedSessionId}</code>
-                </div>
-              )}
-              {managedCode && (
-                <div className="space-y-1.5">
-                  <div className="text-[11px] text-cc-muted">Detected auth code:</div>
-                  <div className="flex items-center gap-2">
-                    <code className="px-2 py-1 rounded-md bg-cc-input-bg border border-cc-border text-[11px] text-cc-fg break-all">
-                      {managedCode}
-                    </code>
-                    <button
-                      onClick={() => copyText(managedCode)}
-                      className="inline-flex px-2.5 py-1 text-[11px] bg-cc-input-bg border border-cc-border text-cc-fg rounded-md hover:bg-cc-hover cursor-pointer"
-                    >
-                      Copy Code
-                    </button>
-                  </div>
-                </div>
-              )}
               {managedStatus && (
                 <div className={`text-[11px] ${managedStatusError ? "text-cc-error" : "text-cc-muted"}`}>
                   {managedStatus}
-                </div>
-              )}
-              {copyStatus && (
-                <div className={`text-[11px] ${copyStatusError ? "text-cc-error" : "text-cc-muted"}`}>
-                  {copyStatus}
                 </div>
               )}
             </div>
@@ -598,7 +486,7 @@ export function EnvManager({
                   className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                     apiKeyBusy || !workspaceId
                       ? "bg-cc-hover text-cc-muted cursor-not-allowed"
-                      : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+                      : "bg-cc-input-bg border border-cc-border text-cc-fg hover:bg-cc-hover cursor-pointer"
                   }`}
                 >
                   Save API Key

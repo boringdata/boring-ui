@@ -29,15 +29,8 @@ interface CommandItem {
   type: "command" | "skill";
 }
 
-function getWorkspaceBasePath(pathname: string = ""): string {
-  const match = String(pathname || "").match(/^\/w\/[^/]+/);
-  return match ? match[0] : "";
-}
-
 function getManagedAuthBase(): string {
-  if (typeof window === "undefined") return "/api/v1/chat/auth";
-  const workspaceBase = getWorkspaceBasePath(window.location?.pathname || "");
-  return `${workspaceBase}/api/v1/chat/auth`;
+  return "/api/v1/chat/auth";
 }
 
 export function Composer({ sessionId }: { sessionId: string }) {
@@ -164,7 +157,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       if (loginUrl) {
         const opened = window.open(loginUrl, "_blank", "noopener,noreferrer");
         const baseMessage = opened
-          ? "Opened Claude login in a new tab. Complete sign-in, paste code if prompted, then click Finish Login in the auth panel."
+          ? "Opened Claude login in a new tab. Complete browser sign-in; the auth panel updates automatically."
           : `Open this login URL to authenticate: ${loginUrl}`;
         const message = loginCode
           ? `${baseMessage}\nAuth code: ${loginCode}`
