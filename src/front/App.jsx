@@ -2146,7 +2146,10 @@ export default function App() {
       api.onUnhandledDragOverEvent((dragEvent) => {
         const dataTransfer = dragEvent?.nativeEvent?.dataTransfer
         const isInternalPanelDrag = typeof dragEvent?.getData === 'function' && !!dragEvent.getData()
-        const isExternalDrag = !!dataTransfer
+        const isExternalSeriesDragFallback = typeof window !== 'undefined'
+          && typeof window.__BM_DND_SERIES_ID === 'string'
+          && window.__BM_DND_SERIES_ID.trim().length > 0
+        const isExternalDrag = !!dataTransfer || isExternalSeriesDragFallback
 
         if (isInternalPanelDrag || isExternalDrag) {
           dragEvent.accept()
@@ -3519,6 +3522,9 @@ export default function App() {
 
     const droppedSeriesFromCustomType = String(dataTransfer.getData('text/series-id') || '').trim()
     const droppedPlainText = String(dataTransfer.getData('text/plain') || '').trim()
+    const droppedSeriesFromWindow = typeof window !== 'undefined'
+      ? String(window.__BM_DND_SERIES_ID || '').trim()
+      : ''
     const droppedSeriesId = droppedSeriesFromCustomType
       || (
         droppedPlainText
@@ -3527,6 +3533,7 @@ export default function App() {
         ? droppedPlainText
         : ''
       )
+      || droppedSeriesFromWindow
     if (!droppedSeriesId) return
 
     const targetPanel = event?.panel || event?.group?.activePanel
