@@ -87,7 +87,7 @@ def test_auth_session_returns_401_for_expired_cookie(tmp_path: Path) -> None:
         "user-expired",
         "expired@example.com",
         secret=client.app.state.app_config.auth_session_secret,
-        ttl_seconds=-1,
+        ttl_seconds=-60,
     )
     response = client.get("/auth/session", headers={"Cookie": f"boring_session={expired_token}"})
     assert response.status_code == 401

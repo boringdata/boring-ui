@@ -1,23 +1,37 @@
-"""Session cookie helpers for control-plane auth endpoints."""
+"""Session cookie: signed JWT issuance and parsing.
+
+The ``boring_session`` cookie contains an HS256-signed JWT with user identity.
+It is issued by the auth callback and validated by the session middleware on
+every request.
+
+Cookie format is a standard JWT (3-part ``header.payload.signature``) so that
+both boring-ui (issuer) and boring-sandbox (edge validator) can share the same
+secret and interoperate without a shared library dependency.
+"""
 
 from __future__ import annotations
 
-import base64
-import binascii
-import hashlib
-import hmac
-import json
+import re
 import time
 from dataclasses import dataclass
 
+import jwt as pyjwt
 
-def _b64url_encode(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+_ALGORITHM = "HS256"
+_CLOCK_SKEW_LEEWAY = 30  # seconds
+_COOKIE_NAME = "boring_session"
+_APP_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+COOKIE_NAME = _COOKIE_NAME
 
 
-def _b64url_decode(raw: str) -> bytes:
-    padding = "=" * (-len(raw) % 4)
-    return base64.urlsafe_b64decode((raw + padding).encode("ascii"))
+def app_cookie_name(app_id: str | None) -> str:
+    """Return the app-scoped session cookie name."""
+    if app_id:
+        if not _APP_ID_RE.fullmatch(app_id):
+            raise ValueError(f"Invalid app_id for cookie name: {app_id!r}")
+        return f"{_COOKIE_NAME}_{app_id}"
+    return _COOKIE_NAME
 
 
 @dataclass(frozen=True)
@@ -25,6 +39,7 @@ class SessionPayload:
     user_id: str
     email: str
     exp: int
+    app_id: str | None = None
 
 
 class SessionError(Exception):
@@ -45,42 +60,50 @@ def create_session_cookie(
     *,
     secret: str,
     ttl_seconds: int,
+    app_id: str | None = None,
 ) -> str:
+    """Create a signed HS256 JWT for the session cookie."""
     now = int(time.time())
-    payload = {
+    payload: dict = {
         "sub": str(user_id),
         "email": str(email).strip().lower(),
+        "iat": now,
         "exp": now + int(ttl_seconds),
     }
-    payload_part = _b64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
-    signature = hmac.new(secret.encode("utf-8"), payload_part.encode("ascii"), hashlib.sha256).digest()
-    signature_part = _b64url_encode(signature)
-    return f"{payload_part}.{signature_part}"
+    if app_id:
+        payload["app_id"] = app_id
+    return pyjwt.encode(payload, secret, algorithm=_ALGORITHM)
 
 
-def parse_session_cookie(token: str, *, secret: str) -> SessionPayload:
-    if not token or "." not in token:
-        raise SessionInvalid("Malformed session token")
-    payload_part, signature_part = token.split(".", 1)
-    expected_sig = hmac.new(secret.encode("utf-8"), payload_part.encode("ascii"), hashlib.sha256).digest()
+def parse_session_cookie(
+    token: str,
+    *,
+    secret: str,
+) -> SessionPayload:
+    """Decode and validate a session cookie JWT.
+
+    Raises:
+        SessionExpired: If the token has expired.
+        SessionInvalid: If the token is malformed or signature is bad.
+    """
+    if not token:
+        raise SessionInvalid("Empty session token")
     try:
-        actual_sig = _b64url_decode(signature_part)
-    except (binascii.Error, ValueError) as exc:
-        raise SessionInvalid("Malformed session signature") from exc
-    if not hmac.compare_digest(expected_sig, actual_sig):
-        raise SessionInvalid("Invalid session signature")
+        data = pyjwt.decode(
+            token,
+            secret,
+            algorithms=[_ALGORITHM],
+            leeway=_CLOCK_SKEW_LEEWAY,
+            options={"require": ["sub", "email", "exp"]},
+        )
+    except pyjwt.ExpiredSignatureError as exc:
+        raise SessionExpired("Session has expired") from exc
+    except pyjwt.InvalidTokenError as exc:
+        raise SessionInvalid(f"Invalid session token: {exc}") from exc
 
-    try:
-        payload = json.loads(_b64url_decode(payload_part).decode("utf-8"))
-    except (binascii.Error, json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
-        raise SessionInvalid("Malformed session payload") from exc
-
-    user_id = str(payload.get("sub", "")).strip()
-    email = str(payload.get("email", "")).strip().lower()
-    exp = payload.get("exp")
-    if not user_id or not email or not isinstance(exp, int):
-        raise SessionInvalid("Missing required session fields")
-    if int(time.time()) >= exp:
-        raise SessionExpired("Session has expired")
-
-    return SessionPayload(user_id=user_id, email=email, exp=exp)
+    return SessionPayload(
+        user_id=data["sub"],
+        email=data["email"],
+        exp=data["exp"],
+        app_id=data.get("app_id"),
+    )

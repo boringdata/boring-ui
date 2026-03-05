@@ -10,10 +10,12 @@ from .service import ControlPlaneService
 from .repository import ControlPlaneRepository, LocalControlPlaneRepository
 from .models import ControlPlaneState
 from .auth_session import (
+    COOKIE_NAME,
     SessionPayload,
     SessionError,
     SessionExpired,
     SessionInvalid,
+    app_cookie_name,
     create_session_cookie,
     parse_session_cookie,
 )
@@ -29,10 +31,12 @@ __all__ = [
     "ControlPlaneRepository",
     "LocalControlPlaneRepository",
     "ControlPlaneState",
+    "COOKIE_NAME",
     "SessionPayload",
     "SessionError",
     "SessionExpired",
     "SessionInvalid",
+    "app_cookie_name",
     "create_session_cookie",
     "parse_session_cookie",
 ]
