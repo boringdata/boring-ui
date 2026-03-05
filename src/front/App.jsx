@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 
 import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
@@ -234,6 +234,24 @@ const listDockPanels = (api) => {
 }
 
 const getPanelComponent = (panel) => panel?.api?.component ?? panel?.component ?? ''
+
+const hasDragType = (dataTransfer, type) => {
+  const types = dataTransfer?.types
+  if (!types) return false
+  if (typeof types.includes === 'function') return types.includes(type)
+  if (typeof types.contains === 'function') return types.contains(type)
+  try {
+    return Array.from(types).includes(type)
+  } catch {
+    return false
+  }
+}
+
+const isFileDragDataTransfer = (dataTransfer) =>
+  hasDragType(dataTransfer, 'application/x-kurt-file')
+
+const isSeriesDragDataTransfer = (dataTransfer) =>
+  hasDragType(dataTransfer, 'text/series-id')
 
 const countAgentPanels = (api, family) => {
   const panels = listDockPanels(api)
@@ -2138,6 +2156,22 @@ export default function App() {
   const onReady = (event) => {
     const api = event.api
     setDockApi(api)
+    // Keep dock drag-and-drop explicitly enabled.
+    if (typeof api?.updateOptions === 'function') {
+      api.updateOptions({ disableDnd: false })
+    }
+    if (typeof api?.onUnhandledDragOverEvent === 'function') {
+      api.onUnhandledDragOverEvent((dragEvent) => {
+        const dataTransfer = dragEvent?.nativeEvent?.dataTransfer
+        const isInternalPanelDrag = typeof dragEvent?.getData === 'function' && !!dragEvent.getData()
+        const isExternalFileOrSeriesDrag = !!dataTransfer
+          && (isFileDragDataTransfer(dataTransfer) || isSeriesDragDataTransfer(dataTransfer))
+
+        if (isInternalPanelDrag || isExternalFileOrSeriesDrag) {
+          dragEvent.accept()
+        }
+      })
+    }
 
     const applyPanelConstraints = (api, registry, capabilityFlags, panelMinRef) => {
       const paneConfigs = typeof registry?.list === 'function' ? registry.list() : []
@@ -3468,42 +3502,57 @@ export default function App() {
     }
   }, [dockApi, projectRoot, openFile])
 
-  // Handle external drag events (files from FileTree)
-  const showDndOverlay = (event) => {
-    // Check if this is a file drag from our FileTree
-    const hasFileData = event.dataTransfer.types.includes('application/x-kurt-file')
-    return hasFileData
-  }
-
   const onDidDrop = (event) => {
-    const { dataTransfer, position, group } = event
+    const dataTransfer = event?.nativeEvent?.dataTransfer
+    if (!dataTransfer) return
+
     const fileDataStr = dataTransfer.getData('application/x-kurt-file')
+    if (fileDataStr) {
+      try {
+        const fileData = JSON.parse(fileDataStr)
+        const path = fileData.path
+        const { position, group } = event
 
-    if (!fileDataStr) return
+        // Determine position based on drop location
+        let dropPosition
+        if (group) {
+          // Dropped on a group - add to that group
+          dropPosition = { referenceGroup: group }
+        } else if (position) {
+          // Dropped to create a new split
+          dropPosition = position
+        } else {
+          // Fallback to center group
+          const centerGroup = getLiveCenterGroup(dockApi)
+          dropPosition = centerGroup
+            ? { referenceGroup: centerGroup }
+            : { direction: 'right', referencePanel: 'filetree' }
+        }
 
-    try {
-      const fileData = JSON.parse(fileDataStr)
-      const path = fileData.path
-
-      // Determine position based on drop location
-      let dropPosition
-      if (group) {
-        // Dropped on a group - add to that group
-        dropPosition = { referenceGroup: group }
-      } else if (position) {
-        // Dropped to create a new split
-        dropPosition = position
-      } else {
-        // Fallback to center group
-        const centerGroup = getLiveCenterGroup(dockApi)
-        dropPosition = centerGroup
-          ? { referenceGroup: centerGroup }
-          : { direction: 'right', referencePanel: 'filetree' }
+        openFileAtPosition(path, dropPosition)
+      } catch {
+        // Ignore parse errors
       }
+      return
+    }
 
-      openFileAtPosition(path, dropPosition)
-    } catch {
-      // Ignore parse errors
+    const droppedSeriesId = String(dataTransfer.getData('text/series-id') || '').trim()
+    if (!droppedSeriesId) return
+
+    const targetPanel = event?.panel || event?.group?.activePanel
+    if (!targetPanel || getPanelComponent(targetPanel) !== 'chart-canvas') return
+
+    const currentParams = targetPanel?.params && typeof targetPanel.params === 'object'
+      ? targetPanel.params
+      : {}
+
+    targetPanel.api?.updateParameters({
+      ...currentParams,
+      overlayDropSeriesId: droppedSeriesId,
+      overlayDropNonce: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    })
+    if (typeof targetPanel.api?.setActive === 'function') {
+      targetPanel.api.setActive()
     }
   }
 
@@ -3556,17 +3605,23 @@ export default function App() {
             )}
             <CapabilitiesStatusContext.Provider value={{ pending: capabilitiesPending }}>
               <CapabilitiesContext.Provider value={capabilities}>
-                <div data-testid="dockview" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-                  <DockviewReact
-                    className={dockviewClassName}
-                    components={components}
-                    tabComponents={tabComponents}
-                    rightHeaderActionsComponent={RightHeaderActions}
-                    onReady={onReady}
-                    showDndOverlay={showDndOverlay}
-                    onDidDrop={onDidDrop}
-                  />
-                </div>
+                {capabilitiesPending ? (
+                  <div className="app-loading-overlay" role="status" aria-live="polite">
+                    <Loader2 className="pane-loading-icon" size={36} />
+                    <p className="pane-loading-message">Connecting to workspace</p>
+                  </div>
+                ) : (
+                  <div data-testid="dockview" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+                    <DockviewReact
+                      className={dockviewClassName}
+                      components={components}
+                      tabComponents={tabComponents}
+                      rightHeaderActionsComponent={RightHeaderActions}
+                      onReady={onReady}
+                      onDidDrop={onDidDrop}
+                    />
+                  </div>
+                )}
               </CapabilitiesContext.Provider>
             </CapabilitiesStatusContext.Provider>
           </div>
