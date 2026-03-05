@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Copy, Plus, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import Terminal from '../components/Terminal'
 import ClaudeStreamChat from '../components/chat/ClaudeStreamChat'
+import Tooltip from '../components/Tooltip'
 
 const SESSION_STORAGE_KEY = 'kurt-web-terminal-sessions'
 const ACTIVE_SESSION_KEY = 'kurt-web-terminal-active'
@@ -57,7 +58,7 @@ const normalizeSession = (session, fallbackId) => {
   return {
     ...rest,
     id,
-    title: rest.title || `Session ${id}`,
+    title: rest.title || `Terminal ${id}`,
     provider: DEFAULT_PROVIDER,
     sessionId: rest.sessionId || createSessionId(),
   }
@@ -108,7 +109,7 @@ export default function TerminalPanel({ params }) {
     return [
       {
         id: 1,
-        title: 'Session 1',
+        title: 'Terminal 1',
         provider: DEFAULT_PROVIDER,
         sessionId: createSessionId(),
         resume: false,
@@ -124,7 +125,7 @@ export default function TerminalPanel({ params }) {
 
   const formatPrompt = useCallback((prompt) => {
     const cleaned = prompt.replace(/\s+/g, ' ').trim()
-    if (!cleaned) return 'Session'
+    if (!cleaned) return 'Terminal'
     return cleaned.length > 28 ? `${cleaned.slice(0, 28)}…` : cleaned
   }, [])
 
@@ -133,7 +134,7 @@ export default function TerminalPanel({ params }) {
       setSessions((prev) =>
         prev.map((session) => {
           if (session.id !== sessionId) return session
-          if (!session.title.startsWith('Session')) return session
+          if (!session.title.startsWith('Terminal')) return session
           return { ...session, title: formatPrompt(prompt) }
         }),
       )
@@ -146,7 +147,7 @@ export default function TerminalPanel({ params }) {
     terminalCounter.current = nextId
     const next = {
       id: nextId,
-      title: `Session ${nextId}`,
+      title: `Terminal ${nextId}`,
       provider: DEFAULT_PROVIDER,
       sessionId: createSessionId(),
       resume: false,
@@ -238,21 +239,22 @@ export default function TerminalPanel({ params }) {
           <>
             <span className="terminal-title-text">Agent</span>
             <div className="terminal-header-spacer" />
-            <button
-              type="button"
-              className="terminal-icon-btn"
-              onClick={() => {
-                if (typeof onSplitPanel === 'function') {
-                  onSplitPanel(panelId)
-                  return
-                }
-                addSession()
-              }}
-              aria-label="Split chat panel"
-              title="Split chat panel"
-            >
-              <Plus size={16} />
-            </button>
+            <Tooltip label="Split chat panel">
+              <button
+                type="button"
+                className="terminal-icon-btn"
+                onClick={() => {
+                  if (typeof onSplitPanel === 'function') {
+                    onSplitPanel(panelId)
+                    return
+                  }
+                  addSession()
+                }}
+                aria-label="Split chat panel"
+              >
+                <Plus size={16} />
+              </button>
+            </Tooltip>
           </>
         ) : (
           <>
@@ -264,65 +266,57 @@ export default function TerminalPanel({ params }) {
             >
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {`${session.title} - ${session.sessionId.slice(0, 8)}`}
+                  {session.title}
                 </option>
               ))}
             </select>
             <div className="view-mode-toggle">
-              <button
-                type="button"
-                className={`view-mode-btn ${chatInterface === 'cli' ? 'active' : ''}`}
-                onClick={() => setChatInterface('cli')}
-                title="CLI chat interface"
-              >
-                CLI
-              </button>
-              <button
-                type="button"
-                className={`view-mode-btn ${chatInterface === 'web' ? 'active' : ''}`}
-                onClick={() => setChatInterface('web')}
-                title="Web chat interface"
-              >
-                Web
-              </button>
+              <Tooltip label="CLI chat interface">
+                <button
+                  type="button"
+                  className={`view-mode-btn ${chatInterface === 'cli' ? 'active' : ''}`}
+                  onClick={() => setChatInterface('cli')}
+                >
+                  CLI
+                </button>
+              </Tooltip>
+              <Tooltip label="Web chat interface">
+                <button
+                  type="button"
+                  className={`view-mode-btn ${chatInterface === 'web' ? 'active' : ''}`}
+                  onClick={() => setChatInterface('web')}
+                >
+                  Web
+                </button>
+              </Tooltip>
             </div>
             <div className="terminal-header-spacer" />
-            <button
-              type="button"
-              className="terminal-icon-btn"
-              onClick={() => {
-                const active = sessions.find((s) => s.id === activeId)
-                if (active?.sessionId) {
-                  navigator.clipboard.writeText(active.sessionId)
-                }
-              }}
-              title={sessions.find((s) => s.id === activeId)?.sessionId || 'Copy session ID'}
-            >
-              <Copy size={14} />
-            </button>
-            <button
-              type="button"
-              className="terminal-icon-btn"
-              onClick={() => {
-                if (typeof onSplitPanel === 'function') {
-                  onSplitPanel(panelId)
-                  return
-                }
-                addSession()
-              }}
-              aria-label="Split chat panel"
-              title="Split chat panel"
-            >
-              <Plus size={16} />
-            </button>
-            <button
-              type="button"
-              className="terminal-icon-btn terminal-close-btn"
-              onClick={() => closeSession(activeId)}
-              title="Close session"
-            >
-              <X size={16} />
-            </button>
+            <Tooltip label="Split chat panel">
+              <button
+                type="button"
+                className="terminal-icon-btn"
+                onClick={() => {
+                  if (typeof onSplitPanel === 'function') {
+                    onSplitPanel(panelId)
+                    return
+                  }
+                  addSession()
+                }}
+                aria-label="Split chat panel"
+              >
+                <Plus size={16} />
+              </button>
+            </Tooltip>
+            <Tooltip label="Close session">
+              <button
+                type="button"
+                className="terminal-icon-btn terminal-close-btn"
+                onClick={() => closeSession(activeId)}
+                aria-label="Close session"
+              >
+                <X size={16} />
+              </button>
+            </Tooltip>
           </>
         )}
       </div>
@@ -418,28 +412,32 @@ export default function TerminalPanel({ params }) {
                     {filePath && <span className="review-list-item-path">{filePath}</span>}
                   </div>
                   <div className="review-list-item-actions">
-                    <button
-                      type="button"
-                      className="review-list-deny"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDecision?.(approval.id, 'deny')
-                      }}
-                      title="Deny"
-                    >
-                      ✕
-                    </button>
-                    <button
-                      type="button"
-                      className="review-list-allow"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDecision?.(approval.id, 'allow')
-                      }}
-                      title="Allow"
-                    >
-                      ✓
-                    </button>
+                    <Tooltip label="Deny">
+                      <button
+                        type="button"
+                        className="review-list-deny"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDecision?.(approval.id, 'deny')
+                        }}
+                        aria-label="Deny"
+                      >
+                        ✕
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="Allow">
+                      <button
+                        type="button"
+                        className="review-list-allow"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDecision?.(approval.id, 'allow')
+                        }}
+                        aria-label="Allow"
+                      >
+                        ✓
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               )

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Copy } from 'lucide-react'
+import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import Terminal from '../components/Terminal'
+import Tooltip from '../components/Tooltip'
 
 const SESSION_STORAGE_KEY = 'kurt-web-shell-sessions'
 const ACTIVE_SESSION_KEY = 'kurt-web-shell-active'
@@ -69,7 +70,7 @@ const normalizeSession = (session, fallbackId) => {
   return {
     ...rest,
     id,
-    title: rest.title || `Shell ${id}`,
+    title: rest.title || `Terminal ${id}`,
     provider: 'shell',
     sessionId: isUuid(rest.sessionId) ? rest.sessionId : createSessionId(),
   }
@@ -81,6 +82,10 @@ const serializeSessions = (sessions) =>
 
 export default function ShellTerminalPanel({ params }) {
   const panelId = params?.panelId
+  const collapsed = params?.collapsed === true
+  const onToggleCollapse = typeof params?.onToggleCollapse === 'function'
+    ? params.onToggleCollapse
+    : null
   const terminalCounter = useRef(1)
   const sessionStorageKey = scopedStorageKey(SESSION_STORAGE_KEY, panelId)
   const activeSessionKey = scopedStorageKey(ACTIVE_SESSION_KEY, panelId)
@@ -95,7 +100,7 @@ export default function ShellTerminalPanel({ params }) {
     return [
       {
         id: 1,
-        title: 'Shell 1',
+        title: 'Terminal 1',
         provider: 'shell',
         sessionId: createSessionId(),
         resume: false,
@@ -111,7 +116,7 @@ export default function ShellTerminalPanel({ params }) {
 
   const formatPrompt = useCallback((prompt) => {
     const cleaned = prompt.replace(/\s+/g, ' ').trim()
-    if (!cleaned) return 'Shell'
+    if (!cleaned) return 'Terminal'
     return cleaned.length > 28 ? `${cleaned.slice(0, 28)}…` : cleaned
   }, [])
 
@@ -120,7 +125,7 @@ export default function ShellTerminalPanel({ params }) {
       setSessions((prev) =>
         prev.map((session) => {
           if (session.id !== sessionId) return session
-          if (!session.title.startsWith('Shell')) return session
+          if (!session.title.startsWith('Terminal')) return session
           return { ...session, title: formatPrompt(prompt) }
         }),
       )
@@ -133,7 +138,7 @@ export default function ShellTerminalPanel({ params }) {
     terminalCounter.current = nextId
     const next = {
       id: nextId,
-      title: `Shell ${nextId}`,
+      title: `Terminal ${nextId}`,
       provider: 'shell',
       sessionId: createSessionId(),
       resume: false,
@@ -211,6 +216,18 @@ export default function ShellTerminalPanel({ params }) {
   return (
     <div className="panel-content shell-panel-content">
       <div className="shell-header">
+        {onToggleCollapse && (
+          <Tooltip label={collapsed ? 'Expand panel' : 'Collapse panel'}>
+            <button
+              type="button"
+              className="sidebar-toggle-btn"
+              onClick={onToggleCollapse}
+              aria-label={collapsed ? 'Expand panel' : 'Collapse panel'}
+            >
+              {collapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+            </button>
+          </Tooltip>
+        )}
         <div className="shell-session-bar">
           <select
             id="shell-session-select"
@@ -220,46 +237,37 @@ export default function ShellTerminalPanel({ params }) {
           >
             {sessions.map((session) => (
               <option key={session.id} value={session.id}>
-                {`${session.title} - ${session.sessionId.slice(0, 8)}`}
+                {session.title}
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            className="terminal-copy-id"
-            onClick={() => {
-              const active = sessions.find((s) => s.id === activeId)
-              if (active?.sessionId) {
-                navigator.clipboard.writeText(active.sessionId)
-              }
-            }}
-            title={sessions.find((s) => s.id === activeId)?.sessionId || 'Copy session ID'}
-          >
-            <Copy size={14} />
-          </button>
-          <button
-            type="button"
-            className="terminal-new terminal-new-icon"
-            onClick={addSession}
-            aria-label="New shell"
-            title="New shell"
-          >
-            <span aria-hidden="true">+</span>
-          </button>
-          <button
-            type="button"
-            className="terminal-close-button"
-            onClick={() => closeSession(activeId)}
-          >
-            Close
-          </button>
+          <Tooltip label="New terminal">
+            <button
+              type="button"
+              className="terminal-new terminal-new-icon"
+              onClick={addSession}
+              aria-label="New terminal"
+            >
+              <span aria-hidden="true">+</span>
+            </button>
+          </Tooltip>
+          <Tooltip label="Close terminal session">
+            <button
+              type="button"
+              className="terminal-icon-btn terminal-close-btn"
+              onClick={() => closeSession(activeId)}
+              aria-label="Close terminal session"
+            >
+              <X size={16} />
+            </button>
+          </Tooltip>
         </div>
       </div>
-      {sessions.length === 0 ? (
+      {collapsed ? null : sessions.length === 0 ? (
         <div className="terminal-empty">
-          <p>No active shells.</p>
+          <p>No active terminals.</p>
           <button type="button" className="terminal-new" onClick={addSession}>
-            Start new shell
+            Start new terminal
           </button>
         </div>
       ) : (

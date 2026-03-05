@@ -1,3 +1,4 @@
+import { FileSearch } from 'lucide-react'
 import { getConfig } from '../config'
 
 export default function EmptyPanel() {
@@ -6,7 +7,9 @@ export default function EmptyPanel() {
   return (
     <div className="panel-content empty-panel">
       <div className="empty-panel-content">
-        <p>{message}</p>
+        <FileSearch className="empty-panel-icon" size={20} aria-hidden="true" />
+        <p className="empty-panel-message">{message}</p>
+        <p className="empty-panel-hint">Press Ctrl+P to quickly find a file.</p>
       </div>
     </div>
   )

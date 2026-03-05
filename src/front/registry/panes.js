@@ -337,7 +337,7 @@ const createDefaultRegistry = () => {
     placement: 'right',
     essential: false,
     locked: false,
-    hideHeader: false,
+    hideHeader: true,
     constraints: {
       minWidth: 250,
       collapsedWidth: 48,
@@ -354,7 +354,7 @@ const createDefaultRegistry = () => {
     placement: 'bottom',
     essential: true,
     locked: true,
-    hideHeader: false,
+    hideHeader: true,
     constraints: {
       minHeight: 100,
       collapsedHeight: 36,
@@ -389,7 +389,7 @@ const createDefaultRegistry = () => {
     placement: 'right',
     essential: false,
     locked: false,
-    hideHeader: false,
+    hideHeader: true,
     constraints: {
       minWidth: 250,
     },

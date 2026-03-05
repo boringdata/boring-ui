@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
-import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2, Bot } from 'lucide-react'
 
 import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
@@ -38,6 +38,7 @@ import {
   getFileName,
 } from './layout'
 import ThemeToggle from './components/ThemeToggle'
+import Tooltip from './components/Tooltip'
 import ClaudeStreamChat from './components/chat/ClaudeStreamChat'
 import {
   CapabilitiesContext,
@@ -1094,33 +1095,6 @@ export default function App() {
     toggleTheme,
   })
 
-  // Right header actions component - shows collapse button on shell group
-  const RightHeaderActions = useCallback(
-    (props) => {
-      const panels = props.group?.panels || []
-      const hasShellPanel = panels.some((p) => p.id === 'shell')
-
-      if (!hasShellPanel) return null
-
-      return (
-        <button
-          type="button"
-          className="tab-collapse-btn"
-          onClick={toggleShell}
-          title={collapsed.shell ? 'Expand panel' : 'Collapse panel'}
-          aria-label={collapsed.shell ? 'Expand panel' : 'Collapse panel'}
-        >
-          {collapsed.shell ? (
-            <ChevronDown size={14} />
-          ) : (
-            <ChevronUp size={14} />
-          )}
-        </button>
-      )
-    },
-    [collapsed.shell, toggleShell]
-  )
-
   // Apply collapsed state to dockview groups
   useEffect(() => {
     if (!dockApi) return
@@ -2103,7 +2077,7 @@ export default function App() {
 
       if (panel?.group) {
         panel.group.locked = false
-        panel.group.header.hidden = false
+        panel.group.header.hidden = true
         const minWidth = component === 'terminal'
           ? panelMinRef.current.terminal
           : panelMinRef.current.companion
@@ -2162,6 +2136,54 @@ export default function App() {
       piSessionBootstrap: options.piSessionBootstrap || 'latest',
     })
   }, [addChatPanel])
+
+  // Right header actions component - shell collapse control + quick chat action in editor groups.
+  const RightHeaderActions = useCallback(
+    (props) => {
+      const panels = props.group?.panels || []
+      const hasShellPanel = panels.some((p) => p.id === 'shell')
+      const hasCenterTabs = panels.some((p) => {
+        const id = typeof p?.id === 'string' ? p.id : ''
+        return id.startsWith('editor-') || id.startsWith('review-') || id === 'empty-center'
+      })
+
+      if (!hasShellPanel && !hasCenterTabs) return null
+
+      return (
+        <div className="tab-header-actions">
+          {hasCenterTabs && (
+            <Tooltip label="Open new chat pane">
+              <button
+                type="button"
+                className="tab-collapse-btn"
+                onClick={handleOpenChatTab}
+                aria-label="Open new chat pane"
+              >
+                <Bot size={14} />
+              </button>
+            </Tooltip>
+          )}
+          {hasShellPanel && (
+            <Tooltip label={collapsed.shell ? 'Expand panel' : 'Collapse panel'}>
+              <button
+                type="button"
+                className="tab-collapse-btn"
+                onClick={toggleShell}
+                aria-label={collapsed.shell ? 'Expand panel' : 'Collapse panel'}
+              >
+                {collapsed.shell ? (
+                  <ChevronDown size={14} />
+                ) : (
+                  <ChevronUp size={14} />
+                )}
+              </button>
+            </Tooltip>
+          )}
+        </div>
+      )
+    },
+    [collapsed.shell, handleOpenChatTab, toggleShell],
+  )
 
   const onReady = (event) => {
     const api = event.api
@@ -2263,7 +2285,6 @@ export default function App() {
             activeDiffFile,
             collapsed: collapsed.filetree,
             onToggleCollapse: toggleFiletree,
-            onOpenChatTab: handleOpenChatTab,
             showSidebarToggle: leftSidebarPanelIds[0] === 'filetree',
             appName: config.branding?.name || '',
             userEmail: menuUserEmail,
@@ -2308,7 +2329,6 @@ export default function App() {
             return {
               collapsed: collapsed.filetree,
               onToggleCollapse: toggleFiletree,
-              onOpenChatTab: handleOpenChatTab,
               showSidebarToggle: leftSidebarPanelIds[0] === panelId,
               sectionCollapsed: sectionCollapsed[panelId],
               onToggleSection: () => toggleSectionCollapse(panelId),
@@ -2361,7 +2381,7 @@ export default function App() {
       // It can be opened on demand via the command palette or menu.
       let shellPanel = api.getPanel('shell')
       if (shellPanel?.group) {
-        shellPanel.group.header.hidden = false
+        shellPanel.group.header.hidden = true
         shellPanel.group.locked = true
       }
 
@@ -2924,7 +2944,6 @@ export default function App() {
             activeDiffFile,
             collapsed: collapsed.filetree,
             onToggleCollapse: toggleFiletree,
-            onOpenChatTab: handleOpenChatTab,
             showSidebarToggle: leftSidebarPanelIds[0] === 'filetree',
             appName: config.branding?.name || '',
             userEmail: menuUserEmail,
@@ -2952,7 +2971,6 @@ export default function App() {
             ...(panel?.params || {}),
             collapsed: collapsed.filetree,
             onToggleCollapse: toggleFiletree,
-            onOpenChatTab: handleOpenChatTab,
             showSidebarToggle: leftSidebarPanelIds[0] === panelId,
             sectionCollapsed: panelId ? sectionCollapsed[panelId] : false,
             onToggleSection: panelId ? () => toggleSectionCollapse(panelId) : undefined,
@@ -2962,14 +2980,14 @@ export default function App() {
         const terminalGroup = terminalPanel?.group
         if (terminalGroup) {
           terminalGroup.locked = false
-          terminalGroup.header.hidden = false
+          terminalGroup.header.hidden = true
         }
 
         const shellGroup = shellPanel?.group
         if (shellGroup) {
-          // Lock group to prevent closing tabs, but show header
+          // Lock group to prevent closing tabs; panel-local header provides controls.
           shellGroup.locked = true
-          shellGroup.header.hidden = false
+          shellGroup.header.hidden = true
           shellGroup.api.setConstraints({
             minimumHeight: panelMinRef.current.shell,
             maximumHeight: Number.MAX_SAFE_INTEGER,
@@ -2993,7 +3011,7 @@ export default function App() {
             const companionGroup = companionPanel.group
             if (companionGroup) {
               companionGroup.locked = false
-              companionGroup.header.hidden = false
+              companionGroup.header.hidden = true
               if (collapsed.companion) {
                 companionGroup.api.setConstraints({
                   minimumWidth: panelCollapsedRef.current.companion,
@@ -3185,7 +3203,6 @@ export default function App() {
     activeFile,
     activeDiffFile,
     toggleFiletree,
-    handleOpenChatTab,
     menuUserEmail,
     userMenuStatusMessage,
     userMenuStatusTone,
@@ -3252,7 +3269,6 @@ export default function App() {
         activeDiffFile,
         collapsed: collapsed.filetree,
         onToggleCollapse: toggleFiletree,
-        onOpenChatTab: handleOpenChatTab,
         showSidebarToggle: leftSidebarPanelIds[0] === 'filetree',
         sectionCollapsed: sectionCollapsed.filetree,
         onToggleSection: () => toggleSectionCollapse('filetree'),
@@ -3276,7 +3292,6 @@ export default function App() {
         ...(panel?.params || {}),
         collapsed: collapsed.filetree,
         onToggleCollapse: toggleFiletree,
-        onOpenChatTab: handleOpenChatTab,
         showSidebarToggle: leftSidebarPanelIds[0] === panelId,
         sectionCollapsed: panelId ? sectionCollapsed[panelId] : false,
         onToggleSection: panelId ? () => toggleSectionCollapse(panelId) : undefined,
@@ -3292,7 +3307,6 @@ export default function App() {
     activeDiffFile,
     collapsed.filetree,
     toggleFiletree,
-    handleOpenChatTab,
     sectionCollapsed,
     toggleSectionCollapse,
     menuUserEmail,
@@ -3828,7 +3842,7 @@ export default function App() {
                     <p className="workspace-loading-message">Connecting to backend services...</p>
                   </div>
                 ) : (
-                  <div data-testid="dockview" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+                  <div data-testid="dockview" className="dockview-host">
                     <DockviewReact
                       className={dockviewClassName}
                       components={components}

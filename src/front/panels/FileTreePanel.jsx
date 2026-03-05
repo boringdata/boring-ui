@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { ChevronRight, FolderOpen, GitBranch, Plus } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import FileTree from '../components/FileTree'
 import GitChangesView from '../components/GitChangesView'
 import UserMenu from '../components/UserMenu'
+import Tooltip from '../components/Tooltip'
 import { LeftPaneHeader } from '../components/SidebarSectionHeader'
 
 export default function FileTreePanel({ params }) {
@@ -15,7 +16,6 @@ export default function FileTreePanel({ params }) {
     activeDiffFile,
     collapsed,
     onToggleCollapse,
-    onOpenChatTab,
     showSidebarToggle,
     appName,
     userEmail,
@@ -33,10 +33,7 @@ export default function FileTreePanel({ params }) {
   } = params
   const [creatingFile, setCreatingFile] = useState(false)
   const [viewMode, setViewMode] = useState('files') // 'files' | 'changes'
-
-  const handleNewFile = () => {
-    setCreatingFile(true)
-  }
+  const [searchExpanded, setSearchExpanded] = useState(false)
 
   const handleFileCreated = (path) => {
     setCreatingFile(false)
@@ -53,15 +50,16 @@ export default function FileTreePanel({ params }) {
     return (
       <div className="panel-content filetree-panel filetree-collapsed">
         {showSidebarToggle && typeof onToggleCollapse === 'function' && (
-          <button
-            type="button"
-            className="sidebar-toggle-btn"
-            onClick={onToggleCollapse}
-            title="Expand sidebar"
-            aria-label="Expand sidebar"
-          >
-            <ChevronRight size={12} />
-          </button>
+          <Tooltip label="Expand sidebar">
+            <button
+              type="button"
+              className="sidebar-toggle-btn"
+              onClick={onToggleCollapse}
+              aria-label="Expand sidebar"
+            >
+              <ChevronRight size={12} />
+            </button>
+          </Tooltip>
         )}
         <div className="filetree-collapsed-footer">
           <UserMenu
@@ -89,42 +87,13 @@ export default function FileTreePanel({ params }) {
       {showSidebarToggle && (
         <LeftPaneHeader
           onToggleSidebar={onToggleCollapse}
-          onOpenChatTab={onOpenChatTab}
           appName={appName}
+          viewMode={viewMode}
+          onSetViewMode={setViewMode}
+          searchExpanded={searchExpanded}
+          onToggleSearch={() => setSearchExpanded((prev) => !prev)}
         />
       )}
-      <div className="filetree-toolbar">
-        <div className="sidebar-view-toggle">
-          <button
-            type="button"
-            className={`view-toggle-btn ${viewMode === 'files' ? 'active' : ''}`}
-            onClick={() => setViewMode('files')}
-            title="File tree"
-          >
-            <FolderOpen size={14} />
-          </button>
-          <button
-            type="button"
-            className={`view-toggle-btn ${viewMode === 'changes' ? 'active' : ''}`}
-            onClick={() => setViewMode('changes')}
-            title="Git changes"
-          >
-            <GitBranch size={14} />
-          </button>
-        </div>
-        <div className="filetree-toolbar-spacer" />
-        {viewMode === 'files' && (
-          <button
-            type="button"
-            className="sidebar-action-btn"
-            onClick={handleNewFile}
-            title="New File"
-            aria-label="New File"
-          >
-            <Plus size={14} />
-          </button>
-        )}
-      </div>
       <div className="filetree-body">
         {viewMode === 'files' ? (
           <FileTree
@@ -135,6 +104,7 @@ export default function FileTreePanel({ params }) {
             creatingFile={creatingFile}
             onFileCreated={handleFileCreated}
             onCancelCreate={handleCancelCreate}
+            searchExpanded={searchExpanded}
           />
         ) : (
           <GitChangesView
