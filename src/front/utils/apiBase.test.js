@@ -107,4 +107,24 @@ describe('apiBase loopback rewrite', () => {
       Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
     }
   })
+
+  it('uses same-origin API base on dev ports so Vite proxy handles backend requests', () => {
+    const originalLocation = window.location
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        protocol: 'http:',
+        hostname: '213.32.19.186',
+        port: '5175',
+        origin: 'http://213.32.19.186:5175',
+        pathname: '/',
+      },
+    })
+    try {
+      expect(buildApiUrl('/api/project')).toBe('http://213.32.19.186:5175/api/project')
+      expect(buildWsUrl('/ws/pty')).toBe('ws://213.32.19.186:5175/ws/pty')
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+    }
+  })
 })

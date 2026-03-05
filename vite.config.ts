@@ -8,8 +8,9 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_URL || 'http://localhost:8000'
   const proxyApiTarget = env.VITE_PROXY_API_TARGET || apiTarget
   const companionTarget = env.VITE_COMPANION_PROXY_TARGET
-  // When using boring-sandbox gateway, set VITE_GATEWAY_URL=http://localhost:8080
-  const gatewayTarget = env.VITE_GATEWAY_URL || apiTarget
+  const toWsTarget = (value: string) => value.replace(/^http(s?):\/\//i, 'ws$1://')
+  const proxyWsTarget = toWsTarget(proxyApiTarget)
+  const companionWsTarget = companionTarget ? toWsTarget(companionTarget) : ''
   // Workspace root for workspace plugin panel loading
   const workspaceRoot = env.BORING_UI_WORKSPACE_ROOT || env.WORKSPACE_ROOT || ''
 
@@ -91,10 +92,15 @@ export default defineConfig(({ mode }) => {
       proxy: {
         ...(companionTarget
           ? {
+              '/api/v1/agent/companion': {
+                target: companionTarget,
+                changeOrigin: true,
+                rewrite: (path: string) => path.replace(/^\/api\/v1\/agent\/companion/, '/api'),
+              },
               // Dedicated chat-auth endpoints must stay browser-reachable in sandbox mode.
               '/api/v1/chat/auth': {
                 target: companionTarget,
-                changeOrigin: false,
+                changeOrigin: true,
               },
             }
           : {}),
@@ -110,18 +116,37 @@ export default defineConfig(({ mode }) => {
           target: proxyApiTarget,
           changeOrigin: false,
         },
+        ...(companionTarget
+          ? {
+              '/ws/agent/companion': {
+                target: companionWsTarget,
+                changeOrigin: true,
+                ws: true,
+                rewrite: (path: string) => path.replace(/^\/ws\/agent\/companion/, '/ws'),
+              },
+            }
+          : {}),
         '/ws': {
-          target: proxyApiTarget,
+          target: proxyWsTarget,
           changeOrigin: false,
           ws: true,
         },
         ...(companionTarget
           ? {
+              '/companion/ws': {
+                target: companionWsTarget,
+                changeOrigin: true,
+                ws: true,
+                rewrite: (path: string) => path
+                  .replace(/^\/companion\/ws\/agent\/companion/, '/ws')
+                  .replace(/^\/companion\/ws/, '/ws'),
+              },
               '/companion': {
                 target: companionTarget,
-                changeOrigin: false,
-                ws: true,
-                rewrite: (path: string) => path.replace(/^\/companion/, ''),
+                changeOrigin: true,
+                rewrite: (path: string) => path
+                  .replace(/^\/companion\/api\/v1\/agent\/companion/, '/api')
+                  .replace(/^\/companion/, ''),
               },
             }
           : {}),

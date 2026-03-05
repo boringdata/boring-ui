@@ -110,9 +110,14 @@ function getWsUrl(sessionId: string): string {
     const url = new URL(base, location.origin);
     const proto = url.protocol === "https:" ? "wss:" : "ws:";
     let basePath = url.pathname.replace(/\/+$/, "");
+    const sameOrigin = url.origin === location.origin;
 
     if (basePath.endsWith(CANONICAL_API_PREFIX)) {
       basePath = basePath.slice(0, -CANONICAL_API_PREFIX.length);
+    } else if (sameOrigin && basePath === "/companion") {
+      // Keep WS under canonical same-origin path; Vite can then proxy the
+      // canonical companion websocket family without relying on /companion prefix.
+      basePath = getWorkspaceBasePath(location.pathname);
     } else if (!basePath || basePath === "/") {
       basePath = getWorkspaceBasePath(location.pathname);
     }
