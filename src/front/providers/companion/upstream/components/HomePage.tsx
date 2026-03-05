@@ -4,7 +4,6 @@ import { api, type DirEntry, type CompanionEnv, type GitRepoInfo, type GitBranch
 import { connectSession, waitForConnection, sendToSession } from "../ws.js";
 import { disconnectSession } from "../ws.js";
 import { generateUniqueSessionName } from "../utils/names.js";
-import { EnvManager } from "./EnvManager.js";
 
 interface ImageAttachment {
   name: string;
@@ -67,7 +66,6 @@ export function HomePage() {
   const [envs, setEnvs] = useState<CompanionEnv[]>([]);
   const [selectedEnv, setSelectedEnv] = useState(() => localStorage.getItem("cc-selected-env") || "");
   const [showEnvDropdown, setShowEnvDropdown] = useState(false);
-  const [showEnvManager, setShowEnvManager] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -769,17 +767,6 @@ export function HomePage() {
                     </span>
                   </button>
                 ))}
-                <div className="border-t border-cc-border mt-1 pt-1">
-                  <button
-                    onClick={() => {
-                      setShowEnvManager(true);
-                      setShowEnvDropdown(false);
-                    }}
-                    className="w-full px-3 py-2 text-xs text-left text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-                  >
-                    Manage environments...
-                  </button>
-                </div>
               </div>
             )}
           </div>
@@ -825,16 +812,6 @@ export function HomePage() {
           </div>
         )}
       </div>
-
-      {/* Environment manager modal */}
-      {showEnvManager && (
-        <EnvManager
-          onClose={() => {
-            setShowEnvManager(false);
-            api.listEnvs().then(setEnvs).catch(() => {});
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -44,6 +44,11 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         if (statusResp.ok && statusData?.logged_in) {
           return;
         }
+        // Companion builds without managed-auth endpoints return 404 here.
+        // In that case, keep legacy in-chat auth behavior and do not hard-block UI.
+        if (statusResp.status === 404) {
+          return;
+        }
       } catch {
         // Ignore; fall through to settings-based check.
       }
