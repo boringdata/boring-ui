@@ -33,7 +33,7 @@ def _vault(path: str, field: str) -> str:
     ).strip()
 
 
-def _secret(name: str, *, env: str, vault_path: str, vault_field: str) -> str:
+def _secret(*, env: str, vault_path: str, vault_field: str) -> str:
     value = (os.environ.get(env) or "").strip()
     if value:
         return value
@@ -303,19 +303,16 @@ def main() -> int:
     args = parser.parse_args()
 
     supabase_url = _secret(
-        "supabase_url",
         env="SUPABASE_URL",
         vault_path="secret/agent/boring-ui-supabase-project-url",
         vault_field="url",
     ).rstrip("/")
     supabase_anon_key = _secret(
-        "supabase_anon_key",
         env="SUPABASE_ANON_KEY",
         vault_path="secret/agent/boring-ui-supabase-publishable-key",
         vault_field="key",
     )
     resend_api_key = _secret(
-        "resend_api_key",
         env="RESEND_API_KEY",
         vault_path="secret/agent/services/resend",
         vault_field="api_key",
@@ -350,7 +347,6 @@ def main() -> int:
     elif signup_resp.status_code == 429:
         signup_mode = "admin_generate_link_fallback"
         supabase_service_role_key = _secret(
-            "supabase_service_role_key",
             env="SUPABASE_SERVICE_ROLE_KEY",
             vault_path="secret/agent/boring-ui-supabase-service-role-key",
             vault_field="key",

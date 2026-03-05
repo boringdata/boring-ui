@@ -157,25 +157,12 @@ def _resolve_deploy_mode(
 
 def _normalize_ui_profile(raw_profile: str | None) -> str:
     value = str(raw_profile or "").strip().lower()
-    if value in {"", "auto", "default"}:
+    if not value or value in {"auto", "default"}:
         return ""
-    aliases = {
-        "pi_lightningfs": UI_PROFILE_PI_LIGHTNINGFS,
-        "pi-lightning-fs": UI_PROFILE_PI_LIGHTNINGFS,
-        "pi-fs": UI_PROFILE_PI_LIGHTNINGFS,
-        "pi_cheerpx": UI_PROFILE_PI_CHEERPX,
-        "pi_httpfs": UI_PROFILE_PI_HTTPFS,
-        "pi-http-fs": UI_PROFILE_PI_HTTPFS,
-        "pi-http": UI_PROFILE_PI_HTTPFS,
-        "companion_httpfs": UI_PROFILE_COMPANION_HTTPFS,
-        "companion-http-fs": UI_PROFILE_COMPANION_HTTPFS,
-        "companion-http": UI_PROFILE_COMPANION_HTTPFS,
-    }
-    normalized = aliases.get(value, value)
-    if normalized not in UI_PROFILE_DEFAULTS:
-        allowed = ", ".join(sorted(UI_PROFILE_DEFAULTS))
-        raise ValueError(f"Unsupported ui profile '{raw_profile}'. Use one of: {allowed}.")
-    return normalized
+    if value in UI_PROFILE_DEFAULTS:
+        return value
+    allowed = ", ".join(sorted(UI_PROFILE_DEFAULTS))
+    raise ValueError(f"Unsupported ui profile '{raw_profile}'. Use one of: {allowed}.")
 
 
 def _default_ui_profile_for_mode(deploy_mode: str) -> str:
@@ -188,7 +175,6 @@ def _resolve_ui_profile(
     *,
     cli_ui_profile: str | None,
     frontend_cfg: dict,
-    deployment_cfg: dict,
     env: dict[str, str],
     deploy_mode: str,
 ) -> str:
@@ -196,7 +182,6 @@ def _resolve_ui_profile(
         cli_ui_profile
         or env.get("UI_PROFILE")
         or frontend_cfg.get("ui_profile")
-        or deployment_cfg.get("ui_profile")
     )
     normalized = _normalize_ui_profile(raw_ui_profile)
     return normalized or _default_ui_profile_for_mode(deploy_mode)
@@ -230,10 +215,6 @@ def _apply_ui_profile_to_ui_config(
         or frontend_cfg.get("data_backend")
         or defaults["data_backend"]
     ).strip().lower()
-    if data_backend == "lightning-fs":
-        data_backend = "lightningfs"
-    if data_backend == "cheerp-x":
-        data_backend = "cheerpx"
     data_cfg["backend"] = data_backend
 
     if data_backend == "lightningfs":
@@ -278,6 +259,7 @@ def _resolve_frontend_env(
     *,
     base_env: dict[str, str],
     frontend_cfg: dict,
+    effective_ui: dict,
     deploy_mode: str,
     edge_proxy_url: str | None,
     backend_port: int,
@@ -287,43 +269,37 @@ def _resolve_frontend_env(
     fe_env.pop("VITE_GATEWAY_URL", None)
     vite_api_url = frontend_cfg.get("vite_api_url", f"http://localhost:{backend_port}")
     companion_proxy_target = frontend_cfg.get("companion_proxy_target")
-    profile_defaults = UI_PROFILE_DEFAULTS[ui_profile]
-    configured_agent_mode = str(
-        frontend_cfg.get("agent_rail_mode") or profile_defaults["agent_rail_mode"]
-    ).strip().lower()
-    configured_data_backend = str(
-        frontend_cfg.get("data_backend") or profile_defaults["data_backend"]
-    ).strip().lower()
-    lightningfs_name = str(frontend_cfg.get("lightningfs_name") or "boring-fs").strip()
+
+    agent_rail_mode = effective_ui.get("features", {}).get("agentRailMode", "all")
+    data_backend = effective_ui.get("data", {}).get("backend", "lightningfs")
 
     if deploy_mode == DEPLOY_MODE_EDGE:
-        gateway_url = edge_proxy_url or "http://127.0.0.1:8080"
-        fe_env["VITE_API_URL"] = gateway_url
+        fe_env["VITE_API_URL"] = edge_proxy_url or "http://127.0.0.1:8080"
     else:
         fe_env["VITE_API_URL"] = vite_api_url
 
     fe_env["VITE_DEPLOY_MODE"] = deploy_mode
     fe_env["VITE_UI_PROFILE"] = ui_profile
-    fe_env["VITE_AGENT_RAIL_MODE"] = configured_agent_mode
-    fe_env["VITE_DATA_BACKEND"] = configured_data_backend
-    if configured_data_backend == "lightningfs":
-        fe_env["VITE_LIGHTNINGFS_NAME"] = lightningfs_name
+    fe_env["VITE_AGENT_RAIL_MODE"] = agent_rail_mode
+    fe_env["VITE_DATA_BACKEND"] = data_backend
+
+    if data_backend == "lightningfs":
+        lightning_cfg = effective_ui.get("data", {}).get("lightningfs", {})
+        fe_env["VITE_LIGHTNINGFS_NAME"] = lightning_cfg.get("name", "boring-fs")
     else:
         fe_env.pop("VITE_LIGHTNINGFS_NAME", None)
 
-    # Optional cheerpx profile tuning for downstream vertical apps.
-    cheerpx_workspace_root = str(frontend_cfg.get("cheerpx_workspace_root") or "").strip()
-    cheerpx_primary_disk_url = str(frontend_cfg.get("cheerpx_primary_disk_url") or "").strip()
-    cheerpx_overlay_name = str(frontend_cfg.get("cheerpx_overlay_name") or "").strip()
-    cheerpx_esm_url = str(frontend_cfg.get("cheerpx_esm_url") or "").strip()
-    if cheerpx_workspace_root:
-        fe_env["VITE_CHEERPX_WORKSPACE_ROOT"] = cheerpx_workspace_root
-    if cheerpx_primary_disk_url:
-        fe_env["VITE_CHEERPX_PRIMARY_DISK_URL"] = cheerpx_primary_disk_url
-    if cheerpx_overlay_name:
-        fe_env["VITE_CHEERPX_OVERLAY_NAME"] = cheerpx_overlay_name
-    if cheerpx_esm_url:
-        fe_env["VITE_CHEERPX_ESM_URL"] = cheerpx_esm_url
+    if data_backend == "cheerpx":
+        cheerpx_cfg = effective_ui.get("data", {}).get("cheerpx", {})
+        for env_key, cfg_key in (
+            ("VITE_CHEERPX_WORKSPACE_ROOT", "workspaceRoot"),
+            ("VITE_CHEERPX_PRIMARY_DISK_URL", "primaryDiskUrl"),
+            ("VITE_CHEERPX_OVERLAY_NAME", "overlayName"),
+            ("VITE_CHEERPX_ESM_URL", "cheerpxEsmUrl"),
+        ):
+            value = str(cheerpx_cfg.get(cfg_key) or "").strip()
+            if value:
+                fe_env[env_key] = value
 
     if companion_proxy_target:
         fe_env["VITE_COMPANION_PROXY_TARGET"] = companion_proxy_target
@@ -382,7 +358,6 @@ def run():
     ui_profile = _resolve_ui_profile(
         cli_ui_profile=args.ui_profile,
         frontend_cfg=frontend,
-        deployment_cfg=deployment_cfg,
         env=os.environ,
         deploy_mode=deploy_mode,
     )
@@ -453,6 +428,7 @@ def run():
     fe_env = _resolve_frontend_env(
         base_env=env,
         frontend_cfg=frontend,
+        effective_ui=effective_ui,
         deploy_mode=deploy_mode,
         edge_proxy_url=edge_proxy_url,
         backend_port=port,

@@ -106,7 +106,6 @@ export function ChatView({ sessionId }: { sessionId: string }) {
 
       {authRequired ? (
         <EnvManager
-          mode="auth"
           authError={authRequired}
           presentation="inline"
           onClose={() => {

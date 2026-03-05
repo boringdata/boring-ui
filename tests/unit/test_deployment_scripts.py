@@ -102,9 +102,11 @@ def test_deployment_mode_defaults_to_core() -> None:
 
 def test_frontend_env_core_mode_uses_backend_api_url() -> None:
     module = _load_run_full_app_module()
+    effective_ui = {"features": {"agentRailMode": "pi"}, "data": {"backend": "lightningfs", "lightningfs": {"name": "boring-fs"}}}
     fe_env = module._resolve_frontend_env(  # type: ignore[attr-defined]
         base_env={"DEPLOY_MODE": "core"},
         frontend_cfg={"vite_api_url": "http://127.0.0.1:9000"},
+        effective_ui=effective_ui,
         deploy_mode="core",
         edge_proxy_url=None,
         backend_port=8000,
@@ -119,9 +121,11 @@ def test_frontend_env_core_mode_uses_backend_api_url() -> None:
 
 def test_frontend_env_core_mode_removes_stale_gateway_var() -> None:
     module = _load_run_full_app_module()
+    effective_ui = {"features": {"agentRailMode": "pi"}, "data": {"backend": "lightningfs"}}
     fe_env = module._resolve_frontend_env(  # type: ignore[attr-defined]
         base_env={"DEPLOY_MODE": "core", "VITE_GATEWAY_URL": "http://stale"},
         frontend_cfg={"vite_api_url": "http://127.0.0.1:9000"},
+        effective_ui=effective_ui,
         deploy_mode="core",
         edge_proxy_url=None,
         backend_port=8000,
@@ -133,9 +137,11 @@ def test_frontend_env_core_mode_removes_stale_gateway_var() -> None:
 
 def test_frontend_env_edge_mode_points_api_to_proxy() -> None:
     module = _load_run_full_app_module()
+    effective_ui = {"features": {"agentRailMode": "companion"}, "data": {"backend": "http"}}
     fe_env = module._resolve_frontend_env(  # type: ignore[attr-defined]
         base_env={"DEPLOY_MODE": "edge"},
         frontend_cfg={"vite_api_url": "http://127.0.0.1:9000"},
+        effective_ui=effective_ui,
         deploy_mode="edge",
         edge_proxy_url="http://127.0.0.1:8080",
         backend_port=8000,

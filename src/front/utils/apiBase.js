@@ -40,7 +40,7 @@ const resolveApiBase = () => {
   if (envUrl) return normalizeBase(rewriteLoopbackForRemoteClient(normalizeBase(envUrl)))
 
   if (typeof window !== 'undefined' && window.location) {
-    const { protocol, hostname, port, origin, pathname } = window.location
+    const { origin, pathname } = window.location
     if (origin) {
       const workspaceBase = getWorkspaceBasePath(pathname)
       return workspaceBase ? `${origin}${workspaceBase}` : origin

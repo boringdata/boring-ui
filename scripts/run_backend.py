@@ -10,15 +10,6 @@ import uvicorn
 from boring_ui.api.app import create_app
 
 
-def _normalize_deploy_mode(value: str | None) -> str:
-    normalized = str(value or "").strip().lower()
-    if normalized in {"", "core"}:
-        return "core"
-    if normalized == "edge":
-        return "edge"
-    raise ValueError("Unsupported deploy mode. Use 'core' or 'edge'.")
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="0.0.0.0")
@@ -29,14 +20,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--deploy-mode",
         choices=["core", "edge"],
-        default=_normalize_deploy_mode(os.environ.get("DEPLOY_MODE", "core")),
+        default=os.environ.get("DEPLOY_MODE", "core").strip().lower(),
     )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    os.environ["DEPLOY_MODE"] = _normalize_deploy_mode(args.deploy_mode)
+    os.environ["DEPLOY_MODE"] = args.deploy_mode
     app = create_app(
         include_pty=args.include_pty,
         include_stream=args.include_stream,

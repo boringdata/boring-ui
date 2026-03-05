@@ -3,12 +3,8 @@ const parseBoolEnv = (value) => {
   return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
 }
 
-const normalizeDeployMode = (value) => {
-  const normalized = String(value || '').trim().toLowerCase()
-  if (normalized === 'core') return 'core'
-  if (normalized === 'edge') return 'edge'
-  return 'core'
-}
+const normalizeDeployMode = (value) =>
+  String(value || '').trim().toLowerCase() === 'edge' ? 'edge' : 'core'
 
 const UI_PROFILES = {
   piLightningFs: 'pi-lightningfs',
@@ -34,28 +30,11 @@ const normalizeAgentRailMode = (value) => {
 
 const normalizeUiProfile = (value) => {
   const normalized = String(value || '').trim().toLowerCase()
-  if (!normalized || normalized === 'auto' || normalized === 'default') return ''
-  if (
-    normalized === UI_PROFILES.piLightningFs
-    || normalized === UI_PROFILES.piCheerpx
-    || normalized === UI_PROFILES.piHttpFs
-    || normalized === UI_PROFILES.companionHttpFs
-  ) {
-    return normalized
-  }
-  if (normalized === 'pi-fs' || normalized === 'pi-lightning-fs') return UI_PROFILES.piLightningFs
-  if (normalized === 'pi-http' || normalized === 'pi-http-fs') return UI_PROFILES.piHttpFs
-  if (normalized === 'companion-http' || normalized === 'companion-http-fs') return UI_PROFILES.companionHttpFs
-  return ''
+  return PROFILE_DEFAULTS[normalized] ? normalized : ''
 }
 
-const normalizeDataBackend = (value) => {
-  const normalized = String(value || '').trim().toLowerCase()
-  if (!normalized) return ''
-  if (normalized === 'lightning-fs') return 'lightningfs'
-  if (normalized === 'cheerp-x') return 'cheerpx'
-  return normalized
-}
+const normalizeDataBackend = (value) =>
+  String(value || '').trim().toLowerCase()
 
 const deployMode = normalizeDeployMode(import.meta.env.VITE_DEPLOY_MODE || '')
 const explicitProfile = normalizeUiProfile(import.meta.env.VITE_UI_PROFILE || '')

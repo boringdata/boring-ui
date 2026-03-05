@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 
 interface Props {
   onClose: () => void;
-  mode?: "auth";
   authError?: string | null;
   presentation?: "modal" | "inline";
 }

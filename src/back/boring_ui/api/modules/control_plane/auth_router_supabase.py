@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 import httpx
