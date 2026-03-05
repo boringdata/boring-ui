@@ -48,8 +48,8 @@ export default function PiSessionToolbar({ panelId, onSplitPanel }) {
           }
           requestPiNewSession(panelId)
         }}
-        title={typeof onSplitPanel === 'function' ? 'Split PI panel' : 'New PI session'}
-        aria-label={typeof onSplitPanel === 'function' ? 'Split PI panel' : 'New PI session'}
+        title={typeof onSplitPanel === 'function' ? 'Split agent panel' : 'New agent session'}
+        aria-label={typeof onSplitPanel === 'function' ? 'Split agent panel' : 'New agent session'}
         data-testid="pi-session-new"
       >
         <Plus size={16} />

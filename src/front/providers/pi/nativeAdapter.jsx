@@ -17,7 +17,7 @@ import {
 } from './sessionBus'
 
 const PI_SYSTEM_PROMPT = [
-  'You are PI Agent integrated into Boring UI.',
+  'You are an Agent integrated into Boring UI.',
   'Do not claim to be Claude Code or a terminal-native coding agent unless the user explicitly configured that mode.',
   'Be concise, accurate, and action-oriented.',
 ].join(' ')
@@ -84,6 +84,7 @@ const piCssBase = piAppCssUrl.replace(/[^/]+$/, '')
 const piCss = piAppCss.replace(/url\((['"]?)fonts\//g, `url($1${piCssBase}fonts/`)
 
 const scopedCss = `${piCss}\n
+/* ── Layout ── */
 :host, .pi-root {
   display: flex;
   width: 100%;
@@ -103,9 +104,106 @@ pi-chat-panel {
   width: 100%;
 }
 
+/* ── Bridge boring-ui design tokens → pi-web-ui (shadcn) tokens ── */
+/* Light mode defaults — these map our app's palette into the library's variable namespace */
+:host {
+  --background: #ffffff;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #ea580c;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #f9fafb;
+  --muted-foreground: #6b7280;
+  --accent: #f3f4f6;
+  --accent-foreground: #ea580c;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #ea580c;
+  --radius: 0.5rem;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+}
+
+/* Dark mode — activated when boring-ui sets data-theme="dark" on the document */
+:host-context([data-theme="dark"]) :host,
+:host-context([data-theme="dark"]) .pi-root,
+:host(.dark) {
+  --background: #0f0f0f;
+  --foreground: #fafafa;
+  --card: #1a1a1a;
+  --card-foreground: #fafafa;
+  --popover: #1a1a1a;
+  --popover-foreground: #fafafa;
+  --primary: #fb923c;
+  --primary-foreground: #0f0f0f;
+  --secondary: #262626;
+  --secondary-foreground: #fafafa;
+  --muted: #1a1a1a;
+  --muted-foreground: #a1a1aa;
+  --accent: #262626;
+  --accent-foreground: #fb923c;
+  --destructive: #f87171;
+  --destructive-foreground: #fafafa;
+  --border: #2e2e2e;
+  --input: #2e2e2e;
+  --ring: #fb923c;
+}
+
+/* ── Typography — align with boring-ui (14px base, Inter) ── */
+.pi-root {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.pi-root .text-sm { font-size: 13px; }
+.pi-root .text-xs { font-size: 11px; }
+.pi-root .text-base { font-size: 14px; }
+.pi-root .text-lg { font-size: 16px; }
+
+.pi-root textarea,
+.pi-root input,
+.pi-root button {
+  font-family: var(--font-sans);
+}
+
+.pi-root pre,
+.pi-root code,
+.pi-root .font-mono {
+  font-family: var(--font-mono);
+}
+
+/* ── Message area spacing ── */
+.pi-root .max-w-3xl {
+  max-width: 100%;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* ── Message editor input — compact for panel layout ── */
+message-editor textarea {
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  padding: 12px !important;
+}
+
+message-editor .bg-card.rounded-xl.border {
+  border-radius: 12px;
+}
+
+/* ── Focus ring uses app accent ── */
 message-editor .bg-card.rounded-xl.border:has(textarea:focus),
 message-editor .bg-card.rounded-xl.border:has(textarea:focus-visible) {
-  border-color: #ae56304d !important;
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border)) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 message-editor textarea:focus-visible,
@@ -113,6 +211,124 @@ message-editor input:focus-visible,
 message-editor [contenteditable="true"]:focus-visible {
   outline: none !important;
   outline-offset: 0 !important;
+}
+
+/* ── Model selector button — smaller, matches app buttons ── */
+message-editor button {
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+/* ── Stats row — smaller ── */
+.pi-root .text-xs.text-muted-foreground.flex.justify-between {
+  font-size: 11px;
+  padding: 2px 4px 4px;
+}
+
+/* ── User message pill — use app accent instead of hardcoded orange ── */
+.user-message-container {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, transparent), color-mix(in srgb, var(--primary) 15%, transparent)) !important;
+  border-color: color-mix(in srgb, var(--primary) 25%, transparent) !important;
+}
+
+/* ── Model selector dialog — align with app design ── */
+agent-model-selector .fixed.inset-0 {
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+/* Dialog backdrop */
+agent-model-selector .fixed.inset-0 > .fixed.inset-0 {
+  background: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(4px);
+}
+
+/* Dialog panel */
+agent-model-selector .bg-background {
+  border-radius: 12px !important;
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+}
+
+/* Dialog header title */
+agent-model-selector h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Search input in dialog */
+agent-model-selector input[type="text"],
+agent-model-selector input[placeholder] {
+  font-size: 14px;
+  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+agent-model-selector input:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent) !important;
+  outline: none !important;
+}
+
+/* Filter buttons (Thinking, Vision) */
+agent-model-selector .rounded-full {
+  font-size: 12px !important;
+  padding: 4px 12px !important;
+  border-radius: 9999px !important;
+}
+
+/* Model list items */
+agent-model-selector [data-model-item] {
+  padding: 10px 16px !important;
+  transition: background 0.1s ease;
+}
+
+agent-model-selector [data-model-item] .text-sm {
+  font-size: 13px;
+}
+
+agent-model-selector [data-model-item] .text-xs {
+  font-size: 11px;
+}
+
+/* Provider badge in model list */
+agent-model-selector [data-model-item] .inline-flex.items-center {
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+/* Close button in dialogs */
+agent-model-selector button[aria-label*="Close"],
+agent-model-selector button[type="button"]:has(svg) {
+  cursor: pointer;
+}
+
+/* ── Hide artifacts panel + floating pill entirely ── */
+pi-chat-panel artifacts-panel {
+  display: none !important;
+}
+
+pi-chat-panel > .relative > button.absolute.z-30 {
+  display: none !important;
+}
+
+/* Ensure chat area always takes full width (no 50% split for artifacts) */
+pi-chat-panel > .relative > .h-full:first-child {
+  width: 100% !important;
+}
+
+/* ── Scrollbar inside shadow DOM ── */
+.pi-root ::-webkit-scrollbar { width: 8px; }
+.pi-root ::-webkit-scrollbar-track { background: transparent; }
+.pi-root ::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+.pi-root ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 25%, transparent);
 }
 `
 
@@ -215,7 +431,7 @@ const promptForApiKey = async (provider, runtime) => {
 
   const label = `${provider || 'model'} API key`
   const entry = typeof window?.prompt === 'function'
-    ? window.prompt(`Enter ${label} to use PI agent in this browser session:`)
+    ? window.prompt(`Enter ${label} to use the agent in this browser session:`)
     : null
   const key = String(entry || '').trim()
   if (!key) return false
@@ -258,6 +474,15 @@ export default function PiNativeAdapter({ panelId, sessionBootstrap = 'latest', 
     const panelRoot = document.createElement('div')
     panelRoot.className = 'pi-root'
     shadowRoot.appendChild(panelRoot)
+
+    // Sync dark mode: boring-ui uses data-theme="dark", pi-web-ui uses .dark class
+    const syncDarkMode = () => {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+      panelRoot.classList.toggle('dark', isDark)
+    }
+    syncDarkMode()
+    const themeObserver = new MutationObserver(syncDarkMode)
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 
     const chatPanel = new ChatPanel()
     fixLitClassFieldShadowing(chatPanel)
@@ -412,6 +637,15 @@ export default function PiNativeAdapter({ panelId, sessionBootstrap = 'latest', 
             }
           },
         })
+
+        // ChatPanel forcibly injects the artifacts tool — strip it so the model
+        // never attempts to create artifacts (we don't surface that UI).
+        const currentTools = agent.state?.tools || []
+        const withoutArtifacts = currentTools.filter((t) => String(t?.name || '') !== 'artifacts')
+        if (withoutArtifacts.length !== currentTools.length) {
+          agent.setTools(withoutArtifacts)
+        }
+
         fixLitTree(chatPanelRef.current)
       }
 
@@ -487,6 +721,7 @@ export default function PiNativeAdapter({ panelId, sessionBootstrap = 'latest', 
     return () => {
       persistCurrentSession().catch((error) => logPiError('Failed to persist session on cleanup', error))
       active = false
+      themeObserver.disconnect()
       observer.disconnect()
       unsubscribeActions()
       unsubscribeRef.current()

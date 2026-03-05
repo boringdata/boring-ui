@@ -125,7 +125,7 @@ describe('createPiDefaultTools', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(2)
   })
 
-  it('supports bash-only provider mode for PI agent tools', () => {
+  it('supports bash-only provider mode for agent tools', () => {
     const provider = createMemoryProvider()
     provider.runCommand = vi.fn(async () => ({ stdout: 'ok', stderr: '', status: 0 }))
     provider.pi = { bashOnly: true }

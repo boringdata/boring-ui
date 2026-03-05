@@ -12,7 +12,7 @@ const CORS_ORIGIN = process.env.PI_SERVICE_CORS_ORIGIN || '*'
 const DEFAULT_MODEL = process.env.PI_SERVICE_MODEL || 'claude-sonnet-4-5-20250929'
 const MAX_SESSIONS = Number(process.env.PI_SERVICE_MAX_SESSIONS || '20')
 const SYSTEM_PROMPT = [
-  'You are PI Agent integrated into Boring UI.',
+  'You are an Agent integrated into Boring UI.',
   'Do not claim to be Claude Code.',
   'Be concise, accurate, and action-oriented.',
 ].join(' ')

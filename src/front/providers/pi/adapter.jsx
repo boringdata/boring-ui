@@ -15,7 +15,7 @@ export default function PiAdapter({ url }) {
 
   return (
     <iframe
-      title="Pi Agent"
+      title="Agent"
       src={src}
       className="pi-agent-frame"
       style={{ width: '100%', height: '100%', border: 'none', background: 'transparent' }}
