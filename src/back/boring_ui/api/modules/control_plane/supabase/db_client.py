@@ -91,19 +91,25 @@ def _resolve_ipv4_hosts(host: str, port: int) -> list[str]:
 def _pool_kwargs(db_url: str) -> dict[str, object]:
     parsed = urlparse(db_url)
     kwargs: dict[str, object] = {"server_settings": {"application_name": "boring-ui"}}
-    if _uses_pgbouncer_pooling(db_url):
+    is_pooler = _uses_pgbouncer_pooling(db_url)
+    if is_pooler:
         kwargs["statement_cache_size"] = 0
     if parsed.hostname:
         port = parsed.port or 5432
-        resolved_hosts = _resolve_ipv4_hosts(parsed.hostname, port)
-        if resolved_hosts:
-            kwargs["host"] = resolved_hosts
-            kwargs["port"] = port
-            _logger.info(
-                "Using IPv4 override for Supabase host %s (%d addresses)",
-                parsed.hostname,
-                len(resolved_hosts),
-            )
+        # Skip the IPv4 host override for Supabase pooler connections because
+        # the pooler uses TLS SNI (server_hostname) for tenant identification.
+        # asyncpg passes `host` as `server_hostname` during TLS handshake, so
+        # replacing the hostname with a raw IP breaks tenant routing.
+        if not is_pooler:
+            resolved_hosts = _resolve_ipv4_hosts(parsed.hostname, port)
+            if resolved_hosts:
+                kwargs["host"] = resolved_hosts
+                kwargs["port"] = port
+                _logger.info(
+                    "Using IPv4 override for Supabase host %s (%d addresses)",
+                    parsed.hostname,
+                    len(resolved_hosts),
+                )
     return kwargs
 
 

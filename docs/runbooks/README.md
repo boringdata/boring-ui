@@ -164,7 +164,8 @@ Initialize schema once per database:
 psql "$SUPABASE_DB_URL" -f deploy/sql/control_plane_supabase_schema.sql
 ```
 
-`boring-ui` backend resolves the Supabase pooler host to IPv4 for container-runtime compatibility.
+`boring-ui` preserves Supabase pooler hostnames for TLS SNI routing.
+For non-pooler Postgres hosts, backend may apply IPv4 resolution for container compatibility.
 
 Endpoints:
 - Core mode frontend: `http://localhost:5173`

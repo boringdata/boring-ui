@@ -5,7 +5,7 @@ import socket
 from boring_ui.api.modules.control_plane.supabase import db_client
 
 
-def test_pool_kwargs_resolves_pooler_host_to_ipv4(monkeypatch) -> None:
+def test_pool_kwargs_keeps_pooler_hostname_for_sni(monkeypatch) -> None:
     def _fake_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
         assert host == "aws-1-eu-west-1.pooler.supabase.com"
         assert port == 5432
@@ -23,6 +23,25 @@ def test_pool_kwargs_resolves_pooler_host_to_ipv4(monkeypatch) -> None:
     )
 
     assert kwargs["statement_cache_size"] == 0
+    assert "host" not in kwargs
+    assert "port" not in kwargs
+
+
+def test_pool_kwargs_resolves_non_pooler_host_to_ipv4(monkeypatch) -> None:
+    def _fake_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        assert host == "db.example.internal"
+        assert port == 5432
+        assert family == socket.AF_INET
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("52.1.2.3", 5432)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("52.1.2.3", 5432)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("52.4.5.6", 5432)),
+        ]
+
+    monkeypatch.setattr(db_client.socket, "getaddrinfo", _fake_getaddrinfo)
+
+    kwargs = db_client._pool_kwargs("postgresql://postgres.ref:pw@db.example.internal:5432/postgres")
+
     assert kwargs["host"] == ["52.1.2.3", "52.4.5.6"]
     assert kwargs["port"] == 5432
 
