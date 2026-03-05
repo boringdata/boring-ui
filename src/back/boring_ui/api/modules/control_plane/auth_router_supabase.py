@@ -154,26 +154,8 @@ _LOGIN_HTML_TEMPLATE: str = """\
       box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
       animation: enter 260ms ease-out both;
     }
-    .kicker {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin: 0;
-      color: var(--color-accent);
-      font-size: 0.82rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-weight: 800;
-    }
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--color-accent);
-      box-shadow: 0 0 0 6px rgba(234, 88, 12, 0.14);
-    }
     .rail h1 {
-      margin: 14px 0 10px;
+      margin: 0 0 10px;
       font-size: clamp(1.55rem, 2.6vw, 2.1rem);
       line-height: 1.18;
       letter-spacing: -0.01em;
@@ -183,38 +165,6 @@ _LOGIN_HTML_TEMPLATE: str = """\
       color: var(--color-text-secondary);
       line-height: 1.58;
       max-width: 36ch;
-    }
-    .proofs {
-      margin: 20px 0 0;
-      padding: 0;
-      list-style: none;
-      display: grid;
-      gap: 10px;
-    }
-    .proofs li {
-      color: var(--color-text-secondary);
-      font-size: 0.95rem;
-    }
-    .proofs li::before {
-      content: "•";
-      color: var(--accent);
-      font-weight: 800;
-      margin-right: 8px;
-    }
-    .redirect-chip {
-      margin-top: 18px;
-      display: inline-block;
-      border: 1px solid var(--color-border-strong);
-      background: var(--color-bg-primary);
-      color: var(--color-text-primary);
-      border-radius: 999px;
-      padding: 8px 12px;
-      font-size: 0.78rem;
-      letter-spacing: 0.01em;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
     .card {
       border-radius: 18px;
@@ -319,22 +269,6 @@ _LOGIN_HTML_TEMPLATE: str = """\
       text-decoration: underline;
       text-underline-offset: 2px;
     }
-    .switcher {
-      margin-top: 12px;
-      color: var(--color-text-secondary);
-      font-size: 0.88rem;
-    }
-    .switcher button {
-      border: 0;
-      background: transparent;
-      color: var(--color-accent);
-      font-weight: 700;
-      padding: 0;
-      margin-left: 6px;
-      cursor: pointer;
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
     .status {
       min-height: 24px;
       margin-top: 14px;
@@ -343,12 +277,6 @@ _LOGIN_HTML_TEMPLATE: str = """\
       line-height: 1.4;
     }
     .error { color: var(--color-error); }
-    .legal {
-      margin: 12px 0 0;
-      color: var(--color-text-secondary);
-      font-size: 0.78rem;
-      line-height: 1.4;
-    }
     button:disabled, input:disabled {
       opacity: 0.65;
       cursor: not-allowed;
@@ -365,20 +293,11 @@ _LOGIN_HTML_TEMPLATE: str = """\
   </style>
 </head>
 <body>
-  <div class="wrap">
+    <div class="wrap">
     <div class="shell">
       <aside class="rail" aria-label="Product highlights">
-        <p class="kicker"><span class="dot" aria-hidden="true"></span>boring-ui workspace</p>
-        <h1>Sign in, then pick up right where you left off.</h1>
-        <p>
-          Inspired by clean SaaS onboarding flows: clear intent, fewer choices per step, and always-visible progress.
-        </p>
-        <ul class="proofs">
-          <li>Simple two-path auth: password or magic link.</li>
-          <li>Consistent destination so you always return to the right workspace.</li>
-          <li>Fast account creation with guided next step after sign up.</li>
-        </ul>
-        <div id="redirect-chip" class="redirect-chip">Returning to / after authentication</div>
+        <h1 id="app-name">&lt;app-name&gt;</h1>
+        <p id="app-description">&lt;app-description&gt;</p>
       </aside>
       <main class="card">
         <div class="mode-tabs" role="tablist" aria-label="Authentication mode">
@@ -398,9 +317,7 @@ _LOGIN_HTML_TEMPLATE: str = """\
           <p class="muted">Prefer a one-time link?</p>
           <button id="magic" class="link-btn" type="button">Use magic link instead</button>
         </div>
-        <p class="switcher"><span id="switch-copy">New here?</span><button id="toggle" type="button">Create an account</button></p>
         <div id="status" class="status" aria-live="polite"></div>
-        <p class="legal">By continuing, you agree to authenticate with your configured Supabase identity provider.</p>
       </main>
     </div>
   </div>
@@ -409,15 +326,14 @@ _LOGIN_HTML_TEMPLATE: str = """\
     document.addEventListener("DOMContentLoaded", function() {
     const AUTH = /*AUTH_CONFIG_JSON*/;
     const statusEl = document.getElementById("status");
+    const appNameEl = document.getElementById("app-name");
+    const appDescriptionEl = document.getElementById("app-description");
     const titleEl = document.getElementById("title");
     const subtitleEl = document.getElementById("subtitle");
-    const switchCopyEl = document.getElementById("switch-copy");
-    const redirectChipEl = document.getElementById("redirect-chip");
     const form = document.getElementById("auth-form");
     const emailEl = document.getElementById("email");
     const passwordEl = document.getElementById("password");
     const submitEl = document.getElementById("submit");
-    const toggleEl = document.getElementById("toggle");
     const magicEl = document.getElementById("magic");
     const tabSignInEl = document.getElementById("tab-signin");
     const tabSignUpEl = document.getElementById("tab-signup");
@@ -434,22 +350,22 @@ _LOGIN_HTML_TEMPLATE: str = """\
       statusEl.classList.toggle("error", !!isError);
     }
 
+    function applyBranding() {
+      var appName = String(AUTH.appName || "").trim() || "<app-name>";
+      var appDescription = String(AUTH.appDescription || "").trim() || "<app-description>";
+      appNameEl.textContent = appName;
+      appDescriptionEl.textContent = appDescription;
+    }
+
     function setBusy(isBusy) {
       busy = !!isBusy;
       form.setAttribute("aria-busy", busy ? "true" : "false");
       emailEl.disabled = busy;
       passwordEl.disabled = busy;
       submitEl.disabled = busy;
-      toggleEl.disabled = busy;
       magicEl.disabled = busy;
       tabSignInEl.disabled = busy;
       tabSignUpEl.disabled = busy;
-    }
-
-    function updateDestinationChip() {
-      var target = String(AUTH.redirectUri || "/");
-      redirectChipEl.textContent = "Returning to " + target + " after authentication";
-      redirectChipEl.title = target;
     }
 
     function setTabState(isSignUp) {
@@ -492,8 +408,6 @@ _LOGIN_HTML_TEMPLATE: str = """\
         ? "Get started in minutes. You may be asked to confirm from your email."
         : "Use your email and password to continue.";
       submitEl.textContent = signUp ? "Create account" : "Continue";
-      toggleEl.textContent = signUp ? "I already have an account" : "Create an account";
-      switchCopyEl.textContent = signUp ? "Already have an account?" : "New here?";
       magicEl.textContent = signUp ? "Email me a signup link" : "Use magic link instead";
       passwordEl.autocomplete = signUp ? "new-password" : "current-password";
       passwordEl.placeholder = signUp ? "Create a password (8+ characters)" : "Enter your password";
@@ -502,10 +416,6 @@ _LOGIN_HTML_TEMPLATE: str = """\
 
     tabSignInEl.addEventListener("click", function() { setMode("sign_in"); });
     tabSignUpEl.addEventListener("click", function() { setMode("sign_up"); });
-
-    toggleEl.addEventListener("click", function() {
-      setMode(mode === "sign_in" ? "sign_up" : "sign_in");
-    });
 
     magicEl.addEventListener("click", async function() {
       if (busy) return;
@@ -620,7 +530,7 @@ _LOGIN_HTML_TEMPLATE: str = """\
       }
     });
 
-    updateDestinationChip();
+    applyBranding();
     setMode(mode);
     });
   </script>
@@ -655,6 +565,8 @@ def _render_supabase_login_html(
         "callbackUrl": callback,
         "redirectUri": redirect_after,
         "initialMode": "sign_up" if initial_mode == "sign_up" else "sign_in",
+        "appName": config.auth_app_name,
+        "appDescription": config.auth_app_description,
     }
     cfg_json = json.dumps(cfg, separators=(",", ":"))
     html = _LOGIN_HTML_TEMPLATE.replace(_AUTH_CONFIG_PLACEHOLDER, cfg_json, 1)
@@ -672,19 +584,79 @@ _CALLBACK_BRIDGE_HTML_TEMPLATE: str = """\
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Completing sign-in...</title>
   <style>
-    body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    :root {
+      --color-bg-primary: #ffffff;
+      --color-bg-secondary: #f9fafb;
+      --color-text-primary: #111827;
+      --color-text-secondary: #6b7280;
+      --color-border: #e5e7eb;
+      --color-accent: #ea580c;
+      --color-accent-light: #fff7ed;
+      --color-error: #ef4444;
+      --color-info: #3b82f6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-bg-primary: #0f0f0f;
+        --color-bg-secondary: #1a1a1a;
+        --color-text-primary: #fafafa;
+        --color-text-secondary: #a1a1aa;
+        --color-border: #2e2e2e;
+        --color-accent: #fb923c;
+        --color-accent-light: #431407;
+        --color-error: #f87171;
+        --color-info: #60a5fa;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--color-text-primary);
+      background:
+        radial-gradient(circle at 15% 8%, var(--color-accent-light) 0, transparent 28%),
+        linear-gradient(180deg, var(--color-bg-secondary), var(--color-bg-primary));
+    }
     .wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-    .card { width: min(480px, 100%); background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 20px; }
-    h1 { margin: 0 0 8px; font-size: 1.1rem; }
-    p { margin: 0; color: #93a3b8; }
-    .status { margin-top: 10px; color: #93c5fd; }
-    .error { color: #fca5a5; }
-    a { color: #93c5fd; }
+    .card {
+      width: min(480px, 100%);
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: 18px;
+      padding: 28px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+      text-align: center;
+      animation: enter 260ms ease-out both;
+    }
+    .spinner {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--color-border);
+      border-top-color: var(--color-accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+    h1 { margin: 0 0 8px; font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em; }
+    p { margin: 0; color: var(--color-text-secondary); line-height: 1.5; }
+    .status { margin-top: 14px; font-size: 0.9rem; color: var(--color-info); line-height: 1.4; }
+    .error { color: var(--color-error); }
+    a { color: var(--color-accent); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <main class="card">
+      <div id="spinner" class="spinner" aria-hidden="true"></div>
       <h1>Completing sign-in...</h1>
       <p id="message">Processing authentication response.</p>
       <p id="status" class="status" aria-live="polite"></p>
@@ -695,10 +667,12 @@ _CALLBACK_BRIDGE_HTML_TEMPLATE: str = """\
     var fallbackRedirect = /*REDIRECT_JSON*/;
     var statusEl = document.getElementById("status");
     var messageEl = document.getElementById("message");
+    var spinnerEl = document.getElementById("spinner");
 
     function setStatus(text, isError) {
       statusEl.textContent = text || "";
       statusEl.classList.toggle("error", !!isError);
+      if (isError && spinnerEl) spinnerEl.style.display = "none";
     }
 
     async function run() {
