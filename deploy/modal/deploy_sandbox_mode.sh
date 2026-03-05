@@ -1,41 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deploy boring-sandbox gateway via Modal.
+# Deploy boring-sandbox gateway via Modal (standalone sandbox deploy).
 #
 # Usage:
-#   ./deploy/modal/deploy_sandbox_mode.sh [gateway|gateway_ui_light]
+#   bash deploy/modal/deploy_sandbox_mode.sh
 #
-# Env vars:
-#   BORING_SANDBOX_REPO — path to boring-sandbox checkout (default: sibling dir)
-#   MODAL_DEPLOY_NAME   — custom --name for modal deploy (optional)
-#   MODAL_ENV           — Modal environment (optional)
+# Uses boring-sandbox source from vendor/boring-sandbox/ (git submodule).
 
-BORING_SANDBOX_REPO="${BORING_SANDBOX_REPO:-$(cd "$(dirname "$0")/../../.." && pwd)/boring-sandbox}"
-ENTRYPOINT="${1:-gateway}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-if [[ ! -f "${BORING_SANDBOX_REPO}/src/boring_sandbox/modal_app.py" ]]; then
-  echo "Missing boring-sandbox modal app: ${BORING_SANDBOX_REPO}/src/boring_sandbox/modal_app.py" >&2
-  echo "Set BORING_SANDBOX_REPO to your boring-sandbox checkout path." >&2
-  exit 1
+# Ensure submodule is initialized.
+if [[ ! -f "${REPO_ROOT}/vendor/boring-sandbox/src/boring_sandbox/gateway/app.py" ]]; then
+    echo "==> Initializing boring-sandbox submodule..."
+    git -C "${REPO_ROOT}" submodule update --init vendor/boring-sandbox
 fi
 
-case "${ENTRYPOINT}" in
-  gateway|gateway_ui_light)
-    ;;
-  *)
-    echo "Unsupported entrypoint '${ENTRYPOINT}'. Use 'gateway' or 'gateway_ui_light'." >&2
-    exit 1
-    ;;
-esac
+echo "==> Deploying boring-sandbox gateway..."
+modal deploy "${REPO_ROOT}/deploy/modal/modal_app_sandbox.py"
 
-cmd=(modal deploy)
-if [[ -n "${MODAL_DEPLOY_NAME:-}" ]]; then
-  cmd+=(--name "${MODAL_DEPLOY_NAME}")
-fi
-if [[ -n "${MODAL_ENV:-}" ]]; then
-  cmd+=(--env "${MODAL_ENV}")
-fi
-cmd+=("${BORING_SANDBOX_REPO}/src/boring_sandbox/modal_app.py::${ENTRYPOINT}")
-
-exec "${cmd[@]}"
+echo "==> Sandbox deployment complete."

@@ -7,6 +7,7 @@
 # Env vars:
 #   BORING_MACRO_ROOT — path to boring-macro repo (default: ../boring-macro relative to boring-ui)
 #   BM_WHEEL_PATH     — optional prebuilt boring-macro wheel path.
+#   BM_STATIC_PATH    — optional path to prebuilt frontend static assets (default: ${APP_ROOT}/src/web/dist)
 #   BUNDLE_OUTPUT     — output path (default: /tmp/boring-macro-bundle.tar.gz)
 #
 # Output:
@@ -18,6 +19,7 @@ BORING_UI_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 APP_ROOT="${1:-${BORING_MACRO_ROOT:-$(cd "${BORING_UI_ROOT}/../boring-macro" 2>/dev/null && pwd)}}"
 BM_WHEEL_PATH="${BM_WHEEL_PATH:-}"
+BM_STATIC_PATH="${BM_STATIC_PATH:-${APP_ROOT}/src/web/dist}"
 BUNDLE_OUTPUT="${BUNDLE_OUTPUT:-/tmp/boring-macro-bundle.tar.gz}"
 
 if [[ -z "${APP_ROOT}" ]] || [[ ! -d "${APP_ROOT}" ]]; then
@@ -40,18 +42,34 @@ if [[ ! -f "${BM_WHEEL_PATH}" ]]; then
   exit 1
 fi
 
+if [[ ! -d "${BM_STATIC_PATH}" ]]; then
+  echo "Error: missing frontend static dir at ${BM_STATIC_PATH}"
+  echo "Build it first (for example: ./scripts/build_web_wheel.sh) or set BM_STATIC_PATH."
+  exit 1
+fi
+
+if [[ ! -f "${BM_STATIC_PATH}/index.html" ]]; then
+  echo "Error: frontend static dir has no index.html: ${BM_STATIC_PATH}"
+  exit 1
+fi
+
 echo "==> Building boring-macro bundle from ${APP_ROOT}"
 echo "==> Using wheel: ${BM_WHEEL_PATH}"
+echo "==> Using static assets: ${BM_STATIC_PATH}"
 echo "==> Output: ${BUNDLE_OUTPUT}"
 
 WORK_DIR="$(mktemp -d /tmp/boring-macro-bundle.XXXXXX)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 
-echo "[1/4] Staging wheel"
+echo "[1/5] Staging wheel"
 mkdir -p "${WORK_DIR}/wheels"
 cp "${BM_WHEEL_PATH}" "${WORK_DIR}/wheels/"
 
-echo "[2/4] Writing bootstrap.sh"
+echo "[2/5] Staging web_static assets"
+mkdir -p "${WORK_DIR}/web_static"
+cp -a "${BM_STATIC_PATH}/." "${WORK_DIR}/web_static/"
+
+echo "[3/5] Writing bootstrap.sh"
 cat > "${WORK_DIR}/bootstrap.sh" <<'BOOTSTRAP'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -90,10 +108,10 @@ echo "[bootstrap] Done"
 BOOTSTRAP
 chmod +x "${WORK_DIR}/bootstrap.sh"
 
-echo "[3/4] Creating archive"
+echo "[4/5] Creating archive"
 tar -C "${WORK_DIR}" -czf "${BUNDLE_OUTPUT}" .
 
-echo "[4/4] Bundle ready"
+echo "[5/5] Bundle ready"
 echo "==> Bundle created: ${BUNDLE_OUTPUT}"
 echo "    Size: $(du -h "${BUNDLE_OUTPUT}" | cut -f1)"
 echo "    Contents:"
