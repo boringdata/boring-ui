@@ -33,9 +33,12 @@ class SmokeClient:
         self._phase = phase
 
     def _client(self) -> httpx.Client:
+        # Use a plain dict for cookies so they are sent regardless of domain
+        # (httpx.Cookies is domain-scoped and won't forward across base_url switches).
+        cookie_dict = dict(self.cookies)
         return httpx.Client(
             base_url=self.base_url,
-            cookies=self.cookies,
+            cookies=cookie_dict,
             timeout=self.timeout,
             follow_redirects=False,
         )

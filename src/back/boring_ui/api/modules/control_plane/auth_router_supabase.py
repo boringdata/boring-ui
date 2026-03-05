@@ -93,38 +93,298 @@ _LOGIN_HTML_TEMPLATE: str = """\
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sign in</title>
   <style>
-    body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
-    .wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-    .card { width: min(440px, 100%); background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 20px; }
-    h1 { margin: 0 0 6px; font-size: 1.25rem; }
-    p { margin: 0 0 16px; color: #93a3b8; }
-    label { display: block; margin: 12px 0 6px; font-size: 0.9rem; color: #cbd5e1; }
-    input { width: 100%; box-sizing: border-box; background: #0b1220; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; }
-    .row { display: flex; gap: 8px; margin-top: 14px; }
-    button { border: 1px solid #334155; background: #1d4ed8; color: #eff6ff; border-radius: 8px; padding: 10px 12px; font-weight: 600; cursor: pointer; }
-    button.secondary { background: #0b1220; color: #dbeafe; }
-    .status { min-height: 22px; margin-top: 12px; color: #93c5fd; font-size: 0.9rem; }
-    .error { color: #fca5a5; }
+    :root {
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --ink: #0f172a;
+      --ink-soft: #334155;
+      --accent: #0f766e;
+      --accent-strong: #115e59;
+      --line: #dbe3ea;
+      --danger: #b91c1c;
+      --focus: rgba(15, 118, 110, 0.2);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 10%, #d1fae5 0, transparent 26%),
+        radial-gradient(circle at 90% 20%, #bfdbfe 0, transparent 22%),
+        linear-gradient(180deg, #f8fafc, #ecfeff 45%, #f8fafc);
+    }
+    .wrap {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .shell {
+      width: min(980px, 100%);
+      display: grid;
+      grid-template-columns: 1.08fr 1fr;
+      gap: 20px;
+      align-items: stretch;
+    }
+    .rail {
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      border-radius: 18px;
+      padding: 28px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+      animation: enter 260ms ease-out both;
+    }
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      color: #0f766e;
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #14b8a6;
+      box-shadow: 0 0 0 6px rgba(20, 184, 166, 0.12);
+    }
+    .rail h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(1.55rem, 2.6vw, 2.1rem);
+      line-height: 1.18;
+      letter-spacing: -0.01em;
+    }
+    .rail p {
+      margin: 0;
+      color: #1e293b;
+      line-height: 1.58;
+      max-width: 36ch;
+    }
+    .proofs {
+      margin: 20px 0 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+    .proofs li {
+      color: #334155;
+      font-size: 0.95rem;
+    }
+    .proofs li::before {
+      content: "•";
+      color: var(--accent);
+      font-weight: 800;
+      margin-right: 8px;
+    }
+    .redirect-chip {
+      margin-top: 18px;
+      display: inline-block;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #0f172a;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 0.78rem;
+      letter-spacing: 0.01em;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .card {
+      border-radius: 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      padding: 24px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+      animation: enter 260ms ease-out both;
+    }
+    .mode-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-radius: 12px;
+      background: var(--surface-soft);
+      border: 1px solid #e2e8f0;
+      padding: 4px;
+      margin-bottom: 16px;
+      gap: 4px;
+    }
+    .mode-tab {
+      border: 0;
+      background: transparent;
+      color: #64748b;
+      border-radius: 9px;
+      padding: 9px 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background-color 140ms ease, color 140ms ease;
+    }
+    .mode-tab.is-active {
+      background: #ffffff;
+      color: #0f172a;
+      box-shadow: 0 1px 0 #dbe3ea;
+    }
+    h2 {
+      margin: 0;
+      font-size: 1.45rem;
+      letter-spacing: -0.01em;
+    }
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--ink-soft);
+      line-height: 1.5;
+    }
+    label {
+      display: block;
+      margin: 14px 0 6px;
+      font-size: 0.9rem;
+      color: #1e293b;
+      font-weight: 700;
+    }
+    input {
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #0f172a;
+      border-radius: 10px;
+      padding: 11px 12px;
+      font-size: 0.96rem;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+    input::placeholder { color: #94a3b8; }
+    input:focus-visible {
+      outline: none;
+      border-color: #14b8a6;
+      box-shadow: 0 0 0 4px var(--focus);
+    }
+    .submit {
+      margin-top: 16px;
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: var(--accent);
+      color: #f0fdfa;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 120ms ease, background-color 120ms ease;
+    }
+    .submit:hover { background: var(--accent-strong); }
+    .submit:active { transform: translateY(1px); }
+    .alt-actions {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .muted {
+      margin: 0;
+      color: #64748b;
+      font-size: 0.87rem;
+    }
+    .link-btn {
+      border: 0;
+      background: transparent;
+      color: #0f766e;
+      font-weight: 700;
+      padding: 0;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .switcher {
+      margin-top: 12px;
+      color: #475569;
+      font-size: 0.88rem;
+    }
+    .switcher button {
+      border: 0;
+      background: transparent;
+      color: #0f766e;
+      font-weight: 700;
+      padding: 0;
+      margin-left: 6px;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .status {
+      min-height: 24px;
+      margin-top: 14px;
+      font-size: 0.9rem;
+      color: #0f766e;
+      line-height: 1.4;
+    }
+    .error { color: var(--danger); }
+    .legal {
+      margin: 12px 0 0;
+      color: #64748b;
+      font-size: 0.78rem;
+      line-height: 1.4;
+    }
+    button:disabled, input:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; max-width: 560px; }
+      .rail { order: 2; }
+      .card { order: 1; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <main class="card">
-      <h1 id="title">Sign in</h1>
-      <p id="subtitle">Use email/password or a magic link.</p>
-      <form id="auth-form" autocomplete="on">
-        <label for="email">Email</label>
-        <input id="email" type="email" autocomplete="email" required>
-        <label for="password">Password</label>
-        <input id="password" type="password" autocomplete="current-password" required>
-        <div class="row">
-          <button id="submit" type="submit">Sign in</button>
-          <button id="toggle" class="secondary" type="button">Switch to sign up</button>
-          <button id="magic" class="secondary" type="button">Send magic link</button>
+    <div class="shell">
+      <aside class="rail" aria-label="Product highlights">
+        <p class="kicker"><span class="dot" aria-hidden="true"></span>boring-ui workspace</p>
+        <h1>Sign in, then pick up right where you left off.</h1>
+        <p>
+          Inspired by clean SaaS onboarding flows: clear intent, fewer choices per step, and always-visible progress.
+        </p>
+        <ul class="proofs">
+          <li>Simple two-path auth: password or magic link.</li>
+          <li>Consistent destination so you always return to the right workspace.</li>
+          <li>Fast account creation with guided next step after sign up.</li>
+        </ul>
+        <div id="redirect-chip" class="redirect-chip">Returning to / after authentication</div>
+      </aside>
+      <main class="card">
+        <div class="mode-tabs" role="tablist" aria-label="Authentication mode">
+          <button id="tab-signin" class="mode-tab is-active" role="tab" aria-selected="true" type="button">Sign in</button>
+          <button id="tab-signup" class="mode-tab" role="tab" aria-selected="false" type="button">Create account</button>
         </div>
-      </form>
-      <div id="status" class="status" aria-live="polite"></div>
-    </main>
+        <h2 id="title">Welcome back</h2>
+        <p id="subtitle" class="subtitle">Use your email and password to continue.</p>
+        <form id="auth-form" autocomplete="on" novalidate>
+          <label for="email">Work email</label>
+          <input id="email" type="email" autocomplete="email" placeholder="you@company.com" required>
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="Enter your password" required>
+          <button id="submit" class="submit" type="submit">Continue</button>
+        </form>
+        <div class="alt-actions">
+          <p class="muted">Prefer a one-time link?</p>
+          <button id="magic" class="link-btn" type="button">Use magic link instead</button>
+        </div>
+        <p class="switcher"><span id="switch-copy">New here?</span><button id="toggle" type="button">Create an account</button></p>
+        <div id="status" class="status" aria-live="polite"></div>
+        <p class="legal">By continuing, you agree to authenticate with your configured Supabase identity provider.</p>
+      </main>
+    </div>
   </div>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer>
@@ -133,22 +393,52 @@ _LOGIN_HTML_TEMPLATE: str = """\
     const statusEl = document.getElementById("status");
     const titleEl = document.getElementById("title");
     const subtitleEl = document.getElementById("subtitle");
+    const switchCopyEl = document.getElementById("switch-copy");
+    const redirectChipEl = document.getElementById("redirect-chip");
     const form = document.getElementById("auth-form");
     const emailEl = document.getElementById("email");
     const passwordEl = document.getElementById("password");
     const submitEl = document.getElementById("submit");
     const toggleEl = document.getElementById("toggle");
     const magicEl = document.getElementById("magic");
+    const tabSignInEl = document.getElementById("tab-signin");
+    const tabSignUpEl = document.getElementById("tab-signup");
     const supabaseLib = window.supabase;
     const client = (supabaseLib && typeof supabaseLib.createClient === "function")
       ? supabaseLib.createClient(AUTH.supabaseUrl, AUTH.supabaseAnonKey)
       : null;
 
     let mode = AUTH.initialMode === "sign_up" ? "sign_up" : "sign_in";
+    let busy = false;
 
     function setStatus(message, isError) {
       statusEl.textContent = message || "";
       statusEl.classList.toggle("error", !!isError);
+    }
+
+    function setBusy(isBusy) {
+      busy = !!isBusy;
+      form.setAttribute("aria-busy", busy ? "true" : "false");
+      emailEl.disabled = busy;
+      passwordEl.disabled = busy;
+      submitEl.disabled = busy;
+      toggleEl.disabled = busy;
+      magicEl.disabled = busy;
+      tabSignInEl.disabled = busy;
+      tabSignUpEl.disabled = busy;
+    }
+
+    function updateDestinationChip() {
+      var target = String(AUTH.redirectUri || "/");
+      redirectChipEl.textContent = "Returning to " + target + " after authentication";
+      redirectChipEl.title = target;
+    }
+
+    function setTabState(isSignUp) {
+      tabSignInEl.classList.toggle("is-active", !isSignUp);
+      tabSignUpEl.classList.toggle("is-active", isSignUp);
+      tabSignInEl.setAttribute("aria-selected", isSignUp ? "false" : "true");
+      tabSignUpEl.setAttribute("aria-selected", isSignUp ? "true" : "false");
     }
 
     function isEmailRateLimited(error) {
@@ -175,22 +465,32 @@ _LOGIN_HTML_TEMPLATE: str = """\
     }
 
     function setMode(nextMode) {
+      if (busy) return;
       mode = nextMode === "sign_up" ? "sign_up" : "sign_in";
-      titleEl.textContent = mode === "sign_up" ? "Create account" : "Sign in";
+      var signUp = mode === "sign_up";
+      setTabState(signUp);
+      titleEl.textContent = signUp ? "Create your account" : "Welcome back";
       subtitleEl.textContent = mode === "sign_up"
-        ? "Create your account, then confirm by email if prompted."
-        : "Use email/password or a magic link.";
-      submitEl.textContent = mode === "sign_up" ? "Create account" : "Sign in";
-      toggleEl.textContent = mode === "sign_up" ? "Switch to sign in" : "Switch to sign up";
-      passwordEl.autocomplete = mode === "sign_up" ? "new-password" : "current-password";
+        ? "Get started in minutes. You may be asked to confirm from your email."
+        : "Use your email and password to continue.";
+      submitEl.textContent = signUp ? "Create account" : "Continue";
+      toggleEl.textContent = signUp ? "I already have an account" : "Create an account";
+      switchCopyEl.textContent = signUp ? "Already have an account?" : "New here?";
+      magicEl.textContent = signUp ? "Email me a signup link" : "Use magic link instead";
+      passwordEl.autocomplete = signUp ? "new-password" : "current-password";
+      passwordEl.placeholder = signUp ? "Create a password (8+ characters)" : "Enter your password";
       setStatus("");
     }
+
+    tabSignInEl.addEventListener("click", function() { setMode("sign_in"); });
+    tabSignUpEl.addEventListener("click", function() { setMode("sign_up"); });
 
     toggleEl.addEventListener("click", function() {
       setMode(mode === "sign_in" ? "sign_up" : "sign_in");
     });
 
     magicEl.addEventListener("click", async function() {
+      if (busy) return;
       if (!client) {
         setStatus("Auth library failed to load.", true);
         return;
@@ -200,24 +500,32 @@ _LOGIN_HTML_TEMPLATE: str = """\
         setStatus("Enter your email.", true);
         return;
       }
+      setBusy(true);
       setStatus("Sending magic link...");
-      var result = await client.auth.signInWithOtp({
-        email: email,
-        options: { emailRedirectTo: callbackUrl() },
-      });
-      if (result.error) {
-        if (isEmailRateLimited(result.error)) {
-          setStatus(rateLimitMessage(), true);
+      try {
+        var result = await client.auth.signInWithOtp({
+          email: email,
+          options: { emailRedirectTo: callbackUrl() },
+        });
+        if (result.error) {
+          if (isEmailRateLimited(result.error)) {
+            setStatus(rateLimitMessage(), true);
+            return;
+          }
+          setStatus(result.error.message || "Unable to send magic link.", true);
           return;
         }
-        setStatus(result.error.message || "Unable to send magic link.", true);
-        return;
+        setStatus(mode === "sign_up"
+          ? "Check your email to confirm your account."
+          : "Check your email for the sign-in link.");
+      } finally {
+        setBusy(false);
       }
-      setStatus("Check your email for the confirmation link.");
     });
 
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
+      if (busy) return;
       if (!client) {
         setStatus("Auth library failed to load.", true);
         return;
@@ -229,60 +537,72 @@ _LOGIN_HTML_TEMPLATE: str = """\
         return;
       }
 
+      setBusy(true);
       if (mode === "sign_up") {
-        setStatus("Creating account...");
-        var result = await client.auth.signUp({
-          email: email,
-          password: password,
-          options: { emailRedirectTo: callbackUrl() },
-        });
-        if (result.error) {
-          if (isEmailRateLimited(result.error)) {
-            setStatus(rateLimitMessage(), true);
+        try {
+          setStatus("Creating account...");
+          var result = await client.auth.signUp({
+            email: email,
+            password: password,
+            options: { emailRedirectTo: callbackUrl() },
+          });
+          if (result.error) {
+            if (isEmailRateLimited(result.error)) {
+              setStatus(rateLimitMessage(), true);
+              return;
+            }
+            setStatus(result.error.message || "Unable to create account.", true);
             return;
           }
-          setStatus(result.error.message || "Unable to create account.", true);
+          passwordEl.value = "";
+          setMode("sign_in");
+          setStatus("Account created. Confirm from your email, then sign in.");
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+
+      try {
+        setStatus("Signing in...");
+        var signIn = await client.auth.signInWithPassword({
+          email: email,
+          password: password,
+        });
+        if (signIn.error) {
+          setStatus(signIn.error.message || "Unable to sign in.", true);
           return;
         }
-        setStatus("Account created. Confirm from your email, then sign in.");
-        return;
+        var accessToken = signIn.data && signIn.data.session && signIn.data.session.access_token;
+        if (!accessToken) {
+          setStatus("No access token returned.", true);
+          return;
+        }
+        var exchange = await fetch("/auth/token-exchange", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            access_token: accessToken,
+            redirect_uri: AUTH.redirectUri || "/",
+          }),
+        });
+        var payload = {};
+        try {
+          payload = await exchange.json();
+        } catch (_) {
+          payload = {};
+        }
+        if (!exchange.ok) {
+          setStatus(payload.message || "Unable to complete session setup.", true);
+          return;
+        }
+        window.location.assign(payload.redirect_uri || "/");
+      } finally {
+        setBusy(false);
       }
-
-      setStatus("Signing in...");
-      var signIn = await client.auth.signInWithPassword({
-        email: email,
-        password: password,
-      });
-      if (signIn.error) {
-        setStatus(signIn.error.message || "Unable to sign in.", true);
-        return;
-      }
-      var accessToken = signIn.data && signIn.data.session && signIn.data.session.access_token;
-      if (!accessToken) {
-        setStatus("No access token returned.", true);
-        return;
-      }
-      var exchange = await fetch("/auth/token-exchange", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          access_token: accessToken,
-          redirect_uri: AUTH.redirectUri || "/",
-        }),
-      });
-      var payload = {};
-      try {
-        payload = await exchange.json();
-      } catch (_) {
-        payload = {};
-      }
-      if (!exchange.ok) {
-        setStatus(payload.message || "Unable to complete session setup.", true);
-        return;
-      }
-      window.location.assign(payload.redirect_uri || "/");
     });
 
+    updateDestinationChip();
     setMode(mode);
     });
   </script>
@@ -451,6 +771,7 @@ def _create_session_from_query(request: Request, config: APIConfig) -> tuple[str
         email,
         secret=config.auth_session_secret,
         ttl_seconds=config.auth_session_ttl_seconds,
+        app_id=config.control_plane_app_id,
     )
     return token, _safe_redirect_path(request.query_params.get("redirect_uri"))
 
@@ -492,6 +813,7 @@ async def _issue_session_from_token(
         payload.email,
         secret=config.auth_session_secret,
         ttl_seconds=config.auth_session_ttl_seconds,
+        app_id=config.control_plane_app_id,
     )
 
     redirect_uri = _safe_redirect_path(redirect_uri_override or request.query_params.get("redirect_uri"))

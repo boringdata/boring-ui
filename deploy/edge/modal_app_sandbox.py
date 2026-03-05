@@ -52,22 +52,24 @@ def _base_image() -> modal.Image:
     )
 
 
-def _with_optional_macro_bundle(img: modal.Image) -> modal.Image:
+def _with_optional_bundles(img: modal.Image) -> modal.Image:
     if VENDOR_ROOT is None:
         return img
-    bundle = VENDOR_ROOT / "artifacts" / "boring-macro-bundle.tar.gz"
-    if bundle.exists():
-        return img.add_local_file(
-            str(bundle),
-            "/root/artifacts/boring-macro-bundle.tar.gz",
-            copy=True,
-        )
+    artifacts = VENDOR_ROOT / "artifacts"
+    for name in ("boring-macro-bundle.tar.gz", "boring-ui-bundle.tar.gz"):
+        bundle = artifacts / name
+        if bundle.exists():
+            img = img.add_local_file(
+                str(bundle),
+                f"/root/artifacts/{name}",
+                copy=True,
+            )
     return img
 
 
 # Image building is guarded by VENDOR_ROOT being available (local CLI only).
 if VENDOR_ROOT is not None:
-    image = _with_optional_macro_bundle(_base_image()).env(
+    image = _with_optional_bundles(_base_image()).env(
         {
             "PATH": "/root/.local/bin:/usr/local/bin:/usr/bin:/bin",
             "PYTHONPATH": "/root/src",
