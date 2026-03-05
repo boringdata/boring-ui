@@ -1983,9 +1983,7 @@ export default function App() {
         : ''
       const title = component === 'terminal'
         ? 'Code Sessions'
-        : provider === 'pi'
-          ? 'PI Agent'
-          : 'Agent'
+        : 'Agent'
       const matchingPanels = listDockPanels(dockApi).filter(
         (panel) =>
           getPanelComponent(panel) === component
@@ -3798,9 +3796,10 @@ export default function App() {
             <CapabilitiesStatusContext.Provider value={{ pending: capabilitiesPending }}>
               <CapabilitiesContext.Provider value={capabilities}>
                 {capabilitiesPending ? (
-                  <div className="app-loading-overlay" role="status" aria-live="polite">
-                    <Loader2 className="pane-loading-icon" size={36} />
-                    <p className="pane-loading-message">Connecting to workspace</p>
+                  <div className="workspace-loading" role="status" aria-live="polite">
+                    <Loader2 className="workspace-loading-icon" size={40} />
+                    <h2 className="workspace-loading-title">Opening workspace</h2>
+                    <p className="workspace-loading-message">Connecting to backend services...</p>
                   </div>
                 ) : (
                   <div data-testid="dockview" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
@@ -3810,6 +3809,7 @@ export default function App() {
                       tabComponents={tabComponents}
                       rightHeaderActionsComponent={RightHeaderActions}
                       onReady={onReady}
+                      showDndOverlay={showDndOverlay}
                       onDidDrop={onDidDrop}
                     />
                   </div>

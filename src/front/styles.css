@@ -567,6 +567,42 @@ html {
   }
 }
 
+/* Workspace Loading - single full-workspace loading screen */
+.workspace-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  animation: workspace-loading-enter 200ms ease-out both;
+}
+
+.workspace-loading-icon {
+  color: var(--color-accent);
+  margin-bottom: var(--space-4);
+  animation: pane-loading-spin 1s linear infinite;
+}
+
+.workspace-loading-title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.workspace-loading-message {
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+@keyframes workspace-loading-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Theme Toggle Button */
 .theme-toggle {
   display: flex;
