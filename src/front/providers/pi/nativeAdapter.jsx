@@ -450,24 +450,19 @@ export default function PiNativeAdapter({ panelId, sessionBootstrap = 'latest', 
     })
 
     void (async () => {
-      // Seed provider API keys from backend (best-effort, non-blocking).
-      try {
-        const base = typeof window !== 'undefined'
-          ? (window.location.pathname.match(/^\/w\/[^/]+/) || [''])[0]
-          : ''
-        const res = await fetch(`${base}/api/v1/config/provider-keys`)
-        if (res.ok) {
-          const keys = await res.json()
-          if (keys && typeof keys === 'object') {
-            for (const [provider, key] of Object.entries(keys)) {
-              if (typeof key === 'string' && key) {
-                await runtime.providerKeys.set(provider, key)
-              }
-            }
+      // In dev mode, seed provider API keys from Vite env vars (VITE_PI_*_API_KEY).
+      // In production, users enter keys manually via the UI prompt.
+      if (import.meta.env.DEV) {
+        for (const [envKey, provider] of [
+          ['VITE_PI_OPENAI_API_KEY', 'openai'],
+          ['VITE_PI_ANTHROPIC_API_KEY', 'anthropic'],
+          ['VITE_PI_GOOGLE_API_KEY', 'google'],
+        ]) {
+          const key = String(import.meta.env[envKey] || '').trim()
+          if (key) {
+            await runtime.providerKeys.set(provider, key)
           }
         }
-      } catch {
-        // Keys can still be entered manually via UI prompt
       }
 
       const sessions = await runtime.sessions.getAllMetadata()

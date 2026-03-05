@@ -18,11 +18,6 @@ from .modules.control_plane import create_me_router
 from .modules.control_plane import create_workspace_router
 from .modules.control_plane import create_collaboration_router
 from .modules.control_plane import create_workspace_boundary_router
-from .modules.control_plane.auth_session import (
-    SessionExpired,
-    SessionInvalid,
-    parse_session_cookie,
-)
 from .modules.control_plane.supabase import db_client as supabase_db_client
 from .modules.pty.lifecycle import create_pty_lifecycle_router
 from .workspace_plugins import WorkspacePluginManager
@@ -242,43 +237,6 @@ def create_app(
                 'files': '.',
             },
         }
-
-    @app.get('/api/v1/config/provider-keys')
-    async def config_provider_keys(request: Request):
-        """Return configured browser-side PI provider keys for authenticated users."""
-        token = request.cookies.get(config.auth_session_cookie_name, '')
-        if not token:
-            return JSONResponse(
-                status_code=401,
-                content={
-                    'error': 'unauthorized',
-                    'code': 'SESSION_REQUIRED',
-                    'message': 'No active session',
-                },
-            )
-        try:
-            parse_session_cookie(token, secret=config.auth_session_secret)
-        except (SessionExpired, SessionInvalid):
-            return JSONResponse(
-                status_code=401,
-                content={
-                    'error': 'unauthorized',
-                    'code': 'SESSION_INVALID',
-                    'message': 'Session invalid',
-                },
-            )
-
-        import os as _os
-        keys = {}
-        for env_key, provider in [
-            ('OPENAI_API_KEY', 'openai'),
-            ('ANTHROPIC_API_KEY', 'anthropic'),
-            ('GOOGLE_AI_API_KEY', 'google'),
-        ]:
-            val = _os.environ.get(env_key, '').strip()
-            if val:
-                keys[provider] = val
-        return keys
 
     @app.get('/api/project')
     async def get_project():
