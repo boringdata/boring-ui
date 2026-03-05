@@ -6,36 +6,24 @@ import { useTheme } from '../hooks/useTheme'
 import { openWebSocket } from '../utils/transport'
 import { routes } from '../utils/routes'
 
-// Terminal color schemes for light/dark mode
-const TERMINAL_THEMES = {
-  light: {
-    background: '#f8fafc',
-    foreground: '#111827',
-    cursor: '#111827',
-    selectionBackground: '#bfdbfe',
-    black: '#0f172a',
-    red: '#dc2626',
-    green: '#16a34a',
-    yellow: '#f59e0b',
-    blue: '#2563eb',
-    magenta: '#db2777',
-    cyan: '#0891b2',
-    white: '#e2e8f0',
-  },
-  dark: {
-    background: '#0f172a',
-    foreground: '#e2e8f0',
-    cursor: '#e2e8f0',
-    selectionBackground: '#334155',
-    black: '#0f172a',
-    red: '#ef4444',
-    green: '#22c55e',
-    yellow: '#f59e0b',
-    blue: '#3b82f6',
-    magenta: '#ec4899',
-    cyan: '#06b6d4',
-    white: '#f1f5f9',
-  },
+// Read terminal theme from CSS design tokens (--color-term-*)
+function getTerminalTheme() {
+  const s = getComputedStyle(document.documentElement);
+  const v = (name) => s.getPropertyValue(name).trim();
+  return {
+    background: v('--color-term-bg'),
+    foreground: v('--color-term-fg'),
+    cursor: v('--color-term-cursor'),
+    selectionBackground: v('--color-term-selection'),
+    black: v('--color-term-black'),
+    red: v('--color-term-red'),
+    green: v('--color-term-green'),
+    yellow: v('--color-term-yellow'),
+    blue: v('--color-term-blue'),
+    magenta: v('--color-term-magenta'),
+    cyan: v('--color-term-cyan'),
+    white: v('--color-term-white'),
+  };
 }
 
 const HISTORY_STORAGE_PREFIX = 'kurt-web-pty-history'
@@ -152,7 +140,7 @@ export default function Terminal({
   useEffect(() => {
     appThemeRef.current = appTheme
     if (termRef.current) {
-      termRef.current.options.theme = TERMINAL_THEMES[appTheme] || TERMINAL_THEMES.light
+      termRef.current.options.theme = getTerminalTheme()
     }
   }, [appTheme])
 
@@ -172,7 +160,7 @@ export default function Terminal({
       convertEol: false,
       fontFamily: '"IBM Plex Mono", "SFMono-Regular", Menlo, monospace',
       fontSize: 13,
-      theme: TERMINAL_THEMES[appThemeRef.current] || TERMINAL_THEMES.light,
+      theme: getTerminalTheme(),
     })
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
@@ -567,8 +555,7 @@ export default function Terminal({
   useEffect(() => {
     const term = termRef.current
     if (!term) return
-    const newTheme = TERMINAL_THEMES[appTheme] || TERMINAL_THEMES.light
-    term.options.theme = newTheme
+    term.options.theme = getTerminalTheme()
   }, [appTheme])
 
   return (

@@ -36,11 +36,11 @@
 }
 
 .companion-panel-content .provider-companion .relative.bg-cc-input-bg.border.overflow-visible:focus-within {
-  border-color: #ae56304d !important;
+  border-color: var(--color-companion-focus) !important;
 }
 
 .companion-panel-content .provider-companion .relative.bg-cc-input-bg.border.overflow-visible.border-cc-primary\/40 {
-  border-color: #ae563066 !important;
+  border-color: var(--color-companion-focus-strong) !important;
 }
 
 /* Prevent global boring-ui accent focus ring from painting orange around embedded composer inputs. */

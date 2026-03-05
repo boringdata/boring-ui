@@ -138,11 +138,30 @@
   --color-diff-remove-bg: #fee2e2;
   --color-diff-remove-text: #991b1b;
 
+  /* ---------- Terminal (Light) ---------- */
+  --color-term-bg: #f8fafc;
+  --color-term-fg: #111827;
+  --color-term-cursor: #111827;
+  --color-term-selection: #bfdbfe;
+  --color-term-black: #0f172a;
+  --color-term-red: #dc2626;
+  --color-term-green: #16a34a;
+  --color-term-yellow: #f59e0b;
+  --color-term-blue: #2563eb;
+  --color-term-magenta: #db2777;
+  --color-term-cyan: #0891b2;
+  --color-term-white: #e2e8f0;
+
+  /* ---------- Companion accent overrides ---------- */
+  --color-companion-focus: #ae56304d;
+  --color-companion-focus-strong: #ae563066;
+
   /* ---------- Shadows ---------- */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-toast: 0 4px 12px rgb(0 0 0 / 0.15);
 
   /* ---------- Syntax Highlighting (Light) ---------- */
   --syntax-keyword: #d73a49;
@@ -250,11 +269,30 @@
   --color-overlay: rgba(0, 0, 0, 0.7);
   --color-inset-shadow: rgba(0, 0, 0, 0.3);
 
+  /* Terminal (dark) */
+  --color-term-bg: #0f172a;
+  --color-term-fg: #e2e8f0;
+  --color-term-cursor: #e2e8f0;
+  --color-term-selection: #334155;
+  --color-term-black: #0f172a;
+  --color-term-red: #ef4444;
+  --color-term-green: #22c55e;
+  --color-term-yellow: #f59e0b;
+  --color-term-blue: #3b82f6;
+  --color-term-magenta: #ec4899;
+  --color-term-cyan: #06b6d4;
+  --color-term-white: #f1f5f9;
+
+  /* Companion accent overrides (same in dark) */
+  --color-companion-focus: #ae56304d;
+  --color-companion-focus-strong: #ae563066;
+
   /* Shadows (subtle glow) */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
   --shadow-lg: 0 0 15px rgb(255 255 255 / 0.05);
   --shadow-xl: 0 0 25px rgb(255 255 255 / 0.08);
+  --shadow-toast: 0 4px 12px rgb(0 0 0 / 0.4);
 
   /* Syntax Highlighting (Dark) - Catppuccin-inspired */
   --syntax-keyword: #cba6f7;
@@ -2241,11 +2279,12 @@ html {
   white-space: pre-wrap;
   word-break: break-word;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-secondary);
   padding: var(--space-2) var(--space-3);
   color: var(--color-text-primary);
   font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
 }
 
 .pi-backend-row.is-user .pi-backend-bubble {
@@ -2279,30 +2318,51 @@ html {
   max-height: 180px;
   resize: vertical;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-primary);
   color: var(--color-text-primary);
-  padding: var(--space-2);
-  font: inherit;
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pi-backend-input::placeholder {
+  color: var(--color-text-tertiary);
 }
 
 .pi-backend-input:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .pi-backend-send {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
   padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.pi-backend-send:hover {
+  background: var(--color-accent-hover);
+}
+
+.pi-backend-send:active {
+  transform: scale(0.97);
 }
 
 .pi-backend-send:disabled {
-  opacity: 0.5;
+  background: var(--color-bg-active);
+  color: var(--color-text-tertiary);
   cursor: not-allowed;
+  transform: none;
 }
 
 .pi-backend-error {

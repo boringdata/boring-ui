@@ -105,7 +105,7 @@ _LOGIN_HTML_TEMPLATE: str = """\
       --color-accent-hover: #c2410c;
       --color-accent-light: #fff7ed;
       --color-error: #ef4444;
-      --color-info: #2563eb;
+      --color-info: #3b82f6;
       --focus: rgba(234, 88, 12, 0.18);
     }
     @media (prefers-color-scheme: dark) {

@@ -38,6 +38,7 @@
     "build:lib": "vite build --mode lib",
     "preview": "vite preview --port 5173",
     "lint": "eslint src/front/",
+    "lint:tokens": "node scripts/lint-design-tokens.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

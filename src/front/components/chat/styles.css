@@ -1101,7 +1101,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-toast);
   z-index: 9999;
   animation: toast-fade-in 0.2s ease-out;
 }
