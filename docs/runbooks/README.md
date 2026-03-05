@@ -7,6 +7,17 @@ Operational runbooks for common tasks.
 - [Ownership Migration Cutover and Rollback](./OWNERSHIP_CUTOVER.md)
 - [Modes and Profiles Contract](./MODES_AND_PROFILES.md)
 
+## Quick Mode Choice
+
+Use `core` when you want the simplest standalone deployment:
+- Frontend -> `boring-ui` backend directly
+- Default UI profile: `pi-lightningfs`
+
+Use `edge` only when you need edge proxy/provisioning/token-injection:
+- Frontend -> `boring-sandbox` -> `boring-ui`
+- Default UI profile: `companion-httpfs`
+- Workspace/user/membership/files/git ownership remains in `boring-ui`
+
 ## Development
 
 ### Start Local Dev Environment
@@ -140,7 +151,8 @@ Set the following env vars before boot:
 export SUPABASE_URL="https://<project>.supabase.co"
 export SUPABASE_ANON_KEY="<anon-key>"
 export SUPABASE_SERVICE_ROLE_KEY="<service-role-key>"
-export SUPABASE_JWT_SECRET="<jwt-secret>"
+# Optional for HS256 fallback paths; RS256/JWKS flows do not require this.
+export SUPABASE_JWT_SECRET=""
 export SUPABASE_DB_URL="postgresql://postgres.<project-ref>:<password>@aws-1-eu-west-1.pooler.supabase.com:5432/postgres"
 export BORING_SETTINGS_KEY="<settings-encryption-key>"
 export BORING_UI_SESSION_SECRET="<cookie-signing-secret>"
@@ -189,6 +201,7 @@ Core mode smoke with real Supabase:
 ```bash
 TMP_ENV_CORE="$(mktemp)"
 PROJECT_URL="$(vault kv get -format=json secret/agent/boring-ui-supabase-project-url | jq -r '.data.data.url')"
+PROJECT_REF="$(echo "$PROJECT_URL" | sed -E 's#https?://([^.]+).*#\1#')"
 ANON_KEY="$(vault kv get -format=json secret/agent/boring-ui-supabase-publishable-key | jq -r '.data.data.key')"
 SERVICE_ROLE_KEY="$(vault kv get -format=json secret/agent/boring-ui-supabase-service-role-key | jq -r '.data.data.key')"
 DB_PASSWORD="$(vault kv get -format=json secret/agent/boring-ui-supabase | jq -r '.data.data.db_password')"
@@ -204,7 +217,7 @@ CONTROL_PLANE_APP_ID=boring-ui
 SUPABASE_URL=${PROJECT_URL}
 SUPABASE_ANON_KEY=${ANON_KEY}
 SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}
-SUPABASE_DB_URL=postgresql://postgres.cnmiganmiuwipffuysvg:${ENC_DB_PASSWORD}@aws-1-eu-west-1.pooler.supabase.com:5432/postgres
+SUPABASE_DB_URL=postgresql://postgres.${PROJECT_REF}:${ENC_DB_PASSWORD}@aws-1-eu-west-1.pooler.supabase.com:5432/postgres
 BORING_SETTINGS_KEY=$(python3 - <<'PY'
 import secrets; print(secrets.token_hex(32))
 PY
@@ -235,7 +248,7 @@ CONTROL_PLANE_APP_ID=boring-ui
 SUPABASE_URL=${PROJECT_URL}
 SUPABASE_ANON_KEY=${ANON_KEY}
 SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}
-SUPABASE_DB_URL=postgresql://postgres.cnmiganmiuwipffuysvg:${ENC_DB_PASSWORD}@aws-1-eu-west-1.pooler.supabase.com:5432/postgres
+SUPABASE_DB_URL=postgresql://postgres.${PROJECT_REF}:${ENC_DB_PASSWORD}@aws-1-eu-west-1.pooler.supabase.com:5432/postgres
 BORING_SETTINGS_KEY=$(python3 - <<'PY'
 import secrets; print(secrets.token_hex(32))
 PY
@@ -324,7 +337,7 @@ bundle-sandbox:
 | Variable | Purpose | Default |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Claude API key for chat sessions | (required for chat) |
-| `CORS_ORIGINS` | Comma-separated allowed origins | Dev origins + `*` |
+| `CORS_ORIGINS` | Comma-separated allowed origins | Dev origins (`localhost`/`127.0.0.1` on common ports) |
 | `COMPANION_URL` | Companion service URL | None (embedded mode) |
 | `PI_URL` | PI service URL | None (embedded mode) |
 | `PI_MODE` | PI rendering: `embedded` or `iframe` | `embedded` |
