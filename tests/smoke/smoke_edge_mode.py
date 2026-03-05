@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""Edge mode E2E smoke test: signup -> signin -> workspace -> provisioning -> sprite -> agent."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from smoke_lib.auth import random_password, signup_flow, signin_flow
+from smoke_lib.client import SmokeClient, StepResult
+from smoke_lib.files import check_file_tree, create_and_read_file, check_git_status
+from smoke_lib.secrets import supabase_url, supabase_anon_key, resend_api_key
+from smoke_lib.workspace import (
+    create_workspace,
+    list_workspaces,
+    get_runtime,
+    retry_runtime,
+    poll_runtime_ready,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base-url", default="http://localhost:8000")
+    parser.add_argument("--recipient", help="Override test email address")
+    parser.add_argument("--timeout", type=int, default=180, help="Resend polling timeout seconds")
+    parser.add_argument("--provision-timeout", type=int, default=120, help="Sprite provisioning timeout")
+    parser.add_argument("--skip-signup", action="store_true", help="Skip signup, use --email/--password")
+    parser.add_argument("--email", help="Existing account email (with --skip-signup)")
+    parser.add_argument("--password", help="Existing account password (with --skip-signup)")
+    parser.add_argument("--skip-sprite", action="store_true", help="Skip sprite/sandbox phases (10-16)")
+    parser.add_argument("--skip-agent", action="store_true", help="Skip agent WebSocket test")
+    args = parser.parse_args()
+
+    client = SmokeClient(args.base_url)
+    sb_url = supabase_url()
+    sb_anon = supabase_anon_key()
+
+    # --- Phases 1-4: Auth ---
+    if args.skip_signup:
+        if not args.email or not args.password:
+            print("--skip-signup requires --email and --password", file=sys.stderr)
+            return 1
+        email = args.email
+        password = args.password
+    else:
+        email = args.recipient or f"qa+smoke-edge-{int(time.time())}@mail.boringdata.io"
+        password = random_password()
+        resend_key = resend_api_key()
+        signup_flow(
+            client,
+            supabase_url=sb_url,
+            supabase_anon_key=sb_anon,
+            resend_api_key=resend_key,
+            email=email,
+            password=password,
+            timeout_seconds=args.timeout,
+        )
+
+    signin_flow(
+        client,
+        supabase_url=sb_url,
+        supabase_anon_key=sb_anon,
+        email=email,
+        password=password,
+    )
+
+    # --- Phase 5-6: Workspace ---
+    ts = int(time.time())
+    ws_data = create_workspace(client, name=f"smoke-edge-{ts}")
+    ws = ws_data.get("workspace") or ws_data
+    workspace_id = ws.get("workspace_id") or ws.get("id")
+    list_workspaces(client, expect_id=workspace_id)
+
+    # --- Phase 7: Retry guard (should 409 since state=pending, not error/provisioning) ---
+    client.set_phase("retry-guard")
+    print("[smoke] Testing retry guard (expect 409)...")
+    retry_resp = client.post(
+        f"/api/v1/workspaces/{workspace_id}/runtime/retry",
+        expect_status=(409,),
+    )
+    retry_status = retry_resp.status_code
+    if retry_status == 409:
+        print("[smoke] Retry guard: correctly rejected (409 INVALID_TRANSITION)")
+    else:
+        print(f"[smoke] WARNING: retry guard returned {retry_status} instead of 409")
+
+    # --- Phase 8: Boundary setup ---
+    client.set_phase("boundary-setup")
+    print("[smoke] Checking boundary setup...")
+    setup_resp = client.get(f"/w/{workspace_id}/setup", expect_status=(200,))
+    if setup_resp.status_code == 200:
+        setup_data = setup_resp.json()
+        print(f"[smoke] Boundary setup OK: workspace_id={setup_data.get('workspace_id')}")
+    else:
+        print(f"[smoke] Boundary setup failed: {setup_resp.status_code}")
+
+    # --- Phase 9: Boundary runtime ---
+    client.set_phase("boundary-runtime")
+    print("[smoke] Checking boundary runtime...")
+    runtime_resp = client.get(f"/w/{workspace_id}/runtime", expect_status=(200,))
+    if runtime_resp.status_code == 200:
+        print("[smoke] Boundary runtime OK")
+    else:
+        print(f"[smoke] Boundary runtime failed: {runtime_resp.status_code}")
+
+    # --- Phases 10-16: Sprite provisioning + operations ---
+    if not args.skip_sprite:
+        # Phase 10: Poll runtime until ready
+        print(f"[smoke] Polling runtime (timeout={args.provision_timeout}s)...")
+        runtime = poll_runtime_ready(
+            client,
+            workspace_id,
+            timeout_seconds=args.provision_timeout,
+        )
+        sprite_url = runtime.get("sprite_url", "")
+        if not sprite_url:
+            print("[smoke] ERROR: Runtime ready but no sprite_url", file=sys.stderr)
+            return 1
+        print(f"[smoke] Sprite URL: {sprite_url}")
+
+        # Switch client to sprite
+        client.switch_base(sprite_url)
+
+        # Phase 11: Sprite health
+        client.set_phase("sprite-health")
+        print("[smoke] Checking sprite health...")
+        health_resp = client.get("/health", expect_status=(200,))
+        if health_resp.status_code == 200:
+            print("[smoke] Sprite health OK")
+
+        # Phase 12: Sprite file tree
+        check_file_tree(client)
+
+        # Phase 13-14: Sprite create + read file
+        create_and_read_file(client, path="smoke-test.txt", content=f"smoke-edge-{ts}")
+
+        # Phase 15: Sprite git status
+        check_git_status(client)
+
+        # Phase 16: Agent interaction
+        if not args.skip_agent:
+            from smoke_lib.agent import agent_roundtrip
+            result = agent_roundtrip(
+                sprite_url,
+                message="Say exactly: SMOKE_OK",
+                timeout_seconds=30.0,
+                cookies=dict(client.cookies),
+            )
+            if not result.get("ok") and not result.get("skipped"):
+                client.results.append(StepResult(
+                    phase="agent", method="WS", path="/ws/agent/normal/stream",
+                    status=0, ok=False, elapsed_ms=0, detail=result.get("error", "unknown"),
+                ))
+    else:
+        print("[smoke] Skipping sprite phases (--skip-sprite)")
+
+    # --- Report ---
+    report = client.report()
+    print(json.dumps(report, indent=2))
+
+    if report["ok"]:
+        print(f"\nSMOKE EDGE: ALL {report['total']} STEPS PASSED")
+        return 0
+    else:
+        print(f"\nSMOKE EDGE: {report['failed']}/{report['total']} STEPS FAILED", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

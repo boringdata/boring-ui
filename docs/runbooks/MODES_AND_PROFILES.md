@@ -135,29 +135,29 @@ VITE_UI_PROFILE=companion-httpfs
 Core mode:
 
 ```bash
-docker compose -f deploy/docker/docker-compose.front.yml up --build backend frontend
+docker compose -f deploy/core/docker-compose.yml up --build backend frontend
 
 # with template env file
-cp deploy/docker/.env.core.example .env.core
-docker compose --env-file .env.core -f deploy/docker/docker-compose.front.yml up --build backend frontend
+cp deploy/core/.env.example .env.core
+docker compose --env-file .env.core -f deploy/core/docker-compose.yml up --build backend frontend
 ```
 
 Edge mode:
 
 ```bash
-docker compose -f deploy/docker/docker-compose.sandbox.yml up --build sandbox frontend
+docker compose -f deploy/edge/docker-compose.yml up --build sandbox frontend
 
 # with template env file
-cp deploy/docker/.env.edge.example .env.edge
-docker compose --env-file .env.edge -f deploy/docker/docker-compose.sandbox.yml up --build sandbox frontend
+cp deploy/edge/.env.example .env.edge
+docker compose --env-file .env.edge -f deploy/edge/docker-compose.yml up --build sandbox frontend
 ```
 
-`backend` is started automatically via `depends_on` in `docker-compose.sandbox.yml`.
+`backend` is started automatically via `depends_on` in `deploy/edge/docker-compose.yml`.
 
 Notes:
 
-1. `deploy/docker/docker-compose.front.yml` and `deploy/docker/docker-compose.sandbox.yml` are the canonical files.
-2. `deploy/docker/docker-compose.yml` is a legacy convenience wrapper and not the recommended downstream contract.
+1. `deploy/core/docker-compose.yml` and `deploy/edge/docker-compose.yml` are the canonical files.
+2. `deploy/shared/docker-compose.legacy.yml` is a legacy convenience wrapper and not the recommended downstream contract.
 
 In the local edge compose harness:
 

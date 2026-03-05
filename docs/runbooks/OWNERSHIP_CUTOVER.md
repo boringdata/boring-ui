@@ -20,23 +20,23 @@ this compose setup validates deployment topology and routing before rollout.
 
 ```bash
 # Core mode
-docker compose -f deploy/docker/docker-compose.front.yml up --build backend frontend
+docker compose -f deploy/core/docker-compose.yml up --build backend frontend
 
 # Edge mode (sandbox artifact service + frontend)
 mkdir -p artifacts
 BUNDLE_OUTPUT="$PWD/artifacts/boring-macro-bundle.tar.gz" \
-  bash deploy/sandbox/scripts/build_macro_bundle.sh /home/ubuntu/projects/boring-macro
-docker compose -f deploy/docker/docker-compose.sandbox.yml up --build sandbox frontend
+  bash deploy/edge/scripts/build_macro_bundle.sh /home/ubuntu/projects/boring-macro
+docker compose -f deploy/edge/docker-compose.yml up --build sandbox frontend
 ```
 
 Modal deploy helpers:
 
 ```bash
 # Core mode
-modal deploy deploy/modal/modal_app_front.py::core
+modal deploy deploy/core/modal_app.py
 
-# Edge mode (reuse boring-sandbox Modal entrypoint)
-bash deploy/modal/deploy_sandbox_mode.sh gateway
+# Edge mode (control plane + sandbox data plane)
+bash deploy/edge/deploy.sh
 ```
 
 ## Pre-Cutover Checklist

@@ -9,14 +9,14 @@ Target sprite used in this environment: `test-option-2`.
 ## Quick Start
 
 ```bash
-./deploy/sprite/scripts/deploy.sh test-option-2
+./deploy/edge/sprite/deploy.sh test-option-2
 sprite -s test-option-2 url update --auth public
 curl -i https://test-option-2-bm6zi.sprites.app/health
 ```
 
 ## What `deploy.sh` Does
 
-`deploy/sprite/scripts/deploy.sh` performs:
+`deploy/edge/sprite/deploy.sh` performs:
 1. Frontend production build (`npm ci && npm run build`)
 2. Backend wheel build (`pip wheel`)
 3. Artifact bundle creation (`dist/` + backend sources + wheel)
@@ -43,7 +43,7 @@ Why:
 
 ## Files Added For Deployment
 
-- `deploy/sprite/scripts/deploy.sh`
+- `deploy/edge/sprite/deploy.sh`
 - `src/back/boring_ui/runtime.py`
 
 ## Verified Health Check
@@ -106,6 +106,6 @@ Full recycle:
 ```bash
 sprite destroy -force test-option-2
 sprite create test-option-2
-./deploy/sprite/scripts/deploy.sh test-option-2
+./deploy/edge/sprite/deploy.sh test-option-2
 sprite -s test-option-2 url update --auth public
 ```

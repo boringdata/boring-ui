@@ -19,7 +19,7 @@ RUN tar -xzf /tmp/bundle.tar.gz -C /home/sprite/app && rm /tmp/bundle.tar.gz
 RUN pip install --no-cache-dir --force-reinstall wheels/boring_macro-*.whl
 RUN chown -R sprite:sprite /home/sprite
 
-COPY deploy/sandbox/entrypoint.sh /entrypoint.sh
+COPY deploy/edge/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080

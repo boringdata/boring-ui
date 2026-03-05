@@ -2,7 +2,7 @@
 # build_macro_bundle.sh — Build a deployable boring-macro bundle (tar.gz) for Sprite sandboxes.
 #
 # Usage:
-#   bash deploy/sandbox/scripts/build_macro_bundle.sh [APP_ROOT]
+#   bash deploy/edge/scripts/build_macro_bundle.sh [APP_ROOT]
 #
 # Env vars:
 #   BORING_MACRO_ROOT — path to boring-macro repo (default: ../boring-macro relative to boring-ui)

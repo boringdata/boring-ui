@@ -99,49 +99,47 @@ this validates production topology and routing contracts, while the frontend
 container itself is still Vite-based for fast smoke verification.
 
 Use mode-specific compose files as canonical entry points:
-- `deploy/docker/docker-compose.front.yml` for `core`
-- `deploy/docker/docker-compose.sandbox.yml` for `edge`
+- `deploy/core/docker-compose.yml` for `core`
+- `deploy/edge/docker-compose.yml` for `edge`
 
-`deploy/docker/docker-compose.yml` is a legacy convenience wrapper and is not
+`deploy/shared/docker-compose.legacy.yml` is a legacy convenience wrapper and is not
 the canonical contract for downstream apps.
 
 ```bash
 # Core mode (frontend -> boring-ui backend directly)
-docker compose -f deploy/docker/docker-compose.front.yml up --build backend frontend
+docker compose -f deploy/core/docker-compose.yml up --build backend frontend
 
 # Edge mode (frontend -> sandbox artifact service)
 # 1) Build/refresh the macro artifact in boring-ui-owned path
 mkdir -p artifacts
 BUNDLE_OUTPUT="$PWD/artifacts/boring-macro-bundle.tar.gz" \
-  bash deploy/sandbox/scripts/build_macro_bundle.sh /home/ubuntu/projects/boring-macro
+  bash deploy/edge/scripts/build_macro_bundle.sh /home/ubuntu/projects/boring-macro
 # 2) Start sandbox + frontend from boring-ui compose
-docker compose -f deploy/docker/docker-compose.sandbox.yml up --build sandbox frontend
+docker compose -f deploy/edge/docker-compose.yml up --build sandbox frontend
 ```
 
-`backend` is started automatically via `depends_on` in `docker-compose.sandbox.yml`.
+`backend` is started automatically via `depends_on` in `deploy/edge/docker-compose.yml`.
 
 Environment-file shortcuts:
 
 ```bash
 # Core mode
-cp deploy/docker/.env.core.example .env.core
-docker compose --env-file .env.core -f deploy/docker/docker-compose.front.yml up --build backend frontend
+cp deploy/core/.env.example .env.core
+docker compose --env-file .env.core -f deploy/core/docker-compose.yml up --build backend frontend
 
 # Edge mode
-cp deploy/docker/.env.edge.example .env.edge
-docker compose --env-file .env.edge -f deploy/docker/docker-compose.sandbox.yml up --build sandbox frontend
+cp deploy/edge/.env.example .env.edge
+docker compose --env-file .env.edge -f deploy/edge/docker-compose.yml up --build sandbox frontend
 ```
 
 ### Modal Deployment
 
 ```bash
 # Core mode (boring-ui control-plane owner)
-modal deploy deploy/modal/modal_app_front.py::core
+modal deploy deploy/core/modal_app.py
 
-# Edge mode (reuse existing boring-sandbox Modal app)
-bash deploy/modal/deploy_sandbox_mode.sh gateway
-# optional light entrypoint:
-# bash deploy/modal/deploy_sandbox_mode.sh gateway_ui_light
+# Edge mode (control plane + sandbox data plane)
+bash deploy/edge/deploy.sh
 ```
 
 Supabase-backed control-plane (same model as legacy sandbox) is enabled in compose by default.
@@ -233,7 +231,7 @@ CORE_VITE_API_URL=http://127.0.0.1:5273
 CORE_VITE_PROXY_API_TARGET=http://backend:8000
 EOF
 
-docker compose -p coreqa --env-file "$TMP_ENV_CORE" -f deploy/docker/docker-compose.front.yml up -d --build backend frontend
+docker compose -p coreqa --env-file "$TMP_ENV_CORE" -f deploy/core/docker-compose.yml up -d --build backend frontend
 curl -fsS http://127.0.0.1:18080/health
 curl -i http://127.0.0.1:18080/auth/login?redirect_uri=/
 curl -i http://127.0.0.1:18080/api/v1/me
@@ -269,7 +267,7 @@ BM_CHAT_PROVIDER=companion
 BM_COMPANION_AUTOSTART=true
 EOF
 
-docker compose -p edgeqa --env-file "$TMP_ENV_EDGE" -f deploy/docker/docker-compose.sandbox.yml up -d --build backend sandbox frontend
+docker compose -p edgeqa --env-file "$TMP_ENV_EDGE" -f deploy/edge/docker-compose.yml up -d --build backend sandbox frontend
 curl -fsS http://127.0.0.1:19011/health
 curl -fsS http://127.0.0.1:8381/health
 curl -i http://127.0.0.1:19011/auth/login?redirect_uri=/
@@ -279,8 +277,8 @@ curl -i http://127.0.0.1:5276/companion/api/v1/agent/companion/sessions
 Cleanup:
 
 ```bash
-docker compose -p coreqa -f deploy/docker/docker-compose.front.yml down -v
-docker compose -p edgeqa -f deploy/docker/docker-compose.sandbox.yml down -v
+docker compose -p coreqa -f deploy/core/docker-compose.yml down -v
+docker compose -p edgeqa -f deploy/edge/docker-compose.yml down -v
 rm -f "$TMP_ENV_CORE" "$TMP_ENV_EDGE"
 ```
 
@@ -320,15 +318,15 @@ python3 scripts/package_app_assets.py \
 BORING_UI_REPO ?= ../boring-ui
 
 	up-core:
-		docker compose -f $(BORING_UI_REPO)/deploy/docker/docker-compose.front.yml up --build backend frontend
+		docker compose -f $(BORING_UI_REPO)/deploy/core/docker-compose.yml up --build backend frontend
 
 bundle-sandbox:
 	mkdir -p $(BORING_UI_REPO)/artifacts
 	BUNDLE_OUTPUT="$(BORING_UI_REPO)/artifacts/boring-macro-bundle.tar.gz" \
-	  bash $(BORING_UI_REPO)/deploy/sandbox/scripts/build_macro_bundle.sh $(CURDIR)
+	  bash $(BORING_UI_REPO)/deploy/edge/scripts/build_macro_bundle.sh $(CURDIR)
 
 	up-edge: bundle-sandbox
-		docker compose -f $(BORING_UI_REPO)/deploy/docker/docker-compose.sandbox.yml up --build sandbox frontend
+		docker compose -f $(BORING_UI_REPO)/deploy/edge/docker-compose.yml up --build sandbox frontend
 ```
 
 ## Configuration

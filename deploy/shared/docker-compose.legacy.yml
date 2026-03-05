@@ -1,13 +1,13 @@
 # Legacy convenience compose file.
 # Canonical mode entrypoints are:
-# - deploy/docker/docker-compose.front.yml (core)
-# - deploy/docker/docker-compose.sandbox.yml (edge)
+# - deploy/core/docker-compose.yml (core)
+# - deploy/edge/docker-compose.yml (edge)
 # This file remains as an all-in-one local helper only.
 services:
   backend:
     build:
       context: ../..
-      dockerfile: deploy/docker/Dockerfile.backend
+      dockerfile: deploy/shared/Dockerfile.backend
     container_name: boring-ui-backend
     environment:
       DEPLOY_MODE: core
@@ -31,7 +31,7 @@ services:
   frontend-core:
     build:
       context: ../..
-      dockerfile: deploy/docker/Dockerfile.frontend
+      dockerfile: deploy/shared/Dockerfile.frontend
     container_name: boring-ui-frontend-core
     depends_on:
       backend:
@@ -59,7 +59,7 @@ services:
   frontend-edge:
     build:
       context: ../..
-      dockerfile: deploy/docker/Dockerfile.frontend
+      dockerfile: deploy/shared/Dockerfile.frontend
     container_name: boring-ui-frontend-edge
     profiles: ["edge"]
     environment:

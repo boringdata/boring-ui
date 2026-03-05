@@ -1,0 +1,146 @@
+"""Resend email polling and confirmation URL extraction."""
+from __future__ import annotations
+
+import html
+import re
+import time
+from datetime import datetime
+from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
+
+import httpx
+
+RESEND_API_BASE = "https://api.resend.com"
+
+
+def _iso_to_epoch(value: str | None) -> float | None:
+    if not value:
+        return None
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = f"{raw[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(raw).timestamp()
+    except ValueError:
+        return None
+
+
+def _normalize_recipients(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, list):
+        out: list[str] = []
+        for item in raw:
+            if isinstance(item, str):
+                out.append(item)
+            elif isinstance(item, dict):
+                email = item.get("email")
+                if isinstance(email, str) and email.strip():
+                    out.append(email.strip())
+        return out
+    return []
+
+
+def list_emails(api_key: str, *, limit: int = 25) -> list[dict[str, Any]]:
+    for attempt in range(1, 8):
+        resp = httpx.get(
+            f"{RESEND_API_BASE}/emails",
+            headers={"Authorization": f"Bearer {api_key}"},
+            params={"limit": limit},
+            timeout=20.0,
+        )
+        if resp.status_code == 429:
+            time.sleep(min(0.5 * attempt, 3.0))
+            continue
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, dict):
+            data = payload.get("data")
+            return data if isinstance(data, list) else []
+        return payload if isinstance(payload, list) else []
+    raise RuntimeError("Resend list endpoint kept returning rate limits")
+
+
+def get_email(api_key: str, *, email_id: str) -> dict[str, Any]:
+    for attempt in range(1, 8):
+        resp = httpx.get(
+            f"{RESEND_API_BASE}/emails/{email_id}",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=20.0,
+        )
+        if resp.status_code in {404, 429}:
+            time.sleep(min(0.5 * attempt, 4.0))
+            continue
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+            return payload["data"]
+        if isinstance(payload, dict):
+            return payload
+        raise RuntimeError("Unexpected Resend email detail payload")
+    raise RuntimeError("Resend detail endpoint kept returning rate limits")
+
+
+def wait_for_email(
+    api_key: str,
+    *,
+    recipient: str,
+    sent_after_epoch: float,
+    timeout_seconds: int = 180,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    recipient_lower = recipient.lower()
+    while time.monotonic() < deadline:
+        for email in list_emails(api_key):
+            if not isinstance(email, dict):
+                continue
+            recipients = _normalize_recipients(email.get("to"))
+            if recipient_lower not in {item.lower() for item in recipients}:
+                continue
+            created_epoch = _iso_to_epoch(email.get("created_at"))
+            if created_epoch is not None and created_epoch + 5 < sent_after_epoch:
+                continue
+            return email
+        time.sleep(3)
+    raise RuntimeError(f"Timed out ({timeout_seconds}s) waiting for signup email to {recipient}")
+
+
+def extract_confirmation_url(payload: dict[str, Any]) -> str:
+    candidates: list[str] = []
+    for key in ("html", "text"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            candidates.extend(re.findall(r"https?://[^\s\"'<>]+", value))
+
+    for raw_url in candidates:
+        url = html.unescape(raw_url.strip()).rstrip("]")
+        for _ in range(3):
+            parsed = urlparse(url)
+            query = parse_qs(parsed.query)
+            if ("token_hash" in query or "token" in query) and "type" in query:
+                return url
+            decoded = unquote(url)
+            if decoded == url:
+                break
+            url = decoded
+
+    if candidates:
+        return html.unescape(candidates[0].strip()).rstrip("]")
+    raise RuntimeError("No URL found in Resend payload")
+
+
+def callback_path_from_confirmation_url(url: str) -> str:
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    verify_type = (params.get("type") or [""])[0].strip()
+    token_hash = (params.get("token_hash") or [""])[0].strip()
+    token = (params.get("token") or [""])[0].strip()
+    if not verify_type:
+        raise RuntimeError("Confirmation URL missing type")
+    if token_hash:
+        return f"/auth/callback?token_hash={token_hash}&type={verify_type}"
+    if token:
+        return f"/auth/callback?token={token}&type={verify_type}"
+    raise RuntimeError("Confirmation URL missing token/token_hash")

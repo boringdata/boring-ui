@@ -15,8 +15,8 @@ All deployment configs live in boring-ui. The sandbox data plane uses
 ### Docker — Core mode
 
 ```bash
-cp deploy/docker/.env.core.example .env
-docker compose -f deploy/docker/docker-compose.front.yml up --build
+cp deploy/core/.env.example .env
+docker compose -f deploy/core/docker-compose.yml up --build
 ```
 
 Services: `backend` (FastAPI :8000), `frontend` (Vite :5173)
@@ -24,9 +24,9 @@ Services: `backend` (FastAPI :8000), `frontend` (Vite :5173)
 ### Docker — Edge mode
 
 ```bash
-cp deploy/docker/.env.edge.example .env
+cp deploy/edge/.env.example .env
 # Ensure macro bundle exists at artifacts/boring-macro-bundle.tar.gz
-docker compose -f deploy/docker/docker-compose.sandbox.yml up --build
+docker compose -f deploy/edge/docker-compose.yml up --build
 ```
 
 Services: `backend` (:18001), `sandbox` (:8081), `frontend` (:5174)
@@ -34,7 +34,7 @@ Services: `backend` (:18001), `sandbox` (:8081), `frontend` (:5174)
 ### Modal — Core mode
 
 ```bash
-modal deploy deploy/modal/modal_app_front.py::core
+modal deploy deploy/core/modal_app.py
 ```
 
 Single Modal app `boring-ui-core`. Requires `boring-ui-core-secrets` Modal secret.
@@ -42,7 +42,7 @@ Single Modal app `boring-ui-core`. Requires `boring-ui-core-secrets` Modal secre
 ### Modal — Edge mode (full)
 
 ```bash
-bash deploy/modal/deploy_edge_mode.sh
+bash deploy/edge/deploy.sh
 ```
 
 Deploys two Modal apps:
@@ -51,18 +51,10 @@ Deploys two Modal apps:
 
 Use `--skip-sandbox` to deploy only the control plane.
 
-### Modal — Sandbox only
-
-```bash
-bash deploy/modal/deploy_sandbox_mode.sh
-```
-
-Deploys only the `boring-sandbox` gateway Modal app.
-
 ### Sprite — Direct deploy
 
 ```bash
-bash deploy/sprite/scripts/deploy.sh <sprite-name>
+bash deploy/edge/sprite/deploy.sh <sprite-name>
 ```
 
 Builds frontend + backend wheel, uploads to a Sprite instance, creates a service.
@@ -71,31 +63,31 @@ Builds frontend + backend wheel, uploads to a Sprite instance, creates a service
 
 ```
 deploy/
-├── docker/
-│   ├── docker-compose.front.yml      # Core mode (backend + frontend)
-│   ├── docker-compose.sandbox.yml    # Edge mode (backend + sandbox + frontend)
-│   ├── docker-compose.yml            # Legacy all-in-one (core + edge profiles)
+├── core/
+│   ├── modal_app.py                  # Core mode Modal app
+│   ├── docker-compose.yml            # Core mode (backend + frontend)
+│   └── .env.example                  # Core env template
+├── edge/
+│   ├── modal_app.py                  # Edge control plane Modal app
+│   ├── modal_app_sandbox.py          # Sandbox data plane Modal app
+│   ├── deploy.sh                     # Deploy both edge apps
+│   ├── docker-compose.yml            # Edge mode (backend + sandbox + frontend)
+│   ├── .env.example                  # Edge env template
+│   ├── Dockerfile.sandbox            # Sandbox container (boring-macro runtime)
+│   ├── entrypoint.sh                 # Sandbox container entrypoint
+│   ├── scripts/
+│   │   └── build_macro_bundle.sh     # Build macro bundle (wheel + static + bootstrap)
+│   └── sprite/
+│       ├── README.md                 # Sprite deployment runbook
+│       └── deploy.sh                 # Direct Sprite deploy script
+├── shared/
 │   ├── Dockerfile.backend            # boring-ui FastAPI backend
 │   ├── Dockerfile.frontend           # Vite dev frontend
 │   ├── nginx.sandbox-proxy.conf      # Nginx proxy for legacy edge profile
-│   ├── .env.core.example             # Core env template
-│   └── .env.edge.example             # Edge env template
-├── modal/
-│   ├── modal_app_front.py            # Core mode Modal app
-│   ├── modal_app_edge.py             # Edge control plane Modal app
-│   ├── modal_app_sandbox.py          # Sandbox data plane Modal app
-│   ├── deploy_edge_mode.sh           # Deploy both edge apps
-│   └── deploy_sandbox_mode.sh        # Deploy sandbox only
-├── sandbox/
-│   ├── Dockerfile.sandbox            # Sandbox container (boring-macro runtime)
-│   ├── entrypoint.sh                 # Sandbox container entrypoint
-│   └── scripts/
-│       └── build_macro_bundle.sh     # Build macro bundle (wheel + static + bootstrap)
-├── sprite/
-│   └── scripts/
-│       └── deploy.sh                 # Direct Sprite deploy script
-└── sql/
-    └── control_plane_supabase_schema.sql
+│   └── docker-compose.legacy.yml     # Legacy all-in-one (core + edge profiles)
+├── sql/
+│   └── control_plane_supabase_schema.sql
+└── README.md
 ```
 
 ## Submodule Setup
@@ -120,7 +112,7 @@ export BORING_MACRO_ROOT=/path/to/boring-macro
 export BM_STATIC_PATH=/path/to/boring-macro/src/web/dist
 
 # Build
-bash deploy/sandbox/scripts/build_macro_bundle.sh
+bash deploy/edge/scripts/build_macro_bundle.sh
 
 # Copy to expected location
 cp /tmp/boring-macro-bundle.tar.gz artifacts/
@@ -132,7 +124,7 @@ The bundle includes: wheel, web_static assets, bootstrap.sh.
 
 ### Docker
 
-Set in `.env` file (see `.env.*.example` templates).
+Set in `.env` file (see `.env.example` templates in `deploy/core/` and `deploy/edge/`).
 
 ### Modal
 

@@ -1,10 +1,10 @@
 """Modal ASGI deployment for boring-sandbox data plane (edge gateway).
 
 Deploy:
-    modal deploy deploy/modal/modal_app_sandbox.py::gateway
+    modal deploy deploy/edge/modal_app_sandbox.py
 
 The sandbox gateway proxies /w/* requests to Sprite runtimes.
-Auth and control-plane routes are handled by boring-ui (modal_app_edge.py).
+Auth and control-plane routes are handled by boring-ui (deploy/edge/modal_app.py).
 
 Requires boring-sandbox source at vendor/boring-sandbox/ (git submodule).
 """

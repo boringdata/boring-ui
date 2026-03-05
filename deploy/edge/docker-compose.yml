@@ -2,7 +2,7 @@ services:
   backend:
     build:
       context: ../..
-      dockerfile: deploy/docker/Dockerfile.backend
+      dockerfile: deploy/shared/Dockerfile.backend
     environment:
       DEPLOY_MODE: core
       CONTROL_PLANE_PROVIDER: ${CONTROL_PLANE_PROVIDER:-supabase}
@@ -26,7 +26,7 @@ services:
   sandbox:
     build:
       context: ../..
-      dockerfile: deploy/sandbox/Dockerfile.sandbox
+      dockerfile: deploy/edge/Dockerfile.sandbox
     environment:
       HOME: /home/sprite
       BM_CHAT_PROVIDER: companion
@@ -44,7 +44,7 @@ services:
   frontend:
     build:
       context: ../..
-      dockerfile: deploy/docker/Dockerfile.frontend
+      dockerfile: deploy/shared/Dockerfile.frontend
     depends_on:
       backend:
         condition: service_healthy

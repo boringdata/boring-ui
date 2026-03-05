@@ -1,10 +1,10 @@
-"""Modal ASGI deployment for boring-ui edge mode (control plane + sandbox provisioning).
+"""Modal ASGI deployment for boring-ui core mode.
 
 Deploy:
-    modal deploy deploy/modal/modal_app_edge.py::edge
+    modal deploy deploy/core/modal_app.py
 
-This entrypoint deploys boring-ui as the control-plane in edge mode,
-where sandbox provisioning is delegated to a separate sprite/sandbox service.
+This entrypoint deploys boring-ui as the control-plane owner in core mode.
+If `dist/` exists in the checkout, it is mounted and served as static UI.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import modal
 
-app = modal.App("boring-ui-edge")
+app = modal.App("boring-ui-core")
 
 
 def _base_image() -> modal.Image:
@@ -33,6 +33,7 @@ def _base_image() -> modal.Image:
         .add_local_dir("src/back/boring_ui", "/root/src/back/boring_ui", copy=True)
     )
 
+    # Optional static frontend bundle for single-service deployment.
     if Path("dist").is_dir():
         image = image.add_local_dir("dist", "/root/dist", copy=True)
 
@@ -42,35 +43,37 @@ def _base_image() -> modal.Image:
 image = _base_image().env(
     {
         "PYTHONPATH": "/root/src/back",
-        "DEPLOY_MODE": "edge",
+        "DEPLOY_MODE": "core",
         "CONTROL_PLANE_APP_ID": "boring-ui",
         "BORING_UI_STATIC_DIR": "/root/dist",
         "BORING_UI_WORKSPACE_ROOT": "/tmp/boring-ui-workspace",
     }
 )
 
-# Core Supabase/session secrets (same as core mode).
-core_secrets = modal.Secret.from_name("boring-ui-core-secrets")
 
-# Additional sandbox-specific secrets (sprite provisioning, sandbox API keys).
-# Create this secret in Modal with keys like:
-#   BORING_SANDBOX_API_KEY
-#   BORING_SANDBOX_BASE_URL
-#   BORING_SPRITE_PROVISION_URL
-sandbox_secrets = modal.Secret.from_name("boring-ui-sandbox-secrets")
+# Create this secret in Modal with Supabase/session settings used by boring-ui core.
+# Example keys:
+#   SUPABASE_URL
+#   SUPABASE_ANON_KEY
+#   SUPABASE_SERVICE_ROLE_KEY
+#   SUPABASE_JWT_SECRET
+#   SUPABASE_DB_URL
+#   BORING_SETTINGS_KEY
+#   BORING_UI_SESSION_SECRET
+core_secrets = modal.Secret.from_name("boring-ui-core-secrets")
 
 
 @app.function(
     image=image,
-    secrets=[core_secrets, sandbox_secrets],
+    secrets=[core_secrets],
     timeout=600,
     min_containers=1,
     memory=1024,
 )
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
-def edge():
-    """Create and return the boring-ui FastAPI application in edge mode."""
+def core():
+    """Create and return the boring-ui FastAPI application."""
     from boring_ui.api import APIConfig, create_app
 
     workspace_root = Path(os.environ.get("BORING_UI_WORKSPACE_ROOT", "/tmp/boring-ui-workspace"))
