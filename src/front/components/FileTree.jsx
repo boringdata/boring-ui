@@ -25,10 +25,13 @@ const SECTION_ICONS = {
   sources: FolderInput,
 }
 
-// Capitalize first letter for display
-const formatSectionLabel = (path) => {
+// Capitalize first letter for display.
+// "Projects/Project" is redundant inside the Files panel, so hide that label.
+const formatSectionLabel = (path, sectionKey) => {
+  if (sectionKey === 'projects') return ''
   if (!path) return 'Other'
   const name = path.replace(/^\./, '') // Remove leading dot
+  if (name.toLowerCase() === 'project' || name.toLowerCase() === 'projects') return ''
   return name.charAt(0).toUpperCase() + name.slice(1)
 }
 
@@ -230,12 +233,13 @@ export default function FileTree({
     return () => clearTimeout(timeoutId)
   }, [trimmedQuery])
 
+  const renamingPath = renaming?.entry.path ?? null
   useEffect(() => {
-    if (renaming && renameInputRef.current) {
+    if (renamingPath && renameInputRef.current) {
       renameInputRef.current.focus()
       renameInputRef.current.select()
     }
-  }, [renaming])
+  }, [renamingPath])
 
   useEffect(() => {
     if (newFileInput && newFileInputRef.current) {
@@ -677,7 +681,7 @@ export default function FileTree({
       if (path) {
         sections[key] = {
           path,
-          label: formatSectionLabel(path),
+          label: formatSectionLabel(path, key),
           icon: SECTION_ICONS[key] || Folder,
           entries: [],
         }
@@ -728,27 +732,30 @@ export default function FileTree({
     const hasChanges = section.entries.some((e) =>
       e.is_dir ? getDirStatus(e.path) : getFileStatus(e.path)
     )
+    const hideHeader = sectionKey !== 'other' && !section.label
 
     return (
       <div key={sectionKey} className="file-tree-section">
-        <div
-          className={`file-tree-section-header ${hasChanges ? 'has-changes' : ''}`}
-          onClick={() => toggleSection(sectionKey)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              toggleSection(sectionKey)
-            }
-          }}
-        >
-          <span className="section-collapse-icon">{isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</span>
-          <span className="section-icon">{React.createElement(section.icon, { size: 14 })}</span>
-          <span className="section-label">{section.label}</span>
-          {hasChanges && <span className="dir-changes-dot" title="Contains changes" />}
-        </div>
-        {!isCollapsed && (
+        {!hideHeader && (
+          <div
+            className={`file-tree-section-header ${hasChanges ? 'has-changes' : ''}`}
+            onClick={() => toggleSection(sectionKey)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                toggleSection(sectionKey)
+              }
+            }}
+          >
+            <span className="section-collapse-icon">{isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</span>
+            <span className="section-icon">{React.createElement(section.icon, { size: 14 })}</span>
+            <span className="section-label">{section.label}</span>
+            {hasChanges && <span className="dir-changes-dot" title="Contains changes" />}
+          </div>
+        )}
+        {(hideHeader || !isCollapsed) && (
           <div className="file-tree-section-content">
             {sectionKey !== 'other' && section.path ? (
               // For main sections (projects, sources), render children directly from expandedDirs
@@ -888,20 +895,14 @@ export default function FileTree({
         </div>
       ) : (
         // Fallback flat view
-        <>
-          <h3
-            className="file-tree-title"
-            onDragOver={(e) => { e.preventDefault(); setDragOver('root') }}
-            onDragLeave={() => setDragOver(null)}
-            onDrop={handleDropOnRoot}
-          >
-            Project {dragOver === 'root' && <span className="drop-hint">(drop here)</span>}
-          </h3>
-          <div>
-            {renderNewFileInput(0, '')}
-            {renderEntries(entries)}
-          </div>
-        </>
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver('root') }}
+          onDragLeave={() => setDragOver(null)}
+          onDrop={handleDropOnRoot}
+        >
+          {renderNewFileInput(0, '')}
+          {renderEntries(entries)}
+        </div>
       )}
 
       {contextMenu && createPortal(

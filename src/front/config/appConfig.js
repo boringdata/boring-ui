@@ -33,14 +33,17 @@ const DEFAULT_CONFIG = {
   // Panel configuration
   panels: {
     essential: ['filetree', 'terminal'],
+    leftSidebarPanels: ['data-catalog', 'filetree'],
     defaults: {
       filetree: 280,
+      'data-catalog': 280,
       terminal: 400,
       companion: 400,
       shell: 250,
     },
     min: {
       filetree: 180,
+      'data-catalog': 180,
       terminal: 250,
       companion: 250,
       shell: 100,
@@ -48,6 +51,7 @@ const DEFAULT_CONFIG = {
     },
     collapsed: {
       filetree: 48,
+      'data-catalog': 48,
       terminal: 48,
       companion: 48,
       shell: 36,

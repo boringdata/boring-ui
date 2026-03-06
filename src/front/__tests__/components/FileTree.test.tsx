@@ -82,12 +82,12 @@ describe('FileTree', () => {
       expect(screen.getByPlaceholderText('Search files...')).toBeInTheDocument()
     })
 
-    it('shows project title', async () => {
+    it('does not show a project section title', async () => {
       render(<FileTree {...defaultProps} />)
 
       await new Promise(r => setTimeout(r, 10))
 
-      expect(screen.getByText('Project')).toBeInTheDocument()
+      expect(screen.queryByText('Project')).not.toBeInTheDocument()
     })
 
     it('retries fetch if initial load returns empty', async () => {

@@ -1,62 +1,17 @@
-import { ChevronDown, ChevronRight, PanelLeftClose, FolderOpen, GitBranch, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, PanelLeftClose } from 'lucide-react'
 import Tooltip from './Tooltip'
 
 /**
- * LeftPaneHeader - Thin header bar for the left sidebar pane with collapse toggle.
- * Rendered only by the first panel in the sidebar.
+ * LeftPaneHeader - Minimal header bar for the left sidebar with only the collapse toggle.
+ * Rendered once by the first panel in the sidebar. Panel-specific controls
+ * (search, view toggle) belong in each panel's own SidebarSectionHeader.
  */
-export function LeftPaneHeader({
-  onToggleSidebar,
-  appName,
-  viewMode = 'files',
-  onSetViewMode,
-  onToggleSearch,
-  searchExpanded = false,
-}) {
+export function LeftPaneHeader({ onToggleSidebar, appName }) {
   if (typeof onToggleSidebar !== 'function') return null
   return (
     <div className="left-pane-header left-pane-header-flat">
       <span className="left-pane-brand-title">{appName || 'workspace'}</span>
       <div className="left-pane-header-actions">
-        <div className="sidebar-view-toggle" role="tablist" aria-label="Sidebar view mode">
-          <Tooltip label="File tree">
-            <button
-              type="button"
-              className={`view-toggle-btn ${viewMode === 'files' ? 'active' : ''}`}
-              onClick={() => onSetViewMode?.('files')}
-              aria-label="File tree view"
-              role="tab"
-              aria-selected={viewMode === 'files'}
-            >
-              <FolderOpen size={14} />
-            </button>
-          </Tooltip>
-          <Tooltip label="Git changes">
-            <button
-              type="button"
-              className={`view-toggle-btn ${viewMode === 'changes' ? 'active' : ''}`}
-              onClick={() => onSetViewMode?.('changes')}
-              aria-label="Git changes view"
-              role="tab"
-              aria-selected={viewMode === 'changes'}
-            >
-              <GitBranch size={14} />
-            </button>
-          </Tooltip>
-        </div>
-        <Tooltip
-          label={searchExpanded ? 'Hide search' : 'Search files'}
-          shortcut="Ctrl+P"
-        >
-          <button
-            type="button"
-            className={`sidebar-action-btn ${searchExpanded ? 'active' : ''}`}
-            onClick={onToggleSearch}
-            aria-label={searchExpanded ? 'Hide search' : 'Search files'}
-          >
-            <Search size={13} />
-          </button>
-        </Tooltip>
         <Tooltip label="Collapse sidebar">
           <button
             type="button"
@@ -88,6 +43,7 @@ export function LeftPaneHeader({
  */
 export default function SidebarSectionHeader({
   title,
+  icon: Icon,
   sectionCollapsed = false,
   onToggleSection,
   children,
@@ -104,6 +60,7 @@ export default function SidebarSectionHeader({
           {sectionCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </button>
       </Tooltip>
+      {Icon && <span className="sidebar-section-icon"><Icon size={13} /></span>}
       <span className="sidebar-section-title">{title}</span>
       <div className="sidebar-section-actions">
         {children}

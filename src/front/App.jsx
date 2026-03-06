@@ -833,6 +833,22 @@ export default function App() {
     return groups
   }, [leftSidebarPanelIds])
 
+  const getLeftSidebarAnchorPanelId = useCallback((api) => {
+    if (!api) return 'filetree'
+    for (const panelId of leftSidebarPanelIds) {
+      if (api.getPanel(panelId)) return panelId
+    }
+    return 'filetree'
+  }, [leftSidebarPanelIds])
+
+  const getLeftSidebarAnchorPosition = useCallback((api) => {
+    if (!api) return undefined
+    const anchorId = getLeftSidebarAnchorPanelId(api)
+    return api.getPanel(anchorId)
+      ? { direction: 'right', referencePanel: anchorId }
+      : undefined
+  }, [getLeftSidebarAnchorPanelId])
+
   // Toggle sidebar collapse - capture size before collapsing
   const toggleFiletree = useCallback(() => {
     if (!collapsed.filetree && dockApi) {
@@ -892,22 +908,33 @@ export default function App() {
     })
   }, [collapsed.companion, dockApi])
 
-  const SECTION_HEADER_HEIGHT = 28
-  const LEFT_PANE_HEADER_HEIGHT = 24
-  const PANEL_FOOTER_HEIGHT = 56
+  const SECTION_HEADER_HEIGHT = 30
+  const LEFT_PANE_HEADER_HEIGHT = 42
+  const PANEL_FOOTER_HEIGHT = 68
+  const SIDEBAR_SECTION_BODY_MIN_HEIGHT = 40
   const sectionSizesRef = useRef({})
+
+  const getSidebarCollapsedHeight = useCallback((panelId) => {
+    const isFirstPanel = leftSidebarPanelIds[0] === panelId
+    const hasFooter = panelId === 'filetree'
+    return SECTION_HEADER_HEIGHT
+      + (isFirstPanel ? LEFT_PANE_HEADER_HEIGHT : 0)
+      + (hasFooter ? PANEL_FOOTER_HEIGHT : 0)
+  }, [leftSidebarPanelIds])
+
+  const getSidebarExpandedMinHeight = useCallback(
+    (panelId) => getSidebarCollapsedHeight(panelId) + SIDEBAR_SECTION_BODY_MIN_HEIGHT,
+    [getSidebarCollapsedHeight],
+  )
 
   const toggleSectionCollapse = useCallback((panelId) => {
     if (!dockApi) return
     const panel = dockApi.getPanel(panelId)
     const group = panel?.group
-    // First sidebar panel renders LeftPaneHeader; filetree has always-visible footer
-    const isFirstPanel = leftSidebarPanelIds[0] === panelId
-    const hasFooter = panelId === 'filetree'
-    const collapsedHeight = SECTION_HEADER_HEIGHT
-      + (isFirstPanel ? LEFT_PANE_HEADER_HEIGHT : 0)
-      + (hasFooter ? PANEL_FOOTER_HEIGHT : 0)
-    if (group && !sectionCollapsed[panelId]) {
+    const collapsedHeight = getSidebarCollapsedHeight(panelId)
+    const expandedMinHeight = getSidebarExpandedMinHeight(panelId)
+    const currentlyCollapsed = !!sectionCollapsed[panelId]
+    if (group && !currentlyCollapsed) {
       // Capture current height before collapsing
       const currentHeight = group.api.height
       if (currentHeight > collapsedHeight) {
@@ -915,33 +942,100 @@ export default function App() {
       }
     }
     const isLastPanel = leftSidebarPanelIds[leftSidebarPanelIds.length - 1] === panelId
+    const isOnlyPanel = leftSidebarPanelIds.length <= 1
     setSectionCollapsed((prev) => {
       const next = { ...prev, [panelId]: !prev[panelId] }
       // Apply constraints immediately
       if (group) {
         if (next[panelId]) {
-          // Last panel keeps flexible max so its footer sticks to bottom
+          // Single-panel sidebar: last panel keeps flexible max so footer sticks to bottom.
+          // Multi-panel sidebar: all panels shrink so siblings can grow.
+          const keepFlexible = isLastPanel && isOnlyPanel
           group.api.setConstraints({
             minimumHeight: collapsedHeight,
-            maximumHeight: isLastPanel ? Number.MAX_SAFE_INTEGER : collapsedHeight,
+            maximumHeight: keepFlexible ? Number.MAX_SAFE_INTEGER : collapsedHeight,
           })
-          if (!isLastPanel) {
+          if (!keepFlexible) {
             group.api.setSize({ height: collapsedHeight })
           }
         } else {
+          // When uncollapsing in a multi-panel sidebar, also release the
+          // sibling panel constraints so DockView can redistribute space.
+          if (!isOnlyPanel) {
+            leftSidebarPanelIds.forEach((siblingId) => {
+              if (siblingId === panelId) return
+              const siblingGroup = dockApi.getPanel(siblingId)?.group
+              if (siblingGroup) {
+                const siblingIsCollapsed = !!next[siblingId]
+                const siblingCollapsedHeight = getSidebarCollapsedHeight(siblingId)
+                siblingGroup.api.setConstraints({
+                  minimumHeight: siblingIsCollapsed
+                    ? siblingCollapsedHeight
+                    : getSidebarExpandedMinHeight(siblingId),
+                  maximumHeight: siblingIsCollapsed
+                    ? siblingCollapsedHeight
+                    : Number.MAX_SAFE_INTEGER,
+                })
+                if (siblingIsCollapsed) {
+                  siblingGroup.api.setSize({ height: siblingCollapsedHeight })
+                }
+              }
+            })
+          }
           group.api.setConstraints({
-            minimumHeight: 60,
+            minimumHeight: expandedMinHeight,
             maximumHeight: Number.MAX_SAFE_INTEGER,
           })
           const savedHeight = sectionSizesRef.current[panelId]
-          if (Number.isFinite(savedHeight) && savedHeight > 60) {
+          if (Number.isFinite(savedHeight) && savedHeight > expandedMinHeight) {
             group.api.setSize({ height: savedHeight })
+          } else {
+            group.api.setSize({ height: expandedMinHeight })
           }
         }
       }
       return next
     })
-  }, [dockApi, sectionCollapsed, leftSidebarPanelIds])
+  }, [
+    dockApi,
+    sectionCollapsed,
+    leftSidebarPanelIds,
+    getSidebarCollapsedHeight,
+    getSidebarExpandedMinHeight,
+  ])
+
+  useEffect(() => {
+    if (!dockApi) return
+    const isOnlyPanel = leftSidebarPanelIds.length <= 1
+    const lastPanelId = leftSidebarPanelIds[leftSidebarPanelIds.length - 1]
+    leftSidebarPanelIds.forEach((panelId) => {
+      const group = dockApi.getPanel(panelId)?.group
+      if (!group) return
+      const collapsedHeight = getSidebarCollapsedHeight(panelId)
+      const expandedMinHeight = getSidebarExpandedMinHeight(panelId)
+      if (sectionCollapsed[panelId]) {
+        const keepFlexible = isOnlyPanel && panelId === lastPanelId
+        group.api.setConstraints({
+          minimumHeight: collapsedHeight,
+          maximumHeight: keepFlexible ? Number.MAX_SAFE_INTEGER : collapsedHeight,
+        })
+        if (!keepFlexible) {
+          group.api.setSize({ height: collapsedHeight })
+        }
+      } else {
+        group.api.setConstraints({
+          minimumHeight: expandedMinHeight,
+          maximumHeight: Number.MAX_SAFE_INTEGER,
+        })
+      }
+    })
+  }, [
+    dockApi,
+    leftSidebarPanelIds,
+    sectionCollapsed,
+    getSidebarCollapsedHeight,
+    getSidebarExpandedMinHeight,
+  ])
 
   const toggleShell = useCallback(() => {
     if (!collapsed.shell && dockApi) {
@@ -1615,13 +1709,13 @@ export default function App() {
         // Add above shell to maintain center column structure
         position = { direction: 'above', referenceGroup: shellPanel.group }
       } else {
-        position = { direction: 'right', referencePanel: 'filetree' }
+        position = getLeftSidebarAnchorPosition(dockApi)
       }
 
       openFileAtPosition(path, position)
       return true
     },
-    [dockApi, findCenterAnchorPanel, getLiveCenterGroup, openFileAtPosition]
+    [dockApi, findCenterAnchorPanel, getLiveCenterGroup, getLeftSidebarAnchorPosition, openFileAtPosition]
   )
 
   const openPanel = useCallback(
@@ -1666,7 +1760,7 @@ export default function App() {
         } else if (companionPanel) {
           position = { direction: 'left', referencePanel: companionPanel.id }
         } else {
-          position = { direction: 'right', referencePanel: 'filetree' }
+          position = getLeftSidebarAnchorPosition(dockApi)
         }
       }
 
@@ -1698,7 +1792,7 @@ export default function App() {
 
       return true
     },
-    [dockApi, findCenterAnchorPanel, getLiveCenterGroup],
+    [dockApi, findCenterAnchorPanel, getLiveCenterGroup, getLeftSidebarAnchorPosition],
   )
 
   useEffect(() => {
@@ -1756,12 +1850,12 @@ export default function App() {
         }
       } else {
         // Fallback: to the right of filetree (but will be left of terminal)
-        position = { direction: 'right', referencePanel: 'filetree' }
+        position = getLeftSidebarAnchorPosition(dockApi)
       }
 
       openFileAtPosition(path, position)
     },
-    [dockApi, getLiveCenterGroup, isLeftSidebarGroup, openFileAtPosition]
+    [dockApi, getLeftSidebarAnchorPosition, getLiveCenterGroup, isLeftSidebarGroup, openFileAtPosition]
   )
 
   const openDiff = useCallback(
@@ -1792,14 +1886,14 @@ export default function App() {
       } else if (shellPanel?.group) {
         position = { direction: 'above', referenceGroup: shellPanel.group }
       } else {
-        position = { direction: 'right', referencePanel: 'filetree' }
+        position = getLeftSidebarAnchorPosition(dockApi)
       }
 
       // Open regular editor with diff mode enabled
       openFileAtPosition(path, position, { initialMode: 'git-diff' })
       setActiveDiffFile(path)
     },
-    [dockApi, getLiveCenterGroup, openFileAtPosition]
+    [dockApi, getLeftSidebarAnchorPosition, getLiveCenterGroup, openFileAtPosition]
   )
 
   const getCommandPanelPosition = useCallback((api) => {
@@ -1818,13 +1912,8 @@ export default function App() {
       return { direction: 'above', referenceGroup: shellPanel.group }
     }
 
-    const filetreePanel = api.getPanel('filetree')
-    if (filetreePanel) {
-      return { direction: 'right', referencePanel: 'filetree' }
-    }
-
-    return undefined
-  }, [getLiveCenterGroup])
+    return getLeftSidebarAnchorPosition(api)
+  }, [getLeftSidebarAnchorPosition, getLiveCenterGroup])
 
   const openGenericPanelFromCommand = useCallback(
     (api, command) => {
@@ -2022,7 +2111,7 @@ export default function App() {
         // Add above shell to maintain center column structure
         position = { direction: 'above', referenceGroup: shellPanel.group }
       } else {
-        position = { direction: 'right', referencePanel: 'filetree' }
+        position = getLeftSidebarAnchorPosition(dockApi)
       }
 
       const panel = dockApi.addPanel({
@@ -2057,6 +2146,7 @@ export default function App() {
     handleDecision,
     normalizeApprovalPath,
     openFile,
+    getLeftSidebarAnchorPosition,
   ])
 
   const createUniquePanelId = useCallback((api, prefix) => {
@@ -2135,12 +2225,8 @@ export default function App() {
 
       // Ensure chat panels anchor in the center area, not side rails.
       if (!centerGroup) {
-        const filetreePanel = dockApi.getPanel('filetree')
-        const emptyCenterPosition = filetreePanel
-          ? { direction: 'right', referencePanel: 'filetree' }
-          : shellGroup
-            ? { direction: 'above', referenceGroup: shellGroup }
-            : undefined
+        const emptyCenterPosition = getLeftSidebarAnchorPosition(dockApi)
+          || (shellGroup ? { direction: 'above', referenceGroup: shellGroup } : undefined)
         if (!emptyCenterPanel && emptyCenterPosition) {
           emptyCenterPanel = dockApi.addPanel({
             id: 'empty-center',
@@ -2186,8 +2272,8 @@ export default function App() {
         position = { referenceGroup: centerGroup }
       } else if (shellGroup) {
         position = { direction: 'above', referenceGroup: shellGroup }
-      } else if (dockApi.getPanel('filetree')) {
-        position = { direction: 'right', referencePanel: 'filetree' }
+      } else {
+        position = getLeftSidebarAnchorPosition(dockApi)
       }
 
       const panel = dockApi.addPanel({
@@ -2219,7 +2305,7 @@ export default function App() {
 
       if (panel?.group) {
         panel.group.locked = false
-        panel.group.header.hidden = true
+        panel.group.header.hidden = false
         const minWidth = component === 'terminal'
           ? panelMinRef.current.terminal
           : panelMinRef.current.companion
@@ -2257,6 +2343,7 @@ export default function App() {
       piAgentEnabled,
       capabilities,
       createUniquePanelId,
+      getLeftSidebarAnchorPosition,
       getLiveCenterGroup,
       collapsed.terminal,
       collapsed.companion,
@@ -2266,10 +2353,6 @@ export default function App() {
     ],
   )
 
-  const handleOpenChatTab = useCallback(() => {
-    addChatPanel({ mode: 'split', piSessionBootstrap: 'new' })
-  }, [addChatPanel])
-
   const handleSplitChatPanel = useCallback((panelId, options = {}) => {
     if (!panelId) return
     addChatPanel({
@@ -2278,6 +2361,41 @@ export default function App() {
       piSessionBootstrap: options.piSessionBootstrap || 'latest',
     })
   }, [addChatPanel])
+
+  const handleOpenChatTab = useCallback(() => {
+    if (!dockApi) {
+      addChatPanel({ mode: 'split', piSessionBootstrap: 'new' })
+      return
+    }
+
+    const agentPanels = listDockPanels(dockApi).filter((panel) => {
+      const component = getPanelComponent(panel)
+      return component === 'terminal' || component === 'companion'
+    })
+
+    const activePanel = dockApi.activePanel
+    const activeIsAgent = activePanel
+      && (getPanelComponent(activePanel) === 'terminal' || getPanelComponent(activePanel) === 'companion')
+    const preferredSource = activeIsAgent
+      ? activePanel
+      : (agentPanels.find((panel) => panel.id === 'terminal')
+        || agentPanels.find((panel) => panel.id === 'companion')
+        || agentPanels.find((panel) => panel.id === 'pi-agent')
+        || agentPanels[0])
+
+    if (preferredSource?.id) {
+      const provider = preferredSource?.params?.provider === 'pi' || preferredSource.id === 'pi-agent'
+        ? 'pi'
+        : 'companion'
+      handleSplitChatPanel(
+        preferredSource.id,
+        provider === 'pi' ? { piSessionBootstrap: 'new' } : {},
+      )
+      return
+    }
+
+    addChatPanel({ mode: 'split', piSessionBootstrap: 'new' })
+  }, [addChatPanel, dockApi, handleSplitChatPanel])
 
   // Right header actions component - shell collapse control + quick chat action in editor groups.
   const RightHeaderActions = useCallback(
@@ -2429,6 +2547,8 @@ export default function App() {
             onToggleCollapse: toggleFiletree,
             showSidebarToggle: leftSidebarPanelIds[0] === 'filetree',
             appName: config.branding?.name || '',
+            sectionCollapsed: sectionCollapsed.filetree,
+            onToggleSection: () => toggleSectionCollapse('filetree'),
             userEmail: menuUserEmail,
             userMenuStatusMessage,
             userMenuStatusTone,
@@ -2472,6 +2592,7 @@ export default function App() {
               collapsed: collapsed.filetree,
               onToggleCollapse: toggleFiletree,
               showSidebarToggle: leftSidebarPanelIds[0] === panelId,
+              appName: config.branding?.name || '',
               sectionCollapsed: sectionCollapsed[panelId],
               onToggleSection: () => toggleSectionCollapse(panelId),
             }
@@ -2488,24 +2609,63 @@ export default function App() {
       // 2. empty-center (right of filetree) - center column for editor/chat tabs
       // 4. shell (below empty-center) - bottom of center
 
+      // Create left sidebar panels. Strategy:
+      // 1. Create the first left panel (anchors the column)
+      // 2. Create empty-center to the right (establishes the column boundary)
+      // 3. Add remaining left panels below the first (vertical split within left column)
+      //
+      // This order matters: DockView splits relative to the reference cell,
+      // so we must establish the left/center column boundary before adding
+      // vertical splits within the left column.
+      const leftPanelQueue = []
+      let firstLeftPanel = null
+      for (const panelId of leftSidebarPanelIds) {
+        let panel = api.getPanel(panelId)
+        if (!panel) {
+          const paneConfig = paneRegistry.get(panelId)
+          if (!paneConfig) continue
+          if (!firstLeftPanel) {
+            panel = api.addPanel({
+              id: panelId,
+              component: panelId,
+              title: paneConfig.title,
+              params: getDefaultParams(panelId),
+            })
+          } else {
+            leftPanelQueue.push({ panelId, paneConfig })
+            continue
+          }
+        }
+        if (panel?.group) {
+          panel.group.locked = true
+          panel.group.header.hidden = true
+        }
+        if (!firstLeftPanel) firstLeftPanel = panel
+      }
+
+      // Backwards compat: ensure filetree exists even if not in leftSidebarPanelIds
       let filetreePanel = api.getPanel('filetree')
-      if (!filetreePanel) {
+      if (!filetreePanel && !leftSidebarPanelIds.includes('filetree')) {
         filetreePanel = api.addPanel({
           id: 'filetree',
           component: 'filetree',
           title: 'Files',
           params: getDefaultParams('filetree'),
         })
+        if (!firstLeftPanel) firstLeftPanel = filetreePanel
+      } else {
+        filetreePanel = api.getPanel('filetree')
       }
 
-      // Add empty panel right of filetree - creates center column
+      // Add empty panel right of the first left panel - creates center column
+      const leftAnchorId = firstLeftPanel?.id || 'filetree'
       let emptyPanel = api.getPanel('empty-center')
       if (!emptyPanel) {
         emptyPanel = api.addPanel({
           id: 'empty-center',
           component: 'empty',
           title: '',
-          position: { direction: 'right', referencePanel: 'filetree' },
+          position: { direction: 'right', referencePanel: leftAnchorId },
         })
       }
       // Always set centerGroupRef from empty panel if it exists
@@ -2517,6 +2677,27 @@ export default function App() {
           minimumHeight: panelMinRef.current.center,
           maximumHeight: Number.MAX_SAFE_INTEGER,
         })
+      }
+
+      // Now that the left/center column boundary exists, add remaining
+      // left sidebar panels below the first one (vertical splits).
+      let lastLeftPanel = firstLeftPanel
+      for (const { panelId, paneConfig } of leftPanelQueue) {
+        if (api.getPanel(panelId)) continue
+        const refGroup = lastLeftPanel?.group
+        if (!refGroup) continue
+        const panel = api.addPanel({
+          id: panelId,
+          component: panelId,
+          title: paneConfig.title,
+          params: getDefaultParams(panelId),
+          position: { direction: 'below', referenceGroup: refGroup },
+        })
+        if (panel?.group) {
+          panel.group.locked = true
+          panel.group.header.hidden = true
+        }
+        if (panel) lastLeftPanel = panel
       }
 
       // Shell panel is available but not added to the default layout.
@@ -2667,7 +2848,7 @@ export default function App() {
           ? { referenceGroup: firstCenterPanel.group }
           : rightRailPanel
             ? { direction: 'left', referencePanel: rightRailPanel.id }
-            : { direction: 'right', referencePanel: 'filetree' }
+            : getLeftSidebarAnchorPosition(api)
 
         const emptyCenterPanel = api.addPanel({
           id: 'empty-center',
@@ -2803,8 +2984,9 @@ export default function App() {
       const shellPanel = api.getPanel('shell')
 
       let emptyPanel
-      if (groupStillExists && centerGroup.panels?.length > 0) {
-        // Group still exists with panels, add to it
+      if (groupStillExists) {
+        // Reuse the surviving center group (even if it's temporarily empty)
+        // so closing the last editor does not create a new split/layout drift.
         emptyPanel = api.addPanel({
           id: 'empty-center',
           component: 'empty',
@@ -2830,7 +3012,7 @@ export default function App() {
           title: '',
           position: rightRailPanel
             ? { direction: 'left', referencePanel: rightRailPanel.id }
-            : { direction: 'right', referencePanel: 'filetree' },
+            : getLeftSidebarAnchorPosition(api),
         })
       }
 
@@ -3088,6 +3270,8 @@ export default function App() {
             onToggleCollapse: toggleFiletree,
             showSidebarToggle: leftSidebarPanelIds[0] === 'filetree',
             appName: config.branding?.name || '',
+            sectionCollapsed: sectionCollapsed.filetree,
+            onToggleSection: () => toggleSectionCollapse('filetree'),
             userEmail: menuUserEmail,
             userMenuStatusMessage,
             userMenuStatusTone,
@@ -3114,6 +3298,7 @@ export default function App() {
             collapsed: collapsed.filetree,
             onToggleCollapse: toggleFiletree,
             showSidebarToggle: leftSidebarPanelIds[0] === panelId,
+            appName: config.branding?.name || '',
             sectionCollapsed: panelId ? sectionCollapsed[panelId] : false,
             onToggleSection: panelId ? () => toggleSectionCollapse(panelId) : undefined,
           })
@@ -3153,7 +3338,7 @@ export default function App() {
             const companionGroup = companionPanel.group
             if (companionGroup) {
               companionGroup.locked = false
-              companionGroup.header.hidden = true
+              companionGroup.header.hidden = false
               if (collapsed.companion) {
                 companionGroup.api.setConstraints({
                   minimumWidth: panelCollapsedRef.current.companion,
@@ -3412,6 +3597,7 @@ export default function App() {
         collapsed: collapsed.filetree,
         onToggleCollapse: toggleFiletree,
         showSidebarToggle: leftSidebarPanelIds[0] === 'filetree',
+        appName: config.branding?.name || '',
         sectionCollapsed: sectionCollapsed.filetree,
         onToggleSection: () => toggleSectionCollapse('filetree'),
         userEmail: menuUserEmail,
@@ -3435,6 +3621,7 @@ export default function App() {
         collapsed: collapsed.filetree,
         onToggleCollapse: toggleFiletree,
         showSidebarToggle: leftSidebarPanelIds[0] === panelId,
+        appName: config.branding?.name || '',
         sectionCollapsed: panelId ? sectionCollapsed[panelId] : false,
         onToggleSection: panelId ? () => toggleSectionCollapse(panelId) : undefined,
       })
@@ -3796,8 +3983,8 @@ export default function App() {
       return { referenceGroup: centerGroup }
     }
 
-    return { direction: 'right', referencePanel: 'filetree' }
-  }, [dockApi, getLiveCenterGroup, isLeftSidebarGroup])
+    return getLeftSidebarAnchorPosition(dockApi)
+  }, [dockApi, getLeftSidebarAnchorPosition, getLiveCenterGroup, isLeftSidebarGroup])
 
   const onDidDrop = (event) => {
     const dataTransfer = event?.nativeEvent?.dataTransfer

@@ -47,6 +47,7 @@
  */
 
 import FileTreePanel from '../panels/FileTreePanel'
+import DataCatalogPanel from '../panels/DataCatalogPanel'
 import EditorPanel from '../panels/EditorPanel'
 import TerminalPanel from '../panels/TerminalPanel'
 import ShellTerminalPanel from '../panels/ShellTerminalPanel'
@@ -302,6 +303,20 @@ class PaneRegistry {
  */
 const createDefaultRegistry = () => {
   const registry = new PaneRegistry()
+
+  // Data Catalog - left sidebar placeholder (above filetree)
+  registry.register({
+    id: 'data-catalog',
+    component: DataCatalogPanel,
+    title: 'Data Catalog',
+    placement: 'left',
+    essential: false,
+    locked: true,
+    hideHeader: true,
+    constraints: {
+      minWidth: 180,
+    },
+  })
 
   // File tree - left sidebar
   registry.register({

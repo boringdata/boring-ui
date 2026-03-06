@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, FolderOpen, GitBranch, Search } from 'lucide-react'
 import FileTree from '../components/FileTree'
 import GitChangesView from '../components/GitChangesView'
 import UserMenu from '../components/UserMenu'
 import Tooltip from '../components/Tooltip'
-import { LeftPaneHeader } from '../components/SidebarSectionHeader'
+import SidebarSectionHeader, { LeftPaneHeader } from '../components/SidebarSectionHeader'
 
 export default function FileTreePanel({ params }) {
   const {
@@ -18,6 +18,8 @@ export default function FileTreePanel({ params }) {
     onToggleCollapse,
     showSidebarToggle,
     appName,
+    sectionCollapsed,
+    onToggleSection,
     userEmail,
     workspaceName,
     workspaceId,
@@ -83,36 +85,82 @@ export default function FileTreePanel({ params }) {
   }
 
   return (
-    <div className="panel-content filetree-panel">
+    <div className={`panel-content filetree-panel${sectionCollapsed ? ' filetree-section-collapsed' : ''}`}>
       {showSidebarToggle && (
-        <LeftPaneHeader
-          onToggleSidebar={onToggleCollapse}
-          appName={appName}
-          viewMode={viewMode}
-          onSetViewMode={setViewMode}
-          searchExpanded={searchExpanded}
-          onToggleSearch={() => setSearchExpanded((prev) => !prev)}
-        />
+        <LeftPaneHeader onToggleSidebar={onToggleCollapse} appName={appName} />
       )}
-      <div className="filetree-body">
-        {viewMode === 'files' ? (
-          <FileTree
-            onOpen={onOpenFile}
-            onOpenToSide={onOpenFileToSide}
-            projectRoot={projectRoot}
-            activeFile={activeFile}
-            creatingFile={creatingFile}
-            onFileCreated={handleFileCreated}
-            onCancelCreate={handleCancelCreate}
-            searchExpanded={searchExpanded}
-          />
-        ) : (
-          <GitChangesView
-            onOpenDiff={onOpenDiff}
-            activeDiffFile={activeDiffFile}
-          />
+      {sectionCollapsed && <div className="filetree-section-spacer" />}
+      <SidebarSectionHeader
+        title="Files"
+        icon={FolderOpen}
+        sectionCollapsed={sectionCollapsed}
+        onToggleSection={onToggleSection}
+      >
+        {!sectionCollapsed && (
+          <>
+            <div className="sidebar-view-toggle" role="tablist" aria-label="Sidebar view mode">
+              <Tooltip label="File tree">
+                <button
+                  type="button"
+                  className={`view-toggle-btn ${viewMode === 'files' ? 'active' : ''}`}
+                  onClick={() => setViewMode('files')}
+                  aria-label="File tree view"
+                  role="tab"
+                  aria-selected={viewMode === 'files'}
+                >
+                  <FolderOpen size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip label="Git changes">
+                <button
+                  type="button"
+                  className={`view-toggle-btn ${viewMode === 'changes' ? 'active' : ''}`}
+                  onClick={() => setViewMode('changes')}
+                  aria-label="Git changes view"
+                  role="tab"
+                  aria-selected={viewMode === 'changes'}
+                >
+                  <GitBranch size={14} />
+                </button>
+              </Tooltip>
+            </div>
+            <Tooltip
+              label={searchExpanded ? 'Hide search' : 'Search files'}
+              shortcut="Ctrl+P"
+            >
+              <button
+                type="button"
+                className={`sidebar-action-btn ${searchExpanded ? 'active' : ''}`}
+                onClick={() => setSearchExpanded((prev) => !prev)}
+                aria-label={searchExpanded ? 'Hide search' : 'Search files'}
+              >
+                <Search size={13} />
+              </button>
+            </Tooltip>
+          </>
         )}
-      </div>
+      </SidebarSectionHeader>
+      {!sectionCollapsed && (
+        <div className="filetree-body">
+          {viewMode === 'files' ? (
+            <FileTree
+              onOpen={onOpenFile}
+              onOpenToSide={onOpenFileToSide}
+              projectRoot={projectRoot}
+              activeFile={activeFile}
+              creatingFile={creatingFile}
+              onFileCreated={handleFileCreated}
+              onCancelCreate={handleCancelCreate}
+              searchExpanded={searchExpanded}
+            />
+          ) : (
+            <GitChangesView
+              onOpenDiff={onOpenDiff}
+              activeDiffFile={activeDiffFile}
+            />
+          )}
+        </div>
+      )}
       <div className="filetree-footer">
         <UserMenu
           email={userEmail}
