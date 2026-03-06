@@ -265,6 +265,43 @@ const overlaps = (a, b) =>
       }
     }, { bridge: OPEN_PANEL_BRIDGE, nextPayload: payload })
 
+  const getAgentTabCount = async () =>
+    page.locator('.dv-default-tab-content').filter({ hasText: /^Agent$/ }).count()
+
+  const ensureAgentTabPresent = async (themeTag) => {
+    if ((await getAgentTabCount()) > 0) return true
+
+    const openedViaBridge = await openEditorPanelViaBridge({
+      id: `agent-${Date.now().toString(36)}`,
+      component: 'companion',
+      title: 'Agent',
+    })
+    if (openedViaBridge) {
+      await sleep(450)
+      if ((await getAgentTabCount()) > 0) return true
+    }
+
+    const createSelectors = [
+      'button[aria-label="New agent session"]',
+      'button[title="New agent session"]',
+      'button[aria-label="Split chat panel"]',
+      'button[title="Split chat panel"]',
+      'button[aria-label="Split agent panel"]',
+      'button[title="Split agent panel"]',
+    ]
+    for (const selector of createSelectors) {
+      // eslint-disable-next-line no-await-in-loop
+      const clicked = await maybeClick(selector, 450)
+      if (!clicked) continue
+      // eslint-disable-next-line no-await-in-loop
+      if ((await getAgentTabCount()) > 0) return true
+    }
+
+    assert(false, `[${themeTag}] Agent tab unavailable`)
+    await screenshot(`00-${themeTag}-agent-tab-missing`)
+    return false
+  }
+
   const runSectionMatrix = async (themeTag, { hasDataCatalog } = {}) => {
     const matrix = hasDataCatalog
       ? [
@@ -905,6 +942,7 @@ const overlaps = (a, b) =>
 
   const runThemeWorkflow = async (themeTag) => {
     await ensureTheme(themeTag)
+    await ensureAgentTabPresent(themeTag)
     await screenshot(`00-${themeTag}-initial`)
 
     const hasDataCatalog = (await page.locator('.sidebar-section-header').filter({ hasText: 'Data Catalog' }).count()) > 0
