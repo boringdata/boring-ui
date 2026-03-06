@@ -246,7 +246,7 @@ export default function UserMenu({
           {typeof onRetry === 'function' ? (
             <button
               type="button"
-              className="btn btn-secondary btn-sm user-menu-status-retry"
+              className="user-menu-status-retry"
               onClick={() => {
                 try {
                   const result = onRetry()

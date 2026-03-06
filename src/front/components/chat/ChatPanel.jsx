@@ -14,19 +14,11 @@ import { forwardRef } from 'react'
  */
 
 const ChatPanel = forwardRef(({ children, className = '', style, ...props }, ref) => {
-  const aiAccentScope = {
-    '--color-accent': 'var(--color-ai-agent)',
-    '--color-accent-hover': 'var(--color-ai-agent-hover)',
-    '--color-accent-light': 'var(--color-ai-agent-glow)',
-    '--color-text-inverse': 'var(--color-ai-agent-foreground)',
-    ...style,
-  }
-
   return (
     <ThreadPrimitive.Root
       ref={ref}
       className={`chat-panel ${className}`}
-      style={aiAccentScope}
+      style={style}
       {...props}
     >
       {children}

@@ -12,7 +12,7 @@ export default function EmptyPanel() {
     <div className="panel-content empty-panel">
       <div className="empty-panel-content empty-state">
         <span className="empty-state-icon-wrap empty-panel-icon" aria-hidden="true">
-          <FileSearch size={20} />
+          <FileSearch size={48} />
         </span>
         <p className="empty-state-title">No file selected</p>
         <p className="empty-state-message empty-panel-message">{message}</p>

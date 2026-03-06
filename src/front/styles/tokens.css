@@ -323,6 +323,8 @@
   --color-code-bg: #282c34;
   --color-diff-added: #1f4a2f;
   --color-diff-removed: #4a2f2f;
+  --color-diff-add-bg: #1f4a2f;
+  --color-diff-remove-bg: #4a2f2f;
 
   --shadow-sm: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   --shadow-md: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 2px 4px rgba(0, 0, 0, 0.2);
