@@ -147,10 +147,23 @@ const overlaps = (a, b) =>
     if (themeName === 'dark' && await toDark.count()) {
       await toDark.click()
       await sleep(350)
-    }
-    if (themeName === 'light' && await toLight.count()) {
+    } else if (themeName === 'light' && await toLight.count()) {
       await toLight.click()
       await sleep(350)
+    } else {
+      // Fallback: set theme directly via DOM when toggle button is not available
+      const currentTheme = await page.evaluate(() =>
+        document.documentElement.getAttribute('data-theme') || 'light'
+      )
+      if (currentTheme !== themeName) {
+        await page.evaluate((t) => {
+          document.documentElement.setAttribute('data-theme', t)
+          localStorage.setItem('kurt-web-theme', t)
+          // Dispatch toggle event so React state syncs
+          window.dispatchEvent(new CustomEvent('theme-toggle-request'))
+        }, themeName)
+        await sleep(500)
+      }
     }
     assert(true, `Theme set to ${themeName}`)
   }
