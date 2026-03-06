@@ -32,8 +32,8 @@ const ToolUseBlock = ({
   subtitle,
   status = 'complete',
   children,
-  collapsible = false,
-  defaultExpanded = true,
+  collapsible = true,
+  defaultExpanded = false,
   className = '',
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)

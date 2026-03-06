@@ -472,7 +472,7 @@ html {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-4);
+  gap: 0;
   min-height: 0;
   background: var(--color-bg-primary);
   animation: workspace-loading-enter 400ms ease-out both;
@@ -480,19 +480,20 @@ html {
 
 .workspace-loading-icon {
   color: var(--color-text-tertiary);
+  margin-bottom: var(--space-4);
   animation: pane-loading-spin 1s linear infinite;
 }
 
 .workspace-loading-title {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: var(--font-medium);
   color: var(--color-text-primary);
-  margin: 0;
+  margin: 0 0 var(--space-1) 0;
   letter-spacing: -0.01em;
 }
 
 .workspace-loading-message {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   margin: 0;
   line-height: var(--leading-relaxed);
@@ -671,12 +672,12 @@ html {
 }
 
 .sidebar-action-btn:hover {
-  background: var(--color-bg-active);
+  background: var(--color-bg-hover);
   color: var(--color-text-primary);
 }
 
 .sidebar-action-btn.active {
-  background: var(--color-bg-active);
+  background: var(--color-bg-hover);
   color: var(--color-text-primary);
 }
 
@@ -765,11 +766,11 @@ html {
 }
 
 .sidebar-section-title {
-  font-size: var(--font-size-xs);
+  font-size: 11px;
   font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-secondary);
+  letter-spacing: 0.06em;
+  color: var(--color-text-tertiary);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -948,25 +949,14 @@ html {
   justify-content: center;
   gap: var(--space-3);
   padding: clamp(var(--space-5), 6vh, var(--space-10)) var(--space-5);
-  border-radius: var(--radius-lg);
-  border: 1px dashed color-mix(in srgb, var(--color-border-primary) 75%, transparent);
-  background:
-    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--color-bg-tertiary) 70%, transparent), transparent 55%),
-    var(--color-bg-primary);
-  box-shadow: var(--shadow-sm);
   text-align: center;
 }
 
 .empty-state-icon-wrap {
-  width: 80px;
-  height: 80px;
-  border-radius: var(--radius-full);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-icon-secondary, var(--color-text-tertiary));
-  background: color-mix(in srgb, var(--color-bg-tertiary) 85%, var(--color-bg-primary));
-  border: 1px solid color-mix(in srgb, var(--color-border-primary) 70%, transparent);
+  color: var(--color-text-tertiary);
 }
 
 .empty-state-title {
@@ -994,9 +984,29 @@ html {
   line-height: var(--leading-normal);
 }
 
+/* Keyboard shortcut badge */
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  box-shadow: 0 1px 0 var(--color-border-primary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+}
+
 /* Empty center panel */
 .empty-panel {
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1007,9 +1017,7 @@ html {
 }
 
 .empty-panel-icon {
-  color: var(--color-icon-secondary);
-  background: color-mix(in srgb, var(--color-icon-secondary) 10%, var(--color-bg-primary));
-  border-color: color-mix(in srgb, var(--color-icon-secondary) 20%, var(--color-border-primary));
+  color: var(--color-text-tertiary);
 }
 
 .empty-panel-message {
@@ -1018,6 +1026,30 @@ html {
 
 .empty-panel-hint {
   text-transform: none;
+}
+
+.empty-state-capabilities {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  text-align: left;
+}
+
+.empty-state-capability {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.empty-state-capability svg {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
 }
 
 /* Terminal panel */
@@ -1098,10 +1130,11 @@ html {
 .dockview-theme-abyss .dv-tab .ui-dv-tab::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 4px;
+  right: 4px;
   bottom: 0;
   height: 2px;
+  border-radius: 2px 2px 0 0;
   background: var(--color-accent-default);
   opacity: 0;
   transition: opacity var(--transition-fast);
@@ -1215,7 +1248,7 @@ html {
   content: '';
   position: absolute;
   pointer-events: none;
-  background: var(--color-border-primary);
+  background: var(--color-border-secondary);
   opacity: 1;
   transition:
     width var(--transition-fast),
@@ -1227,7 +1260,7 @@ html {
   top: 0;
   bottom: 0;
   left: 50%;
-  width: 2px;
+  width: 1px;
   transform: translateX(-50%);
 }
 
@@ -1235,7 +1268,7 @@ html {
   left: 0;
   right: 0;
   top: 50%;
-  height: 2px;
+  height: 1px;
   transform: translateY(-50%);
 }
 
@@ -2931,7 +2964,19 @@ html {
 .companion-session-toolbar {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 0;
+}
+
+.companion-session-toolbar .terminal-select {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.companion-session-toolbar .terminal-new-icon {
+  border: 1px solid var(--color-border);
+  border-left: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 
 .companion-session-select {
@@ -4543,18 +4588,17 @@ html {
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-secondary);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--color-text-primary);
   padding: var(--spacing-sm);
   cursor: pointer;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
+  transition: background var(--transition-fast);
 }
 
 .user-menu-trigger:hover {
   background: var(--color-bg-hover);
-  border-color: var(--color-border-strong);
 }
 
 .user-menu-trigger.compact {

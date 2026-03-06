@@ -37,7 +37,7 @@ const ReadToolRenderer = ({
       description={description}
       status={status}
       collapsible={Boolean(content && !hideContent)}
-      defaultExpanded={status !== 'complete' || Boolean(error) || !truncated}
+      defaultExpanded={status !== 'complete' || Boolean(error)}
     >
       {error ? (
         <ToolError message={error} />

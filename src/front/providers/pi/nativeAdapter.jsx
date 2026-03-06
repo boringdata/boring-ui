@@ -183,6 +183,7 @@ message-editor textarea::placeholder {
 
 message-editor .bg-card.rounded-xl.border {
   border-style: solid !important;
+  border-color: var(--border) !important;
   border-radius: var(--radius-sm);
 }
 
@@ -218,11 +219,11 @@ message-editor .px-2.pb-2 > .flex.gap-2.items-center:last-child > button:last-ch
   opacity: 0.55;
 }
 
-/* ── Focus ring uses app accent ── */
+/* ── Focus ring — subtle tint, not a heavy colored border ── */
 message-editor .bg-card.rounded-xl.border:has(textarea:focus),
 message-editor .bg-card.rounded-xl.border:has(textarea:focus-visible) {
-  border-color: color-mix(in srgb, var(--primary) 40%, var(--border)) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent-default) 22%, var(--border)) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent-default) 8%, transparent);
 }
 
 message-editor textarea:focus-visible,
