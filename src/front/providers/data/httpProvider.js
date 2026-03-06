@@ -26,6 +26,14 @@ const API = {
     status: '/api/v1/git/status',
     diff: '/api/v1/git/diff',
     show: '/api/v1/git/show',
+    init: '/api/v1/git/init',
+    add: '/api/v1/git/add',
+    commit: '/api/v1/git/commit',
+    push: '/api/v1/git/push',
+    pull: '/api/v1/git/pull',
+    clone: '/api/v1/git/clone',
+    remote: '/api/v1/git/remote',
+    remotes: '/api/v1/git/remotes',
   },
 }
 
@@ -122,6 +130,46 @@ export const createHttpProvider = () => ({
     show: async (path, opts) => {
       const data = await fetchJson(API.git.show, { path }, opts)
       return typeof data?.content === 'string' ? data.content : ''
+    },
+
+    init: (opts) =>
+      sendJson('POST', API.git.init, undefined, undefined, opts),
+
+    add: (paths, opts) =>
+      sendJson('POST', API.git.add, undefined, { paths }, opts),
+
+    commit: async (message, opts) => {
+      const data = await sendJson('POST', API.git.commit, undefined, {
+        message,
+        author: opts?.author,
+      }, opts)
+      return { oid: data?.oid || '' }
+    },
+
+    push: (opts) =>
+      sendJson('POST', API.git.push, undefined, {
+        remote: opts?.remote,
+        branch: opts?.branch,
+      }, opts),
+
+    pull: (opts) =>
+      sendJson('POST', API.git.pull, undefined, {
+        remote: opts?.remote,
+        branch: opts?.branch,
+      }, opts),
+
+    clone: (url, opts) =>
+      sendJson('POST', API.git.clone, undefined, {
+        url,
+        branch: opts?.branch,
+      }, opts),
+
+    addRemote: (name, url, opts) =>
+      sendJson('POST', API.git.remote, undefined, { name, url }, opts),
+
+    listRemotes: async (opts) => {
+      const data = await fetchJson(API.git.remotes, undefined, opts)
+      return Array.isArray(data?.remotes) ? data.remotes : []
     },
   },
 })
