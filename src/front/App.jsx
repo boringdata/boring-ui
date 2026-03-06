@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { DockviewReact, DockviewDefaultTab } from 'dockview-react'
+import { DockviewReact } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
-import { ChevronDown, ChevronUp, Loader2, Bot } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2, Bot, X } from 'lucide-react'
 
 import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
@@ -80,6 +80,7 @@ const POC_MODE = URL_PARAMS.get('poc')
 const DATA_BACKEND_OVERRIDE = String(URL_PARAMS.get('data_backend') || '').trim().toLowerCase()
 const DATA_FS_OVERRIDE = String(URL_PARAMS.get('data_fs') || '').trim()
 const ALLOW_UNSAFE_DATA_FS_OVERRIDE = Boolean(import.meta?.env?.DEV)
+const MAIN_CONTENT_ID = 'workspace-main-content'
 const MAX_SCOPED_CACHE_ENTRIES = 12
 const MAX_PRESERVED_IDENTITY_AGE_MS = 30_000
 
@@ -319,8 +320,125 @@ const countAllAgentPanels = (api) =>
 // Components with requiresFeatures/requiresRouters will show error states when unavailable
 const KNOWN_COMPONENTS = getKnownComponents()
 
+const COMPACT_TAB_COMPONENTS = new Set(['terminal', 'companion', 'shell'])
+const COMPACT_TAB_PREFIXES = ['terminal-chat-', 'companion-chat-', 'pi-agent-chat-']
+
+const shouldUseCompactTab = (api, tabLocation) => {
+  if (tabLocation === 'headerOverflow') return true
+
+  const panelId = String(api?.id || '')
+  const componentId = String(api?.component || '')
+  if (COMPACT_TAB_COMPONENTS.has(componentId)) return true
+  return COMPACT_TAB_PREFIXES.some((prefix) => panelId.startsWith(prefix))
+}
+
+function UnifiedDockTab({
+  api,
+  hideClose = false,
+  closeActionOverride,
+  onPointerDown,
+  onPointerUp,
+  onPointerLeave,
+  tabLocation,
+  className,
+  ...rest
+}) {
+  const [title, setTitle] = useState(api?.title)
+  const isMiddleMouseButton = useRef(false)
+  const compact = shouldUseCompactTab(api, tabLocation)
+
+  useEffect(() => {
+    setTitle(api?.title)
+    if (!api?.onDidTitleChange) return undefined
+
+    const disposable = api.onDidTitleChange((event) => {
+      setTitle(event.title)
+    })
+
+    return () => {
+      disposable?.dispose?.()
+    }
+  }, [api])
+
+  const onClose = useCallback(
+    (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (closeActionOverride) {
+        closeActionOverride()
+      } else {
+        api?.close?.()
+      }
+    },
+    [api, closeActionOverride],
+  )
+
+  const handlePointerDown = useCallback(
+    (event) => {
+      isMiddleMouseButton.current = event.button === 1
+      onPointerDown?.(event)
+    },
+    [onPointerDown],
+  )
+
+  const handlePointerUp = useCallback(
+    (event) => {
+      if (isMiddleMouseButton.current && event.button === 1 && !hideClose) {
+        isMiddleMouseButton.current = false
+        onClose(event)
+      }
+      onPointerUp?.(event)
+    },
+    [hideClose, onClose, onPointerUp],
+  )
+
+  const handlePointerLeave = useCallback(
+    (event) => {
+      isMiddleMouseButton.current = false
+      onPointerLeave?.(event)
+    },
+    [onPointerLeave],
+  )
+
+  const tabClassName = [
+    'dv-default-tab',
+    'ui-dv-tab',
+    compact ? 'ui-dv-tab-compact' : 'ui-dv-tab-default',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <div
+      data-testid="dockview-dv-default-tab"
+      {...rest}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
+      className={tabClassName}
+    >
+      <span className="dv-default-tab-content">{title || ''}</span>
+      {!hideClose && (
+        <button
+          type="button"
+          className="dv-default-tab-action ui-dv-tab-close"
+          onPointerDown={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+          onClick={onClose}
+          aria-label={title ? `Close ${title}` : 'Close tab'}
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  )
+}
+
 // Custom tab component that hides close button (for shell tabs)
-const TabWithoutClose = (props) => <DockviewDefaultTab {...props} hideClose />
+const TabWithoutClose = (props) => <UnifiedDockTab {...props} hideClose />
 
 const tabComponents = {
   noClose: TabWithoutClose,
@@ -340,6 +458,9 @@ export default function App() {
   const nativeAgentEnabled = codeSessionsEnabled && (agentRailMode === 'all' || agentRailMode === 'native')
   const companionAgentEnabled = agentRailMode === 'all' || agentRailMode === 'companion'
   const piAgentEnabled = agentRailMode === 'all' || agentRailMode === 'pi'
+  const isCoreDeploy = config.mode?.deployMode !== 'edge'
+  const localDataBackend = String(config.data?.backend || '').toLowerCase()
+  const hasLocalDataBackend = localDataBackend === 'lightningfs' || localDataBackend === 'cheerpx'
   const controlPlaneOnboardingEnabled = config.features?.controlPlaneOnboarding === true
   const storagePrefix = config.storage?.prefix || 'kurt-web'
   const layoutVersion = config.storage?.layoutVersion || 1
@@ -389,7 +510,25 @@ export default function App() {
   const staticCapabilities = config.capabilities || null
   const { capabilities: serverCapabilities, loading: capabilitiesLoading, refetch: refetchCapabilities } = useCapabilities()
   const capabilities = useMemo(() => {
-    if (!staticCapabilities) return serverCapabilities
+    if (!staticCapabilities) {
+      const featureCount = Object.keys(serverCapabilities?.features || {}).length
+      // In core/local mode, capability fetch can be unavailable. Infer minimal
+      // local capabilities so PI rail and local data backends still render.
+      if (isCoreDeploy && serverCapabilities?.version === 'unknown' && featureCount === 0) {
+        return {
+          version: 'inferred-local',
+          features: {
+            files: hasLocalDataBackend,
+            git: hasLocalDataBackend,
+            pi: piAgentEnabled,
+            companion: companionAgentEnabled,
+            chat_claude_code: nativeAgentEnabled,
+          },
+          routers: [],
+        }
+      }
+      return serverCapabilities
+    }
     if (!serverCapabilities || serverCapabilities.version === 'unknown') {
       return {
         version: staticCapabilities.version || 'static',
@@ -402,7 +541,15 @@ export default function App() {
       ...serverCapabilities,
       features: { ...staticCapabilities.features, ...serverCapabilities.features },
     }
-  }, [staticCapabilities, serverCapabilities])
+  }, [
+    staticCapabilities,
+    serverCapabilities,
+    isCoreDeploy,
+    hasLocalDataBackend,
+    piAgentEnabled,
+    companionAgentEnabled,
+    nativeAgentEnabled,
+  ])
   const capabilitiesRef = useRef(capabilities)
   const capabilitiesLoadingRef = useRef(capabilitiesLoading)
   capabilitiesRef.current = capabilities
@@ -438,11 +585,15 @@ export default function App() {
     : []
 
   const [dockApi, setDockApi] = useState(null)
+  const dockApiRef = useRef(null)
+  dockApiRef.current = dockApi
   const [tabs, setTabs] = useState({}) // path -> { content, isDirty }
   const [approvals, setApprovals] = useState([])
   const [approvalsLoaded, setApprovalsLoaded] = useState(false)
   const [activeFile, setActiveFile] = useState(null)
   const [activeDiffFile, setActiveDiffFile] = useState(null)
+  const [activeSidebarPanelId, setActiveSidebarPanelId] = useState('filetree')
+  const [filetreeActivityIntent, setFiletreeActivityIntent] = useState(null)
   const [menuUserId, setMenuUserId] = useState('')
   const [menuUserEmail, setMenuUserEmail] = useState('')
   const [userMenuAuthStatus, setUserMenuAuthStatus] = useState('unknown') // unknown | authenticated | unauthenticated | error
@@ -466,6 +617,11 @@ export default function App() {
     return { filetree: false, terminal: false, shell: false, companion: false, ...saved }
   })
   const [sectionCollapsed, setSectionCollapsed] = useState({})
+  const sidebarToggleHostId = useMemo(() => {
+    const hasFiletree = leftSidebarPanelIds.includes('filetree')
+    if (collapsed.filetree && hasFiletree) return 'filetree'
+    return leftSidebarPanelIds[0] || 'filetree'
+  }, [collapsed.filetree, leftSidebarPanelIds])
   const panelSizesRef = useRef({
     ...panelDefaults,
     companion: rightRailDefaults.companion,
@@ -915,12 +1071,12 @@ export default function App() {
   const sectionSizesRef = useRef({})
 
   const getSidebarCollapsedHeight = useCallback((panelId) => {
-    const isFirstPanel = leftSidebarPanelIds[0] === panelId
+    const isToggleHost = sidebarToggleHostId === panelId
     const hasFooter = panelId === 'filetree'
     return SECTION_HEADER_HEIGHT
-      + (isFirstPanel ? LEFT_PANE_HEADER_HEIGHT : 0)
+      + (isToggleHost ? LEFT_PANE_HEADER_HEIGHT : 0)
       + (hasFooter ? PANEL_FOOTER_HEIGHT : 0)
-  }, [leftSidebarPanelIds])
+  }, [sidebarToggleHostId])
 
   const getSidebarExpandedMinHeight = useCallback(
     (panelId) => getSidebarCollapsedHeight(panelId) + SIDEBAR_SECTION_BODY_MIN_HEIGHT,
@@ -1002,6 +1158,40 @@ export default function App() {
     leftSidebarPanelIds,
     getSidebarCollapsedHeight,
     getSidebarExpandedMinHeight,
+  ])
+
+  const activateSidebarPanel = useCallback((panelId, options = {}) => {
+    if (!panelId || !dockApi) return
+    if (panelId === 'filetree' && options?.mode) {
+      setFiletreeActivityIntent({
+        panelId: 'filetree',
+        mode: options.mode,
+        token: Date.now(),
+      })
+    }
+
+    const activate = () => {
+      const panel = dockApi.getPanel(panelId)
+      if (!panel) return
+      if (sectionCollapsed[panelId]) {
+        toggleSectionCollapse(panelId)
+      }
+      panel.api.setActive()
+      setActiveSidebarPanelId(panelId)
+    }
+
+    if (collapsed.filetree) {
+      toggleFiletree()
+      requestAnimationFrame(activate)
+      return
+    }
+    activate()
+  }, [
+    dockApi,
+    sectionCollapsed,
+    toggleSectionCollapse,
+    collapsed.filetree,
+    toggleFiletree,
   ])
 
   useEffect(() => {
@@ -1610,47 +1800,96 @@ export default function App() {
         return
       }
 
-      const emptyPanel = dockApi.getPanel('empty-center')
-      const centerGroup = getLiveCenterGroup(dockApi)
-      if (centerGroup) {
-        centerGroup.header.hidden = false
-      }
-
       const addEditorPanel = (content) => {
+        const centerGroup = getLiveCenterGroup(dockApi)
+        if (centerGroup) {
+          centerGroup.header.hidden = false
+        }
+
+        const resolveRetryPosition = () => {
+          const liveCenterGroup = getLiveCenterGroup(dockApi)
+          if (liveCenterGroup) return { referenceGroup: liveCenterGroup }
+
+          const centerAnchorPanel = findCenterAnchorPanel(dockApi)
+          if (centerAnchorPanel?.group) {
+            return { referenceGroup: centerAnchorPanel.group }
+          }
+
+          const liveEmptyPanel = dockApi.getPanel('empty-center')
+          if (liveEmptyPanel?.group) {
+            return { referenceGroup: liveEmptyPanel.group }
+          }
+
+          const shellPanel = dockApi.getPanel('shell')
+          if (shellPanel?.group) {
+            return { direction: 'above', referenceGroup: shellPanel.group }
+          }
+
+          return getLeftSidebarAnchorPosition(dockApi)
+        }
+
+        const panelParams = {
+          path,
+          initialContent: content,
+          contentVersion: 1,
+          ...extraParams,
+          onContentChange: (p, newContent) => {
+            setTabs((prev) => ({
+              ...prev,
+              [p]: { ...prev[p], content: newContent },
+            }))
+          },
+          onDirtyChange: (p, dirty) => {
+            setTabs((prev) => ({
+              ...prev,
+              [p]: { ...prev[p], isDirty: dirty },
+            }))
+            const panel = dockApi.getPanel(`editor-${p}`)
+            if (panel) {
+              panel.api.setTitle(getFileName(p) + (dirty ? ' *' : ''))
+            }
+          },
+        }
+
+        let panel = dockApi.addPanel({
+          id: panelId,
+          component: 'editor',
+          title: getFileName(path),
+          position,
+          params: panelParams,
+        })
+
+        if (!panel) {
+          const retryPosition = resolveRetryPosition()
+          panel = dockApi.addPanel({
+            id: panelId,
+            component: 'editor',
+            title: getFileName(path),
+            position: retryPosition,
+            params: panelParams,
+          })
+        }
+
+        if (!panel) {
+          panel = dockApi.addPanel({
+            id: panelId,
+            component: 'editor',
+            title: getFileName(path),
+            params: panelParams,
+          })
+        }
+
+        if (!panel) {
+          console.warn('[App] Failed to open editor panel', { path, requestedPosition: position })
+          return
+        }
+
         setTabs((prev) => ({
           ...prev,
           [path]: { content, isDirty: false },
         }))
 
-        const panel = dockApi.addPanel({
-          id: panelId,
-          component: 'editor',
-          title: getFileName(path),
-          position,
-          params: {
-            path,
-            initialContent: content,
-            contentVersion: 1,
-            ...extraParams,
-            onContentChange: (p, newContent) => {
-              setTabs((prev) => ({
-                ...prev,
-                [p]: { ...prev[p], content: newContent },
-              }))
-            },
-            onDirtyChange: (p, dirty) => {
-              setTabs((prev) => ({
-                ...prev,
-                [p]: { ...prev[p], isDirty: dirty },
-              }))
-              const panel = dockApi.getPanel(`editor-${p}`)
-              if (panel) {
-                panel.api.setTitle(getFileName(p) + (dirty ? ' *' : ''))
-              }
-            },
-          },
-        })
-
+        const emptyPanel = dockApi.getPanel('empty-center')
         if (emptyPanel) {
           emptyPanel.api.close()
         }
@@ -1663,6 +1902,7 @@ export default function App() {
             maximumHeight: Number.MAX_SAFE_INTEGER,
           })
         }
+        panel.api.setActive()
       }
 
       queryClient.fetchQuery({
@@ -1676,7 +1916,14 @@ export default function App() {
           addEditorPanel('')
         })
     },
-    [dataProvider, dockApi, getLiveCenterGroup, queryClient]
+    [
+      dataProvider,
+      dockApi,
+      findCenterAnchorPanel,
+      getLeftSidebarAnchorPosition,
+      getLiveCenterGroup,
+      queryClient,
+    ]
   )
 
   const openFile = useCallback(
@@ -2161,9 +2408,10 @@ export default function App() {
 
   const addChatPanel = useCallback(
     ({ mode = 'tab', sourcePanelId = '', piSessionBootstrap = 'latest' } = {}) => {
-      if (!dockApi) return false
+      const api = dockApiRef.current
+      if (!api) return false
 
-      const sourcePanel = sourcePanelId ? dockApi.getPanel(sourcePanelId) : null
+      const sourcePanel = sourcePanelId ? api.getPanel(sourcePanelId) : null
       const sourceComponent = getPanelComponent(sourcePanel)
       const sourceProvider = sourcePanel?.params?.provider
 
@@ -2171,16 +2419,18 @@ export default function App() {
       let provider = sourceProvider
 
       if (!component) {
-        if (companionAgentEnabled && capabilities?.features?.companion === true) {
+        const allowCompanionInLocalMode = isCoreDeploy && agentRailMode === 'companion'
+        const allowPiInLocalMode = isCoreDeploy && agentRailMode === 'pi'
+        if (companionAgentEnabled && (capabilities?.features?.companion === true || allowCompanionInLocalMode)) {
           component = 'companion'
           provider = 'companion'
         } else if (nativeAgentEnabled) {
           component = 'terminal'
-        } else if (piAgentEnabled && capabilities?.features?.pi === true) {
+        } else if (piAgentEnabled && (capabilities?.features?.pi === true || allowPiInLocalMode)) {
           component = 'companion'
           provider = 'pi'
         } else {
-          const fallbackPanel = listDockPanels(dockApi).find((panel) => {
+          const fallbackPanel = listDockPanels(api).find((panel) => {
             const panelComponent = getPanelComponent(panel)
             return panelComponent === 'terminal' || panelComponent === 'companion'
           })
@@ -2204,7 +2454,7 @@ export default function App() {
         : provider === 'pi'
           ? 'pi-agent-chat'
           : 'companion-chat'
-      const panelId = createUniquePanelId(dockApi, panelIdPrefix)
+      const panelId = createUniquePanelId(api, panelIdPrefix)
       const piInitialSessionId = component === 'companion'
         && provider === 'pi'
         && piSessionBootstrap === 'new'
@@ -2213,22 +2463,22 @@ export default function App() {
       const title = component === 'terminal'
         ? 'Code Sessions'
         : 'Agent'
-      const matchingPanels = listDockPanels(dockApi).filter(
+      const matchingPanels = listDockPanels(api).filter(
         (panel) =>
           getPanelComponent(panel) === component
           && (component !== 'companion' || (panel?.params?.provider || 'companion') === (provider || 'companion')),
       )
       const defaultReferencePanel = matchingPanels[0]
-      let emptyCenterPanel = dockApi.getPanel('empty-center')
-      let centerGroup = getLiveCenterGroup(dockApi) || emptyCenterPanel?.group
-      const shellGroup = dockApi.getPanel('shell')?.group
+      let emptyCenterPanel = api.getPanel('empty-center')
+      let centerGroup = getLiveCenterGroup(api) || emptyCenterPanel?.group
+      const shellGroup = api.getPanel('shell')?.group
 
       // Ensure chat panels anchor in the center area, not side rails.
       if (!centerGroup) {
-        const emptyCenterPosition = getLeftSidebarAnchorPosition(dockApi)
+        const emptyCenterPosition = getLeftSidebarAnchorPosition(api)
           || (shellGroup ? { direction: 'above', referenceGroup: shellGroup } : undefined)
         if (!emptyCenterPanel && emptyCenterPosition) {
-          emptyCenterPanel = dockApi.addPanel({
+          emptyCenterPanel = api.addPanel({
             id: 'empty-center',
             component: 'empty',
             title: '',
@@ -2258,7 +2508,7 @@ export default function App() {
       } else if (defaultReferencePanel?.group) {
         position = { referenceGroup: defaultReferencePanel.group }
       } else if (mode === 'split') {
-        const emptyCenter = dockApi.getPanel('empty-center')
+        const emptyCenter = api.getPanel('empty-center')
         if (emptyCenter) {
           position = { direction: 'right', referencePanel: emptyCenter.id }
         } else if (centerGroup?.activePanel?.id) {
@@ -2273,10 +2523,10 @@ export default function App() {
       } else if (shellGroup) {
         position = { direction: 'above', referenceGroup: shellGroup }
       } else {
-        position = getLeftSidebarAnchorPosition(dockApi)
+        position = getLeftSidebarAnchorPosition(api)
       }
 
-      const panel = dockApi.addPanel({
+      const panel = api.addPanel({
         id: panelId,
         component,
         title,
@@ -2337,11 +2587,12 @@ export default function App() {
       return true
     },
     [
-      dockApi,
       nativeAgentEnabled,
       companionAgentEnabled,
       piAgentEnabled,
       capabilities,
+      isCoreDeploy,
+      agentRailMode,
       createUniquePanelId,
       getLeftSidebarAnchorPosition,
       getLiveCenterGroup,
@@ -2545,10 +2796,13 @@ export default function App() {
             activeDiffFile,
             collapsed: collapsed.filetree,
             onToggleCollapse: toggleFiletree,
-            showSidebarToggle: leftSidebarPanelIds[0] === 'filetree',
+            showSidebarToggle: sidebarToggleHostId === 'filetree',
             appName: config.branding?.name || '',
             sectionCollapsed: sectionCollapsed.filetree,
             onToggleSection: () => toggleSectionCollapse('filetree'),
+            activeSidebarPanelId,
+            onActivateSidebarPanel: activateSidebarPanel,
+            filetreeActivityIntent,
             userEmail: menuUserEmail,
             userMenuStatusMessage,
             userMenuStatusTone,
@@ -2591,10 +2845,12 @@ export default function App() {
             return {
               collapsed: collapsed.filetree,
               onToggleCollapse: toggleFiletree,
-              showSidebarToggle: leftSidebarPanelIds[0] === panelId,
+              showSidebarToggle: sidebarToggleHostId === panelId,
               appName: config.branding?.name || '',
               sectionCollapsed: sectionCollapsed[panelId],
               onToggleSection: () => toggleSectionCollapse(panelId),
+              activeSidebarPanelId,
+              onActivateSidebarPanel: activateSidebarPanel,
             }
           }
           return {}
@@ -3268,10 +3524,13 @@ export default function App() {
             activeDiffFile,
             collapsed: collapsed.filetree,
             onToggleCollapse: toggleFiletree,
-            showSidebarToggle: leftSidebarPanelIds[0] === 'filetree',
+            showSidebarToggle: sidebarToggleHostId === 'filetree',
             appName: config.branding?.name || '',
             sectionCollapsed: sectionCollapsed.filetree,
             onToggleSection: () => toggleSectionCollapse('filetree'),
+            activeSidebarPanelId,
+            onActivateSidebarPanel: activateSidebarPanel,
+            filetreeActivityIntent,
             userEmail: menuUserEmail,
             userMenuStatusMessage,
             userMenuStatusTone,
@@ -3297,10 +3556,12 @@ export default function App() {
             ...(panel?.params || {}),
             collapsed: collapsed.filetree,
             onToggleCollapse: toggleFiletree,
-            showSidebarToggle: leftSidebarPanelIds[0] === panelId,
+            showSidebarToggle: sidebarToggleHostId === panelId,
             appName: config.branding?.name || '',
             sectionCollapsed: panelId ? sectionCollapsed[panelId] : false,
             onToggleSection: panelId ? () => toggleSectionCollapse(panelId) : undefined,
+            activeSidebarPanelId,
+            onActivateSidebarPanel: activateSidebarPanel,
           })
         })
 
@@ -3332,7 +3593,17 @@ export default function App() {
         // Handle companion panel restored from saved layout.
         const companionPanel = dockApi.getPanel('companion')
         if (companionPanel) {
-          if (!capabilitiesLoading && (!companionAgentEnabled || capabilities?.features?.companion !== true)) {
+          const allowCompanionInLocalMode = isCoreDeploy && agentRailMode === 'companion'
+          if (
+            !capabilitiesLoading
+            && (
+              !companionAgentEnabled
+              || (
+                capabilities?.features?.companion !== true
+                && !allowCompanionInLocalMode
+              )
+            )
+          ) {
             companionPanel.api.close()
           } else {
             const companionGroup = companionPanel.group
@@ -3359,7 +3630,17 @@ export default function App() {
         // Handle PI panel restored from saved layout.
         const piPanel = dockApi.getPanel('pi-agent')
         if (piPanel) {
-          if (!capabilitiesLoading && (!piAgentEnabled || capabilities?.features?.pi !== true)) {
+          const allowPiInLocalMode = isCoreDeploy && agentRailMode === 'pi'
+          if (
+            !capabilitiesLoading
+            && (
+              !piAgentEnabled
+              || (
+                capabilities?.features?.pi !== true
+                && !allowPiInLocalMode
+              )
+            )
+          ) {
             piPanel.api.close()
           } else {
             const piGroup = piPanel.group
@@ -3546,16 +3827,25 @@ export default function App() {
     companionAgentEnabled,
     nativeAgentEnabled,
     piAgentEnabled,
+    isCoreDeploy,
+    agentRailMode,
     getLeftSidebarGroups,
     leftSidebarCollapsedWidth,
     leftSidebarMinWidth,
     leftSidebarPanelIds,
+    sidebarToggleHostId,
+    activeSidebarPanelId,
+    activateSidebarPanel,
+    filetreeActivityIntent,
   ])
 
   // Track active panel to highlight in file tree and sync URL
   useEffect(() => {
     if (!dockApi) return
     const disposable = dockApi.onDidActivePanelChange((panel) => {
+      if (panel?.id && leftSidebarPanelIds.includes(panel.id)) {
+        setActiveSidebarPanelId(panel.id)
+      }
       if (panel && panel.id && panel.id.startsWith('editor-')) {
         const path = panel.id.replace('editor-', '')
         setActiveFile(path)
@@ -3576,7 +3866,7 @@ export default function App() {
       void publishFrontendState(dockApi)
     })
     return () => disposable.dispose()
-  }, [dockApi, publishFrontendState])
+  }, [dockApi, publishFrontendState, leftSidebarPanelIds])
 
   // Update filetree panel params when openFile changes
   useEffect(() => {
@@ -3596,10 +3886,13 @@ export default function App() {
         activeDiffFile,
         collapsed: collapsed.filetree,
         onToggleCollapse: toggleFiletree,
-        showSidebarToggle: leftSidebarPanelIds[0] === 'filetree',
+        showSidebarToggle: sidebarToggleHostId === 'filetree',
         appName: config.branding?.name || '',
         sectionCollapsed: sectionCollapsed.filetree,
         onToggleSection: () => toggleSectionCollapse('filetree'),
+        activeSidebarPanelId,
+        onActivateSidebarPanel: activateSidebarPanel,
+        filetreeActivityIntent,
         userEmail: menuUserEmail,
         userMenuStatusMessage,
         userMenuStatusTone,
@@ -3620,10 +3913,12 @@ export default function App() {
         ...(panel?.params || {}),
         collapsed: collapsed.filetree,
         onToggleCollapse: toggleFiletree,
-        showSidebarToggle: leftSidebarPanelIds[0] === panelId,
+        showSidebarToggle: sidebarToggleHostId === panelId,
         appName: config.branding?.name || '',
         sectionCollapsed: panelId ? sectionCollapsed[panelId] : false,
         onToggleSection: panelId ? () => toggleSectionCollapse(panelId) : undefined,
+        activeSidebarPanelId,
+        onActivateSidebarPanel: activateSidebarPanel,
       })
     })
   }, [
@@ -3651,6 +3946,10 @@ export default function App() {
     handleOpenUserSettings,
     handleLogout,
     leftSidebarPanelIds,
+    sidebarToggleHostId,
+    activeSidebarPanelId,
+    activateSidebarPanel,
+    filetreeActivityIntent,
   ])
 
   // Helper to focus a review panel
@@ -3765,6 +4064,8 @@ export default function App() {
     }
   }, [dockApi, capabilitiesLoading, capabilities, nativeAgentEnabled, companionAgentEnabled, projectRoot])
 
+  const startupChatOpened = useRef(false)
+
   // Remove legacy fixed right-rail chat panels from older layouts.
   // New chat panels are dynamic tab panels created via addChatPanel.
   useEffect(() => {
@@ -3792,13 +4093,19 @@ export default function App() {
     if (removedLegacyPanel && typeof dockApi.toJSON === 'function') {
       saveLayout(storagePrefix, projectRootRef.current, dockApi.toJSON(), layoutVersionRef.current)
     }
-  }, [dockApi, capabilitiesLoading, nativeAgentEnabled, storagePrefix])
+
+    if (countAllAgentPanels(dockApi) === 0) {
+      const opened = addChatPanel({ mode: 'split' })
+      if (opened) {
+        startupChatOpened.current = true
+      }
+    }
+  }, [dockApi, capabilitiesLoading, nativeAgentEnabled, storagePrefix, addChatPanel])
 
   // Always open one chat panel on startup when none exists.
-  const startupChatOpened = useRef(false)
   useEffect(() => {
     if (!dockApi || capabilitiesLoading || projectRoot === null) return
-    if (!layoutRestored.current || startupChatOpened.current) return
+    if (!isInitialized.current || startupChatOpened.current) return
 
     // Run startup auto-open only once, so user-closing the last chat
     // does not trigger re-creation until a full reload.
@@ -4141,6 +4448,9 @@ export default function App() {
       <DataContext.Provider key={dataProviderScopeKey} value={dataProvider}>
         <ThemeProvider>
           <div className="app-container">
+            <a className="skip-to-content-link" href={`#${MAIN_CONTENT_ID}`}>
+              Skip to main content
+            </a>
             {config.features?.showHeader !== false && (
               <header className="app-header">
                 <div className="app-header-brand">
@@ -4148,7 +4458,7 @@ export default function App() {
                     {config.branding?.logo || 'B'}
                   </div>
                   <div className="app-header-title">
-                    {projectRoot?.split('/').pop() || config.branding?.name || 'Workspace'}
+                    {config.branding?.name || projectRoot?.split('/').pop() || 'Workspace'}
                   </div>
                 </div>
                 <div className="app-header-controls">
@@ -4156,34 +4466,37 @@ export default function App() {
                 </div>
               </header>
             )}
-            {unavailableEssentials.length > 0 && (
-              <div className="capability-warning">
-                <strong>Warning:</strong> Some features are unavailable.
-                Missing capabilities for: {unavailableEssentials.map(p => p.title || p.id).join(', ')}.
-              </div>
-            )}
-            <CapabilitiesStatusContext.Provider value={{ pending: capabilitiesPending }}>
-              <CapabilitiesContext.Provider value={capabilities}>
-                {capabilitiesPending ? (
-                  <div className="workspace-loading" role="status" aria-live="polite">
-                    <Loader2 className="workspace-loading-icon" size={40} />
-                    <h2 className="workspace-loading-title">Opening workspace</h2>
-                    <p className="workspace-loading-message">Connecting to backend services...</p>
-                  </div>
-                ) : (
-                  <div data-testid="dockview" className="dockview-host">
-                    <DockviewReact
-                      className={dockviewClassName}
-                      components={components}
-                      tabComponents={tabComponents}
-                      rightHeaderActionsComponent={RightHeaderActions}
-                      onReady={onReady}
-                      onDidDrop={onDidDrop}
-                    />
-                  </div>
-                )}
-              </CapabilitiesContext.Provider>
-            </CapabilitiesStatusContext.Provider>
+            <main id={MAIN_CONTENT_ID} className="app-main-content" tabIndex={-1}>
+              {unavailableEssentials.length > 0 && (
+                <div className="capability-warning">
+                  <strong>Warning:</strong> Some features are unavailable.
+                  Missing capabilities for: {unavailableEssentials.map(p => p.title || p.id).join(', ')}.
+                </div>
+              )}
+              <CapabilitiesStatusContext.Provider value={{ pending: capabilitiesPending }}>
+                <CapabilitiesContext.Provider value={capabilities}>
+                  {capabilitiesPending ? (
+                    <div className="workspace-loading" role="status" aria-live="polite">
+                      <Loader2 className="workspace-loading-icon" size={40} />
+                      <h2 className="workspace-loading-title">Opening workspace</h2>
+                      <p className="workspace-loading-message">Connecting to backend services...</p>
+                    </div>
+                  ) : (
+                    <div data-testid="dockview" className="dockview-host">
+                      <DockviewReact
+                        className={dockviewClassName}
+                        components={components}
+                        tabComponents={tabComponents}
+                        defaultTabComponent={UnifiedDockTab}
+                        rightHeaderActionsComponent={RightHeaderActions}
+                        onReady={onReady}
+                        onDidDrop={onDidDrop}
+                      />
+                    </div>
+                  )}
+                </CapabilitiesContext.Provider>
+              </CapabilitiesStatusContext.Provider>
+            </main>
             {showCreateWorkspaceModal && (
               <CreateWorkspaceModal
                 onClose={() => setShowCreateWorkspaceModal(false)}
