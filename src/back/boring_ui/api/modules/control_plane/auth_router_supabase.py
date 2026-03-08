@@ -411,6 +411,11 @@ workspace.open(session.id)</pre>
       appNameEl.textContent = appName;
       appDescriptionEl.textContent = appDescription;
       document.title = "Sign in — " + appName;
+      var railCode = String(AUTH.railCode || "").trim();
+      if (railCode) {
+        var railCodeEl = document.querySelector(".rail-code");
+        if (railCodeEl) railCodeEl.textContent = railCode;
+      }
     }
 
     function setBusy(isBusy) {
@@ -626,6 +631,7 @@ def _render_supabase_login_html(
         "initialMode": "sign_up" if initial_mode == "sign_up" else "sign_in",
         "appName": config.auth_app_name,
         "appDescription": config.auth_app_description,
+        "railCode": config.auth_rail_code,
     }
     cfg_json = json.dumps(cfg, separators=(",", ":"))
     html = _LOGIN_HTML_TEMPLATE.replace(_AUTH_CONFIG_PLACEHOLDER, cfg_json, 1)

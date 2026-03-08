@@ -151,6 +151,9 @@ class APIConfig:
     auth_app_description: str = field(
         default_factory=lambda: _env_str('AUTH_APP_DESCRIPTION', 'Your collaborative development workspace.')
     )
+    auth_rail_code: str = field(
+        default_factory=lambda: _env_str('AUTH_RAIL_CODE', '')
+    )
     supabase_url: str | None = field(
         default_factory=lambda: os.environ.get('SUPABASE_URL')
     )
