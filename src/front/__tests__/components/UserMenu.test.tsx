@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react'
 import UserMenu from '../../components/UserMenu'
 import { ThemeProvider } from '../../hooks/useTheme'
 
@@ -64,7 +64,7 @@ describe('UserMenu', () => {
 
       const menu = screen.getByRole('menu')
       expect(within(menu).getByText('john@example.com')).toBeInTheDocument()
-      expect(within(menu).getByText('workspace: My Workspace')).toBeInTheDocument()
+      expect(within(menu).getByText('My Workspace')).toBeInTheDocument()
       expect(screen.getByRole('menuitem', { name: 'Switch workspace' })).toBeInTheDocument()
       expect(screen.getByRole('menuitem', { name: 'Create workspace' })).toBeInTheDocument()
       expect(screen.getByRole('menuitem', { name: 'User settings' })).toBeInTheDocument()
@@ -177,7 +177,7 @@ describe('UserMenu', () => {
       expect(lastItem).toHaveFocus()
     })
 
-    it('closes on Escape and restores focus to trigger', () => {
+    it('closes on Escape and restores focus to trigger', async () => {
       renderWithTheme(<UserMenu {...makeProps()} />)
       const trigger = screen.getByRole('button', { name: 'User menu' })
       fireEvent.click(trigger)
@@ -186,7 +186,9 @@ describe('UserMenu', () => {
       fireEvent.keyDown(menu, { key: 'Escape' })
 
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-      expect(trigger).toHaveFocus()
+      await waitFor(() => {
+        expect(trigger).toHaveFocus()
+      })
     })
   })
 })

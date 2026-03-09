@@ -65,11 +65,16 @@ const renderWithProvider = (provider, params = {}) => {
 
 const createProviderWithDeferredRead = () => {
   const readSignals = []
+  let readCount = 0
   const provider = {
     files: {
       list: vi.fn(),
       read: vi.fn((_path, opts = {}) => {
         if (opts?.signal) readSignals.push(opts.signal)
+        readCount += 1
+        // First read resolves immediately so the editor renders past loading state.
+        // Subsequent reads are deferred to test cancellation behavior.
+        if (readCount === 1) return Promise.resolve('')
         return new Promise(() => {})
       }),
       write: vi.fn(async () => undefined),
@@ -186,7 +191,9 @@ describe('EditorPanel integration + cancellation', () => {
     const { provider } = createProviderWithDeferredRead()
     renderWithProvider(provider)
 
-    expect(screen.getByTestId('editor-content')).toHaveTextContent('')
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-content')).toHaveTextContent('')
+    })
 
     fireEvent.click(screen.getByTestId('editor-change'))
     fireEvent.click(screen.getByTestId('editor-autosave'))
@@ -204,7 +211,9 @@ describe('EditorPanel integration + cancellation', () => {
     const { provider } = createProviderWithDeferredRead()
     const { api } = renderWithProvider(provider)
 
-    expect(screen.getByTestId('editor-content')).toHaveTextContent('')
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-content')).toHaveTextContent('')
+    })
 
     fireEvent.click(screen.getByTestId('editor-change'))
 

@@ -10,6 +10,10 @@ vi.mock('../../components/GitChangesView', () => ({
   default: () => <div data-testid="git-changes-view">Git changes</div>,
 }))
 
+vi.mock('../../providers/data', () => ({
+  useGitStatus: () => ({ isLoading: false, isFetching: false }),
+}))
+
 vi.mock('../../components/UserMenu', () => ({
   default: ({ collapsed = false }: { collapsed?: boolean }) => (
     <div data-testid={collapsed ? 'user-menu-collapsed' : 'user-menu-expanded'}>User menu</div>
@@ -48,7 +52,7 @@ describe('FileTreePanel', () => {
   it('switches from file tree to git changes view', () => {
     render(<FileTreePanel params={makeParams()} />)
 
-    fireEvent.click(screen.getByTitle('Git changes'))
+    fireEvent.click(screen.getByRole('tab', { name: 'Git changes view' }))
     expect(screen.getByTestId('git-changes-view')).toBeInTheDocument()
   })
 

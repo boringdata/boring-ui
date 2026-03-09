@@ -48,6 +48,7 @@ describe('FileTree', () => {
     creatingFile: false,
     onFileCreated: vi.fn(),
     onCancelCreate: vi.fn(),
+    searchExpanded: true,
   }
 
   beforeEach(() => {

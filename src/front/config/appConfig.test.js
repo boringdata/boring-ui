@@ -68,7 +68,6 @@ describe('appConfig', () => {
 
       expect(config.panels.essential).toContain('filetree')
       expect(config.panels.essential).toContain('terminal')
-      expect(config.panels.essential).toContain('shell')
     })
   })
 

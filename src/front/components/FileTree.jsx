@@ -497,7 +497,7 @@ export default function FileTree({
   const handleDragOver = (event, entry) => {
     if (!entry.is_dir) return
     event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
     setDragOver(entry.path)
   }
 

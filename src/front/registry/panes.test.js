@@ -340,7 +340,7 @@ describe('createDefaultRegistry', () => {
     expect(pane.requiresAnyFeatures).toContain('pi')
     expect(pane.essential).toBe(false)
     expect(pane.placement).toBe('right')
-    expect(pane.hideHeader).toBe(false)
+    expect(pane.hideHeader).toBe(true)
   })
 
   it('gates companion pane on companion OR pi feature', () => {

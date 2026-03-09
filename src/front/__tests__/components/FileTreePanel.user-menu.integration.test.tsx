@@ -11,6 +11,10 @@ vi.mock('../../components/GitChangesView', () => ({
   default: () => <div data-testid="git-changes-view">Git changes</div>,
 }))
 
+vi.mock('../../providers/data', () => ({
+  useGitStatus: () => ({ isLoading: false, isFetching: false }),
+}))
+
 const makeParams = (overrides = {}) => ({
   onOpenFile: vi.fn(),
   onOpenFileToSide: vi.fn(),
@@ -43,7 +47,7 @@ describe('FileTreePanel + UserMenu integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'User menu' }))
     expect(screen.getByRole('menu')).toBeInTheDocument()
-    expect(screen.getByText('workspace: my-workspace')).toBeInTheDocument()
+    expect(screen.getByText('my-workspace')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('menuitem', { name: 'Logout' }))
     expect(params.onLogout).toHaveBeenCalledWith({ workspaceId: 'ws-123' })
