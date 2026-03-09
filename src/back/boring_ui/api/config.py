@@ -186,6 +186,9 @@ class APIConfig:
     github_app_private_key: str | None = field(
         default_factory=lambda: os.environ.get('GITHUB_APP_PRIVATE_KEY')
     )
+    github_app_slug: str | None = field(
+        default_factory=lambda: os.environ.get('GITHUB_APP_SLUG')
+    )
 
     def __post_init__(self) -> None:
         # Test harness hook: allow overriding the PTY provider commands without

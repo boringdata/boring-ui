@@ -211,7 +211,26 @@ def create_workspace_router_supabase(config: APIConfig) -> APIRouter:
                 uuid.UUID(workspace_id),
             )
         data = normalize_workspace_payload(row)
-        return {"ok": True, "workspace": data, **data}
+
+        # Auto-provision GitHub repo if GitHub App is configured
+        git_repo = None
+        if config.github_app_id and config.github_app_private_key:
+            try:
+                from ..github_auth.provisioning import provision_workspace_repo
+                git_repo = await provision_workspace_repo(
+                    config, pool, workspace_id, name,
+                )
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    'Git repo provisioning failed for workspace %s: %s',
+                    workspace_id, exc,
+                )
+
+        result = {"ok": True, "workspace": data, **data}
+        if git_repo:
+            result["git_repo"] = git_repo
+        return result
 
     @router.get("/workspaces")
     async def list_workspaces(request: Request):

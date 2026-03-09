@@ -11,29 +11,54 @@ from .service import GitService
 logger = logging.getLogger(__name__)
 
 
-def _resolve_credentials(config: APIConfig) -> dict | None:
+async def _resolve_credentials_async(config: APIConfig, request: Request) -> dict | None:
     """Resolve git credentials for push/pull/clone.
 
     Resolution order:
-    1. GitHub App installation token (if configured + workspace connected)
-    2. GIT_AUTH_TOKEN env var (PAT fallback for simple deployments)
-    3. None (git uses its own credential resolution)
+    1. GitHub App via workspace settings (installation_id from DB)
+    2. GitHub App via in-memory connections (legacy fallback)
+    3. GIT_AUTH_TOKEN env var (PAT fallback for simple deployments)
+    4. None (git uses its own credential resolution)
     """
-    # 1. GitHub App
+    import os
+
+    # 1. GitHub App via workspace settings (DB-persisted)
     if config.github_app_id and config.github_app_private_key:
+        workspace_id = request.headers.get('x-workspace-id')
+        if workspace_id:
+            try:
+                from ..github_auth.provisioning import read_workspace_git_settings
+                from ..github_auth.service import GitHubAppService
+                from ...modules.control_plane.supabase.db_client import get_pool
+                pool = get_pool()
+                settings_key = config.settings_encryption_key or os.environ.get('BORING_SETTINGS_KEY', '')
+                if pool and settings_key:
+                    git_settings = await read_workspace_git_settings(pool, workspace_id, settings_key)
+                    if git_settings and git_settings.get('installation_id'):
+                        gh = GitHubAppService(config)
+                        return gh.get_git_credentials(git_settings['installation_id'])
+            except Exception as exc:
+                logger.debug('Could not resolve credentials from workspace settings: %s', exc)
+
+        # 2. Legacy in-memory fallback
         try:
             from ..github_auth.service import GitHubAppService
             from ..github_auth.router import _workspace_connections
             if _workspace_connections:
-                installation_id = next(iter(_workspace_connections.values()), None)
+                conn_data = next(iter(_workspace_connections.values()), None)
+                if isinstance(conn_data, dict):
+                    installation_id = conn_data.get('installation_id')
+                elif isinstance(conn_data, int):
+                    installation_id = conn_data
+                else:
+                    installation_id = None
                 if installation_id is not None:
                     gh = GitHubAppService(config)
                     return gh.get_git_credentials(installation_id)
         except Exception as exc:
             logger.debug('Could not resolve GitHub App credentials: %s', exc)
 
-    # 2. PAT fallback
-    import os
+    # 3. PAT fallback
     pat = os.environ.get('GIT_AUTH_TOKEN')
     if pat:
         return {'username': 'x-access-token', 'password': pat}
@@ -166,7 +191,7 @@ def create_git_router(config: APIConfig) -> APIRouter:
         if deny is not None:
             return deny
         body = await request.json()
-        creds = _resolve_credentials(config)
+        creds = await _resolve_credentials_async(config, request)
         return await asyncio.to_thread(
             service.push,
             body.get('remote', 'origin'),
@@ -185,7 +210,7 @@ def create_git_router(config: APIConfig) -> APIRouter:
         if deny is not None:
             return deny
         body = await request.json()
-        creds = _resolve_credentials(config)
+        creds = await _resolve_credentials_async(config, request)
         return await asyncio.to_thread(
             service.pull,
             body.get('remote', 'origin'),
@@ -208,7 +233,7 @@ def create_git_router(config: APIConfig) -> APIRouter:
         if not url:
             from fastapi import HTTPException as HE
             raise HE(status_code=400, detail='url is required')
-        creds = _resolve_credentials(config)
+        creds = await _resolve_credentials_async(config, request)
         return await asyncio.to_thread(service.clone_repo, url, body.get('branch'), creds)
 
     @router.post('/remote')

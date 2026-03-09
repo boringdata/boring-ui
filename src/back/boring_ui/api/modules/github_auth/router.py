@@ -9,6 +9,11 @@ from ...config import APIConfig
 from .service import GitHubAppService
 
 
+# Module-level store so the git router can resolve credentials.
+# In production, persist to DB or workspace config.
+_workspace_connections: dict[str, dict] = {}
+
+
 def create_github_auth_router(config: APIConfig) -> APIRouter:
     """Create GitHub App auth router.
 
@@ -26,9 +31,8 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
 
     # In-memory store: maps state -> redirect_uri for CSRF validation
     _pending_states: dict[str, str] = {}
-    # In-memory store: workspace connections (workspace -> installation_id)
-    # In production, persist to DB or workspace config
-    _connections: dict[str, dict] = {}
+    # Reference module-level connections store
+    _connections = _workspace_connections
 
     @router.get('/authorize')
     async def authorize(request: Request, redirect_uri: str | None = None):

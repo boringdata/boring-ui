@@ -32,6 +32,7 @@ class GitHubAppService:
         self.client_id = config.github_app_client_id
         self.client_secret = config.github_app_client_secret
         self.private_key = config.github_app_private_key
+        self._slug = config.github_app_slug
         self._token_cache: dict[int, InstallationToken] = {}
         self._lock = threading.Lock()
 
@@ -54,7 +55,21 @@ class GitHubAppService:
     # ── OAuth flow ────────────────────────────────────────────────────
 
     def get_authorize_url(self, redirect_uri: str, state: str) -> str:
-        """Build the GitHub OAuth authorization URL."""
+        """Build the GitHub App install + authorize URL.
+
+        Uses the combined flow: user installs the app on their org/repos
+        AND authorizes in one step. GitHub redirects to redirect_uri with
+        a code that can be exchanged for an access token.
+        """
+        # The /installations/new URL handles both install and OAuth authorize.
+        # ?state= is forwarded to the callback for CSRF protection.
+        slug = getattr(self, '_slug', None)
+        if slug:
+            return (
+                f'https://github.com/apps/{slug}/installations/new'
+                f'?state={state}'
+            )
+        # Fallback to standard OAuth if slug is not known
         return (
             f'https://github.com/login/oauth/authorize'
             f'?client_id={self.client_id}'
@@ -188,3 +203,69 @@ class GitHubAppService:
         )
         resp.raise_for_status()
         return resp.json().get('repositories', [])
+
+    def create_repo(self, installation_id: int, name: str,
+                    *, private: bool = True, description: str = '') -> dict:
+        """Create a repository using an installation token.
+
+        Args:
+            installation_id: GitHub App installation ID.
+            name: Repository name (e.g., 'boring-ws-abc123').
+            private: Whether the repo is private (default: True).
+            description: Optional repo description.
+
+        Returns:
+            dict with full_name, clone_url, html_url, etc.
+        """
+        token = self.get_installation_token(installation_id)
+
+        # Determine the owner (org or user) from the installation
+        app_jwt = self._make_jwt()
+        install_resp = httpx.get(
+            f'{self.GITHUB_API}/app/installations/{installation_id}',
+            headers={
+                'Authorization': f'Bearer {app_jwt}',
+                'Accept': 'application/vnd.github+json',
+            },
+            timeout=15,
+        )
+        install_resp.raise_for_status()
+        install_data = install_resp.json()
+        account_type = install_data['account']['type']
+        account_login = install_data['account']['login']
+
+        # Create repo under org or user
+        if account_type == 'Organization':
+            url = f'{self.GITHUB_API}/orgs/{account_login}/repos'
+        else:
+            url = f'{self.GITHUB_API}/user/repos'
+
+        resp = httpx.post(
+            url,
+            json={
+                'name': name,
+                'private': private,
+                'description': description,
+                'auto_init': True,  # Create with README so it's not empty
+            },
+            headers={
+                'Authorization': f'Bearer {token}',
+                'Accept': 'application/vnd.github+json',
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        repo = resp.json()
+        return {
+            'full_name': repo['full_name'],
+            'clone_url': repo['clone_url'],
+            'html_url': repo['html_url'],
+            'private': repo['private'],
+        }
+
+    def get_first_installation_id(self) -> int | None:
+        """Get the first installation ID (for single-org setups)."""
+        installations = self.list_installations()
+        if installations:
+            return installations[0]['id']
+        return None
