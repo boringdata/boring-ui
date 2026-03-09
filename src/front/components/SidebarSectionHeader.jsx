@@ -1,18 +1,31 @@
-import { ChevronDown, ChevronRight, PanelLeftClose } from 'lucide-react'
+import { Bot, ChevronDown, ChevronRight, PanelLeftClose } from 'lucide-react'
 import Tooltip from './Tooltip'
 import { ICON_SIZE_ACTIVITY, ICON_SIZE_INLINE } from '../utils/iconTokens'
 
 /**
- * LeftPaneHeader - Minimal header bar for the left sidebar with only the collapse toggle.
+ * LeftPaneHeader - Minimal header bar for the left sidebar with collapse toggle
+ * and optional quick-action button (e.g., open a new chat pane).
  * Rendered once by the first panel in the sidebar. Panel-specific controls
  * (search, view toggle) belong in each panel's own SidebarSectionHeader.
  */
-export function LeftPaneHeader({ onToggleSidebar, appName }) {
+export function LeftPaneHeader({ onToggleSidebar, appName, onOpenChatTab }) {
   if (typeof onToggleSidebar !== 'function') return null
   return (
     <div className="left-pane-header left-pane-header-flat">
       <span className="left-pane-brand-title">{appName || 'workspace'}</span>
       <div className="left-pane-header-actions">
+        {typeof onOpenChatTab === 'function' && (
+          <Tooltip label="Open new chat pane">
+            <button
+              type="button"
+              className="sidebar-action-btn"
+              onClick={onOpenChatTab}
+              aria-label="Open new chat pane"
+            >
+              <Bot size={14} />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip label="Collapse sidebar">
           <button
             type="button"

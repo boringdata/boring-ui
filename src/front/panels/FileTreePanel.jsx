@@ -23,6 +23,7 @@ export default function FileTreePanel({ params }) {
     onToggleCollapse,
     showSidebarToggle,
     appName,
+    onOpenChatTab,
     sectionCollapsed,
     onToggleSection,
     onActivateSidebarPanel,
@@ -193,7 +194,7 @@ export default function FileTreePanel({ params }) {
   return (
     <div className={`panel-content filetree-panel${sectionCollapsed ? ' filetree-section-collapsed' : ''}`}>
       {showSidebarToggle && (
-        <LeftPaneHeader onToggleSidebar={onToggleCollapse} appName={appName} />
+        <LeftPaneHeader onToggleSidebar={onToggleCollapse} appName={appName} onOpenChatTab={onOpenChatTab} />
       )}
       {sectionCollapsed && <div className="filetree-section-spacer" />}
       <SidebarSectionHeader

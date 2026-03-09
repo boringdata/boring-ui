@@ -40,6 +40,9 @@ const stubCapabilities = async (page: Page) => {
 }
 
 const waitForUserMenuButton = async (page: Page) => {
+  // Wait for DockView to render before looking for UserMenu inside the sidebar.
+  await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
+
   const button = page.locator('[aria-label="User menu"]').first()
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -48,6 +51,7 @@ const waitForUserMenuButton = async (page: Page) => {
     } catch (error) {
       if (attempt === 2) throw error
       await page.reload()
+      await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
     }
   }
   return button
@@ -57,6 +61,10 @@ test.describe('User Menu Control-Plane Flows', () => {
   // These flows involve prompt/dialog interactions + full-page navigation; give the suite
   // extra headroom under CI-like load.
   test.describe.configure({ timeout: 60_000 })
+
+  // The default sidebar layout splits vertical space between data-catalog and filetree.
+  // Use a taller viewport so the UserMenu footer stays visible.
+  test.use({ viewport: { width: 1280, height: 1024 } })
 
   test.beforeEach(async ({ page }) => {
     await stubCapabilities(page)
