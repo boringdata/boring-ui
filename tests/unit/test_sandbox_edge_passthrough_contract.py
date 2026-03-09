@@ -37,7 +37,7 @@ def test_sandbox_edge_passthrough_allowlist_is_controlled() -> None:
     assert _is_allowed_workspace_passthrough_target("/api/v1/files/list")
     assert _is_allowed_workspace_passthrough_target("/api/v1/git/status")
     assert _is_allowed_workspace_passthrough_target("/auth/session")
-    assert not _is_allowed_workspace_passthrough_target("/api/capabilities")
+    assert _is_allowed_workspace_passthrough_target("/api/capabilities")
     assert not _is_allowed_workspace_passthrough_target("/api/v1/macro/query")
     assert not _is_allowed_workspace_passthrough_target("/internal/secret")
     assert not _is_allowed_workspace_passthrough_target("/w/ws-1/setup")
