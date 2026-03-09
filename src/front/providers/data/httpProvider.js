@@ -86,6 +86,41 @@ const sendJson = async (method, path, query, body, opts = {}) => {
  * @returns {import('./types').DataProvider}
  */
 export const createHttpProvider = () => ({
+  github: {
+    status: (workspaceId, opts) =>
+      fetchJson('/api/v1/auth/github/status', { workspace_id: workspaceId }, opts),
+
+    authorize: () =>
+      fetchJson('/api/v1/auth/github/authorize'),
+
+    callback: (code, state, opts) =>
+      fetchJson('/api/v1/auth/github/callback', { code, state }, opts),
+
+    connect: (workspaceId, installationId, opts) =>
+      sendJson('POST', '/api/v1/auth/github/connect', undefined, {
+        workspace_id: workspaceId,
+        installation_id: installationId,
+      }, opts),
+
+    disconnect: (workspaceId, opts) =>
+      sendJson('POST', '/api/v1/auth/github/disconnect', undefined, {
+        workspace_id: workspaceId,
+      }, opts),
+
+    installations: (opts) =>
+      fetchJson('/api/v1/auth/github/installations', undefined, opts),
+
+    repos: (installationId, opts) =>
+      fetchJson('/api/v1/auth/github/repos', { installation_id: installationId }, opts),
+
+    gitCredentials: async (workspaceId, opts) => {
+      const data = await fetchJson('/api/v1/auth/github/git-credentials', {
+        workspace_id: workspaceId,
+      }, opts)
+      return { username: data?.username, password: data?.password }
+    },
+  },
+
   files: {
     list: async (dir, opts) => {
       const data = await fetchJson(API.files.list, { path: dir }, opts)
