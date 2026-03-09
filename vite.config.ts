@@ -181,9 +181,10 @@ export default defineConfig(({ mode }) => {
           target: proxyApiTarget,
           changeOrigin: false,
           bypass(req) {
-            // Let SPA handle workspace root and settings pages;
+            // Let SPA handle workspace root, setup, and settings pages;
             // only proxy workspace-scoped backend routes (e.g. /w/{id}/api/...).
             if (req.url && /^\/w\/[^/]+\/?$/.test(req.url)) return req.url
+            if (req.url && /^\/w\/[^/]+\/setup\/?$/.test(req.url)) return req.url
             if (req.url && /^\/w\/[^/]+\/settings\/?$/.test(req.url)) return req.url
           },
         },

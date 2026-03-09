@@ -9,6 +9,7 @@ import PageShell from './PageShell'
  * Can be extended with more steps later.
  */
 export default function WorkspaceSetupPage({ workspaceId, workspaceName, capabilities, onComplete }) {
+  const capabilitiesLoaded = capabilities != null
   const githubEnabled = capabilities?.features?.github === true
   const { status, loading, connect } = useGitHubConnection(workspaceId, { enabled: githubEnabled })
 
@@ -16,11 +17,13 @@ export default function WorkspaceSetupPage({ workspaceId, workspaceName, capabil
     onComplete?.()
   }, [onComplete])
 
-  // If GitHub is not enabled, skip the wizard entirely
+  // If GitHub is not enabled, skip the wizard entirely — but only after capabilities load
   useEffect(() => {
-    if (!githubEnabled) handleDone()
-  }, [githubEnabled, handleDone])
+    if (capabilitiesLoaded && !githubEnabled) handleDone()
+  }, [capabilitiesLoaded, githubEnabled, handleDone])
 
+  // Wait for capabilities before rendering or skipping
+  if (!capabilitiesLoaded) return null
   if (!githubEnabled) return null
 
   const connected = status?.connected
