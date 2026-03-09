@@ -16,9 +16,8 @@ async def _resolve_credentials_async(config: APIConfig, request: Request) -> dic
 
     Resolution order:
     1. GitHub App via workspace settings (installation_id from DB)
-    2. GitHub App via in-memory connections (legacy fallback)
-    3. GIT_AUTH_TOKEN env var (PAT fallback for simple deployments)
-    4. None (git uses its own credential resolution)
+    2. GIT_AUTH_TOKEN env var (PAT fallback for simple deployments)
+    3. None (git uses its own credential resolution)
     """
     import os
 
@@ -38,27 +37,9 @@ async def _resolve_credentials_async(config: APIConfig, request: Request) -> dic
                         gh = GitHubAppService(config)
                         return gh.get_git_credentials(git_settings['installation_id'])
             except Exception as exc:
-                logger.debug('Could not resolve credentials from workspace settings: %s', exc)
+                logger.warning('Could not resolve credentials from workspace settings: %s', exc)
 
-        # 2. Legacy in-memory fallback
-        try:
-            from ..github_auth.service import GitHubAppService
-            from ..github_auth.router import _workspace_connections
-            if _workspace_connections:
-                conn_data = next(iter(_workspace_connections.values()), None)
-                if isinstance(conn_data, dict):
-                    installation_id = conn_data.get('installation_id')
-                elif isinstance(conn_data, int):
-                    installation_id = conn_data
-                else:
-                    installation_id = None
-                if installation_id is not None:
-                    gh = GitHubAppService(config)
-                    return gh.get_git_credentials(installation_id)
-        except Exception as exc:
-            logger.debug('Could not resolve GitHub App credentials: %s', exc)
-
-    # 3. PAT fallback
+    # 2. PAT fallback
     pat = os.environ.get('GIT_AUTH_TOKEN')
     if pat:
         return {'username': 'x-access-token', 'password': pat}

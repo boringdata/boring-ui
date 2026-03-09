@@ -214,6 +214,7 @@ def create_workspace_router_supabase(config: APIConfig) -> APIRouter:
 
         # Auto-provision GitHub repo if GitHub App is configured
         git_repo = None
+        git_provisioning_error = None
         if config.github_app_id and config.github_app_private_key:
             try:
                 from ..github_auth.provisioning import provision_workspace_repo
@@ -226,10 +227,15 @@ def create_workspace_router_supabase(config: APIConfig) -> APIRouter:
                     'Git repo provisioning failed for workspace %s: %s',
                     workspace_id, exc,
                 )
+                git_provisioning_error = str(exc)
 
         result = {"ok": True, "workspace": data, **data}
         if git_repo:
             result["git_repo"] = git_repo
+        elif config.github_app_id and config.github_app_private_key:
+            result["git_provisioning_status"] = "failed"
+            if git_provisioning_error:
+                result["git_provisioning_error"] = git_provisioning_error
         return result
 
     @router.get("/workspaces")

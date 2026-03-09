@@ -1,9 +1,12 @@
 """Configuration for boring-ui API."""
 import os
+import re
 import secrets
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_GITHUB_SLUG_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9\-]*$')
 
 
 def _default_cors_origins() -> list[str]:
@@ -203,6 +206,14 @@ class APIConfig:
         if not self.auth_session_secret:
             # Generate an ephemeral secret when one is not configured explicitly.
             self.auth_session_secret = secrets.token_urlsafe(48)
+
+        # Validate github_app_slug to prevent path traversal in URLs
+        if self.github_app_slug and not _GITHUB_SLUG_RE.match(self.github_app_slug):
+            import logging
+            logging.getLogger(__name__).warning(
+                'Invalid GITHUB_APP_SLUG %r — clearing', self.github_app_slug,
+            )
+            self.github_app_slug = None
 
         # Auto-enable supabase provider when explicit envs are present.
         if self.control_plane_provider == "local" and (

@@ -66,6 +66,12 @@ async def provision_workspace_repo(
 
     # Store in workspace_settings (encrypted)
     settings_key = config.settings_encryption_key or os.environ.get('BORING_SETTINGS_KEY', '')
+    if not settings_key:
+        logger.error(
+            'BORING_SETTINGS_KEY not set — cannot persist repo settings for workspace %s. '
+            'Repo %s was created but connection will not survive restart.',
+            workspace_id, repo['full_name'],
+        )
     if settings_key and pool:
         import uuid as _uuid
         ws_uuid = _uuid.UUID(str(workspace_id))
@@ -121,7 +127,8 @@ async def read_workspace_git_settings(pool, workspace_id: str, settings_key: str
                 """,
                 ws_uuid, settings_key,
             )
-    except Exception:
+    except Exception as exc:
+        logger.error('Failed to read git settings for workspace %s: %s', workspace_id, exc)
         return None
 
     result = {row['key']: row['val'] for row in rows}
