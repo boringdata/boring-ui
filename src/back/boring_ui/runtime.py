@@ -8,10 +8,44 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import FileResponse
 
 from .api import APIConfig, create_app
+
+
+def mount_static(app: FastAPI, static_path: Path) -> None:
+    """Mount built frontend assets with gzip and proper cache headers."""
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+    @app.middleware("http")
+    async def _cache_control(request, call_next):
+        response = await call_next(request)
+        path = request.url.path or ""
+        content_type = (response.headers.get("content-type") or "").lower()
+        if path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif "text/html" in content_type:
+            response.headers["Cache-Control"] = (
+                "no-store, no-cache, must-revalidate, max-age=0"
+            )
+        return response
+
+    assets_path = static_path / "assets"
+    if assets_path.exists() and assets_path.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        requested = static_path / full_path
+        if full_path and requested.exists() and requested.is_file():
+            return FileResponse(requested)
+        return FileResponse(
+            static_path / "index.html",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
 
 
 workspace_root = Path(os.environ.get("BORING_UI_WORKSPACE_ROOT", "/home/sprite"))
@@ -21,13 +55,4 @@ static_dir = os.environ.get("BORING_UI_STATIC_DIR", "")
 if static_dir:
     static_path = Path(static_dir)
     if static_path.exists() and static_path.is_dir():
-        assets_path = static_path / "assets"
-        if assets_path.exists() and assets_path.is_dir():
-            app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
-
-        @app.get("/{full_path:path}")
-        async def spa_fallback(full_path: str):
-            requested = static_path / full_path
-            if full_path and requested.exists() and requested.is_file():
-                return FileResponse(requested)
-            return FileResponse(static_path / "index.html")
+        mount_static(app, static_path)
