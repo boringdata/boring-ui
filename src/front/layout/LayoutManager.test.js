@@ -179,6 +179,13 @@ describe('LayoutManager', () => {
       layout.grid.root.data[0].data.views.push({ id: 'terminal' })
       expect(validateLayoutStructure(layout)).toBe(true)
     })
+
+    it('returns false when essential panel is in panels but not in grid', () => {
+      const layout = createValidLayout()
+      // filetree exists in panels but remove it from grid views
+      layout.grid.root.data[0].data.views = []
+      expect(validateLayoutStructure(layout)).toBe(false)
+    })
   })
 
   describe('saveTabs / loadSavedTabs', () => {

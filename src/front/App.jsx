@@ -3541,6 +3541,12 @@ export default function App() {
         dockApi.fromJSON(savedLayout)
         layoutRestored.current = true
 
+        // Safety net: if fromJSON failed to restore essential panels
+        // (e.g. stale grid structure), re-run panel builder to add them.
+        if (ensureCorePanelsRef.current) {
+          ensureCorePanelsRef.current()
+        }
+
         // Respect persisted user choice when all agent panels were closed.
         // If none exist in restored layout, suppress automatic re-creation.
         if (countAgentPanels(dockApi, 'terminal') === 0) {

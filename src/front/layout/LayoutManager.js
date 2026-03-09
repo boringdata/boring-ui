@@ -155,10 +155,32 @@ export const validateLayoutStructure = (layout) => {
   const panels = layout.panels
   const panelIds = Object.keys(panels)
 
-  // Check all essential panels exist
+  // Check all essential panels exist in panels object
   for (const essentialId of essentials) {
     if (!panelIds.includes(essentialId)) {
       console.warn(`[Layout drift] Missing essential panel: ${essentialId}`)
+      return false
+    }
+  }
+
+  // Check essential panels are actually referenced in the grid structure.
+  // A panel in `panels` but not in any grid leaf view won't be rendered
+  // by DockView after fromJSON, causing it to silently vanish.
+  const gridViewIds = new Set()
+  const collectViews = (node) => {
+    if (!node) return
+    if (node.type === 'leaf' && node.data?.views) {
+      node.data.views.forEach((v) => { if (v?.id) gridViewIds.add(v.id) })
+    }
+    if (node.data && Array.isArray(node.data)) {
+      node.data.forEach(collectViews)
+    }
+  }
+  collectViews(layout.grid.root)
+
+  for (const essentialId of essentials) {
+    if (!gridViewIds.has(essentialId)) {
+      console.warn(`[Layout drift] Essential panel not in grid: ${essentialId}`)
       return false
     }
   }
