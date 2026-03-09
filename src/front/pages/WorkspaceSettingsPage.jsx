@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Cog, Activity, Lock, AlertTriangle, Copy, Check } from 'lucide-react'
+import { Loader2, Cog, Activity, Lock, AlertTriangle, Copy, Check, Github } from 'lucide-react'
 import { apiFetchJson } from '../utils/transport'
 import { buildApiUrl } from '../utils/apiBase'
 import { routes } from '../utils/routes'
 import PageShell, { SettingsSection, SettingsField } from './PageShell'
+import GitHubConnect from '../components/GitHubConnect'
 
-export default function WorkspaceSettingsPage({ workspaceId }) {
+export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [runtime, setRuntime] = useState(null)
@@ -235,6 +236,14 @@ export default function WorkspaceSettingsPage({ workspaceId }) {
             </SettingsField>
           )}
         </SettingsSection>
+
+        {capabilities?.features?.github && (
+          <SettingsSection title="GitHub Integration" icon={Github} description="Sync workspace files to a private GitHub repository">
+            <SettingsField label="Connection">
+              <GitHubConnect workspaceId={workspaceId} variant="full" />
+            </SettingsField>
+          </SettingsSection>
+        )}
 
         {settingKeys.length > 0 && (
           <SettingsSection title="Configuration" icon={Lock} description="Encrypted workspace settings">

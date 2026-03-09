@@ -104,6 +104,20 @@ export const routes = {
       }),
     },
   },
+  github: {
+    status: (workspaceId) => ({
+      path: '/api/v1/auth/github/status',
+      query: workspaceId ? { workspace_id: workspaceId } : undefined,
+    }),
+    authorize: () => ({ path: '/api/v1/auth/github/authorize', query: undefined }),
+    connect: () => ({ path: '/api/v1/auth/github/connect', query: undefined }),
+    disconnect: () => ({ path: '/api/v1/auth/github/disconnect', query: undefined }),
+    installations: () => ({ path: '/api/v1/auth/github/installations', query: undefined }),
+    repos: (installationId) => ({
+      path: '/api/v1/auth/github/repos',
+      query: { installation_id: installationId },
+    }),
+  },
   sessions: {
     list: () => ({ path: '/api/v1/agent/normal/sessions', query: undefined }),
     create: () => ({ path: '/api/v1/agent/normal/sessions', query: undefined }),

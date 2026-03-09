@@ -5548,3 +5548,164 @@ kbd {
     transform: none !important;
   }
 }
+
+/* ── GitHub Connect ──────────────────────────────────────────────── */
+
+.github-connect-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: auto;
+}
+.github-connect-compact:hover {
+  color: var(--text-primary);
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+}
+
+.git-changes-github-connect {
+  display: flex;
+  justify-content: center;
+  padding: 12px 8px;
+}
+
+.github-connect-loading,
+.github-connect-unconfigured,
+.github-connect-connected,
+.github-connect-disconnected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.github-connect-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.github-connect-installation {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+.github-connect-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-error);
+  font-size: 12px;
+  margin-top: 8px;
+}
+.github-connect-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── GitHub Connect: Wizard variant ─────────────────────────────── */
+
+.github-connect-wizard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px 24px;
+  gap: 12px;
+}
+.github-connect-wizard-icon {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.github-connect-wizard-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+.github-connect-wizard-description {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 360px;
+  margin: 0;
+}
+.github-connect-wizard-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.github-connect-wizard-loading,
+.github-connect-wizard-connected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.github-connect-wizard-connected {
+  color: var(--accent-green, #4ade80);
+}
+.github-connect-wizard-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-error);
+  font-size: 12px;
+}
+.github-connect-wizard-skip {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin-top: 4px;
+}
+.github-connect-wizard-skip:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+/* ── Setup Wizard page ──────────────────────────────────────────── */
+
+.setup-wizard {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+.setup-wizard-header {
+  text-align: center;
+  margin-bottom: 32px;
+  color: var(--text-muted);
+}
+.setup-wizard-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 12px 0 4px;
+}
+.setup-wizard-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.setup-wizard-step {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+.setup-wizard-footer {
+  display: flex;
+  justify-content: center;
+}
+.setup-wizard-continue {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

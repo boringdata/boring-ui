@@ -41,6 +41,7 @@ export default function FileTreePanel({ params }) {
     userMenuStatusTone,
     onUserMenuRetry,
     userMenuDisabledActions,
+    githubEnabled,
   } = params
   const [creatingFile, setCreatingFile] = useState(false)
   const [viewMode, setViewMode] = useState('files') // 'files' | 'changes'
@@ -273,6 +274,8 @@ export default function FileTreePanel({ params }) {
             <GitChangesView
               onOpenDiff={onOpenDiff}
               activeDiffFile={activeDiffFile}
+              workspaceId={workspaceId}
+              githubEnabled={githubEnabled}
             />
           )}
         </div>

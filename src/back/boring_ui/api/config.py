@@ -192,6 +192,11 @@ class APIConfig:
     github_app_slug: str | None = field(
         default_factory=lambda: os.environ.get('GITHUB_APP_SLUG')
     )
+    # Explicit toggle to disable GitHub sync even when app credentials are present.
+    # Useful for child apps that share the same deployment but don't need git sync.
+    github_sync_enabled: bool = field(
+        default_factory=lambda: _env_bool('GITHUB_SYNC_ENABLED', True)
+    )
 
     def __post_init__(self) -> None:
         # Test harness hook: allow overriding the PTY provider commands without
@@ -224,6 +229,15 @@ class APIConfig:
     @property
     def use_supabase_control_plane(self) -> bool:
         return self.control_plane_provider == "supabase"
+
+    @property
+    def github_configured(self) -> bool:
+        """True when GitHub App credentials are present AND sync is not disabled."""
+        return bool(
+            self.github_sync_enabled
+            and self.github_app_id
+            and self.github_app_private_key
+        )
 
     def validate_path(self, path: Path | str) -> Path:
         """Validate that a path is within workspace_root.

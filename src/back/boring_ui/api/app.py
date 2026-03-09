@@ -105,7 +105,7 @@ def create_app(
     pi_embedded_mode = config.pi_mode != 'iframe'
     pi_enabled = pi_embedded_mode or bool(config.pi_url)
 
-    github_enabled = bool(config.github_app_id and config.github_app_private_key)
+    github_enabled = config.github_configured
 
     enabled_features = {
         'files': 'files' in enabled_routers,
@@ -205,8 +205,8 @@ def create_app(
             app.include_router(create_collaboration_router(config), prefix='/api/v1')
             app.include_router(create_workspace_boundary_router(config))
 
-    # GitHub App auth (optional, requires GITHUB_APP_ID + private key)
-    if config.github_app_id and config.github_app_private_key:
+    # GitHub App auth (optional, requires credentials + not disabled via GITHUB_SYNC_ENABLED=false)
+    if config.github_configured:
         from .modules.github_auth import create_github_auth_router
         app.include_router(
             create_github_auth_router(config),

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react'
 import { Command, FileText, GitBranch, Loader2 } from 'lucide-react'
 import { useGitStatus } from '../providers/data'
+import GitHubConnect from './GitHubConnect'
 
 const STATUS_CONFIG = {
   M: { label: 'Modified', className: 'git-status-modified', icon: 'M' },
@@ -10,7 +11,7 @@ const STATUS_CONFIG = {
   C: { label: 'Conflict', className: 'git-status-conflict', icon: 'C' },
 }
 
-export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
+export default function GitChangesView({ onOpenDiff, activeDiffFile, workspaceId, githubEnabled }) {
   const { data: gitStatus, isLoading, error, refetch } = useGitStatus({ refetchInterval: 5000 })
 
   const changes = useMemo(() => {
@@ -109,6 +110,11 @@ export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
             <span>Edit and save a file to generate a diff</span>
           </span>
         </div>
+        {githubEnabled && (
+          <div className="git-changes-github-connect">
+            <GitHubConnect workspaceId={workspaceId} variant="compact" githubEnabled={githubEnabled} />
+          </div>
+        )}
       </div>
     )
   }
@@ -117,6 +123,9 @@ export default function GitChangesView({ onOpenDiff, activeDiffFile }) {
     <div className="git-changes-view">
       <div className="git-changes-summary">
         {totalChanges} changed file{totalChanges !== 1 ? 's' : ''}
+        {githubEnabled && (
+          <GitHubConnect workspaceId={workspaceId} variant="compact" githubEnabled={githubEnabled} />
+        )}
       </div>
       <div className="git-changes-list">
         {statusOrder.map((status) => {

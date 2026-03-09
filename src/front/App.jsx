@@ -78,6 +78,7 @@ import DataContext from './providers/data/DataContext'
 import { PI_LIST_TABS_BRIDGE, PI_OPEN_FILE_BRIDGE, PI_OPEN_PANEL_BRIDGE } from './providers/pi/uiBridge'
 import UserSettingsPage from './pages/UserSettingsPage'
 import WorkspaceSettingsPage from './pages/WorkspaceSettingsPage'
+import WorkspaceSetupPage from './pages/WorkspaceSetupPage'
 import AuthPage, { AuthCallbackPage } from './pages/AuthPage'
 import CreateWorkspaceModal from './pages/CreateWorkspaceModal'
 
@@ -623,6 +624,7 @@ export default function App() {
   const isAuthLoginPage = pagePathname === '/auth/login' || pagePathname === '/auth/signup'
   const isAuthCallbackPage = pagePathname === '/auth/callback'
   const isWorkspaceSettingsPage = currentWorkspaceId && workspaceSubpath === 'settings'
+  const isWorkspaceSetupPage = currentWorkspaceId && workspaceSubpath === 'setup'
   const [collapsed, setCollapsed] = useState(() => {
     const saved = loadCollapsedState(storagePrefix)
     return { filetree: false, terminal: false, shell: false, companion: false, ...saved }
@@ -3634,6 +3636,7 @@ export default function App() {
             onCreateWorkspace: handleCreateWorkspace,
             onOpenUserSettings: handleOpenUserSettings,
             onLogout: handleLogout,
+            githubEnabled: capabilities?.features?.github === true,
           })
         }
 
@@ -4555,7 +4558,23 @@ export default function App() {
   if (isWorkspaceSettingsPage) {
     return (
       <ThemeProvider>
-        <WorkspaceSettingsPage workspaceId={currentWorkspaceId} />
+        <WorkspaceSettingsPage workspaceId={currentWorkspaceId} capabilities={capabilities} />
+      </ThemeProvider>
+    )
+  }
+
+  if (isWorkspaceSetupPage) {
+    return (
+      <ThemeProvider>
+        <WorkspaceSetupPage
+          workspaceId={currentWorkspaceId}
+          workspaceName={activeWorkspaceName}
+          capabilities={capabilities}
+          onComplete={() => {
+            const scope = routes.controlPlane.workspaces.scope(currentWorkspaceId)
+            window.location.assign(buildApiUrl(scope.path, scope.query))
+          }}
+        />
       </ThemeProvider>
     )
   }
