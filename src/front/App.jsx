@@ -2623,6 +2623,15 @@ export default function App() {
       })
       if (!panel) return false
 
+      // Set onSplitPanel immediately so the "Split chat panel" button
+      // appears without waiting for the params sync effect to re-run.
+      if (handleSplitChatPanelRef.current) {
+        panel.api.updateParameters({
+          ...panel.params,
+          onSplitPanel: handleSplitChatPanelRef.current,
+        })
+      }
+
       if (panel?.group) {
         panel.group.locked = false
         panel.group.header.hidden = false
@@ -2682,6 +2691,8 @@ export default function App() {
       piSessionBootstrap: options.piSessionBootstrap || 'latest',
     })
   }, [addChatPanel])
+  const handleSplitChatPanelRef = useRef(handleSplitChatPanel)
+  handleSplitChatPanelRef.current = handleSplitChatPanel
 
   const handleOpenChatTab = useCallback(() => {
     if (!dockApi) {
