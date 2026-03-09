@@ -118,7 +118,7 @@ _LOGIN_HTML_TEMPLATE: str = """\
         --color-bg-primary: #1f1f1f;
         --color-bg-secondary: #242424;
         --color-text-primary: #e0e0e0;
-        --color-text-secondary: #a8a8a8;
+        --color-text-secondary: #bdbdbd;
         --color-border: #404040;
         --color-border-strong: #6b6b6b;
         --color-accent: #61dafb;
@@ -675,7 +675,7 @@ _CALLBACK_BRIDGE_HTML_TEMPLATE: str = """\
         --color-bg-primary: #1f1f1f;
         --color-bg-secondary: #242424;
         --color-text-primary: #e0e0e0;
-        --color-text-secondary: #a8a8a8;
+        --color-text-secondary: #bdbdbd;
         --color-border: #404040;
         --color-accent: #61dafb;
         --color-accent-light: rgba(97, 218, 251, 0.15);

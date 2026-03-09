@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import { DockviewReact } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
-import { ChevronDown, ChevronUp, Loader2, Bot, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Bot, X } from 'lucide-react'
 
 import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
@@ -48,7 +48,6 @@ import {
   createCapabilityGatedPane,
 } from './components/CapabilityGate'
 import paneRegistry, {
-  getPane,
   registerPane,
   getGatedComponents,
   getKnownComponents,
@@ -617,8 +616,6 @@ export default function App() {
   const isAuthLoginPage = pagePathname === '/auth/login' || pagePathname === '/auth/signup'
   const isAuthCallbackPage = pagePathname === '/auth/callback'
   const isWorkspaceSettingsPage = currentWorkspaceId && workspaceSubpath === 'settings'
-  const isFullPageView = isUserSettingsPage || isWorkspaceSettingsPage || isAuthLoginPage || isAuthCallbackPage
-
   const [collapsed, setCollapsed] = useState(() => {
     const saved = loadCollapsedState(storagePrefix)
     return { filetree: false, terminal: false, shell: false, companion: false, ...saved }

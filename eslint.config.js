@@ -39,6 +39,17 @@ export default [
     },
   },
   {
+    files: ['src/front/__tests__/**/*.{js,jsx,ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.es2021,
+        vi: 'readonly',
+      },
+    },
+  },
+  {
     files: ['src/front/__tests__/fixtures/**/*.mjs'],
     languageOptions: {
       globals: {
@@ -49,6 +60,6 @@ export default [
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', '**/*.ts', '**/*.tsx'],
   },
 ]
