@@ -73,9 +73,11 @@ core_secrets = modal.Secret.from_name("boring-ui-core-secrets")
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def core():
-    """Create and return the boring-ui FastAPI application."""
-    from boring_ui.api import APIConfig, create_app
-
+    """Create and return the boring-ui FastAPI application with static frontend."""
     workspace_root = Path(os.environ.get("BORING_UI_WORKSPACE_ROOT", "/tmp/boring-ui-workspace"))
     workspace_root.mkdir(parents=True, exist_ok=True)
-    return create_app(APIConfig(workspace_root=workspace_root))
+
+    # runtime module creates app at import time, wiring create_app + static serving + SPA fallback.
+    from boring_ui.runtime import app as runtime_app
+
+    return runtime_app

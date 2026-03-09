@@ -67,8 +67,10 @@ sandbox_secrets = modal.Secret.from_name("boring-ui-sandbox-secrets")
 @modal.asgi_app()
 def edge():
     """Create and return the boring-ui FastAPI application in edge mode."""
-    from boring_ui.api import APIConfig, create_app
-
     workspace_root = Path(os.environ.get("BORING_UI_WORKSPACE_ROOT", "/tmp/boring-ui-workspace"))
     workspace_root.mkdir(parents=True, exist_ok=True)
-    return create_app(APIConfig(workspace_root=workspace_root))
+
+    # runtime module creates app at import time, wiring create_app + static serving + SPA fallback.
+    from boring_ui.runtime import app as runtime_app
+
+    return runtime_app
