@@ -2476,6 +2476,8 @@ export default function App() {
     return candidate
   }, [])
 
+  const handleSplitChatPanelRef = useRef(null)
+
   const addChatPanel = useCallback(
     ({ mode = 'tab', sourcePanelId = '', piSessionBootstrap = 'latest' } = {}) => {
       const api = dockApiRef.current
@@ -2691,7 +2693,6 @@ export default function App() {
       piSessionBootstrap: options.piSessionBootstrap || 'latest',
     })
   }, [addChatPanel])
-  const handleSplitChatPanelRef = useRef(handleSplitChatPanel)
   handleSplitChatPanelRef.current = handleSplitChatPanel
 
   const handleOpenChatTab = useCallback(() => {
