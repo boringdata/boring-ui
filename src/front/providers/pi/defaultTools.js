@@ -101,10 +101,12 @@ const formatPythonResult = (result) => {
 
   const stdout = typeof result?.stdout === 'string' ? result.stdout : ''
   const stderr = typeof result?.stderr === 'string' ? result.stderr : ''
-  if (stdout || stderr) {
-    if (stdout && stderr) return `${stdout}\n[stderr]\n${stderr}`
-    return stdout || stderr
-  }
+  const error = typeof result?.error === 'string' ? result.error : ''
+  const parts = []
+  if (stdout) parts.push(stdout)
+  if (stderr) parts.push(`[stderr]\n${stderr}`)
+  if (error) parts.push(`[error]\n${error}`)
+  if (parts.length) return parts.join('\n')
 
   try {
     return JSON.stringify(result, null, 2)

@@ -121,3 +121,37 @@ def test_workspace_scoped_proxy_denies_macro_family(tmp_path: Path) -> None:
     denied = client.get(f"/w/{workspace_id}/api/v1/macro/query")
     assert denied.status_code == 404
     assert denied.json()["code"] == "WORKSPACE_PATH_DENIED"
+
+
+def test_workspace_scoped_proxy_forwards_extra_passthrough_roots(tmp_path: Path) -> None:
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=True,
+        extra_passthrough_roots=("/api/v1/macro",),
+    )
+    app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
+    client = TestClient(app)
+    _login(client, user_id="owner-extra", email="owner-extra@example.com")
+    workspace_id = _create_workspace(client)
+    _bootstrap_owner_membership(client, workspace_id)
+
+    # /api/v1/macro is not a built-in route, so the forward will 404 at the
+    # inner app level — but it must NOT be blocked by the boundary allowlist.
+    response = client.get(f"/w/{workspace_id}/api/v1/macro/query")
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload.get("code") != "WORKSPACE_PATH_DENIED"
+
+
+def test_workspace_scoped_proxy_allows_static_assets_family(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _login(client, user_id="owner-assets", email="owner-assets@example.com")
+    workspace_id = _create_workspace(client)
+    _bootstrap_owner_membership(client, workspace_id)
+
+    # Assets may still 404 when not mounted in test runtime, but must not be
+    # blocked by workspace boundary allowlist.
+    response = client.get(f"/w/{workspace_id}/assets/index.js")
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload.get("code") != "WORKSPACE_PATH_DENIED"

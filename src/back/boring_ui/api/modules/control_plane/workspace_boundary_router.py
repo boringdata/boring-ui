@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Body, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 
 from ...config import APIConfig
 from ...policy import enforce_delegated_policy_or_none
@@ -32,6 +34,13 @@ _WORKSPACE_PASSTHROUGH_ROOTS = (
     "/api/project",
     "/api/approval",
 )
+_WORKSPACE_STATIC_PATHS = (
+    "/assets",
+    "/favicon.ico",
+    "/robots.txt",
+    "/manifest.json",
+    "/site.webmanifest",
+)
 _HOP_BY_HOP_HEADERS = {
     "connection",
     "keep-alive",
@@ -42,10 +51,43 @@ _HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
+_SESSION_ERROR_CODES = {"SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_INVALID"}
 
 
 def _request_id(request: Request) -> str:
     return str(getattr(request.state, "request_id", "") or uuid4())
+
+
+def _response_error_code(response: JSONResponse) -> str:
+    try:
+        payload = json.loads(response.body.decode("utf-8"))
+        return str(payload.get("code") or "")
+    except Exception:
+        return ""
+
+
+def _is_workspace_page_request(request: Request, normalized_path: str) -> bool:
+    if request.method not in {"GET", "HEAD"}:
+        return False
+    if normalized_path.startswith("/api/") or normalized_path.startswith("/auth/"):
+        return False
+    if any(
+        normalized_path == static_path or normalized_path.startswith(f"{static_path}/")
+        for static_path in _WORKSPACE_STATIC_PATHS
+    ):
+        return False
+    accept = str(request.headers.get("accept", "")).lower()
+    return "text/html" in accept or "*/*" in accept
+
+
+def _login_redirect_response(request: Request) -> RedirectResponse:
+    requested = request.url.path
+    if request.url.query:
+        requested = f"{requested}?{request.url.query}"
+    return RedirectResponse(
+        url=f"/auth/login?{urlencode({'redirect_uri': requested})}",
+        status_code=302,
+    )
 
 
 def _error(
@@ -164,13 +206,19 @@ def _require_workspace_member(
     return session
 
 
-def _is_allowed_workspace_passthrough_target(path: str) -> bool:
+def _is_allowed_workspace_passthrough_target(path: str, extra_roots: tuple[str, ...] = ()) -> bool:
     normalized = "/" + str(path or "").lstrip("/")
     if normalized.startswith("/auth/"):
         return True
+    if any(
+        normalized == static_path or normalized.startswith(f"{static_path}/")
+        for static_path in _WORKSPACE_STATIC_PATHS
+    ):
+        return True
+    all_roots = _WORKSPACE_PASSTHROUGH_ROOTS + tuple(extra_roots)
     return any(
         normalized == root or normalized.startswith(f"{root}/")
-        for root in _WORKSPACE_PASSTHROUGH_ROOTS
+        for root in all_roots
     )
 
 
@@ -327,11 +375,16 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
         )
         if deny is not None:
             return deny
+        normalized = "/" + str(path or "").lstrip("/")
         session_or_error = _require_workspace_member(request, service, config, workspace_id)
         if isinstance(session_or_error, JSONResponse):
+            if (
+                _is_workspace_page_request(request, normalized)
+                and _response_error_code(session_or_error) in _SESSION_ERROR_CODES
+            ):
+                return _login_redirect_response(request)
             return session_or_error
 
-        normalized = "/" + str(path or "").lstrip("/")
         first_segment = normalized.lstrip("/").split("/", 1)[0]
         if first_segment in _RESERVED_SUBPATHS:
             return _error(
@@ -341,7 +394,7 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
                 code="WORKSPACE_PATH_RESERVED",
                 message="Reserved workspace path",
             )
-        if not _is_allowed_workspace_passthrough_target(normalized):
+        if not _is_allowed_workspace_passthrough_target(normalized, config.extra_passthrough_roots):
             # Non-API paths are frontend client routes — serve SPA index.html
             static_dir = os.environ.get("BORING_UI_STATIC_DIR", "")
             index_html = Path(static_dir) / "index.html" if static_dir else None

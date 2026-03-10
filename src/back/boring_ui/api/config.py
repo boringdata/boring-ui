@@ -211,6 +211,11 @@ class APIConfig:
         default_factory=lambda: _env_bool('GITHUB_SYNC_ENABLED', True)
     )
 
+    # Extra API path prefixes that the workspace boundary router should forward.
+    # Child apps (e.g. boring-macro) can add app-specific routes here
+    # (e.g. "/api/v1/macro") without modifying boring-ui's built-in list.
+    extra_passthrough_roots: tuple[str, ...] = field(default_factory=tuple)
+
     def __post_init__(self) -> None:
         # Test harness hook: allow overriding the PTY provider commands without
         # changing default prod behavior.

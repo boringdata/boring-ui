@@ -37,6 +37,11 @@ def create_app():
     bui_config = APIConfig(
         workspace_root=cfg.workspace_root,
         cors_origins=["*"],
+        # Register app-specific API prefixes so workspace boundary
+        # router forwards them instead of serving the SPA fallback.
+        extra_passthrough_roots=(
+            "/api/v1/my-domain",
+        ),
     )
 
     # Create base app — toggle modules you need
@@ -262,8 +267,29 @@ def create_my_domain_router(config) -> APIRouter:
 | `auth_app_name` | `Boring UI` | App name on auth pages |
 | `workspace_plugins_enabled` | `False` | Enable `{workspace}/kurt/api/` plugin system |
 | `pty_providers` | `{'shell': ['bash']}` | PTY provider commands |
+| `extra_passthrough_roots` | `()` | App-specific API prefixes for workspace boundary (see below) |
 
 All fields are resolved from env vars by the `APIConfig()` constructor. See the source file for the complete list.
+
+### Workspace Boundary Passthrough
+
+When the control plane is enabled, all requests under `/w/{workspace_id}/` go through the workspace boundary router. This router only forwards requests whose path matches a known allow-list of API prefixes (e.g. `/api/v1/files`, `/api/v1/agent`, etc.).
+
+**If your child app mounts custom routers** (e.g. `/api/v1/my-domain`), those paths are **not** in the built-in allow-list. Without registration, requests from the browser to `/w/{workspace_id}/api/v1/my-domain/...` will receive the SPA `index.html` instead of your API response — causing silent JSON parse failures in frontend code.
+
+Set `extra_passthrough_roots` to register your prefixes:
+
+```python
+bui_config = APIConfig(
+    workspace_root=cfg.workspace_root,
+    extra_passthrough_roots=(
+        "/api/v1/my-domain",
+        "/api/v1/chat",   # if using chat auth routes
+    ),
+)
+```
+
+This applies to both the local and Supabase workspace boundary routers.
 
 ## 3.7 Companion / Agent Integration (Optional)
 
