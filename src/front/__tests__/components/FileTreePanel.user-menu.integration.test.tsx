@@ -13,6 +13,7 @@ vi.mock('../../components/GitChangesView', () => ({
 
 vi.mock('../../providers/data', () => ({
   useGitStatus: () => ({ isLoading: false, isFetching: false }),
+  useGitBranch: () => ({ data: 'main' }),
 }))
 
 const makeParams = (overrides = {}) => ({

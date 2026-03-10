@@ -12,6 +12,7 @@ vi.mock('../../components/GitChangesView', () => ({
 
 vi.mock('../../providers/data', () => ({
   useGitStatus: () => ({ isLoading: false, isFetching: false }),
+  useGitBranch: () => ({ data: 'main' }),
 }))
 
 vi.mock('../../components/UserMenu', () => ({
