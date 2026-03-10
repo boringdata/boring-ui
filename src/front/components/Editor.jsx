@@ -3,7 +3,8 @@ import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, ListChecks, Quote, Code, Link as LinkIcon,
   Minus, Highlighter, Loader2, Circle, Check,
-  Table as TableIcon, Image as ImageIcon
+  Table as TableIcon, Image as ImageIcon,
+  Pencil, GitCompareArrows, FileCode2, ChevronDown,
 } from 'lucide-react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -794,36 +795,58 @@ export default function Editor({
     }
   }, [])
 
-  // Mode selector for when diff is available
+  // Mode dropdown for when diff is available
+  const [modeMenuOpen, setModeMenuOpen] = useState(false)
+  const modeMenuRef = useRef(null)
+
+  useEffect(() => {
+    if (!modeMenuOpen) return
+    const close = (e) => {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target)) setModeMenuOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [modeMenuOpen])
+
+  const modeOptions = [
+    { key: 'rendered', label: 'Edit', icon: Pencil, desc: 'Edit content' },
+    { key: 'diff', label: 'Changes', icon: GitCompareArrows, desc: 'Inline changes vs last commit' },
+    { key: 'git-diff', label: 'Patch', icon: FileCode2, desc: 'Git unified diff' },
+  ]
+  const currentMode = modeOptions.find((m) => m.key === editorMode) || modeOptions[0]
+
   const renderModeSelector = () => {
     if (!showDiffToggle) return null
 
     return (
-      <div className="editor-mode-selector">
+      <div className="editor-mode-dropdown" ref={modeMenuRef}>
         <button
           type="button"
-          className={`mode-btn${editorMode === 'rendered' ? ' active' : ''}`}
-          onClick={() => onModeChange?.('rendered')}
-          title="Edit content"
+          className="editor-mode-trigger"
+          onClick={() => setModeMenuOpen(!modeMenuOpen)}
+          title={currentMode.desc}
         >
-          Edit
+          <currentMode.icon size={13} />
+          <span>{currentMode.label}</span>
+          <ChevronDown size={10} className={`editor-mode-chevron${modeMenuOpen ? ' open' : ''}`} />
         </button>
-        <button
-          type="button"
-          className={`mode-btn${editorMode === 'diff' ? ' active' : ''}`}
-          onClick={() => onModeChange?.('diff')}
-          title="Review inline changes vs last commit"
-        >
-          Changes
-        </button>
-        <button
-          type="button"
-          className={`mode-btn${editorMode === 'git-diff' ? ' active' : ''}`}
-          onClick={() => onModeChange?.('git-diff')}
-          title="View git unified diff"
-        >
-          Patch
-        </button>
+        {modeMenuOpen && (
+          <div className="editor-mode-menu" role="menu">
+            {modeOptions.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                className={`editor-mode-option${editorMode === opt.key ? ' active' : ''}`}
+                role="menuitem"
+                onClick={() => { onModeChange?.(opt.key); setModeMenuOpen(false) }}
+              >
+                <opt.icon size={13} />
+                <span className="editor-mode-option-label">{opt.label}</span>
+                <span className="editor-mode-option-desc">{opt.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     )
   }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { Code as CodeIcon, FileCode2, ChevronDown } from 'lucide-react'
 import Editor from '../components/Editor'
 import CodeEditor from '../components/CodeEditor'
 import GitDiff from '../components/GitDiff'
@@ -15,6 +16,63 @@ const isMarkdownFile = (filepath) => {
   if (!filepath) return false
   const ext = filepath.split('.').pop()?.toLowerCase()
   return ['md', 'markdown', 'mdx'].includes(ext)
+}
+
+const codeModeOptions = [
+  { key: 'rendered', label: 'Code', icon: CodeIcon, desc: 'Edit code' },
+  { key: 'git-diff', label: 'Patch', icon: FileCode2, desc: 'Git unified diff' },
+]
+
+function CodeModeDropdown({ editorMode, gitAvailable, onModeChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  if (!gitAvailable) return null
+
+  const current = codeModeOptions.find((m) => m.key === editorMode) || codeModeOptions[0]
+
+  return (
+    <div className="code-viewer-toolbar">
+      <div className="editor-mode-dropdown" ref={ref}>
+        <button
+          type="button"
+          className="editor-mode-trigger"
+          onClick={() => setOpen(!open)}
+          title={current.desc}
+        >
+          <current.icon size={13} />
+          <span>{current.label}</span>
+          <ChevronDown size={10} className={`editor-mode-chevron${open ? ' open' : ''}`} />
+        </button>
+        {open && (
+          <div className="editor-mode-menu" role="menu">
+            {codeModeOptions.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                className={`editor-mode-option${editorMode === opt.key ? ' active' : ''}`}
+                role="menuitem"
+                onClick={() => { onModeChange(opt.key); setOpen(false) }}
+              >
+                <opt.icon size={13} />
+                <span className="editor-mode-option-label">{opt.label}</span>
+                <span className="editor-mode-option-desc">{opt.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export default function EditorPanel({ params: initialParams, api }) {
@@ -324,29 +382,12 @@ export default function EditorPanel({ params: initialParams, api }) {
         />
       ) : (
         <div className="code-viewer-container">
-          {/* Mode selector for non-markdown files */}
-          <div className="code-viewer-toolbar">
-            <div className="editor-mode-selector">
-              <button
-                type="button"
-                className={`mode-btn ${editorMode === 'rendered' ? 'active' : ''}`}
-                onClick={() => handleModeChange('rendered')}
-                title="Edit code"
-              >
-                Code
-              </button>
-              {gitAvailable && (
-                <button
-                  type="button"
-                  className={`mode-btn ${editorMode === 'git-diff' ? 'active' : ''}`}
-                  onClick={() => handleModeChange('git-diff')}
-                  title="View git unified diff"
-                >
-                  Patch
-                </button>
-              )}
-            </div>
-          </div>
+          {/* Mode dropdown for non-markdown files */}
+          <CodeModeDropdown
+            editorMode={editorMode}
+            gitAvailable={gitAvailable}
+            onModeChange={handleModeChange}
+          />
           {editorMode === 'git-diff' ? (
             <div className="code-diff-view">
               {diffError && <div className="diff-error">{diffError}</div>}
