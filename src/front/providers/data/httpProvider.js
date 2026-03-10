@@ -48,9 +48,12 @@ const API = {
  * @param {{ signal?: AbortSignal }} [opts]
  * @returns {Promise<any>}
  */
+/** @type {Record<string, string>} Extra headers injected on every request. */
+let _extraHeaders = {}
+
 const fetchJson = async (path, query, opts = {}) => {
   const url = buildApiUrl(path, query)
-  const res = await fetch(url, { signal: opts.signal })
+  const res = await fetch(url, { signal: opts.signal, headers: _extraHeaders })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(`HTTP ${res.status}: ${text || res.statusText} (${path})`)
@@ -64,7 +67,7 @@ const fetchJson = async (path, query, opts = {}) => {
 const sendJson = async (method, path, query, body, opts = {}) => {
   const url = buildApiUrl(path, query)
   const hasBody = body !== undefined
-  const headers = hasBody ? { 'Content-Type': 'application/json' } : undefined
+  const headers = { ..._extraHeaders, ...(hasBody ? { 'Content-Type': 'application/json' } : {}) }
   const res = await fetch(url, {
     method,
     headers,
@@ -87,9 +90,14 @@ const sendJson = async (method, path, query, body, opts = {}) => {
 
 /**
  * Create the default HTTP-backed DataProvider.
+ * @param {{ workspaceId?: string }} [options]
  * @returns {import('./types').DataProvider}
  */
-export const createHttpProvider = () => ({
+export const createHttpProvider = (options = {}) => {
+  if (options.workspaceId) {
+    _extraHeaders = { 'x-workspace-id': options.workspaceId }
+  }
+  return ({
   github: {
     status: (workspaceId, opts) =>
       fetchJson('/api/v1/auth/github/status', { workspace_id: workspaceId }, opts),
@@ -230,4 +238,4 @@ export const createHttpProvider = () => ({
     merge: (source, message, opts) =>
       sendJson('POST', API.git.merge, undefined, { source, message }, opts),
   },
-})
+})}

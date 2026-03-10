@@ -752,7 +752,7 @@ export default function App() {
       if (injected) return injected
 
       if (!configuredDataBackend || configuredDataBackend === 'http') {
-        return createHttpProvider()
+        return createHttpProvider({ workspaceId: currentWorkspaceId })
       }
 
       if (configuredDataBackend === 'lightningfs' || configuredDataBackend === 'lightning-fs') {
@@ -784,10 +784,11 @@ export default function App() {
       console.warn(
         `[DataProvider] Unknown configured backend "${configuredDataBackend}", falling back to http`,
       )
-      return createHttpProvider()
+      return createHttpProvider({ workspaceId: currentWorkspaceId })
     },
     [
       configuredDataBackend,
+      currentWorkspaceId,
       lightningFsProviderCacheKey,
       resolvedLightningFsName,
       configuredCheerpXWorkspaceRoot,

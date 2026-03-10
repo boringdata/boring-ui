@@ -1,4 +1,5 @@
 """Application factory for boring-ui API."""
+import os
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -74,7 +75,9 @@ def create_app(
         app = create_app(routers=['files', 'git'])  # Only file and git routes
     """
     # Apply defaults
-    config = config or APIConfig(workspace_root=Path.cwd())
+    config = config or APIConfig(
+        workspace_root=Path(os.environ.get('BORING_UI_WORKSPACE_ROOT', str(Path.cwd()))),
+    )
     storage = storage or LocalStorage(config.workspace_root)
     approval_store = approval_store or InMemoryApprovalStore()
     registry = registry or create_default_registry()
@@ -143,7 +146,7 @@ def create_app(
 
     # Auto-login middleware for local dev: injects a session cookie when
     # AUTH_DEV_LOGIN_ENABLED=true and no session cookie is present.
-    if config.auth_dev_login_enabled and 'control_plane' in enabled_routers:
+    if config.auth_dev_auto_login and 'control_plane' in enabled_routers:
         from .modules.control_plane.auth_session import create_session_cookie
 
         _DEV_USER_ID = 'dev-user'
@@ -177,8 +180,15 @@ def create_app(
 
         _inner_app = app.router
 
+        # Paths that manage their own session lifecycle — skip auto-login.
+        _SKIP_PREFIXES = ('/auth/',)
+
         @app.middleware('http')
         async def dev_auto_login(request: Request, call_next):
+            path = request.scope.get('path', '')
+            if any(path.startswith(p) for p in _SKIP_PREFIXES):
+                return await call_next(request)
+
             needs_cookie = not _has_valid_session_cookie(request.scope)
             if needs_cookie:
                 token = _make_dev_token()
