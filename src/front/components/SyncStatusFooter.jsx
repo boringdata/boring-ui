@@ -54,6 +54,7 @@ export default function SyncStatusFooter({ githubConnected }) {
   const [branches, setBranches] = useState(null)
   const [newBranchName, setNewBranchName] = useState('')
   const [switching, setSwitching] = useState(false)
+  const [menuError, setMenuError] = useState(null)
   const menuRef = useRef(null)
 
   // Close menu on outside click
@@ -86,27 +87,39 @@ export default function SyncStatusFooter({ githubConnected }) {
 
   const handleCheckout = useCallback(async (name) => {
     setSwitching(true)
+    setMenuError(null)
     try {
       await provider.git.checkout(name)
       refetchBranch()
-    } catch { /* ignore */ }
-    setSwitching(false)
-    setMenuOpen(false)
-    setBranchSubmenuOpen(false)
+      setMenuOpen(false)
+      setBranchSubmenuOpen(false)
+    } catch (err) {
+      setMenuError(`Checkout failed: ${err.message || 'unknown error'}`)
+    } finally {
+      setSwitching(false)
+    }
   }, [provider, refetchBranch])
 
   const handleCreateBranch = useCallback(async () => {
     const name = newBranchName.trim()
     if (!name) return
+    if (/[\s~^:\\]|\.\./.test(name)) {
+      setMenuError('Invalid branch name — avoid spaces, .., ~, ^, :, \\')
+      return
+    }
     setSwitching(true)
+    setMenuError(null)
     try {
       await provider.git.createBranch(name, true)
       refetchBranch()
       setNewBranchName('')
-    } catch { /* ignore */ }
-    setSwitching(false)
-    setMenuOpen(false)
-    setBranchSubmenuOpen(false)
+      setMenuOpen(false)
+      setBranchSubmenuOpen(false)
+    } catch (err) {
+      setMenuError(`Create branch failed: ${err.message || 'unknown error'}`)
+    } finally {
+      setSwitching(false)
+    }
   }, [provider, newBranchName, refetchBranch])
 
   if (!isRepo) return null
@@ -195,7 +208,7 @@ export default function SyncStatusFooter({ githubConnected }) {
         <button
           type="button"
           className={`sync-menu-trigger${menuOpen ? ' sync-menu-trigger--active' : ''}`}
-          onClick={() => { setMenuOpen(!menuOpen); setBranchSubmenuOpen(false) }}
+          onClick={() => { setMenuOpen(!menuOpen); setBranchSubmenuOpen(false); setMenuError(null) }}
           aria-label="Sync options"
         >
           <MoreHorizontal size={14} />
@@ -203,6 +216,12 @@ export default function SyncStatusFooter({ githubConnected }) {
       </Tooltip>
       {menuOpen && (
         <div className="sync-menu">
+          {menuError && (
+            <div className="sync-menu-error">
+              <AlertTriangle size={12} />
+              <span>{menuError}</span>
+            </div>
+          )}
           <button
             type="button"
             className="sync-menu-item"
