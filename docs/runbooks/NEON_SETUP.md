@@ -140,15 +140,93 @@ modal deploy deploy/edge/modal_app.py    # edge mode (optional)
 curl -s https://<your-app>.modal.run/api/capabilities | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin).get('auth',{}), indent=2))"
 ```
 
-**Important**: Use the `-pooler` hostname in `DATABASE_URL` for Modal (connection pooling). The free tier has 100 connection limit. For session interop with boring-sandbox, set the same `BORING_UI_SESSION_SECRET` in `boring-sandbox-secrets`.
+**Important**: Use the `-pooler` hostname in `DATABASE_URL` for Modal (connection pooling). The free tier has 100 connection limit.
 
-## Child Project Setup
+## Session Persistence Across Deploys
+
+By default, if `BORING_UI_SESSION_SECRET` is not set, boring-ui generates an ephemeral random secret on startup. This means **every redeploy invalidates all existing session cookies**, forcing users to re-login.
+
+To fix this, set a stable `BORING_UI_SESSION_SECRET` in your Modal secret:
+
+```bash
+# Generate a stable secret (run once, save the output)
+python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
+
+# Set it in boring-ui-core-secrets (include all existing keys)
+modal secret create boring-ui-core-secrets \
+  CONTROL_PLANE_PROVIDER=neon \
+  DATABASE_URL="<your-pooler-url>" \
+  NEON_AUTH_BASE_URL="<your-neon-auth-url>" \
+  NEON_AUTH_JWKS_URL="<your-jwks-url>" \
+  BORING_UI_SESSION_SECRET="<the-stable-secret>" \
+  BORING_SETTINGS_KEY="<your-settings-key>" \
+  --force
+```
+
+**Warning**: `modal secret create --force` overwrites ALL keys. Always include every key when recreating.
+
+## Child App Session Interop
+
+boring-ui session cookies (`boring_session`) are HS256 JWTs. Any child app (boring-macro, boring-sandbox, etc.) that needs to validate these cookies must share the same signing secret.
+
+### What child apps need
+
+| Setting | boring-ui env var | Child app env var | Where to set |
+|---|---|---|---|
+| Session secret | `BORING_UI_SESSION_SECRET` | `BORING_SESSION_SECRET` | Modal secret for the child app |
+| Cookie name | `AUTH_SESSION_COOKIE_NAME` (default: `boring_session`) | Must match | Hardcoded or env var |
+
+### Setup steps for a child app
+
+1. **Use the same session secret** as boring-ui. Copy the value of `BORING_UI_SESSION_SECRET` from `boring-ui-core-secrets` into the child app's Modal secret as `BORING_SESSION_SECRET`:
+
+   ```bash
+   # Example: boring-sandbox
+   modal secret create boring-sandbox-secrets \
+     BORING_SESSION_SECRET="<same-secret-as-boring-ui>" \
+     VAULT_ADDR="<vault-addr>" \
+     VAULT_TOKEN="<vault-token>" \
+     --force
+   ```
+
+2. **Validate the cookie** in the child app. The JWT payload contains:
+
+   ```json
+   {
+     "sub": "<user-id>",
+     "email": "<user-email>",
+     "iat": 1710000000,
+     "exp": 1710086400,
+     "app_id": "boring-ui"
+   }
+   ```
+
+   Validate with PyJWT:
+   ```python
+   import jwt
+   payload = jwt.decode(token, secret, algorithms=["HS256"])
+   user_id = payload["sub"]
+   ```
+
+3. **Do NOT issue session cookies** from the child app. Only boring-ui issues `boring_session` cookies. Child apps are consumers/validators only.
+
+4. **Check `app_id`** if the child app requires it. boring-sandbox rejects sessions without a matching `app_id` when an app is resolved. Set `CONTROL_PLANE_APP_ID` in boring-ui to match what the child expects.
+
+### Checklist
+
+- [ ] Same secret value in both `boring-ui-core-secrets` (`BORING_UI_SESSION_SECRET`) and child secret (`BORING_SESSION_SECRET`)
+- [ ] Child app reads cookie named `boring_session` (or the configured `AUTH_SESSION_COOKIE_NAME`)
+- [ ] Child app validates HS256 JWT with the shared secret
+- [ ] Child app does NOT issue its own session cookies
+- [ ] Secrets updated together when rotated — rotate boring-ui first, then all child apps
+
+## Child Project Database Setup
 
 For new projects (boring-macro, boring-sandbox, etc.) that need their own Neon database:
 
 1. Create a separate Neon project (free tier allows 20)
 2. Run the relevant schema
-3. To share auth with boring-ui: use the same `BORING_UI_SESSION_SECRET` for session cookie interop
+3. Share auth with boring-ui via the session secret (see above)
 4. Each project gets its own `DATABASE_URL` but can share the auth provider
 
 ## Neon Free Tier Limits

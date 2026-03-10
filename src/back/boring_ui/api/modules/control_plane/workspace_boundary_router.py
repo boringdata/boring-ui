@@ -135,7 +135,7 @@ def _require_workspace_member(
     membership = _membership_for_user(service, workspace_id, session.user_id)
     if membership is None:
         # Auto-create membership in dev mode so local dev doesn't require manual setup
-        if config.auth_dev_login_enabled:
+        if config.auth_dev_auto_login:
             mid = f"{workspace_id}:{session.user_id}"
             service.upsert_membership(mid, {
                 "workspace_id": workspace_id,

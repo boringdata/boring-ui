@@ -663,11 +663,11 @@ html {
 }
 
 .sync-state--syncing {
-  color: var(--color-accent, #7c5cbf);
+  color: var(--color-accent);
 }
 
 .sync-state--error {
-  color: var(--color-error, #f85149);
+  color: var(--color-error);
 }
 
 /* Sidebar header with collapse button */

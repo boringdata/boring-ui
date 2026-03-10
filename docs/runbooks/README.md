@@ -376,7 +376,7 @@ bundle-sandbox:
 | `DATABASE_URL` | Postgres connection string (Neon pooler recommended) | None |
 | `NEON_AUTH_BASE_URL` | Neon Auth / Better Auth base URL | None |
 | `NEON_AUTH_JWKS_URL` | Neon Auth JWKS endpoint for EdDSA JWT verification | Derived from base URL |
-| `BORING_UI_SESSION_SECRET` | HMAC secret for `/auth/session` cookie signing | auto-generated (ephemeral) |
+| `BORING_UI_SESSION_SECRET` | HMAC secret for `/auth/session` cookie signing. **Must be stable across deploys** — see [Session Persistence](./NEON_SETUP.md#session-persistence-across-deploys) | auto-generated (ephemeral — invalidated on restart) |
 | `BORING_SETTINGS_KEY` | Encryption key for stored settings | None |
 | `AUTH_SESSION_COOKIE_NAME` | Session cookie name for `/auth/*` routes | `boring_session` |
 | `AUTH_SESSION_TTL_SECONDS` | Session cookie TTL in seconds | `86400` |
@@ -498,6 +498,9 @@ pytest tests/ -v -k "edge or sandbox or passthrough"
 ```
 
 ## Troubleshooting
+
+### Users Logged Out After Redeploy
+If `BORING_UI_SESSION_SECRET` is not set, boring-ui generates an ephemeral secret on each startup. All session cookies become invalid on redeploy. Fix: set a stable secret in your Modal/env config. See [Session Persistence](./NEON_SETUP.md#session-persistence-across-deploys).
 
 ### Layout Corrupted / Blank Screen
 Clear localStorage for the app's storage prefix:

@@ -140,6 +140,9 @@ class APIConfig:
     auth_dev_login_enabled: bool = field(
         default_factory=lambda: _env_bool('AUTH_DEV_LOGIN_ENABLED', False)
     )
+    auth_dev_auto_login: bool = field(
+        default_factory=lambda: _env_bool('AUTH_DEV_AUTO_LOGIN', _env_bool('AUTH_DEV_LOGIN_ENABLED', False))
+    )
     auth_session_secret: str = field(
         default_factory=lambda: _env_str('BORING_UI_SESSION_SECRET', '')
     )

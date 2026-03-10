@@ -45,7 +45,9 @@ export default function CompanionAdapter() {
           hasLoadedSessions.current = true
         }
       } catch {
-        // server not ready
+        // Session list API unavailable — mark loaded so restoration effects
+        // can fire and attempt WebSocket reconnection (the real source of truth).
+        if (active) hasLoadedSessions.current = true
       }
     }
     poll()
@@ -96,10 +98,13 @@ export default function CompanionAdapter() {
     if (knownIds.has(currentSessionId)) {
       return
     }
+    // If sdkSessions is empty the API may be unavailable — don't clear yet.
+    // Effect below will attempt a WebSocket connection (the real source of truth).
+    if (sdkSessions.length === 0) return
     // Stale restored session id: stop reconnect loop immediately.
     disconnectSession(currentSessionId)
     setCurrentSession(null)
-  }, [currentSessionId, knownSessions, setCurrentSession])
+  }, [currentSessionId, knownSessions, setCurrentSession, sdkSessions])
 
   useEffect(() => {
     if (!currentSessionId) return
@@ -108,6 +113,9 @@ export default function CompanionAdapter() {
     const currentSdk = sdkSessions.find((session) => session.sessionId === currentSessionId)
     if (!currentSdk || currentSdk.archived) {
       relaunchAttemptsRef.current.delete(currentSessionId)
+      // Session not in SDK list (API may be unavailable or session is ephemeral).
+      // Try connecting via WebSocket — it's the source of truth for session liveness.
+      connectSession(currentSessionId)
       return
     }
 

@@ -53,8 +53,7 @@ export default function FileTreePanel({ params }) {
   const [viewMode, setViewMode] = useState('files') // 'files' | 'changes'
   const [searchExpanded, setSearchExpanded] = useState(false)
   const { isLoading: isGitLoading, isFetching: isGitFetching } = useGitStatus({
-    refetchInterval: 5000,
-    enabled: viewMode === 'changes',
+    refetchInterval: viewMode === 'changes' ? 5000 : false,
   })
   const showGitHeaderSpinner = viewMode === 'changes' && (isGitLoading || isGitFetching)
   const { status: ghStatus, connect: ghConnect } = useGitHubConnection(workspaceId, { enabled: !!githubEnabled })
