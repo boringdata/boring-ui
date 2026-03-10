@@ -7,7 +7,7 @@
  * @module layout/LayoutManager
  */
 
-import { essentialPanes } from '../registry/panes'
+import { essentialPanes, checkRequirements } from '../registry/panes'
 
 // Layout version - increment to force layout reset on breaking changes
 export const LAYOUT_VERSION = 22
@@ -146,17 +146,21 @@ export const PANEL_SIZES_KEY = `${DEFAULT_STORAGE_PREFIX}-panel-sizes`
  * Returns true if layout is valid, false if it has drifted.
  *
  * @param {Object} layout - Layout object from Dockview toJSON()
+ * @param {Object} [capabilities] - Server capabilities (routers/features).
+ *   When provided, essential panels whose requirements aren't met are skipped.
  * @returns {boolean} True if layout is valid
  */
-export const validateLayoutStructure = (layout) => {
+export const validateLayoutStructure = (layout, capabilities) => {
   if (!layout?.grid || !layout?.panels) return false
 
   const essentials = essentialPanes()
   const panels = layout.panels
   const panelIds = Object.keys(panels)
 
-  // Check all essential panels exist in panels object
+  // Check all essential panels exist in panels object.
+  // Skip panels whose requirements (routers/features) aren't met.
   for (const essentialId of essentials) {
+    if (capabilities && !checkRequirements(essentialId, capabilities)) continue
     if (!panelIds.includes(essentialId)) {
       console.warn(`[Layout drift] Missing essential panel: ${essentialId}`)
       return false
@@ -179,6 +183,7 @@ export const validateLayoutStructure = (layout) => {
   collectViews(layout.grid.root)
 
   for (const essentialId of essentials) {
+    if (capabilities && !checkRequirements(essentialId, capabilities)) continue
     if (!gridViewIds.has(essentialId)) {
       console.warn(`[Layout drift] Essential panel not in grid: ${essentialId}`)
       return false

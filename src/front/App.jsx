@@ -3255,7 +3255,7 @@ export default function App() {
             const parsed = JSON.parse(raw)
             const hasValidVersion = parsed?.version >= LAYOUT_VERSION
             const hasPanels = !!parsed?.panels
-            const hasValidStructure = validateLayoutStructure(parsed)
+            const hasValidStructure = validateLayoutStructure(parsed, capabilitiesRef.current)
 
             // Check if layout is valid
             if (hasValidVersion && hasPanels && hasValidStructure) {
