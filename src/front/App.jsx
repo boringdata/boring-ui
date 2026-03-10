@@ -4530,6 +4530,25 @@ export default function App() {
     }
   }, [dockApi, readDroppedSeriesId, routeSeriesDropToPanel])
 
+  // Workspace redirect: authenticated user on `/` with no workspace → redirect to first workspace
+  // (Hook must be before any early returns to satisfy rules-of-hooks)
+  const needsWorkspaceRedirect =
+    capabilities?.features?.control_plane &&
+    userMenuAuthStatus === 'authenticated' &&
+    !currentWorkspaceId &&
+    pagePathname === '/'
+
+  useEffect(() => {
+    if (!needsWorkspaceRedirect) return
+    if (workspaceOptions.length > 0) {
+      const firstWs = workspaceOptions[0]
+      const route = routes.controlPlane.workspaces.scope(firstWs.id)
+      window.location.replace(route.path)
+    } else {
+      setShowCreateWorkspaceModal(true)
+    }
+  }, [needsWorkspaceRedirect, workspaceOptions])
+
   if (POC_MODE === 'chat') {
     return (
       <QueryClientProvider key={dataProviderScopeKey} client={queryClient}>
@@ -4586,24 +4605,6 @@ export default function App() {
     window.location.replace(`/auth/login?redirect_uri=${redirectUri}`)
     return null
   }
-
-  // Workspace redirect: authenticated user on `/` with no workspace → redirect to first workspace
-  const needsWorkspaceRedirect =
-    capabilities?.features?.control_plane &&
-    userMenuAuthStatus === 'authenticated' &&
-    !currentWorkspaceId &&
-    pagePathname === '/'
-
-  useEffect(() => {
-    if (!needsWorkspaceRedirect) return
-    if (workspaceOptions.length > 0) {
-      const firstWs = workspaceOptions[0]
-      const route = routes.controlPlane.workspaces.scope(firstWs.id)
-      window.location.replace(route.path)
-    } else {
-      setShowCreateWorkspaceModal(true)
-    }
-  }, [needsWorkspaceRedirect, workspaceOptions])
 
   // Full-page settings views (render instead of DockView)
   if (isUserSettingsPage) {

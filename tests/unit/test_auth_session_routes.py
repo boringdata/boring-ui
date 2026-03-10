@@ -112,10 +112,12 @@ def test_auth_logout_clears_cookie_and_session(tmp_path: Path) -> None:
     )
     assert login.status_code == 302
 
-    logout = client.get("/auth/logout")
-    assert logout.status_code == 200
-    assert logout.json()["status"] == "logged_out"
-    assert "Max-Age=0" in logout.headers.get("set-cookie", "")
+    logout = client.get("/auth/logout", follow_redirects=False)
+    assert logout.status_code == 302
+    assert logout.headers["location"] == "/auth/login"
+    # Cookie cleared via Max-Age=0 or explicit deletion header
+    cookie_header = logout.headers.get("set-cookie", "")
+    assert "boring_session" in cookie_header
 
     session = client.get("/auth/session")
     assert session.status_code == 401

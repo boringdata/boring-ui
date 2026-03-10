@@ -1,3 +1,4 @@
+/* global process */
 /**
  * Integration tests for the full git sync flow using isomorphic-git + git-http-mock-server.
  *

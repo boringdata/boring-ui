@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Sun, Moon, ArrowLeftRight, ChevronRight, Plus, Settings, Wrench, LogOut, AlertCircle, HelpCircle } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { ICON_SIZE_INLINE, ICON_SIZE_COMPACT, ICON_STROKE_WIDTH } from '../utils/iconTokens'
+import { routes } from '../utils/routes'
 
 /**
  * UserMenu - Avatar with dropdown menu for user and workspace actions
@@ -29,7 +30,7 @@ export default function UserMenu({
   onRetry,
   disabledActions = [],
   showSwitchWorkspace = true,
-  onSwitchWorkspace,
+  onSwitchWorkspace: _onSwitchWorkspace,
   onCreateWorkspace,
   onOpenUserSettings,
   onOpenWorkspaceSettings,
@@ -368,7 +369,7 @@ export default function UserMenu({
               <a
                 key={wsId}
                 className="user-menu-ws-submenu-item"
-                href={`/w/${encodeURIComponent(wsId)}/`}
+                href={routes.controlPlane.workspaces.scope(wsId).path}
                 onClick={() => closeMenu(true)}
               >
                 <span className="user-menu-ws-item-name">{ws.name || wsId}</span>
