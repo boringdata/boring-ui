@@ -418,6 +418,103 @@ class GitService:
             raise HTTPException(status_code=500, detail=f'Git error: {_sanitize_git_error(result.stderr)}')
         return {'cloned': True}
 
+    # -------------------------------------------------------------------
+    # Branch operations
+    # -------------------------------------------------------------------
+
+    def current_branch(self) -> dict:
+        """Get the current branch name."""
+        if not self.is_git_repo():
+            return {'branch': None}
+        try:
+            name = self.run_git(['rev-parse', '--abbrev-ref', 'HEAD']).strip()
+            return {'branch': name}
+        except HTTPException:
+            return {'branch': None}
+
+    def list_branches(self) -> dict:
+        """List all local branches."""
+        if not self.is_git_repo():
+            return {'branches': [], 'current': None}
+        output = self.run_git(['branch', '--list', '--no-color'])
+        branches = []
+        current = None
+        for line in output.strip().split('\n'):
+            if not line.strip():
+                continue
+            is_current = line.startswith('*')
+            name = line.lstrip('* ').strip()
+            # Skip detached HEAD entries like "(HEAD detached at abc1234)"
+            if not name or name.startswith('('):
+                continue
+            branches.append(name)
+            if is_current:
+                current = name
+        return {'branches': branches, 'current': current}
+
+    def create_branch(self, name: str, checkout: bool = True) -> dict:
+        """Create a new branch.
+
+        Args:
+            name: Branch name.
+            checkout: Whether to checkout the new branch (default: True).
+        """
+        _validate_git_ref(name, 'branch name')
+        if checkout:
+            self.run_git(['checkout', '-b', name])
+        else:
+            self.run_git(['branch', name])
+        return {'created': True, 'branch': name, 'checked_out': checkout}
+
+    def checkout_branch(self, name: str) -> dict:
+        """Checkout an existing branch.
+
+        Args:
+            name: Branch name to checkout.
+        """
+        _validate_git_ref(name, 'branch name')
+        self.run_git(['checkout', name])
+        return {'checked_out': True, 'branch': name}
+
+    def merge_branch(self, source: str, message: str | None = None) -> dict:
+        """Merge a branch into the current branch.
+
+        Args:
+            source: Branch name to merge from.
+            message: Optional merge commit message.
+
+        Raises:
+            HTTPException 409: If merge conflict occurs.
+            HTTPException 500: If merge fails for other reasons.
+        """
+        _validate_git_ref(source, 'branch name')
+        args = ['merge', source]
+        if message:
+            args.extend(['-m', message])
+        result = subprocess.run(
+            ['git'] + args,
+            cwd=self.config.workspace_root,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            stderr = _sanitize_git_error(result.stderr)
+            if 'conflict' in stderr.lower() or 'merge conflict' in (result.stdout or '').lower():
+                # Abort the failed merge to leave workspace clean
+                subprocess.run(
+                    ['git', 'merge', '--abort'],
+                    cwd=self.config.workspace_root,
+                    capture_output=True,
+                    timeout=10,
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail=f'Merge conflict: {stderr}',
+                )
+            raise HTTPException(status_code=500, detail=f'Git error: {stderr}')
+        return {'merged': True, 'source': source}
+
     def add_remote(self, name: str, url: str) -> dict:
         """Add or update a remote."""
         _validate_git_ref(name, 'remote name')

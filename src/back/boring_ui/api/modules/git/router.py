@@ -2,7 +2,7 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from ...config import APIConfig
 from ...policy import enforce_delegated_policy_or_none
@@ -247,6 +247,84 @@ def create_git_router(config: APIConfig) -> APIRouter:
             from fastapi import HTTPException as HE
             raise HE(status_code=400, detail='name and url are required')
         return await asyncio.to_thread(service.add_remote, name, url)
+
+    # -------------------------------------------------------------------
+    # Branch operations
+    # -------------------------------------------------------------------
+
+    @router.get('/branches')
+    async def list_branches(request: Request):
+        """List local branches and current branch."""
+        deny = enforce_delegated_policy_or_none(
+            request,
+            {"workspace.git.read"},
+            operation="workspace-core.git.branches",
+        )
+        if deny is not None:
+            return deny
+        return await asyncio.to_thread(service.list_branches)
+
+    @router.get('/branch')
+    async def current_branch(request: Request):
+        """Get the current branch name."""
+        deny = enforce_delegated_policy_or_none(
+            request,
+            {"workspace.git.read"},
+            operation="workspace-core.git.branch",
+        )
+        if deny is not None:
+            return deny
+        return await asyncio.to_thread(service.current_branch)
+
+    @router.post('/branch')
+    async def create_branch(request: Request):
+        """Create a new branch."""
+        deny = enforce_delegated_policy_or_none(
+            request,
+            {"workspace.git.write"},
+            operation="workspace-core.git.branch.create",
+        )
+        if deny is not None:
+            return deny
+        body = await request.json()
+        name = body.get('name')
+        if not name:
+            raise HTTPException(status_code=400, detail='name is required')
+        checkout = body.get('checkout', True)
+        return await asyncio.to_thread(service.create_branch, name, checkout)
+
+    @router.post('/checkout')
+    async def checkout(request: Request):
+        """Checkout a branch."""
+        deny = enforce_delegated_policy_or_none(
+            request,
+            {"workspace.git.write"},
+            operation="workspace-core.git.checkout",
+        )
+        if deny is not None:
+            return deny
+        body = await request.json()
+        name = body.get('name')
+        if not name:
+            raise HTTPException(status_code=400, detail='name is required')
+        return await asyncio.to_thread(service.checkout_branch, name)
+
+    @router.post('/merge')
+    async def merge(request: Request):
+        """Merge a branch into the current branch."""
+        deny = enforce_delegated_policy_or_none(
+            request,
+            {"workspace.git.write"},
+            operation="workspace-core.git.merge",
+        )
+        if deny is not None:
+            return deny
+        body = await request.json()
+        source = body.get('source')
+        if not source:
+            raise HTTPException(status_code=400, detail='source is required')
+        message = body.get('message')
+        return await asyncio.to_thread(service.merge_branch, source, message)
 
     @router.get('/remotes')
     async def list_remotes(request: Request):

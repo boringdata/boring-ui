@@ -11,6 +11,7 @@ import SidebarSectionHeader, {
 } from '../components/SidebarSectionHeader'
 import { ICON_SIZE_INLINE } from '../utils/iconTokens'
 import { useGitStatus } from '../providers/data'
+import SyncStatusFooter from '../components/SyncStatusFooter'
 
 export default function FileTreePanel({ params }) {
   const {
@@ -299,6 +300,7 @@ export default function FileTreePanel({ params }) {
           )}
         </div>
       )}
+      {!sectionCollapsed && <SyncStatusFooter />}
       <div className="filetree-footer">
         <UserMenu
           email={userEmail}

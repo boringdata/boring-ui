@@ -40,6 +40,7 @@ export {
   useGitClone,
   useGitAddRemote,
   useGitRemotes,
+  useGitBranch,
   useGitSync,
 } from './queries'
 

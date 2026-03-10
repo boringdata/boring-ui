@@ -34,6 +34,10 @@ const API = {
     clone: '/api/v1/git/clone',
     remote: '/api/v1/git/remote',
     remotes: '/api/v1/git/remotes',
+    branches: '/api/v1/git/branches',
+    branch: '/api/v1/git/branch',
+    checkout: '/api/v1/git/checkout',
+    merge: '/api/v1/git/merge',
   },
 }
 
@@ -206,5 +210,24 @@ export const createHttpProvider = () => ({
       const data = await fetchJson(API.git.remotes, undefined, opts)
       return Array.isArray(data?.remotes) ? data.remotes : []
     },
+
+    branches: async (opts) => {
+      const data = await fetchJson(API.git.branches, undefined, opts)
+      return { branches: data?.branches || [], current: data?.current || null }
+    },
+
+    currentBranch: async (opts) => {
+      const data = await fetchJson(API.git.branch, undefined, opts)
+      return data?.branch || null
+    },
+
+    createBranch: (name, checkout = true, opts) =>
+      sendJson('POST', API.git.branch, undefined, { name, checkout }, opts),
+
+    checkout: (name, opts) =>
+      sendJson('POST', API.git.checkout, undefined, { name }, opts),
+
+    merge: (source, message, opts) =>
+      sendJson('POST', API.git.merge, undefined, { source, message }, opts),
   },
 })

@@ -470,6 +470,194 @@ function createPiCoreTools(provider, queryClient, { includeUi = false } = {}) {
           }
         },
       },
+
+      // ── Write operations ──────────────────────────────────────────────
+
+      {
+        name: 'git_add',
+        label: 'Git Add',
+        description: 'Stage files for commit. Pass specific paths or omit to stage all changes.',
+        parameters: Type.Object({
+          paths: Type.Optional(Type.Array(Type.String(), { description: 'File paths to stage (omit to stage all)' })),
+        }),
+        execute: async (_toolCallId, params) => {
+          try {
+            const paths = Array.isArray(params?.paths) && params.paths.length > 0 ? params.paths : undefined
+            await provider.git.add(paths)
+            await invalidateFileAndGitQueries(queryClient)
+            return textResult(paths ? `Staged ${paths.length} file(s)` : 'Staged all changes')
+          } catch (error) {
+            return textResult(`Error staging files: ${error?.message || String(error)}`)
+          }
+        },
+      },
+
+      {
+        name: 'git_commit',
+        label: 'Git Commit',
+        description: 'Create a commit with the currently staged changes.',
+        parameters: Type.Object({
+          message: Type.String({ description: 'Commit message' }),
+        }),
+        execute: async (_toolCallId, params) => {
+          const message = String(params?.message || '').trim()
+          if (!message) return textResult('Error: message is required')
+          try {
+            const result = await provider.git.commit(message)
+            await invalidateFileAndGitQueries(queryClient)
+            return textResult(`Committed: ${result?.oid || '(ok)'}`)
+          } catch (error) {
+            return textResult(`Error committing: ${error?.message || String(error)}`)
+          }
+        },
+      },
+
+      {
+        name: 'git_push',
+        label: 'Git Push',
+        description: 'Push commits to a remote repository.',
+        parameters: Type.Object({
+          remote: Type.Optional(Type.String({ description: 'Remote name (default: origin)' })),
+          branch: Type.Optional(Type.String({ description: 'Branch to push' })),
+        }),
+        execute: async (_toolCallId, params) => {
+          try {
+            await provider.git.push({ remote: params?.remote, branch: params?.branch })
+            return textResult('Pushed successfully')
+          } catch (error) {
+            return textResult(`Error pushing: ${error?.message || String(error)}`)
+          }
+        },
+      },
+
+      {
+        name: 'git_pull',
+        label: 'Git Pull',
+        description: 'Pull changes from a remote repository.',
+        parameters: Type.Object({
+          remote: Type.Optional(Type.String({ description: 'Remote name (default: origin)' })),
+          branch: Type.Optional(Type.String({ description: 'Branch to pull' })),
+        }),
+        execute: async (_toolCallId, params) => {
+          try {
+            await provider.git.pull({ remote: params?.remote, branch: params?.branch })
+            await invalidateFileAndGitQueries(queryClient)
+            return textResult('Pulled successfully')
+          } catch (error) {
+            return textResult(`Error pulling: ${error?.message || String(error)}`)
+          }
+        },
+      },
+
+      {
+        name: 'git_init',
+        label: 'Git Init',
+        description: 'Initialize a new git repository in the workspace.',
+        parameters: Type.Object({}),
+        execute: async () => {
+          try {
+            await provider.git.init()
+            await invalidateFileAndGitQueries(queryClient)
+            return textResult('Initialized git repository')
+          } catch (error) {
+            return textResult(`Error initializing: ${error?.message || String(error)}`)
+          }
+        },
+      },
+
+      // ── Branch operations ─────────────────────────────────────────────
+
+      {
+        name: 'git_branches',
+        label: 'Git Branches',
+        description: 'List all local branches and show the current branch.',
+        parameters: Type.Object({}),
+        execute: async () => {
+          try {
+            if (typeof provider.git.branches !== 'function') {
+              return textResult('Branch operations not available')
+            }
+            const { branches, current } = await provider.git.branches()
+            if (!branches || branches.length === 0) return textResult('No branches')
+            const lines = branches.map((b) => (b === current ? `* ${b}` : `  ${b}`))
+            return textResult(lines.join('\n'))
+          } catch (error) {
+            return textResult(`Error listing branches: ${error?.message || String(error)}`)
+          }
+        },
+      },
+
+      {
+        name: 'git_create_branch',
+        label: 'Create Branch',
+        description: 'Create a new git branch. Optionally switch to it.',
+        parameters: Type.Object({
+          name: Type.String({ description: 'New branch name' }),
+          checkout: Type.Optional(Type.Boolean({ description: 'Switch to the new branch (default: true)', default: true })),
+        }),
+        execute: async (_toolCallId, params) => {
+          const name = String(params?.name || '').trim()
+          if (!name) return textResult('Error: name is required')
+          try {
+            if (typeof provider.git.createBranch !== 'function') {
+              return textResult('Branch operations not available')
+            }
+            const checkout = params?.checkout !== false
+            await provider.git.createBranch(name, checkout)
+            await invalidateFileAndGitQueries(queryClient)
+            return textResult(checkout ? `Created and switched to branch '${name}'` : `Created branch '${name}'`)
+          } catch (error) {
+            return textResult(`Error creating branch: ${error?.message || String(error)}`)
+          }
+        },
+      },
+
+      {
+        name: 'git_checkout',
+        label: 'Git Checkout',
+        description: 'Switch to an existing branch.',
+        parameters: Type.Object({
+          name: Type.String({ description: 'Branch name to checkout' }),
+        }),
+        execute: async (_toolCallId, params) => {
+          const name = String(params?.name || '').trim()
+          if (!name) return textResult('Error: name is required')
+          try {
+            if (typeof provider.git.checkout !== 'function') {
+              return textResult('Branch operations not available')
+            }
+            await provider.git.checkout(name)
+            await invalidateFileAndGitQueries(queryClient)
+            return textResult(`Switched to branch '${name}'`)
+          } catch (error) {
+            return textResult(`Error checking out: ${error?.message || String(error)}`)
+          }
+        },
+      },
+
+      {
+        name: 'git_merge',
+        label: 'Git Merge',
+        description: 'Merge a branch into the current branch.',
+        parameters: Type.Object({
+          source: Type.String({ description: 'Branch to merge from' }),
+          message: Type.Optional(Type.String({ description: 'Merge commit message' })),
+        }),
+        execute: async (_toolCallId, params) => {
+          const source = String(params?.source || '').trim()
+          if (!source) return textResult('Error: source branch is required')
+          try {
+            if (typeof provider.git.merge !== 'function') {
+              return textResult('Branch operations not available')
+            }
+            await provider.git.merge(source, params?.message)
+            await invalidateFileAndGitQueries(queryClient)
+            return textResult(`Merged '${source}' into current branch`)
+          } catch (error) {
+            return textResult(`Error merging: ${error?.message || String(error)}`)
+          }
+        },
+      },
     )
   }
 

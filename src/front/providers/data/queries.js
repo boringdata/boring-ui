@@ -23,6 +23,8 @@ export const queryKeys = {
     diff: (path) => [...queryKeys.git.diffs(), path],
     shows: () => [...queryKeys.git.all, 'show'],
     show: (path) => [...queryKeys.git.shows(), path],
+    branch: () => [...queryKeys.git.all, 'branch'],
+    branches: () => [...queryKeys.git.all, 'branches'],
   },
 }
 
@@ -318,6 +320,19 @@ export const useGitRemotes = (options = {}) => {
     queryKey: [...queryKeys.git.all, 'remotes'],
     queryFn: ({ signal }) => provider.git.listRemotes({ signal }),
     enabled: typeof provider.git.listRemotes === 'function',
+    ...options,
+  })
+}
+
+/**
+ * Current branch name.
+ */
+export const useGitBranch = (options = {}) => {
+  const provider = useDataProvider()
+  return useQuery({
+    queryKey: queryKeys.git.branch(),
+    queryFn: ({ signal }) => provider.git.currentBranch({ signal }),
+    enabled: typeof provider.git.currentBranch === 'function',
     ...options,
   })
 }
