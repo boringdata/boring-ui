@@ -13,6 +13,7 @@ from ...config import APIConfig
 from ...policy import enforce_delegated_policy_or_none
 from .supabase.common import ensure_pool, error_response, load_session, normalize_workspace_payload
 from .supabase.membership import NotAMember, WorkspaceNotFound, require_membership
+from .user_settings_state import read_user_github_link, user_state_service
 
 
 def _parse_workspace_id(workspace_id: str, request: Request):
@@ -132,6 +133,7 @@ def _runtime_state_payload(row) -> dict:
 
 def create_workspace_router_supabase(config: APIConfig) -> APIRouter:
     router = APIRouter(tags=["workspaces"])
+    user_service = user_state_service(config)
 
     async def _require_membership_or_error(request: Request, pool, ws_uuid: uuid.UUID, user_id: str):
         try:
@@ -204,6 +206,23 @@ def create_workspace_router_supabase(config: APIConfig) -> APIRouter:
             session.user_id,
             name,
         )
+
+        github_link = read_user_github_link(user_service, str(session.user_id))
+        default_installation_id = github_link.get("default_installation_id")
+        settings_key = config.settings_encryption_key or os.environ.get("BORING_SETTINGS_KEY", "")
+        if default_installation_id and settings_key:
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO workspace_settings (workspace_id, key, value)
+                    VALUES ($1, 'github_installation_id', pgp_sym_encrypt($2, $3))
+                    ON CONFLICT (workspace_id, key)
+                    DO UPDATE SET value = pgp_sym_encrypt($2, $3), updated_at = now()
+                    """,
+                    uuid.UUID(workspace_id),
+                    str(default_installation_id),
+                    settings_key,
+                )
 
         async with pool.acquire() as conn:
             row = await conn.fetchrow(

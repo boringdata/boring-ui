@@ -17,6 +17,7 @@ function ConnectGitHubButton({ workspaceId }) {
   const { status, loading, connect } = useGitHubConnection(workspaceId)
   const configured = status?.configured === true
   const installationConnected = !!(status?.installation_connected ?? status?.connected)
+  const accountLinked = !!(status?.account_linked ?? installationConnected)
   const bootstrap = useLightningFsGitBootstrap({
     workspaceId,
     enabled: true,
@@ -44,8 +45,10 @@ function ConnectGitHubButton({ workspaceId }) {
           ? bootstrap.message || 'Open GitHub settings for this workspace'
           : installationConnected
           ? 'Choose the GitHub repo for this workspace'
+          : accountLinked
+            ? 'Use your linked GitHub account for this workspace'
           : configured
-            ? 'Connect GitHub for push/pull'
+            ? 'Link a GitHub account for this workspace'
             : 'Install GitHub App'
       }
     >
@@ -55,8 +58,10 @@ function ConnectGitHubButton({ workspaceId }) {
           ? 'Fix GitHub Sync'
           : installationConnected
           ? 'Choose Repo'
+          : accountLinked
+            ? 'Use GitHub'
           : configured
-            ? 'Connect GitHub'
+            ? 'Link GitHub'
             : 'Install GitHub App'}
       </span>
     </button>

@@ -34,12 +34,14 @@ Keep workspace-scoped configuration such as GitHub integration on the workspace 
 
 ### GitHub in core mode
 
-For `core` + `pi-lightningfs`, GitHub setup is a two-step workspace flow:
+For `core` + `pi-lightningfs`, GitHub setup is a user-plus-workspace flow:
 
-1. connect the GitHub App installation
-2. select one repo from the installation's accessible repo list
+1. link the user's GitHub account
+2. verify or install the GitHub App for that account
+3. bind the workspace to one installation
+4. select one repo from that installation's accessible repo list
 
-Only after repo selection should the workspace be considered linked. On an empty LightningFS workspace, the browser repo is then bootstrapped from that selected GitHub repo when the workspace opens.
+New workspaces may inherit the user's saved default installation, but repo selection remains explicit per workspace. Only after repo selection should the workspace be considered fully linked. On an empty LightningFS workspace, the browser repo is then bootstrapped from that selected GitHub repo when the workspace opens.
 
 ### Start Local Dev Environment
 

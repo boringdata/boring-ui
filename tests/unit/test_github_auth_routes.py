@@ -11,6 +11,11 @@ from boring_ui.api.modules.github_auth.router import (
     _store_connection,
     _remove_connection,
 )
+from boring_ui.api.modules.control_plane.auth_session import create_session_cookie
+from boring_ui.api.modules.control_plane.user_settings_state import (
+    read_user_github_link,
+    user_state_service,
+)
 from fastapi import FastAPI
 
 
@@ -28,6 +33,18 @@ def config(tmp_path):
 
 
 @pytest.fixture
+def config_with_slug(tmp_path):
+    return APIConfig(
+        workspace_root=tmp_path,
+        github_app_id='12345',
+        github_app_client_id='Iv1.test123',
+        github_app_client_secret='secret456',
+        github_app_private_key='fake-pem-key',
+        github_app_slug='boring-ui-app',
+    )
+
+
+@pytest.fixture
 def unconfigured_config(tmp_path):
     return APIConfig(workspace_root=tmp_path)
 
@@ -37,6 +54,15 @@ def app(config):
     app = FastAPI()
     app.include_router(
         create_github_auth_router(config), prefix='/api/v1/auth/github',
+    )
+    return app
+
+
+@pytest.fixture
+def app_with_slug(config_with_slug):
+    app = FastAPI()
+    app.include_router(
+        create_github_auth_router(config_with_slug), prefix='/api/v1/auth/github',
     )
     return app
 
@@ -106,6 +132,35 @@ class TestStatus:
             assert data['installation_id'] == 42
 
     @pytest.mark.asyncio
+    async def test_status_reports_user_level_account_link_when_workspace_not_connected(self, app, config):
+        service = user_state_service(config)
+        from boring_ui.api.modules.control_plane.user_settings_state import write_user_github_link
+        write_user_github_link(
+            service,
+            user_id='user-gh-status',
+            email='gh-status@example.com',
+            account_linked=True,
+            default_installation_id=777,
+        )
+        cookie = create_session_cookie(
+            'user-gh-status',
+            'gh-status@example.com',
+            secret=config.auth_session_secret,
+            ttl_seconds=config.auth_session_ttl_seconds,
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            c.cookies.set(config.auth_session_cookie_name, cookie)
+            r = await c.get('/api/v1/auth/github/status',
+                            params={'workspace_id': 'ws-account-only'})
+            assert r.status_code == 200
+            data = r.json()
+            assert data['account_linked'] is True
+            assert data['default_installation_id'] == 777
+            assert data['installation_connected'] is False
+            assert data['repo_selected'] is False
+
+    @pytest.mark.asyncio
     async def test_status_with_selected_repo(self, app):
         """Status exposes repo selection when a workspace repo is chosen."""
         _workspace_connections['ws-2'] = {
@@ -126,6 +181,30 @@ class TestStatus:
 
 
 # ── Callback endpoint ───────────────────────────────────────────────────
+
+class TestAuthorize:
+    @pytest.mark.asyncio
+    async def test_authorize_workspace_prefers_user_oauth_detection(self, app_with_slug):
+        transport = ASGITransport(app=app_with_slug)
+        async with AsyncClient(
+            transport=transport, base_url='http://test', follow_redirects=False,
+        ) as c:
+            r = await c.get('/api/v1/auth/github/authorize', params={'workspace_id': 'ws-oauth'})
+            assert r.status_code in (302, 307)
+            assert 'github.com/login/oauth/authorize' in r.headers['location']
+
+    @pytest.mark.asyncio
+    async def test_authorize_force_install_uses_app_install_flow(self, app_with_slug):
+        transport = ASGITransport(app=app_with_slug)
+        async with AsyncClient(
+            transport=transport, base_url='http://test', follow_redirects=False,
+        ) as c:
+            r = await c.get('/api/v1/auth/github/authorize', params={
+                'workspace_id': 'ws-install',
+                'force_install': 'true',
+            })
+            assert r.status_code in (302, 307)
+            assert 'github.com/apps/boring-ui-app/installations/new' in r.headers['location']
 
 class TestCallback:
     @pytest.mark.asyncio
@@ -168,6 +247,92 @@ class TestCallback:
                 assert r.status_code == 200
                 assert 'text/html' in r.headers.get('content-type', '')
                 assert 'Connected successfully!' in r.text
+
+    @pytest.mark.asyncio
+    async def test_callback_oauth_code_with_workspace_stores_first_user_installation(self, app, config):
+        transport = ASGITransport(app=app)
+        cookie = create_session_cookie(
+            'user-gh-callback',
+            'gh-callback@example.com',
+            secret=config.auth_session_secret,
+            ttl_seconds=config.auth_session_ttl_seconds,
+        )
+        with patch(
+            'boring_ui.api.modules.github_auth.service.httpx.post'
+        ) as mock_post, patch(
+            'boring_ui.api.modules.github_auth.service.httpx.get'
+        ) as mock_get:
+            token_resp = MagicMock()
+            token_resp.status_code = 200
+            token_resp.json.return_value = {
+                'access_token': 'ghu_test123',
+                'token_type': 'bearer',
+            }
+            token_resp.raise_for_status = MagicMock()
+            mock_post.return_value = token_resp
+
+            install_resp = MagicMock()
+            install_resp.status_code = 200
+            install_resp.json.return_value = {
+                'installations': [{
+                    'id': 321,
+                    'account': {'login': 'juline', 'type': 'User'},
+                }],
+            }
+            install_resp.raise_for_status = MagicMock()
+            mock_get.return_value = install_resp
+
+            async with AsyncClient(
+                transport=transport, base_url='http://test', follow_redirects=False,
+            ) as c:
+                c.cookies.set(config.auth_session_cookie_name, cookie)
+                r = await c.get('/api/v1/auth/github/callback', params={
+                    'code': 'test-code',
+                    'workspace_id': 'ws-reconnect',
+                })
+                assert r.status_code == 200
+                assert 'Connected successfully!' in r.text
+
+        conn = _workspace_connections.get('ws-reconnect')
+        assert conn is not None
+        assert conn['installation_id'] == 321
+        user_link = read_user_github_link(user_state_service(config), 'user-gh-callback')
+        assert user_link['account_linked'] is True
+        assert user_link['default_installation_id'] == 321
+
+    @pytest.mark.asyncio
+    async def test_callback_oauth_code_without_installation_redirects_to_install_flow(self, app_with_slug):
+        transport = ASGITransport(app=app_with_slug)
+        with patch(
+            'boring_ui.api.modules.github_auth.service.httpx.post'
+        ) as mock_post, patch(
+            'boring_ui.api.modules.github_auth.service.httpx.get'
+        ) as mock_get:
+            token_resp = MagicMock()
+            token_resp.status_code = 200
+            token_resp.json.return_value = {
+                'access_token': 'ghu_test123',
+                'token_type': 'bearer',
+            }
+            token_resp.raise_for_status = MagicMock()
+            mock_post.return_value = token_resp
+
+            install_resp = MagicMock()
+            install_resp.status_code = 200
+            install_resp.json.return_value = {'installations': []}
+            install_resp.raise_for_status = MagicMock()
+            mock_get.return_value = install_resp
+
+            async with AsyncClient(
+                transport=transport, base_url='http://test', follow_redirects=False,
+            ) as c:
+                r = await c.get('/api/v1/auth/github/callback', params={
+                    'code': 'test-code',
+                    'workspace_id': 'ws-new-install',
+                })
+                assert r.status_code == 200
+                assert 'Install the GitHub App to continue.' in r.text
+                assert 'github.com/apps/boring-ui-app/installations/new' in r.text
 
     @pytest.mark.asyncio
     async def test_callback_installation_flow_stores_connection(self, app):

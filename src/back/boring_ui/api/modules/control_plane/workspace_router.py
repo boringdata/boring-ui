@@ -10,8 +10,10 @@ from fastapi import APIRouter, Body, Request, status
 
 from ...config import APIConfig
 from ...policy import enforce_delegated_policy_or_none
+from .auth_session import SessionExpired, SessionInvalid, parse_session_cookie
 from .repository import LocalControlPlaneRepository
 from .service import ControlPlaneService
+from .user_settings_state import read_user_github_link, user_state_service
 
 
 def _workspace_service(config: APIConfig) -> ControlPlaneService:
@@ -22,6 +24,16 @@ def _workspace_service(config: APIConfig) -> ControlPlaneService:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _load_session_optional(request: Request, config: APIConfig):
+    token = request.cookies.get(config.auth_session_cookie_name, "")
+    if not token:
+        return None
+    try:
+        return parse_session_cookie(token, secret=config.auth_session_secret)
+    except (SessionExpired, SessionInvalid):
+        return None
 
 
 def _ensure_workspace_exists(
@@ -47,6 +59,7 @@ def create_workspace_router(config: APIConfig) -> APIRouter:
 
     router = APIRouter(tags=["workspaces"])
     service = _workspace_service(config)
+    user_service = user_state_service(config)
 
     @router.get("/workspaces")
     def list_workspaces(request: Request) -> dict[str, Any]:
@@ -100,7 +113,13 @@ def create_workspace_router(config: APIConfig) -> APIRouter:
                 "provisioning_requested_at": None,
             },
         )
-        service.set_workspace_settings(workspace_id, {})
+        initial_settings: dict[str, Any] = {}
+        session = _load_session_optional(request, config)
+        if session is not None:
+            github_link = read_user_github_link(user_service, session.user_id)
+            if github_link.get("default_installation_id"):
+                initial_settings["github_installation_id"] = str(github_link["default_installation_id"])
+        service.set_workspace_settings(workspace_id, initial_settings)
         return {"ok": True, "workspace": workspace, "id": workspace_id}
 
     @router.get("/workspaces/{workspace_id}/runtime")

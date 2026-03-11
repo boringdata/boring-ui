@@ -29,36 +29,6 @@ export function useGitHubConnection(workspaceId, { enabled = true } = {}) {
       const route = routes.github.status(workspaceId)
       const qs = route.query ? '?' + new URLSearchParams(route.query).toString() : ''
       const { data } = await apiFetchJson(route.path + qs)
-
-      // Auto-connect: if configured but not connected, check for existing installations
-      if (data?.configured && !data?.connected && workspaceId) {
-        try {
-          const { data: instData } = await apiFetchJson(routes.github.installations().path)
-          const installations = instData?.installations || []
-          if (installations.length > 0) {
-            const installationId = installations[0].id
-            const { response } = await apiFetchJson(routes.github.connect().path, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ workspace_id: workspaceId, installation_id: installationId }),
-            })
-            if (response.ok) {
-              setStatus({
-                configured: true,
-                connected: true,
-                installation_connected: true,
-                installation_id: installationId,
-                repo_selected: false,
-                repo_url: null,
-              })
-              return
-            }
-          }
-        } catch {
-          // Auto-connect failed silently — show normal disconnected state
-        }
-      }
-
       setStatus(data)
     } catch {
       setError('Failed to check GitHub status')
@@ -82,30 +52,26 @@ export function useGitHubConnection(workspaceId, { enabled = true } = {}) {
   }, [fetchStatus])
 
   const connect = useCallback(async () => {
-    // First check if the app is already installed — auto-connect if so
-    try {
-      const { data: instData } = await apiFetchJson(routes.github.installations().path)
-      const installations = instData?.installations || []
-      if (installations.length > 0 && workspaceId) {
-        // App is already installed — connect directly without leaving the page
-        const installationId = installations[0].id
+    if (workspaceId && status?.account_linked && status?.default_installation_id) {
+      try {
         await apiFetchJson(routes.github.connect().path, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspace_id: workspaceId, installation_id: installationId }),
+          body: JSON.stringify({
+            workspace_id: workspaceId,
+            installation_id: status.default_installation_id,
+          }),
         })
-        fetchStatus()
+        await fetchStatus()
         return
+      } catch {
+        // Fall back to the interactive authorize flow if the saved default no longer works.
       }
-    } catch {
-      // Fall through to installation flow
     }
-
-    // No installation found — open GitHub App install page
     const authPath = routes.github.authorize().path
     const url = workspaceId ? `${authPath}?workspace_id=${encodeURIComponent(workspaceId)}` : authPath
     window.open(url, '_blank')
-  }, [workspaceId, fetchStatus])
+  }, [fetchStatus, status?.account_linked, status?.default_installation_id, workspaceId])
 
   const disconnect = useCallback(async () => {
     setDisconnecting(true)
@@ -115,14 +81,16 @@ export function useGitHubConnection(workspaceId, { enabled = true } = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspace_id: workspaceId }),
       })
-      setStatus({
+      setStatus((current) => ({
         configured: true,
+        account_linked: current?.account_linked ?? false,
+        default_installation_id: current?.default_installation_id ?? null,
         connected: false,
         installation_connected: false,
         installation_id: null,
         repo_selected: false,
         repo_url: null,
-      })
+      }))
     } catch {
       setError('Failed to disconnect')
     } finally {
@@ -144,6 +112,7 @@ export default function GitHubConnect({ workspaceId }) {
   const [selectingRepoUrl, setSelectingRepoUrl] = useState('')
 
   const installationConnected = !!(status?.installation_connected ?? status?.connected)
+  const accountLinked = !!(status?.account_linked ?? installationConnected)
   const selectedRepoUrl = normalizeGitHubRepoUrl(status?.repo_url)
   const bootstrap = useLightningFsGitBootstrap({
     workspaceId,
@@ -200,7 +169,7 @@ export default function GitHubConnect({ workspaceId }) {
       {loading ? (
         <div className="github-connect-loading">
           <Loader2 className="git-inline-spinner" size={14} />
-          <span>Checking connection...</span>
+          <span>Checking GitHub account and workspace state...</span>
         </div>
       ) : !status?.configured ? (
         <div className="github-connect-unconfigured">
@@ -212,6 +181,17 @@ export default function GitHubConnect({ workspaceId }) {
       ) : installationConnected ? (
         <div className="github-connect-connected">
           <div className="github-connect-status-grid">
+            <div className="github-connect-status-card">
+              <span className="github-connect-status-label">GitHub account</span>
+              <div className="github-connect-status-row">
+                <span className={`settings-runtime-badge ${accountLinked ? 'settings-runtime-badge-running' : 'settings-runtime-badge-pending'}`}>
+                  {accountLinked ? 'Linked' : 'Not linked'}
+                </span>
+                <span className="github-connect-installation">
+                  Verified for this workspace
+                </span>
+              </div>
+            </div>
             <div className="github-connect-status-card">
               <span className="github-connect-status-label">App installation</span>
               <div className="github-connect-status-row">
@@ -248,9 +228,9 @@ export default function GitHubConnect({ workspaceId }) {
           <span className="github-connect-hint">
             {status?.repo_selected
               ? bootstrap.syncReady
-                ? 'This workspace is linked to the selected GitHub repo.'
+                ? 'GitHub account linked, app installed, and this workspace is bound to the selected repo.'
                 : bootstrap.message || 'GitHub repo selected, but browser workspace sync is not ready yet.'
-              : 'GitHub is installed. Pick one repo from the allowed list below for this workspace.'}
+              : 'GitHub account linked and app installed. Pick one repo below for this workspace.'}
           </span>
           {status?.repo_selected && !bootstrap.syncReady && (
             <div className="github-connect-error">
@@ -322,7 +302,12 @@ export default function GitHubConnect({ workspaceId }) {
       ) : (
         <div className="github-connect-disconnected">
           <span className="settings-runtime-badge settings-runtime-badge-pending">
-            Not connected
+            {accountLinked ? 'Workspace not linked' : 'Account not linked'}
+          </span>
+          <span className="github-connect-hint">
+            {accountLinked
+              ? 'Your GitHub account is linked. Use it for this workspace, then choose a repo.'
+              : 'Link your GitHub account, verify the app installation, then choose one repo for this workspace.'}
           </span>
           <button
             type="button"
@@ -330,7 +315,7 @@ export default function GitHubConnect({ workspaceId }) {
             onClick={connect}
           >
             <Github size={16} />
-            Connect GitHub
+            {accountLinked ? 'Use Linked GitHub Account' : 'Link GitHub Account'}
             <ExternalLink size={14} />
           </button>
         </div>

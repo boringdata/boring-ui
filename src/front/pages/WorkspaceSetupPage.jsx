@@ -32,7 +32,7 @@ export default function WorkspaceSetupPage({
   if (!capabilitiesLoaded) return null
   if (!githubEnabled) return null
 
-  const connected = status?.connected
+  const connected = Boolean(status?.account_linked ?? status?.connected)
 
   return (
     <PageShell title={`Set up ${workspaceName || 'Workspace'}`}>
@@ -41,7 +41,7 @@ export default function WorkspaceSetupPage({
           <Rocket size={24} />
           <h2 className="setup-wizard-title">Get started</h2>
           <p className="setup-wizard-subtitle">
-            Connect your workspace to version control in one click.
+            Link your GitHub account, verify app access, then choose a repo for this workspace.
           </p>
         </div>
 
@@ -54,7 +54,7 @@ export default function WorkspaceSetupPage({
           ) : connected ? (
             <div className="setup-wizard-connected">
               <Check size={16} />
-              <span>GitHub connected</span>
+              <span>GitHub account verified</span>
             </div>
           ) : (
             <button
@@ -63,7 +63,7 @@ export default function WorkspaceSetupPage({
               onClick={connect}
             >
               <Github size={16} />
-              Connect GitHub
+              Link GitHub Account
               <ExternalLink size={14} />
             </button>
           )}

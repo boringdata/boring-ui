@@ -4,14 +4,18 @@
 
 boring-ui integrates with GitHub via a **GitHub App** (`boring-ui-app`) for workspace-level git operations. The App provides installation tokens that grant per-repo access without user PATs.
 
-In the current product there are two backend states for each workspace:
+The current product has two separate GitHub scopes:
 
-1. `installation_connected`: the workspace is linked to a GitHub App installation
-2. `repo_selected`: the workspace has picked one repo from the installation's accessible repo list
+1. user scope
+   - `account_linked`: the user has completed the GitHub OAuth/account-link step
+   - `default_installation_id`: optional saved default installation for future workspaces
+2. workspace scope
+   - `installation_connected`: the workspace is linked to a GitHub App installation
+   - `repo_selected`: the workspace has picked one repo from that installation's accessible repo list
 
-The main file-tree GitHub control intentionally collapses those into one user-facing state:
+The main file-tree GitHub control intentionally compresses those into a small workspace-focused status:
 
-- red/unlinked: app not installed, or no repo selected for this workspace
+- red/unlinked: account not linked, workspace not yet bound, or no repo selected for this workspace
 - linked/clickable: a repo is selected for this workspace
 
 In `core` + `pi-lightningfs`, selecting a repo is also the trigger for browser-side repo bootstrap. An empty LightningFS workspace will clone that selected repo into the browser file tree on load.
@@ -43,20 +47,34 @@ User → boring-ui frontend → boring-ui backend → GitHub API
 - `User settings`: `/auth/settings`
 - `Workspace settings`: `/w/<workspace_id>/settings`
 
-GitHub lives on the workspace settings page because installation link and repo selection are workspace-scoped.
+GitHub spans both surfaces:
+
+- user settings hold the user-linked GitHub account state and optional default installation
+- workspace settings hold the workspace's chosen installation and selected repo
 
 ### Workspace GitHub flow
 
-1. Install or connect the GitHub App for the workspace
-2. Fetch the repo list for that installation
-3. Select exactly one repo for the workspace
-4. In `pi-lightningfs`, bootstrap that repo into the browser workspace if LightningFS is empty
+1. Link the current user to GitHub
+2. Verify whether the GitHub App is already installed for that user's accessible account/org
+3. Optionally save one default installation for future workspaces
+4. Bind the current workspace to one installation
+5. Select exactly one repo for the workspace
+6. In `pi-lightningfs`, bootstrap that repo into the browser workspace if LightningFS is empty
+
+### New workspace inheritance
+
+- If the user has a saved `default_installation_id`, new workspaces inherit that installation automatically.
+- Repo selection does not inherit. Each workspace must still choose its own repo explicitly.
+- If the saved default is stale or invalid, the UI falls back to the interactive authorize/install flow.
 
 ### GitHub control behavior
 
-- Nothing installed:
+- Account not linked:
   - GitHub control is red
-  - click opens install/authorize flow
+  - click opens the GitHub account-link flow
+- Account linked, workspace not bound:
+  - GitHub control is still red
+  - click reuses the saved default installation when available, otherwise opens the authorize/install flow
 - Installation connected, no repo selected:
   - GitHub control is still red
   - click opens workspace settings so the user can pick a repo
@@ -136,13 +154,13 @@ All under prefix `/api/v1/auth/github`:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/status` | Check config + installation link + selected repo state |
+| `GET` | `/status` | Check config + user-linked state + workspace installation/repo state |
 | `GET` | `/authorize` | Start OAuth flow (redirects to GitHub) |
 | `GET` | `/callback` | Handle OAuth callback (returns HTML with postMessage) |
 | `POST` | `/connect` | Connect workspace to installation |
 | `POST` | `/repo` | Persist selected repo for a connected workspace |
 | `POST` | `/disconnect` | Disconnect workspace |
-| `GET` | `/installations` | List all app installations |
+| `GET` | `/installations` | List app installations available to the current flow; not used for default page load binding |
 | `GET` | `/repos` | List repos accessible to an installation |
 | `GET` | `/git-credentials` | Get `x-access-token` + installation token |
 
@@ -151,6 +169,8 @@ All under prefix `/api/v1/auth/github`:
 ```json
 {
   "configured": true,
+  "account_linked": true,
+  "default_installation_id": 123456,
   "connected": true,
   "installation_connected": true,
   "installation_id": 123456,
@@ -159,7 +179,7 @@ All under prefix `/api/v1/auth/github`:
 }
 ```
 
-`connected` is effectively shorthand for `installation_connected`.
+`account_linked` is user-scoped. `connected` is effectively shorthand for `installation_connected` and is workspace-scoped.
 The UI should only present the workspace as fully linked when `repo_selected` is also `true`.
 
 ## Test Repo: `boringdata/boring-ui-test`
@@ -221,6 +241,21 @@ python3 tests/smoke/smoke_github_connect.py --installation-id 12345
 # Custom test repo
 python3 tests/smoke/smoke_github_connect.py --test-repo boringdata/boring-ui-test
 ```
+
+## Current automated coverage
+
+Focused tests currently cover:
+
+- backend GitHub auth/status/connect/callback behavior in `tests/unit/test_github_auth_routes.py`
+- user settings + workspace settings separation and default-installation inheritance in `tests/unit/test_settings_routes.py`
+- local workspace create/list/runtime/settings routes in `tests/unit/test_workspace_control_plane_routes.py`
+- browser GitHub flows across onboarding, workspace settings, and file-tree footer in `src/front/__tests__/e2e/github-connect-flows.spec.ts`
+
+Not fully covered yet:
+
+- multi-installation selection UI, because there is not yet a dedicated installation picker
+- provider-backed Supabase/Neon inheritance with a real DB integration test
+- full real-browser signup -> linked account -> new workspace inherit -> repo selection end-to-end
 
 ### Output
 

@@ -12,8 +12,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ...config import APIConfig
+from ..control_plane.auth_session import SessionExpired, SessionInvalid, parse_session_cookie
 from ..control_plane.repository import LocalControlPlaneRepository
 from ..control_plane.service import ControlPlaneService
+from ..control_plane.user_settings_state import (
+    read_user_github_link,
+    user_state_service,
+    write_user_github_link,
+)
 from .service import GitHubAppService
 
 logger = logging.getLogger(__name__)
@@ -40,6 +46,16 @@ def _local_control_plane_service(config: APIConfig) -> ControlPlaneService:
     state_path = config.validate_path(config.control_plane_state_relpath)
     repo = LocalControlPlaneRepository(state_path)
     return ControlPlaneService(repo, workspace_root=config.workspace_root)
+
+
+def _load_session_optional(request: Request, config: APIConfig):
+    token = request.cookies.get(config.auth_session_cookie_name, '')
+    if not token:
+        return None
+    try:
+        return parse_session_cookie(token, secret=config.auth_session_secret)
+    except (SessionExpired, SessionInvalid):
+        return None
 
 
 def _normalize_repo_url(value: str | None) -> str:
@@ -301,15 +317,40 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
     """
     router = APIRouter(tags=['github-auth'])
     service = GitHubAppService(config)
+    user_service = user_state_service(config)
 
     # In-memory store: maps state -> {callback, workspace_id} for CSRF validation
     _pending_states: dict[str, dict] = {}
+
+    def _current_user_github_link(request: Request) -> dict[str, object]:
+        session = _load_session_optional(request, config)
+        if session is None:
+            return {'account_linked': False, 'default_installation_id': None}
+        return read_user_github_link(user_service, session.user_id)
+
+    def _persist_user_github_link(
+        request: Request,
+        *,
+        account_linked: bool,
+        default_installation_id: int | None = None,
+    ) -> None:
+        session = _load_session_optional(request, config)
+        if session is None:
+            return
+        write_user_github_link(
+            user_service,
+            user_id=session.user_id,
+            email=session.email,
+            account_linked=account_linked,
+            default_installation_id=default_installation_id,
+        )
 
     @router.get('/authorize')
     async def authorize(
         request: Request,
         redirect_uri: str | None = None,
         workspace_id: str | None = None,
+        force_install: bool = False,
     ):
         """Start GitHub OAuth flow. Redirects to GitHub."""
         if not service.can_authorize:
@@ -331,7 +372,11 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
             'workspace_id': workspace_id,
         }
 
-        url = service.get_authorize_url(callback, state)
+        use_oauth_detection = bool(workspace_id and service.client_id and not force_install)
+        if use_oauth_detection:
+            url = service.get_oauth_authorize_url(callback, state)
+        else:
+            url = service.get_authorize_url(callback, state)
         return RedirectResponse(url)
 
     @router.get('/callback')
@@ -376,9 +421,21 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
                         # Auto-connect to first installation
                         inst_id = installations[0]['id']
                         await _store_connection(config, workspace_id, inst_id)
+                        default_installation_id = inst_id if len(installations) == 1 else None
+                        _persist_user_github_link(
+                            request,
+                            account_linked=True,
+                            default_installation_id=default_installation_id,
+                        )
                         result['success'] = True
                         result['installation_id'] = inst_id
                     elif installations:
+                        default_installation_id = installations[0]['id'] if len(installations) == 1 else None
+                        _persist_user_github_link(
+                            request,
+                            account_linked=True,
+                            default_installation_id=default_installation_id,
+                        )
                         result['success'] = True
                         result['installations'] = [
                             {
@@ -387,6 +444,14 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
                             }
                             for i in installations
                         ]
+                    elif workspace_id and service._slug:
+                        install_state = secrets.token_urlsafe(32)
+                        _pending_states[install_state] = {
+                            'callback': pending.get('callback') if pending else None,
+                            'workspace_id': workspace_id,
+                        }
+                        result['install_url'] = service.get_installation_url(install_state)
+                        result['message'] = 'Install the GitHub App to continue.'
                     else:
                         result['error'] = 'No installations found. Please install the GitHub App first.'
 
@@ -394,6 +459,11 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
                 # GitHub App installation flow (install callback)
                 if workspace_id:
                     await _store_connection(config, workspace_id, installation_id)
+                _persist_user_github_link(
+                    request,
+                    account_linked=True,
+                    default_installation_id=installation_id,
+                )
                 result['success'] = True
                 result['installation_id'] = installation_id
             else:
@@ -418,15 +488,18 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
         html = f"""<!DOCTYPE html>
 <html><head><title>GitHub Authorization</title></head>
 <body>
-<p>{'Connected successfully!' if result['success'] else result.get('error', 'Authorization failed.')}</p>
+<p>{'Connected successfully!' if result.get('installation_id') or result.get('success') else result.get('message') or result.get('error') or 'Authorization failed.'}</p>
 <p>Redirecting...</p>
 <script>
+  const result = {result_json};
   // Notify opener if this was opened as a popup
   try {{
-    if (window.opener) {{
+    if (result.install_url) {{
+      window.location.href = result.install_url;
+    }} else if (window.opener) {{
       window.opener.postMessage({{
         type: 'github-callback',
-        ...{result_json}
+        ...result
       }}, window.location.origin);
       setTimeout(function() {{ window.close(); }}, 1000);
     }} else {{
@@ -464,14 +537,22 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
             )
 
         await _store_connection(config, workspace_id, int(installation_id))
+        _persist_user_github_link(
+            request,
+            account_linked=True,
+            default_installation_id=int(installation_id),
+        )
         return {'connected': True, 'installation_id': int(installation_id)}
 
     @router.get('/status')
-    async def status(workspace_id: str | None = None):
+    async def status(request: Request, workspace_id: str | None = None):
         """Check GitHub connection status for a workspace."""
+        account_state = _current_user_github_link(request)
         if not service.can_authorize:
             return {
                 'configured': False,
+                'account_linked': bool(account_state.get('account_linked')),
+                'default_installation_id': account_state.get('default_installation_id'),
                 'connected': False,
                 'installation_connected': False,
                 'repo_selected': False,
@@ -481,6 +562,8 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
         if not workspace_id:
             return {
                 'configured': True,
+                'account_linked': bool(account_state.get('account_linked')),
+                'default_installation_id': account_state.get('default_installation_id'),
                 'connected': False,
                 'installation_connected': False,
                 'repo_selected': False,
@@ -491,6 +574,8 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
         if not conn:
             return {
                 'configured': True,
+                'account_linked': bool(account_state.get('account_linked')),
+                'default_installation_id': account_state.get('default_installation_id'),
                 'connected': False,
                 'installation_connected': False,
                 'repo_selected': False,
@@ -503,6 +588,8 @@ def create_github_auth_router(config: APIConfig) -> APIRouter:
 
         return {
             'configured': True,
+            'account_linked': bool(account_state.get('account_linked')) or bool(installation_id),
+            'default_installation_id': account_state.get('default_installation_id'),
             'connected': bool(installation_id),
             'installation_connected': bool(installation_id),
             'installation_id': installation_id,

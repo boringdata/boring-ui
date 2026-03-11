@@ -59,27 +59,33 @@ class GitHubAppService:
 
     # ── OAuth flow ────────────────────────────────────────────────────
 
-    def get_authorize_url(self, redirect_uri: str, state: str) -> str:
-        """Build the GitHub App installation URL.
-
-        Uses the installation flow — user installs the app on their account/org
-        and grants repo access. No OAuth "Act on your behalf" permission needed.
-        GitHub redirects to the Setup URL with installation_id and state.
-        """
+    def get_installation_url(self, state: str) -> str:
+        """Build the GitHub App installation URL."""
         slug = getattr(self, '_slug', None)
-        if slug:
-            return (
-                f'https://github.com/apps/{slug}/installations/new'
-                f'?state={state}'
-            )
-        # Fallback to OAuth if slug not configured
+        if not slug:
+            raise ValueError('GitHub App slug not configured')
+        return (
+            f'https://github.com/apps/{slug}/installations/new'
+            f'?state={state}'
+        )
+
+    def get_oauth_authorize_url(self, redirect_uri: str, state: str) -> str:
+        """Build the GitHub OAuth authorization URL."""
+        if not self.client_id:
+            raise ValueError('GitHub App client_id not configured')
+        return (
+            f'https://github.com/login/oauth/authorize'
+            f'?client_id={self.client_id}'
+            f'&redirect_uri={redirect_uri}'
+            f'&state={state}'
+        )
+
+    def get_authorize_url(self, redirect_uri: str, state: str) -> str:
+        """Build the best available GitHub authorization URL."""
+        if self._slug:
+            return self.get_installation_url(state)
         if self.client_id:
-            return (
-                f'https://github.com/login/oauth/authorize'
-                f'?client_id={self.client_id}'
-                f'&redirect_uri={redirect_uri}'
-                f'&state={state}'
-            )
+            return self.get_oauth_authorize_url(redirect_uri, state)
         raise ValueError('Neither app slug nor client_id configured')
 
     def exchange_code(self, code: str) -> dict:

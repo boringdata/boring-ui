@@ -297,7 +297,7 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
         </SettingsSection>
 
         {capabilities?.features?.github && (
-          <SettingsSection title="GitHub Integration" icon={Github} description="Sync workspace files to a private GitHub repository">
+          <SettingsSection title="GitHub Integration" icon={Github} description="Link a GitHub account, verify app access, and choose a repo for this workspace.">
             <GitHubConnect workspaceId={workspaceId} />
           </SettingsSection>
         )}

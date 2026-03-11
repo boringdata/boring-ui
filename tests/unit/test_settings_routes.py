@@ -204,6 +204,47 @@ def test_user_and_workspace_settings_remain_separate(tmp_path: Path) -> None:
     assert "display_name" not in workspace_settings
 
 
+def test_workspace_creation_inherits_default_github_installation_from_user_settings(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _login(client, user_id="user-gh", email="gh@example.com")
+
+    put_resp = client.put(
+        "/api/v1/me/settings",
+        json={
+            "display_name": "GitHub User",
+            "github_account_linked": True,
+            "github_default_installation_id": 321,
+        },
+    )
+    assert put_resp.status_code == 200
+
+    workspace_id = _create_workspace(client, name="Inherited GitHub")
+    workspace_settings = client.get(f"/api/v1/workspaces/{workspace_id}/settings").json()["settings"]
+
+    assert workspace_settings["github_installation_id"] == "321"
+    assert "github_repo_url" not in workspace_settings
+
+
+def test_workspace_creation_does_not_inherit_github_installation_without_default(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _login(client, user_id="user-no-default", email="nodefault@example.com")
+
+    put_resp = client.put(
+        "/api/v1/me/settings",
+        json={
+            "display_name": "No Default",
+            "github_account_linked": True,
+            "github_default_installation_id": None,
+        },
+    )
+    assert put_resp.status_code == 200
+
+    workspace_id = _create_workspace(client, name="No Inherited GitHub")
+    workspace_settings = client.get(f"/api/v1/workspaces/{workspace_id}/settings").json()["settings"]
+
+    assert "github_installation_id" not in workspace_settings
+
+
 # ── Workspace Boundary Settings ────────────────────────────────────────
 
 

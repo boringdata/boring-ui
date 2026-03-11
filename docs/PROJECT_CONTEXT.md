@@ -66,8 +66,9 @@ pyproject.toml      Python packaging
 The `control-plan-decoupling` branch completed the bd-3g1g epic (Service Split + Control-Plane Decoupling + Legacy Cutover). boring-ui now has distinct service boundaries (workspace-core, pty-service, agent-normal, agent-companion, agent-pi), canonical transport helpers replacing hardcoded gateway patterns, and all legacy code paths removed. See `docs/exec-plans/completed/bd-3g1g/` for the full plan and closure artifacts.
 
 Recent frontend/runtime work tightened the `core` + `pi-lightningfs` contract:
-- GitHub workspace state is modeled as installation link + selected repo
+- GitHub state is split into a user-linked account/default installation and a workspace-bound installation + selected repo
 - user settings and workspace settings are separate frontend routes
+- new workspaces can inherit a saved default GitHub installation, while repo selection remains explicit per workspace
 - selected GitHub repos can bootstrap an empty LightningFS workspace on load
 - layout persistence is user-scoped and versioned
 

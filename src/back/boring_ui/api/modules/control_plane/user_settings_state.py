@@ -13,6 +13,9 @@ from ...config import APIConfig
 from .repository import LocalControlPlaneRepository
 from .service import ControlPlaneService
 
+GITHUB_ACCOUNT_LINKED_KEY = "github_account_linked"
+GITHUB_DEFAULT_INSTALLATION_ID_KEY = "github_default_installation_id"
+
 
 def user_state_service(config: APIConfig) -> ControlPlaneService:
     state_path = config.validate_path(config.control_plane_state_relpath)
@@ -76,7 +79,10 @@ def write_user_settings(
     settings: dict[str, Any],
 ) -> dict[str, Any]:
     existing = find_user(service, user_id)
-    payload = dict(settings)
+    payload = {
+        **dict((existing or {}).get("settings") or {}),
+        **dict(settings),
+    }
     service.upsert_user(
         user_id,
         {
@@ -87,3 +93,52 @@ def write_user_settings(
         },
     )
     return payload
+
+
+def merge_user_settings(
+    service: ControlPlaneService,
+    *,
+    user_id: str,
+    email: str,
+    settings_patch: dict[str, Any],
+) -> dict[str, Any]:
+    return write_user_settings(
+        service,
+        user_id=user_id,
+        email=email,
+        settings=dict(settings_patch),
+    )
+
+
+def read_user_github_link(service: ControlPlaneService, user_id: str) -> dict[str, Any]:
+    settings = read_user_settings(service, user_id)
+    raw_installation_id = settings.get(GITHUB_DEFAULT_INSTALLATION_ID_KEY)
+    default_installation_id = None
+    if raw_installation_id not in (None, ""):
+        try:
+            default_installation_id = int(raw_installation_id)
+        except (TypeError, ValueError):
+            default_installation_id = None
+    return {
+        "account_linked": bool(settings.get(GITHUB_ACCOUNT_LINKED_KEY)),
+        "default_installation_id": default_installation_id,
+    }
+
+
+def write_user_github_link(
+    service: ControlPlaneService,
+    *,
+    user_id: str,
+    email: str,
+    account_linked: bool,
+    default_installation_id: int | None = None,
+) -> dict[str, Any]:
+    return merge_user_settings(
+        service,
+        user_id=user_id,
+        email=email,
+        settings_patch={
+            GITHUB_ACCOUNT_LINKED_KEY: bool(account_linked),
+            GITHUB_DEFAULT_INSTALLATION_ID_KEY: default_installation_id,
+        },
+    )
