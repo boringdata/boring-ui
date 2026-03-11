@@ -2,6 +2,8 @@ import React, { useMemo } from 'react'
 import { Command, FileText, Github, GitBranch, Loader2 } from 'lucide-react'
 import { useGitStatus } from '../providers/data'
 import { useGitHubConnection } from './GitHubConnect'
+import { useLightningFsGitBootstrap } from '../hooks/useLightningFsGitBootstrap'
+import { routes } from '../utils/routes'
 
 const STATUS_CONFIG = {
   M: { label: 'Modified', className: 'git-status-modified', icon: 'M' },
@@ -13,16 +15,50 @@ const STATUS_CONFIG = {
 
 function ConnectGitHubButton({ workspaceId }) {
   const { status, loading, connect } = useGitHubConnection(workspaceId)
-  if (loading || status?.connected || !status?.configured) return null
+  const configured = status?.configured === true
+  const installationConnected = !!(status?.installation_connected ?? status?.connected)
+  const bootstrap = useLightningFsGitBootstrap({
+    workspaceId,
+    enabled: true,
+    installationConnected,
+    repoUrl: status?.repo_url || '',
+    autoBootstrap: false,
+  })
+  if (loading || (status?.repo_selected && bootstrap.syncReady)) return null
+
+  const handleClick = () => {
+    if (installationConnected && workspaceId) {
+      window.location.assign(routes.controlPlane.workspaces.scope(workspaceId, 'settings').path)
+      return
+    }
+    connect()
+  }
+
   return (
     <button
       type="button"
       className="github-connect-compact"
-      onClick={connect}
-      title="Connect GitHub for push/pull"
+      onClick={handleClick}
+      title={
+        status?.repo_selected && !bootstrap.syncReady
+          ? bootstrap.message || 'Open GitHub settings for this workspace'
+          : installationConnected
+          ? 'Choose the GitHub repo for this workspace'
+          : configured
+            ? 'Connect GitHub for push/pull'
+            : 'Install GitHub App'
+      }
     >
       <Github size={14} />
-      <span>Connect GitHub</span>
+      <span>
+        {status?.repo_selected && !bootstrap.syncReady
+          ? 'Fix GitHub Sync'
+          : installationConnected
+          ? 'Choose Repo'
+          : configured
+            ? 'Connect GitHub'
+            : 'Install GitHub App'}
+      </span>
     </button>
   )
 }

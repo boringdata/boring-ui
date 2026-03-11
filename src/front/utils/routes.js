@@ -5,6 +5,25 @@ const normalizeWorkspaceSubpath = (subpath) =>
     .replace(/^\/+/, '')
     .trim()
 
+export const routeHref = (route) => {
+  const path = String(route?.path || '').trim() || '/'
+  const query = route?.query
+  if (!query) return path
+  const qs = new URLSearchParams()
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === undefined || value === null) return
+    if (Array.isArray(value)) {
+      value.forEach((entry) => {
+        if (entry !== undefined && entry !== null) qs.append(key, String(entry))
+      })
+      return
+    }
+    qs.set(key, String(value))
+  })
+  const queryString = qs.toString()
+  return queryString ? `${path}?${queryString}` : path
+}
+
 export const routes = {
   approval: {
     pending: () => ({ path: '/api/approval/pending', query: undefined }),
@@ -17,7 +36,10 @@ export const routes = {
         query: redirectUri ? { redirect_uri: redirectUri } : undefined,
       }),
       logout: () => ({ path: '/auth/logout', query: undefined }),
-      settings: () => ({ path: '/auth/settings', query: undefined }),
+      settings: (workspaceId) => ({
+        path: '/auth/settings',
+        query: workspaceId ? { workspace_id: workspaceId } : undefined,
+      }),
     },
     me: {
       get: () => ({ path: '/api/v1/me', query: undefined }),
@@ -109,8 +131,19 @@ export const routes = {
       path: '/api/v1/auth/github/status',
       query: workspaceId ? { workspace_id: workspaceId } : undefined,
     }),
+    gitProxyBase: (workspaceId) => ({
+      path: workspaceId
+        ? `/api/v1/auth/github/git-proxy/ws/${encodeSegment(workspaceId)}`
+        : '/api/v1/auth/github/git-proxy',
+      query: undefined,
+    }),
+    gitCredentials: (workspaceId) => ({
+      path: '/api/v1/auth/github/git-credentials',
+      query: workspaceId ? { workspace_id: workspaceId } : undefined,
+    }),
     authorize: () => ({ path: '/api/v1/auth/github/authorize', query: undefined }),
     connect: () => ({ path: '/api/v1/auth/github/connect', query: undefined }),
+    selectRepo: () => ({ path: '/api/v1/auth/github/repo', query: undefined }),
     disconnect: () => ({ path: '/api/v1/auth/github/disconnect', query: undefined }),
     installations: () => ({ path: '/api/v1/auth/github/installations', query: undefined }),
     repos: (installationId) => ({

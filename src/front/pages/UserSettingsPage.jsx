@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Loader2, User, Palette, Shield } from 'lucide-react'
 import { apiFetchJson } from '../utils/transport'
-import { buildApiUrl } from '../utils/apiBase'
-import { routes } from '../utils/routes'
+import { routeHref, routes } from '../utils/routes'
 import { useTheme } from '../hooks/useTheme'
 import PageShell, { SettingsSection, SettingsField } from './PageShell'
 
@@ -69,7 +68,7 @@ export default function UserSettingsPage({ workspaceId }) {
 
   const handleLogout = () => {
     const route = routes.controlPlane.auth.logout()
-    window.location.assign(buildApiUrl(route.path, route.query))
+    window.location.assign(routeHref(route))
   }
 
   if (loading) {

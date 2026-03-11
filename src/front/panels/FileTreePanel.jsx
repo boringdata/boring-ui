@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Database, FolderOpen, GitBranch, Github, Search, X } from 'lucide-react'
+import { Database, FolderOpen, GitBranch, Search, X } from 'lucide-react'
 import FileTree from '../components/FileTree'
 import GitChangesView from '../components/GitChangesView'
 import { useGitHubConnection } from '../components/GitHubConnect'
+import { useLightningFsGitBootstrap } from '../hooks/useLightningFsGitBootstrap'
 import UserMenu from '../components/UserMenu'
 import Tooltip from '../components/Tooltip'
 import SidebarSectionHeader, {
@@ -11,7 +12,6 @@ import SidebarSectionHeader, {
 } from '../components/SidebarSectionHeader'
 import { ICON_SIZE_INLINE } from '../utils/iconTokens'
 import { useGitStatus } from '../providers/data'
-import { apiFetchJson } from '../utils/transport'
 import { routes } from '../utils/routes'
 import SyncStatusFooter from '../components/SyncStatusFooter'
 
@@ -48,6 +48,7 @@ export default function FileTreePanel({ params }) {
     onUserMenuRetry,
     userMenuDisabledActions,
     githubEnabled,
+    dataBackend,
   } = params
   const [creatingFile, setCreatingFile] = useState(false)
   const [viewMode, setViewMode] = useState('files') // 'files' | 'changes'
@@ -56,19 +57,29 @@ export default function FileTreePanel({ params }) {
     refetchInterval: viewMode === 'changes' ? 5000 : false,
   })
   const { status: ghStatus, connect: ghConnect } = useGitHubConnection(workspaceId, { enabled: !!githubEnabled })
-  const showGitHubConnect = githubEnabled && ghStatus?.configured && !ghStatus?.connected
-  const showGitHubLinked = githubEnabled && ghStatus?.connected
-
-  const [ghRepoUrl, setGhRepoUrl] = useState(null)
-  useEffect(() => {
-    if (!ghStatus?.connected || !ghStatus?.installation_id) { setGhRepoUrl(null); return }
-    apiFetchJson(`${routes.github.repos().path}?installation_id=${ghStatus.installation_id}`)
-      .then(({ data }) => {
-        const repo = data?.repos?.[0]
-        if (repo?.clone_url) setGhRepoUrl(repo.clone_url.replace(/\.git$/, ''))
-      })
-      .catch(() => {})
-  }, [ghStatus?.connected, ghStatus?.installation_id])
+  const ghInstallationConnected = !!(ghStatus?.installation_connected ?? ghStatus?.connected)
+  const ghRepoUrl = ghStatus?.repo_url ? String(ghStatus.repo_url).replace(/\.git$/, '') : null
+  const isLightningFsBackend = dataBackend === 'lightningfs' || dataBackend === 'lightning-fs'
+  const ghBootstrap = useLightningFsGitBootstrap({
+    workspaceId,
+    enabled: !!(githubEnabled && isLightningFsBackend),
+    installationConnected: ghInstallationConnected,
+    repoUrl: ghStatus?.repo_url || '',
+  })
+  const ghSyncReady = !!(
+    githubEnabled
+    && ghStatus?.repo_selected
+    && ghRepoUrl
+    && (!isLightningFsBackend || ghBootstrap.syncReady)
+  )
+  const handleGitHubAction = useCallback(() => {
+    if (ghSyncReady) return
+    if (ghInstallationConnected && workspaceId) {
+      window.location.assign(routes.controlPlane.workspaces.scope(workspaceId, 'settings').path)
+      return
+    }
+    ghConnect()
+  }, [ghConnect, ghInstallationConnected, ghSyncReady, workspaceId])
 
   useEffect(() => {
     if (!filetreeActivityIntent || filetreeActivityIntent.panelId !== 'filetree') return
@@ -245,30 +256,6 @@ export default function FileTreePanel({ params }) {
                 {searchExpanded ? <X size={20} /> : <Search size={ICON_SIZE_INLINE} />}
               </button>
             </Tooltip>
-            {showGitHubLinked && ghRepoUrl ? (
-              <Tooltip label="Open GitHub repo">
-                <a
-                  className="sidebar-action-btn sidebar-action-btn--github sidebar-action-btn--github-linked"
-                  href={ghRepoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Open GitHub repo"
-                >
-                  <Github size={ICON_SIZE_INLINE} />
-                </a>
-              </Tooltip>
-            ) : showGitHubConnect ? (
-              <Tooltip label="Connect GitHub">
-                <button
-                  type="button"
-                  className="sidebar-action-btn sidebar-action-btn--github sidebar-action-btn--github-unlinked"
-                  onClick={ghConnect}
-                  aria-label="Connect GitHub"
-                >
-                  <Github size={ICON_SIZE_INLINE} />
-                </button>
-              </Tooltip>
-            ) : null}
           </>
         )}
       </SidebarSectionHeader>
@@ -297,7 +284,16 @@ export default function FileTreePanel({ params }) {
       )}
       {!sectionCollapsed && (
         <SyncStatusFooter
-          githubConnected={ghStatus?.connected}
+          githubEnabled={githubEnabled}
+          githubConnected={ghSyncReady}
+          githubHref={ghRepoUrl || ''}
+          onGitHubClick={handleGitHubAction}
+          githubBootstrapState={ghBootstrap.state}
+          githubBootstrapMessage={ghBootstrap.message}
+          githubBootstrapError={ghBootstrap.error}
+          githubBootstrapBusy={ghBootstrap.busy}
+          githubRemoteOpts={ghBootstrap.remoteOpts}
+          githubRetryBootstrap={ghBootstrap.retry}
           viewMode={viewMode}
           onSetViewMode={setViewMode}
           onOpenChatTab={onOpenChatTab}

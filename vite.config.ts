@@ -171,21 +171,23 @@ export default defineConfig(({ mode }) => {
           target: proxyApiTarget,
           changeOrigin: false,
           bypass(req) {
+            const requestPath = req.url?.split('?')[0]
             // Let SPA handle these auth pages; proxy all other auth routes to backend
-            if (req.url === '/auth/settings') return req.url
-            if (req.url?.startsWith('/auth/login')) return req.url
-            if (req.url?.startsWith('/auth/signup')) return req.url
+            if (requestPath === '/auth/settings') return req.url
+            if (requestPath?.startsWith('/auth/login')) return req.url
+            if (requestPath?.startsWith('/auth/signup')) return req.url
           },
         },
         '/w': {
           target: proxyApiTarget,
           changeOrigin: false,
           bypass(req) {
+            const requestPath = req.url?.split('?')[0] || ''
             // Let SPA handle workspace root, setup, and settings pages;
             // only proxy workspace-scoped backend routes (e.g. /w/{id}/api/...).
-            if (req.url && /^\/w\/[^/]+\/?$/.test(req.url)) return req.url
-            if (req.url && /^\/w\/[^/]+\/setup\/?$/.test(req.url)) return req.url
-            if (req.url && /^\/w\/[^/]+\/settings\/?$/.test(req.url)) return req.url
+            if (/^\/w\/[^/]+\/?$/.test(requestPath)) return req.url
+            if (/^\/w\/[^/]+\/setup\/?$/.test(requestPath)) return req.url
+            if (/^\/w\/[^/]+\/settings\/?$/.test(requestPath)) return req.url
           },
         },
         ...(companionTarget

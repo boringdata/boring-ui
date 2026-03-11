@@ -1,9 +1,14 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
+import { Buffer } from 'buffer'
 import App from './App'
 import { ConfigProvider } from './config'
 import appConfig from './app.config.js'
 import './styles.css'
+
+if (typeof globalThis !== 'undefined' && !globalThis.Buffer) {
+  globalThis.Buffer = Buffer
+}
 
 // Suppress known xterm.js renderer race condition errors during layout transitions
 // These occur when the terminal is destroyed while renderer is still initializing

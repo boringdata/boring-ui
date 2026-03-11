@@ -40,6 +40,11 @@ class GitHubAppService:
     def is_configured(self) -> bool:
         return bool(self.app_id and self.private_key)
 
+    @property
+    def can_authorize(self) -> bool:
+        """True when we can redirect users to GitHub auth/install flow."""
+        return bool(self._slug or self.client_id)
+
     # ── JWT ───────────────────────────────────────────────────────────
 
     def _make_jwt(self) -> str:

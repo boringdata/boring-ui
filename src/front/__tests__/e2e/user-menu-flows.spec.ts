@@ -137,7 +137,16 @@ test.describe('User Menu Control-Plane Flows', () => {
     await page.route('**/api/v1/workspaces', async (route) => {
       const req = route.request()
       if (req.method() === 'POST') {
-        return fulfillJson(route, 200, { id: 'ws-new', name: 'New' })
+        return fulfillJson(route, 201, {
+          ok: true,
+          workspace: {
+            id: 'ws-new',
+            workspace_id: 'ws-new',
+            name: 'New',
+            app_id: 'boring-ui',
+            created_by: 'user-1',
+          },
+        })
       }
       if (req.method() === 'GET') {
         workspacesGetCount += 1

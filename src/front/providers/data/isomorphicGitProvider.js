@@ -7,6 +7,7 @@
  * @module providers/data/isomorphicGitProvider
  */
 import git from 'isomorphic-git'
+import http from 'isomorphic-git/http/web'
 import { fs, pfs } from './lightningFs.js'
 
 const throwIfAborted = (signal) => {
@@ -58,7 +59,7 @@ export const createIsomorphicGitProvider = (opts = {}) => {
   const fsApi = opts.fs || fs
   const fsPromises = opts.pfs || pfs
   const dir = String(opts.dir || '/')
-  const gitOpts = { fs: fsApi, dir }
+  const gitOpts = { fs: fsApi, dir, http }
 
   const isGitRepo = async () => {
     try {
@@ -223,6 +224,32 @@ export const createIsomorphicGitProvider = (opts = {}) => {
       throwIfAborted(remoteOpts.signal)
       if (!(await isGitRepo())) return []
       return git.listRemotes(gitOpts)
+    },
+
+    branches: async (branchOpts = {}) => {
+      throwIfAborted(branchOpts.signal)
+      if (!(await isGitRepo())) return { branches: [], current: null }
+      const branches = await git.listBranches(gitOpts)
+      const current = await git.currentBranch(gitOpts).catch(() => null)
+      return { branches, current }
+    },
+
+    currentBranch: async (branchOpts = {}) => {
+      throwIfAborted(branchOpts.signal)
+      if (!(await isGitRepo())) return null
+      return git.currentBranch(gitOpts).catch(() => null)
+    },
+
+    createBranch: async (name, checkout = true, branchOpts = {}) => {
+      throwIfAborted(branchOpts.signal)
+      if (!(await isGitRepo())) throw new Error('Git repo not initialized')
+      await git.branch({ ...gitOpts, ref: name, checkout })
+    },
+
+    checkout: async (name, checkoutOpts = {}) => {
+      throwIfAborted(checkoutOpts.signal)
+      if (!(await isGitRepo())) throw new Error('Git repo not initialized')
+      await git.checkout({ ...gitOpts, ref: name })
     },
   }
 }

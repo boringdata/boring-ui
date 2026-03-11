@@ -2,6 +2,21 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import FileTreePanel from '../../panels/FileTreePanel'
 
+let mockGitStatus = { is_repo: true }
+const mockGitHubConnection = {
+  status: null,
+  connect: vi.fn(),
+}
+const mockLightningFsBootstrap = {
+  state: 'disabled',
+  message: '',
+  error: '',
+  busy: false,
+  syncReady: false,
+  remoteOpts: undefined,
+  retry: vi.fn(),
+}
+
 vi.mock('../../components/FileTree', () => ({
   default: () => <div data-testid="file-tree">File tree</div>,
 }))
@@ -11,7 +26,7 @@ vi.mock('../../components/GitChangesView', () => ({
 }))
 
 vi.mock('../../providers/data', () => ({
-  useGitStatus: () => ({ isLoading: false, isFetching: false, data: { is_repo: true } }),
+  useGitStatus: () => ({ isLoading: false, isFetching: false, data: mockGitStatus }),
   useGitBranch: () => ({ data: 'main' }),
 }))
 
@@ -27,6 +42,14 @@ vi.mock('../../providers/data/DataContext', () => ({
       createBranch: vi.fn(async () => {}),
     },
   }),
+}))
+
+vi.mock('../../components/GitHubConnect', () => ({
+  useGitHubConnection: () => mockGitHubConnection,
+}))
+
+vi.mock('../../hooks/useLightningFsGitBootstrap', () => ({
+  useLightningFsGitBootstrap: () => mockLightningFsBootstrap,
 }))
 
 vi.mock('../../components/UserMenu', () => ({
@@ -51,11 +74,39 @@ const makeParams = (overrides = {}) => ({
   onCreateWorkspace: vi.fn(),
   onOpenUserSettings: vi.fn(),
   onLogout: vi.fn(),
+  githubEnabled: false,
+  dataBackend: 'lightningfs',
   ...overrides,
 })
 
 describe('FileTreePanel', () => {
+  it('renders the GitHub footer affordance before the local repo exists', () => {
+    mockGitStatus = { is_repo: false }
+    mockGitHubConnection.status = {
+      configured: true,
+      connected: true,
+      installation_connected: true,
+      repo_selected: true,
+      repo_url: 'https://github.com/boringdata/boring-ui-repo.git',
+    }
+    mockLightningFsBootstrap.state = 'needs-clone'
+    mockLightningFsBootstrap.message = 'Loading the selected GitHub repo into this workspace.'
+    mockLightningFsBootstrap.syncReady = false
+
+    render(<FileTreePanel params={makeParams({ githubEnabled: true })} />)
+
+    expect(screen.getByLabelText('Connect and sync GitHub repo')).toBeInTheDocument()
+  })
+
   it('renders user menu in footer when expanded', () => {
+    mockGitStatus = { is_repo: true }
+    mockGitHubConnection.status = null
+    mockLightningFsBootstrap.state = 'disabled'
+    mockLightningFsBootstrap.message = ''
+    mockLightningFsBootstrap.error = ''
+    mockLightningFsBootstrap.busy = false
+    mockLightningFsBootstrap.syncReady = false
+
     const { container } = render(<FileTreePanel params={makeParams()} />)
 
     expect(screen.getByTestId('file-tree')).toBeInTheDocument()
@@ -65,6 +116,7 @@ describe('FileTreePanel', () => {
   })
 
   it('switches from file tree to git changes view', () => {
+    mockGitStatus = { is_repo: true }
     render(<FileTreePanel params={makeParams()} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Git changes view' }))
@@ -72,6 +124,7 @@ describe('FileTreePanel', () => {
   })
 
   it('renders compact user menu when collapsed', () => {
+    mockGitStatus = { is_repo: true }
     render(<FileTreePanel params={makeParams({ collapsed: true })} />)
 
     expect(screen.getByTestId('user-menu-collapsed')).toBeInTheDocument()

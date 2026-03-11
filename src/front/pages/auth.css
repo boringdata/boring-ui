@@ -203,7 +203,7 @@
   border-radius: var(--radius-input);
   padding: 11px 14px;
   background: var(--color-bg-inverse);
-  color: var(--color-text-inverse);
+  color: var(--color-text-on-inverse-bg);
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);

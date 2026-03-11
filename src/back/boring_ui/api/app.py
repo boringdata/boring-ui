@@ -1,5 +1,6 @@
 """Application factory for boring-ui API."""
 import os
+import uuid
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -108,7 +109,9 @@ def create_app(
     pi_embedded_mode = config.pi_mode != 'iframe'
     pi_enabled = pi_embedded_mode or bool(config.pi_url)
 
-    github_enabled = config.github_configured
+    # In local-dev auto-login mode, surface GitHub UI even if app creds are not
+    # configured yet so onboarding/settings can show the GitHub component.
+    github_enabled = config.github_configured or config.auth_dev_auto_login
 
     enabled_features = {
         'files': 'files' in enabled_routers,
@@ -149,8 +152,15 @@ def create_app(
     if config.auth_dev_auto_login and 'control_plane' in enabled_routers:
         from .modules.control_plane.auth_session import create_session_cookie
 
-        _DEV_USER_ID = 'dev-user'
-        _DEV_EMAIL = 'dev@localhost'
+        _DEV_USER_ID = (
+            os.environ.get('AUTH_DEV_USER_ID')
+            or (
+                '00000000-0000-0000-0000-000000000001'
+                if (config.use_neon_control_plane or config.use_supabase_control_plane)
+                else 'dev-user'
+            )
+        )
+        _DEV_EMAIL = os.environ.get('AUTH_DEV_EMAIL', 'dev@localhost')
         _cookie_name = config.auth_session_cookie_name
         _cookie_name_bytes = _cookie_name.encode()
 
@@ -171,7 +181,12 @@ def create_app(
                         if part.startswith(_cookie_name + '='):
                             token = part[len(_cookie_name) + 1:]
                             try:
-                                parse_session_cookie(token, secret=config.auth_session_secret)
+                                payload = parse_session_cookie(token, secret=config.auth_session_secret)
+                                if config.use_neon_control_plane or config.use_supabase_control_plane:
+                                    try:
+                                        uuid.UUID(str(payload.user_id))
+                                    except ValueError:
+                                        return False
                                 return True
                             except SessionError:
                                 return False
@@ -290,8 +305,10 @@ def create_app(
             app.include_router(create_collaboration_router(config), prefix='/api/v1')
             app.include_router(create_workspace_boundary_router(config))
 
-    # GitHub App auth (optional, requires credentials + not disabled via GITHUB_SYNC_ENABLED=false)
-    if config.github_configured:
+    # GitHub auth surface:
+    # - fully functional when configured
+    # - still mounted in local-dev auto-login mode so frontend can show status UI
+    if config.github_configured or config.auth_dev_auto_login:
         from .modules.github_auth import create_github_auth_router
         app.include_router(
             create_github_auth_router(config),

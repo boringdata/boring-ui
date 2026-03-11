@@ -6,6 +6,8 @@ import { createContext, useContext } from 'react'
  */
 const DataContext = createContext(null)
 
+export const useOptionalDataProvider = () => useContext(DataContext)
+
 /**
  * Return the current DataProvider from context.
  * Throws if used outside of a DataProviderWrapper.

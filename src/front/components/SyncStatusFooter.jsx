@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  Check, FolderOpen, GitBranch, GitMerge, Cloud, Loader2, AlertTriangle, CloudOff,
+  Check, FolderOpen, GitBranch, GitMerge, Cloud, Loader2, AlertTriangle, CloudOff, Github,
   MoreHorizontal, RefreshCw, Pause, Play, GitBranchPlus, ChevronRight, MessageSquare,
 } from 'lucide-react'
 import { useGitStatus, useGitBranch } from '../providers/data'
@@ -37,7 +37,21 @@ const askAgent = (prompt, onOpenChatTab) => {
  *
  * Menu provides: sync now, pause/resume auto-sync, switch branch.
  */
-export default function SyncStatusFooter({ githubConnected, viewMode, onSetViewMode, onOpenChatTab }) {
+export default function SyncStatusFooter({
+  githubEnabled = false,
+  githubConnected,
+  githubHref = '',
+  onGitHubClick,
+  githubBootstrapState = 'disabled',
+  githubBootstrapMessage = '',
+  githubBootstrapError = '',
+  githubBootstrapBusy = false,
+  githubRemoteOpts = undefined,
+  githubRetryBootstrap = undefined,
+  viewMode,
+  onSetViewMode,
+  onOpenChatTab,
+}) {
   const provider = useDataProvider()
   const { data: gitData } = useGitStatus()
   const { data: branch, refetch: refetchBranch } = useGitBranch({ refetchInterval: 30000 })
@@ -65,6 +79,7 @@ export default function SyncStatusFooter({ githubConnected, viewMode, onSetViewM
     pushEnabled: !!githubConnected,
     initialPull: !!githubConnected,
     intervalMs: syncInterval,
+    remoteOpts: githubRemoteOpts,
   })
 
   // Countdown to next sync
@@ -192,12 +207,19 @@ export default function SyncStatusFooter({ githubConnected, viewMode, onSetViewM
     }
   }, [provider, newBranchName, refetchBranch])
 
-  if (!isRepo) return null
+  if (!githubEnabled && !isRepo) return null
 
   const branchLabel = branch || null
   const isMain = branch === 'main' || branch === 'master'
+  const canRetryBootstrap = !isRepo
+    && typeof githubRetryBootstrap === 'function'
+    && (githubBootstrapState === 'needs-clone' || githubBootstrapState === 'needs-attach' || githubBootstrapState === 'error')
+  const syncActionDisabled = canRetryBootstrap
+    ? githubBootstrapBusy
+    : syncState === 'syncing' || paused || !isRepo || !githubConnected || githubBootstrapBusy
 
   const syncIcon = () => {
+    if (githubBootstrapBusy) return <Loader2 size={12} className="git-inline-spinner" />
     if (paused) return <Pause size={12} />
     switch (syncState) {
       case 'syncing':
@@ -212,6 +234,7 @@ export default function SyncStatusFooter({ githubConnected, viewMode, onSetViewM
   }
 
   const syncClass = () => {
+    if (githubBootstrapBusy) return 'sync-state--syncing'
     if (paused) return 'sync-state--paused'
     switch (syncState) {
       case 'syncing':
@@ -227,6 +250,15 @@ export default function SyncStatusFooter({ githubConnected, viewMode, onSetViewM
   }
 
   const tooltipLabel = (() => {
+    if (!githubConnected && githubBootstrapState === 'needs-clone') {
+      return githubBootstrapMessage || 'Load the selected GitHub repo into this workspace.'
+    }
+    if (!githubConnected && githubBootstrapState === 'needs-attach') {
+      return githubBootstrapMessage || 'Attach this workspace to the selected GitHub repo.'
+    }
+    if (!githubConnected && githubBootstrapError) return githubBootstrapError
+    if (!githubConnected && githubBootstrapMessage) return githubBootstrapMessage
+    if (githubBootstrapBusy) return githubBootstrapMessage || 'Preparing GitHub sync...'
     if (paused) return 'Auto-sync paused'
     if (lastError) return lastError
     if (syncState === 'syncing') return 'Committing & pushing...'
@@ -238,7 +270,31 @@ export default function SyncStatusFooter({ githubConnected, viewMode, onSetViewM
 
   return (
     <div className="sync-status-footer" ref={menuRef}>
-      {branchLabel && (
+      {githubEnabled && (
+        <Tooltip label={githubConnected ? 'Open synced GitHub repo' : tooltipLabel}>
+          {githubConnected && githubHref ? (
+            <a
+              className="sync-github-button sync-github-button--linked"
+              href={githubHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open synced GitHub repo"
+            >
+              <Github size={12} />
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="sync-github-button sync-github-button--unlinked"
+              onClick={onGitHubClick}
+              aria-label={githubBootstrapState === 'needs-selection' ? 'Choose GitHub repo' : 'Connect and sync GitHub repo'}
+            >
+              <Github size={12} />
+            </button>
+          )}
+        </Tooltip>
+      )}
+      {branchLabel && isRepo && (
         <Tooltip label={`Branch: ${branchLabel}`}>
           <span className={`sync-branch ${isMain ? '' : 'sync-branch--draft'}`}>
             <GitBranch size={12} />
@@ -275,24 +331,33 @@ export default function SyncStatusFooter({ githubConnected, viewMode, onSetViewM
         <button
           type="button"
           className={`sync-state ${syncClass()}`}
-          onClick={syncNow}
-          disabled={syncState === 'syncing' || paused}
+          onClick={() => {
+            if (!isRepo && typeof githubRetryBootstrap === 'function') {
+              githubRetryBootstrap()
+              return
+            }
+            if (!githubConnected) return
+            syncNow()
+          }}
+          disabled={syncActionDisabled}
         >
           {syncIcon()}
         </button>
       </Tooltip>
-      <Tooltip label="Sync options">
-        <button
-          ref={triggerRef}
-          type="button"
-          className={`sync-menu-trigger${menuOpen ? ' sync-menu-trigger--active' : ''}`}
-          onClick={() => { setMenuOpen(!menuOpen); setBranchSubmenuOpen(false); setMenuError(null) }}
-          aria-label="Sync options"
-        >
-          <MoreHorizontal size={14} />
-        </button>
-      </Tooltip>
-      {menuOpen && (
+      {isRepo && (
+        <Tooltip label="Sync options">
+          <button
+            ref={triggerRef}
+            type="button"
+            className={`sync-menu-trigger${menuOpen ? ' sync-menu-trigger--active' : ''}`}
+            onClick={() => { setMenuOpen(!menuOpen); setBranchSubmenuOpen(false); setMenuError(null) }}
+            aria-label="Sync options"
+          >
+            <MoreHorizontal size={14} />
+          </button>
+        </Tooltip>
+      )}
+      {isRepo && menuOpen && (
         <div className="sync-menu" role="menu">
           {menuError && (
             <div className="sync-menu-error">
@@ -306,7 +371,7 @@ export default function SyncStatusFooter({ githubConnected, viewMode, onSetViewM
             className="sync-menu-item"
             role="menuitem"
             onClick={() => { syncNow(); setMenuOpen(false) }}
-            disabled={syncState === 'syncing' || paused}
+            disabled={syncActionDisabled}
           >
             <RefreshCw size={13} />
             <span>Sync now</span>

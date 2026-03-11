@@ -101,7 +101,28 @@ class TestStatus:
             data = r.json()
             assert data['configured'] is True
             assert data['connected'] is True
+            assert data['installation_connected'] is True
+            assert data['repo_selected'] is False
             assert data['installation_id'] == 42
+
+    @pytest.mark.asyncio
+    async def test_status_with_selected_repo(self, app):
+        """Status exposes repo selection when a workspace repo is chosen."""
+        _workspace_connections['ws-2'] = {
+            'installation_id': 77,
+            'repo_url': 'https://github.com/myorg/myrepo.git',
+        }
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            r = await c.get('/api/v1/auth/github/status',
+                            params={'workspace_id': 'ws-2'})
+            assert r.status_code == 200
+            data = r.json()
+            assert data['configured'] is True
+            assert data['connected'] is True
+            assert data['installation_connected'] is True
+            assert data['repo_selected'] is True
+            assert data['repo_url'] == 'https://github.com/myorg/myrepo.git'
 
 
 # ── Callback endpoint ───────────────────────────────────────────────────
@@ -311,6 +332,76 @@ class TestGitCredentials:
             assert r.status_code == 503
 
 
+class TestGitProxy:
+    @pytest.mark.asyncio
+    async def test_git_proxy_rejects_non_github_targets(self, app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url='http://test') as c:
+            r = await c.get('/api/v1/auth/github/git-proxy/https://example.com/repo.git/info/refs')
+            assert r.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_git_proxy_forwards_allowed_requests(self, app):
+        upstream = MagicMock()
+        upstream.status_code = 200
+        upstream.content = b'git-proxy-ok'
+        upstream.headers = {
+            'content-type': 'application/x-git-upload-pack-advertisement',
+            'cache-control': 'no-cache',
+        }
+
+        transport = ASGITransport(app=app)
+        with patch('boring_ui.api.modules.github_auth.router.httpx.AsyncClient') as client_cls:
+            client = AsyncMock()
+            client.request = AsyncMock(return_value=upstream)
+            client_cls.return_value.__aenter__.return_value = client
+
+            async with AsyncClient(transport=transport, base_url='http://test') as c:
+                r = await c.get(
+                    '/api/v1/auth/github/git-proxy/https://github.com/myorg/myrepo.git/info/refs',
+                    params={'service': 'git-upload-pack'},
+                    headers={'git-protocol': 'version=2'},
+                )
+
+        assert r.status_code == 200
+        assert r.content == b'git-proxy-ok'
+        assert r.headers['content-type'] == 'application/x-git-upload-pack-advertisement'
+        client.request.assert_awaited_once()
+        args, kwargs = client.request.await_args
+        assert kwargs['headers']['git-protocol'] == 'version=2'
+        assert kwargs['content'] is None
+        assert args[1] == 'https://github.com/myorg/myrepo.git/info/refs?service=git-upload-pack'
+
+    @pytest.mark.asyncio
+    async def test_git_proxy_workspace_injects_installation_auth(self, app):
+        _workspace_connections['ws-proxy'] = {'installation_id': 77}
+        upstream = MagicMock()
+        upstream.status_code = 200
+        upstream.content = b'ok'
+        upstream.headers = {'content-type': 'application/x-git-upload-pack-result'}
+
+        transport = ASGITransport(app=app)
+        with patch('boring_ui.api.modules.github_auth.router.httpx.AsyncClient') as client_cls, patch(
+            'boring_ui.api.modules.github_auth.service.GitHubAppService.get_installation_token',
+            return_value='ghs_proxy_token',
+        ):
+            client = AsyncMock()
+            client.request = AsyncMock(return_value=upstream)
+            client_cls.return_value.__aenter__.return_value = client
+
+            async with AsyncClient(transport=transport, base_url='http://test') as c:
+                r = await c.post(
+                    '/api/v1/auth/github/git-proxy/ws/ws-proxy/https://github.com/myorg/myrepo.git/git-upload-pack',
+                    content=b'pack-data',
+                )
+
+        assert r.status_code == 200
+        args, kwargs = client.request.await_args
+        assert kwargs['content'] == b'pack-data'
+        assert kwargs['headers']['authorization'].startswith('Basic ')
+        assert args[1] == 'https://github.com/myorg/myrepo.git/git-upload-pack'
+
+
 # ── Installations + Repos ───────────────────────────────────────────────
 
 class TestInstallations:
@@ -351,6 +442,54 @@ class TestInstallations:
                 repos = r.json()['repos']
                 assert len(repos) == 1
                 assert repos[0]['full_name'] == 'myorg/myrepo'
+
+    @pytest.mark.asyncio
+    async def test_select_repo_persists_choice(self, app):
+        _workspace_connections['ws-select'] = {'installation_id': 100}
+        transport = ASGITransport(app=app)
+        with patch(
+            'boring_ui.api.modules.github_auth.service.GitHubAppService.list_repos',
+            return_value=[{
+                'full_name': 'myorg/myrepo',
+                'private': True,
+                'clone_url': 'https://github.com/myorg/myrepo.git',
+                'ssh_url': 'git@github.com:myorg/myrepo.git',
+            }],
+        ):
+            async with AsyncClient(transport=transport, base_url='http://test') as c:
+                r = await c.post('/api/v1/auth/github/repo', json={
+                    'workspace_id': 'ws-select',
+                    'repo_url': 'https://github.com/myorg/myrepo',
+                })
+                assert r.status_code == 200
+                assert r.json()['selected'] is True
+                assert r.json()['repo_url'] == 'https://github.com/myorg/myrepo.git'
+
+                status = await c.get('/api/v1/auth/github/status', params={'workspace_id': 'ws-select'})
+                assert status.status_code == 200
+                data = status.json()
+                assert data['repo_selected'] is True
+                assert data['repo_url'] == 'https://github.com/myorg/myrepo.git'
+
+    @pytest.mark.asyncio
+    async def test_select_repo_rejects_repo_outside_installation(self, app):
+        _workspace_connections['ws-select-bad'] = {'installation_id': 100}
+        transport = ASGITransport(app=app)
+        with patch(
+            'boring_ui.api.modules.github_auth.service.GitHubAppService.list_repos',
+            return_value=[{
+                'full_name': 'myorg/myrepo',
+                'private': True,
+                'clone_url': 'https://github.com/myorg/myrepo.git',
+                'ssh_url': 'git@github.com:myorg/myrepo.git',
+            }],
+        ):
+            async with AsyncClient(transport=transport, base_url='http://test') as c:
+                r = await c.post('/api/v1/auth/github/repo', json={
+                    'workspace_id': 'ws-select-bad',
+                    'repo_url': 'https://github.com/other/repo',
+                })
+                assert r.status_code == 400
 
 
 # ── Connection resolution (cache + DB fallback) ────────────────────────

@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, Cog, Activity, Lock, AlertTriangle, Copy, Check, Github, ChevronDown, RefreshCw } from 'lucide-react'
 import { apiFetchJson } from '../utils/transport'
-import { buildApiUrl } from '../utils/apiBase'
-import { routes } from '../utils/routes'
+import { routeHref, routes } from '../utils/routes'
 import PageShell, { SettingsSection, SettingsField } from './PageShell'
 import GitHubConnect from '../components/GitHubConnect'
 
@@ -115,7 +114,7 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
 
         if (workspacesResult.response.status === 401) {
           const loginRoute = routes.controlPlane.auth.login(window.location.pathname)
-          window.location.assign(buildApiUrl(loginRoute.path, loginRoute.query))
+          window.location.assign(routeHref(loginRoute))
           return
         }
 

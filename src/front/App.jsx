@@ -9,7 +9,7 @@ import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
 import { apiFetch, apiFetchJson, getHttpErrorDetail } from './utils/transport'
 import { buildApiUrl } from './utils/apiBase'
-import { routes } from './utils/routes'
+import { routeHref, routes } from './utils/routes'
 import {
   extractUserId,
   extractUserEmail,
@@ -633,11 +633,13 @@ export default function App() {
 
   // Detect full-page views from URL path
   const pagePathname = window.location.pathname
+  const pageSearchParams = new URLSearchParams(window.location.search)
   const workspaceSubpath = getWorkspacePathSuffix(pagePathname)
   const isUserSettingsPage = pagePathname === '/auth/settings'
   const isAuthLoginPage = pagePathname === '/auth/login' || pagePathname === '/auth/signup'
   const isAuthCallbackPage = pagePathname === '/auth/callback'
   const isWorkspaceSettingsPage = currentWorkspaceId && workspaceSubpath === 'settings'
+  const userSettingsWorkspaceId = String(pageSearchParams.get('workspace_id') || '').trim()
   const isWorkspaceSetupPage = currentWorkspaceId && workspaceSubpath === 'setup'
   const [collapsed, setCollapsed] = useState(() => {
     const saved = loadCollapsedState(baseStoragePrefix)
@@ -1449,7 +1451,7 @@ export default function App() {
         targetWorkspaceId,
         getWorkspacePathSuffix(window.location.pathname),
       )
-      window.location.assign(buildApiUrl(route.path, route.query))
+      window.location.assign(routeHref(route))
       return
     }
 
@@ -1471,7 +1473,7 @@ export default function App() {
       fallbackRoute: routes.controlPlane.workspaces.setup(targetWorkspaceId),
       warningMessage: '[UserMenu] Switch workspace preflight failed:',
     })
-    window.location.assign(buildApiUrl(route.path, route.query))
+    window.location.assign(routeHref(route))
   }, [controlPlaneOnboardingEnabled, currentWorkspaceId, fetchWorkspaceList])
 
   const handleCreateWorkspace = useCallback(() => {
@@ -1503,7 +1505,7 @@ export default function App() {
         createdWorkspaceId,
         getWorkspacePathSuffix(window.location.pathname),
       )
-      window.location.assign(buildApiUrl(route.path, route.query))
+      window.location.assign(routeHref(route))
       return
     }
 
@@ -1524,7 +1526,7 @@ export default function App() {
       fallbackRoute: routes.controlPlane.workspaces.setup(createdWorkspaceId),
       warningMessage: '[UserMenu] Create workspace preflight failed:',
     })
-    window.location.assign(buildApiUrl(route.path, route.query))
+    window.location.assign(routeHref(route))
   }, [controlPlaneOnboardingEnabled, fetchWorkspaceList])
 
   const handleOpenUserSettings = useCallback(() => {
@@ -1532,7 +1534,7 @@ export default function App() {
       const route = routes.controlPlane.auth.login(
         `${window.location.pathname}${window.location.search || ''}`,
       )
-      window.location.assign(buildApiUrl(route.path, route.query))
+      window.location.assign(routeHref(route))
       return
     }
 
@@ -1548,10 +1550,8 @@ export default function App() {
       // ignore storage errors for local-only settings intent
     }
     window.dispatchEvent(new CustomEvent('boring-ui:user-settings-open', { detail }))
-    const route = currentWorkspaceId
-      ? routes.controlPlane.workspaces.scope(currentWorkspaceId, 'settings')
-      : routes.controlPlane.auth.settings()
-    window.location.assign(route.path)
+    const route = routes.controlPlane.auth.settings(currentWorkspaceId || undefined)
+    window.location.assign(routeHref(route))
   }, [userMenuAuthStatus, storagePrefix, projectRoot, currentWorkspaceId])
 
   const handleOpenWorkspaceSettings = useCallback(() => {
@@ -1562,7 +1562,7 @@ export default function App() {
 
   const handleLogout = useCallback(() => {
     const route = routes.controlPlane.auth.logout()
-    window.location.assign(buildApiUrl(route.path, route.query))
+    window.location.assign(routeHref(route))
   }, [])
 
   // Keyboard shortcuts
@@ -3671,6 +3671,7 @@ export default function App() {
             onOpenWorkspaceSettings: handleOpenWorkspaceSettings,
             onLogout: handleLogout,
             githubEnabled: capabilities?.features?.github === true,
+            dataBackend: configuredDataBackend,
           })
         }
 
@@ -4042,6 +4043,7 @@ export default function App() {
         onOpenWorkspaceSettings: handleOpenWorkspaceSettings,
         onLogout: handleLogout,
         githubEnabled: capabilities?.features?.github === true,
+        dataBackend: configuredDataBackend,
       })
     }
     linkedSidebarPanels.forEach((panel) => {
@@ -4634,7 +4636,7 @@ export default function App() {
   if (isUserSettingsPage) {
     return (
       <ThemeProvider>
-        <UserSettingsPage workspaceId={currentWorkspaceId} />
+        <UserSettingsPage workspaceId={userSettingsWorkspaceId || currentWorkspaceId} />
       </ThemeProvider>
     )
   }
@@ -4656,7 +4658,7 @@ export default function App() {
           capabilities={capabilities}
           onComplete={() => {
             const scope = routes.controlPlane.workspaces.scope(currentWorkspaceId)
-            window.location.assign(buildApiUrl(scope.path, scope.query))
+            window.location.assign(routeHref(scope))
           }}
         />
       </ThemeProvider>

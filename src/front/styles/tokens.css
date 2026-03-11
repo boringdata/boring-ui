@@ -169,6 +169,7 @@
   --color-accent: var(--color-accent-default);
   --color-accent-light: color-mix(in srgb, var(--color-accent-default) 14%, transparent);
   --color-text-inverse: var(--color-text-on-accent);
+  --color-text-on-inverse-bg: var(--color-background-primary);
 
   --color-text-placeholder: var(--color-text-tertiary);
 
