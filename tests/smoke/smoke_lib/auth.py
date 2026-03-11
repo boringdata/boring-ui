@@ -319,6 +319,7 @@ def neon_signup_verify_flow(
     password: str,
     name: str = "",
     timeout_seconds: int = 180,
+    redirect_uri: str = "/",
 ) -> dict:
     """Replayable verify-first Neon signup flow through boring-ui.
 
@@ -342,7 +343,7 @@ def neon_signup_verify_flow(
             "email": email,
             "password": password,
             "name": name or email.split("@")[0],
-            "redirect_uri": "/",
+            "redirect_uri": redirect_uri,
         },
         expect_status=(200,),
     )
@@ -392,7 +393,7 @@ def neon_signup_verify_flow(
     client.set_phase("neon-token-exchange")
     exch_resp = client.post(
         "/auth/token-exchange",
-        json={"access_token": token, "redirect_uri": "/"},
+        json={"access_token": token, "redirect_uri": redirect_uri},
         expect_status=(200,),
     )
     if exch_resp.status_code != 200:
@@ -419,6 +420,7 @@ def neon_signin_flow(
     neon_auth_url: str,
     email: str,
     password: str,
+    redirect_uri: str = "/",
 ) -> dict:
     """Full Neon signin: authenticate -> fetch JWT -> token exchange -> session verify.
 
@@ -452,7 +454,7 @@ def neon_signin_flow(
     client.set_phase("neon-token-exchange")
     exch_resp = client.post(
         "/auth/token-exchange",
-        json={"access_token": jwt, "redirect_uri": "/"},
+        json={"access_token": jwt, "redirect_uri": redirect_uri},
         expect_status=(200,),
     )
     if exch_resp.status_code != 200:

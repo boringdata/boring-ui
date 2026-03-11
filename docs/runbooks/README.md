@@ -6,6 +6,7 @@ Operational runbooks for common tasks.
 
 - [Neon Setup](./NEON_SETUP.md) — Neon Postgres + Neon Auth setup for boring-ui and child projects
 - [PI Agent API Keys](./PI_AGENT_API_KEYS.md) — Managing PI agent provider keys
+- [Smoke Test Suite](./SMOKE_TESTS.md) — focused and full-stack smokes for boring-ui and child apps
 
 ## Ownership Migration
 

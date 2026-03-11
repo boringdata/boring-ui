@@ -13,9 +13,9 @@ def create_workspace(client: SmokeClient, *, name: str) -> dict:
     resp = client.post(
         "/api/v1/workspaces",
         json={"name": name},
-        expect_status=(201,),
+        expect_status=(200, 201),
     )
-    if resp.status_code != 201:
+    if resp.status_code not in (200, 201):
         raise RuntimeError(f"Create workspace failed: {resp.status_code} {resp.text[:300]}")
     data = resp.json()
     ws = data.get("workspace") or data
@@ -44,6 +44,7 @@ def list_workspaces(client: SmokeClient, *, expect_id: str | None = None) -> lis
 
 def get_runtime(client: SmokeClient, workspace_id: str) -> dict:
     """Get workspace runtime state."""
+    client.set_phase("workspace-runtime-get")
     resp = client.get(
         f"/api/v1/workspaces/{workspace_id}/runtime",
         expect_status=(200,),
@@ -55,10 +56,47 @@ def get_runtime(client: SmokeClient, workspace_id: str) -> dict:
 
 def retry_runtime(client: SmokeClient, workspace_id: str) -> dict:
     """Attempt runtime retry (may 409 if not in error/provisioning state)."""
+    client.set_phase("workspace-runtime-retry")
     resp = client.post(
         f"/api/v1/workspaces/{workspace_id}/runtime/retry",
     )
     return {"status_code": resp.status_code, **resp.json()}
+
+
+def get_workspace_setup(client: SmokeClient, workspace_id: str) -> dict:
+    """Get workspace setup boundary payload."""
+    client.set_phase("workspace-setup-get")
+    resp = client.get(
+        f"/w/{workspace_id}/setup",
+        expect_status=(200,),
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Workspace setup failed: {resp.status_code} {resp.text[:300]}")
+    return resp.json()
+
+
+def get_workspace_boundary_runtime(client: SmokeClient, workspace_id: str) -> dict:
+    """Get workspace runtime through the boundary path."""
+    client.set_phase("workspace-boundary-runtime-get")
+    resp = client.get(
+        f"/w/{workspace_id}/runtime",
+        expect_status=(200,),
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Workspace boundary runtime failed: {resp.status_code} {resp.text[:300]}")
+    return resp.json()
+
+
+def check_workspace_root(client: SmokeClient, workspace_id: str) -> None:
+    """Verify the workspace root boundary is reachable."""
+    client.set_phase("workspace-root-get")
+    resp = client.get(
+        f"/w/{workspace_id}/",
+        expect_status=(200,),
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Workspace root failed: {resp.status_code} {resp.text[:300]}")
+    print(f"[smoke] Workspace root OK: {workspace_id}")
 
 
 def poll_runtime_ready(

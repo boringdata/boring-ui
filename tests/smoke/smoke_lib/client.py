@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import time
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -106,6 +108,15 @@ class SmokeClient:
                 for r in self.results
             ],
         }
+
+    def write_report(self, path: str | Path, *, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+        report = self.report()
+        if extra:
+            report.update(extra)
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        return report
 
     def assert_all_passed(self) -> None:
         failures = [r for r in self.results if not r.ok]
