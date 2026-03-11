@@ -64,7 +64,12 @@ def retry_runtime(client: SmokeClient, workspace_id: str) -> dict:
 
 
 def get_workspace_setup(client: SmokeClient, workspace_id: str) -> dict:
-    """Get workspace setup boundary payload."""
+    """Get workspace setup route payload.
+
+    This route may resolve to:
+    - JSON from the backend boundary router
+    - HTML from the frontend setup page in app/dev-server mode
+    """
     client.set_phase("workspace-setup-get")
     resp = client.get(
         f"/w/{workspace_id}/setup",
@@ -72,7 +77,18 @@ def get_workspace_setup(client: SmokeClient, workspace_id: str) -> dict:
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Workspace setup failed: {resp.status_code} {resp.text[:300]}")
-    return resp.json()
+    content_type = str(resp.headers.get("content-type", "")).lower()
+    if "application/json" in content_type:
+        data = resp.json()
+        data["_content_type"] = content_type
+        data["_response_kind"] = "json"
+        return data
+    return {
+        "_content_type": content_type,
+        "_response_kind": "html",
+        "ok": True,
+        "workspace_id": workspace_id,
+    }
 
 
 def get_workspace_boundary_runtime(client: SmokeClient, workspace_id: str) -> dict:

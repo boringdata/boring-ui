@@ -62,7 +62,10 @@ def main() -> int:
     list_workspaces(client, expect_id=workspace_id)
 
     setup = get_workspace_setup(client, workspace_id)
-    print(f"[smoke] Workspace setup OK: {setup.get('workspace_id', workspace_id)}")
+    print(
+        f"[smoke] Workspace setup OK: kind={setup.get('_response_kind', '?')}, "
+        f"workspace_id={setup.get('workspace_id', workspace_id)}"
+    )
 
     runtime_data = get_runtime(client, workspace_id)
     runtime = runtime_data.get("runtime", runtime_data)

@@ -97,6 +97,11 @@ Validates:
 - `/w/<workspace_id>/`
 - workspace rename + readback
 
+Note:
+- `/w/<workspace_id>/setup` may be JSON when you hit the backend directly
+- on app/dev-server URLs it may be the frontend setup page and return HTML
+- the smoke accepts either as long as the route is reachable and returns `200`
+
 Example:
 
 ```bash
