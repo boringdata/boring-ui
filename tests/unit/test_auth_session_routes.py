@@ -9,7 +9,20 @@ from boring_ui.api.modules.control_plane.auth_session import create_session_cook
 
 
 def _client(tmp_path: Path, *, auth_dev_login_enabled: bool = True) -> TestClient:
-    config = APIConfig(workspace_root=tmp_path, auth_dev_login_enabled=auth_dev_login_enabled)
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=auth_dev_login_enabled,
+        auth_dev_auto_login=False,
+        control_plane_provider="local",
+        supabase_url=None,
+        supabase_anon_key=None,
+        supabase_service_role_key=None,
+        supabase_jwt_secret=None,
+        supabase_db_url=None,
+        database_url=None,
+        neon_auth_base_url=None,
+        neon_auth_jwks_url=None,
+    )
     app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
     return TestClient(app)
 

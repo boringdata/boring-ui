@@ -8,7 +8,20 @@ from boring_ui.api import APIConfig, create_app
 
 
 def _client(tmp_path: Path) -> TestClient:
-    config = APIConfig(workspace_root=tmp_path, auth_dev_login_enabled=True)
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=True,
+        auth_dev_auto_login=False,
+        control_plane_provider="local",
+        supabase_url=None,
+        supabase_anon_key=None,
+        supabase_service_role_key=None,
+        supabase_jwt_secret=None,
+        supabase_db_url=None,
+        database_url=None,
+        neon_auth_base_url=None,
+        neon_auth_jwks_url=None,
+    )
     app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
     return TestClient(app)
 
@@ -23,7 +36,7 @@ def _login(client: TestClient, *, user_id: str, email: str) -> None:
 
 def _create_workspace(client: TestClient, *, name: str = "Primary") -> str:
     response = client.post("/api/v1/workspaces", json={"name": name})
-    assert response.status_code == 200
+    assert response.status_code == 201
     return response.json()["id"]
 
 
@@ -109,4 +122,3 @@ def test_invite_accept_requires_matching_email(tmp_path: Path) -> None:
     denied = client.post(f"/api/v1/workspaces/{workspace_id}/invites/{invite_id}/accept")
     assert denied.status_code == 403
     assert denied.json()["code"] == "INVITE_EMAIL_MISMATCH"
-

@@ -153,6 +153,17 @@ def _spa_response_supabase():
     return JSONResponse({"error": "Frontend not available"}, status_code=404)
 
 
+def _workspace_root_response(request: Request, workspace_id: str):
+    accept = request.headers.get("accept", "")
+    if request.method == "GET" and "text/html" in accept:
+        return _spa_response_supabase()
+    return {
+        "ok": True,
+        "workspace_id": workspace_id,
+        "route": "root",
+    }
+
+
 def create_workspace_boundary_router_supabase(config: APIConfig) -> APIRouter:
     router = APIRouter(tags=["workspace-boundary"])
 
@@ -265,6 +276,8 @@ def create_workspace_boundary_router_supabase(config: APIConfig) -> APIRouter:
             return session_or_error
 
         normalized = "/" + str(path or "").lstrip("/")
+        if normalized == "/":
+            return _workspace_root_response(request, workspace_id)
         first_segment = normalized.lstrip("/").split("/", 1)[0]
         if first_segment in _RESERVED_SUBPATHS:
             return error_response(

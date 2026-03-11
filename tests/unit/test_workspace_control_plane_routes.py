@@ -8,7 +8,18 @@ from boring_ui.api import APIConfig, create_app
 
 
 def _client(tmp_path: Path) -> TestClient:
-    config = APIConfig(workspace_root=tmp_path)
+    config = APIConfig(
+        workspace_root=tmp_path,
+        control_plane_provider="local",
+        supabase_url=None,
+        supabase_anon_key=None,
+        supabase_service_role_key=None,
+        supabase_jwt_secret=None,
+        supabase_db_url=None,
+        database_url=None,
+        neon_auth_base_url=None,
+        neon_auth_jwks_url=None,
+    )
     app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
     return TestClient(app)
 
@@ -26,7 +37,7 @@ def test_workspace_create_and_list(tmp_path: Path) -> None:
     client = _client(tmp_path)
 
     created = client.post("/api/v1/workspaces", json={"name": "Primary"})
-    assert created.status_code == 200
+    assert created.status_code == 201
     payload = created.json()
     assert payload["ok"] is True
     assert payload["id"].startswith("ws-")
@@ -88,4 +99,3 @@ def test_workspace_settings_get_defaults_and_put_round_trip(tmp_path: Path) -> N
     loaded = settings_get_again.json()["settings"]
     assert loaded["theme"] == "dark"
     assert loaded["shell"] == "zsh"
-

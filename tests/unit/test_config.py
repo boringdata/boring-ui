@@ -18,8 +18,21 @@ def _symlinks_supported():
 class TestAPIConfig:
     """Tests for APIConfig dataclass."""
 
-    def test_default_values(self, tmp_path):
+    def test_default_values(self, tmp_path, monkeypatch):
         """Test default configuration values."""
+        for name in (
+            'WORKSPACE_PLUGINS_ENABLED',
+            'WORKSPACE_PLUGIN_ALLOWLIST',
+            'CONTROL_PLANE_ENABLED',
+            'CONTROL_PLANE_STATE_RELPATH',
+            'AUTH_SESSION_COOKIE_NAME',
+            'AUTH_SESSION_TTL_SECONDS',
+            'AUTH_SESSION_SECURE_COOKIE',
+            'AUTH_DEV_LOGIN_ENABLED',
+            'AUTH_DEV_AUTO_LOGIN',
+            'SUPABASE_JWT_SECRET',
+        ):
+            monkeypatch.delenv(name, raising=False)
         config = APIConfig(workspace_root=tmp_path)
         # Default includes multiple dev origins
         assert 'http://localhost:5173' in config.cors_origins

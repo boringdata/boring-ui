@@ -8,7 +8,20 @@ from boring_ui.api import APIConfig, create_app
 
 
 def _client(tmp_path: Path) -> TestClient:
-    config = APIConfig(workspace_root=tmp_path, auth_dev_login_enabled=True)
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=True,
+        auth_dev_auto_login=False,
+        control_plane_provider="local",
+        supabase_url=None,
+        supabase_anon_key=None,
+        supabase_service_role_key=None,
+        supabase_jwt_secret=None,
+        supabase_db_url=None,
+        database_url=None,
+        neon_auth_base_url=None,
+        neon_auth_jwks_url=None,
+    )
     app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
     return TestClient(app)
 
@@ -23,7 +36,7 @@ def _login(client: TestClient, *, user_id: str, email: str) -> None:
 
 def _create_workspace(client: TestClient, *, name: str = "Boundary") -> str:
     response = client.post("/api/v1/workspaces", json={"name": name})
-    assert response.status_code == 200
+    assert response.status_code == 201
     return response.json()["id"]
 
 
@@ -84,6 +97,21 @@ def test_workspace_scoped_proxy_forwards_filesystem_families(tmp_path: Path) -> 
 
     git_status = client.get(f"/w/{workspace_id}/api/v1/git/status")
     assert git_status.status_code == 200
+
+
+def test_workspace_scoped_root_route_allows_membership_verified_access(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _login(client, user_id="owner-root", email="owner-root@example.com")
+    workspace_id = _create_workspace(client)
+    _bootstrap_owner_membership(client, workspace_id)
+
+    response = client.get(f"/w/{workspace_id}/")
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "workspace_id": workspace_id,
+        "route": "root",
+    }
 
 
 def test_workspace_scoped_precedence_prefers_reserved_settings_route(tmp_path: Path) -> None:

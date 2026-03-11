@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, Body, Request, status
 
 from ...config import APIConfig
 from ...policy import enforce_delegated_policy_or_none
@@ -60,7 +60,7 @@ def create_workspace_router(config: APIConfig) -> APIRouter:
         workspaces = service.list_workspaces()
         return {"ok": True, "workspaces": workspaces, "count": len(workspaces)}
 
-    @router.post("/workspaces")
+    @router.post("/workspaces", status_code=status.HTTP_201_CREATED)
     def create_workspace(
         request: Request,
         body: dict[str, Any] | None = Body(default=None),
@@ -203,4 +203,3 @@ def create_workspace_router(config: APIConfig) -> APIRouter:
         return {"ok": True, "settings": settings}
 
     return router
-

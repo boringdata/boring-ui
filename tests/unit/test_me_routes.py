@@ -2,13 +2,32 @@
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from boring_ui.api import APIConfig, create_app
 
 
-def _client(tmp_path: Path, *, auth_dev_login_enabled: bool = True) -> TestClient:
-    config = APIConfig(workspace_root=tmp_path, auth_dev_login_enabled=auth_dev_login_enabled)
+def _client(
+    tmp_path: Path,
+    *,
+    auth_dev_login_enabled: bool = True,
+    control_plane_provider: str = "local",
+) -> TestClient:
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=auth_dev_login_enabled,
+        auth_dev_auto_login=False,
+        control_plane_provider=control_plane_provider,
+        supabase_url=None,
+        supabase_anon_key=None,
+        supabase_service_role_key=None,
+        supabase_jwt_secret=None,
+        supabase_db_url=None,
+        database_url=None,
+        neon_auth_base_url=None,
+        neon_auth_jwks_url=None,
+    )
     app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
     return TestClient(app)
 
@@ -51,8 +70,9 @@ def test_me_returns_identity_and_compat_fields(tmp_path: Path) -> None:
     assert payload["data"]["email"] == "owner@example.com"
 
 
-def test_me_settings_round_trip(tmp_path: Path) -> None:
-    client = _client(tmp_path)
+@pytest.mark.parametrize("control_plane_provider", ["local", "supabase", "neon"])
+def test_me_settings_round_trip(tmp_path: Path, control_plane_provider: str) -> None:
+    client = _client(tmp_path, control_plane_provider=control_plane_provider)
     _login(client, user_id="user-33", email="settings@example.com")
 
     initial = client.get("/api/v1/me/settings")
@@ -67,4 +87,3 @@ def test_me_settings_round_trip(tmp_path: Path) -> None:
     assert loaded.status_code == 200
     assert loaded.json()["settings"]["theme"] == "dark"
     assert loaded.json()["settings"]["shell"] == "zsh"
-

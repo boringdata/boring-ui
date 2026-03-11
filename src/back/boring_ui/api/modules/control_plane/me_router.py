@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Body, Request
@@ -12,8 +10,13 @@ from fastapi.responses import JSONResponse
 from ...config import APIConfig
 from ...policy import enforce_delegated_policy_or_none
 from .auth_session import SessionExpired, SessionInvalid, parse_session_cookie
-from .repository import LocalControlPlaneRepository
-from .service import ControlPlaneService
+from .user_settings_state import (
+    build_me_payload,
+    read_user_settings,
+    touch_user_profile,
+    user_state_service,
+    write_user_settings,
+)
 
 
 def _request_id(request: Request) -> str:
@@ -37,12 +40,6 @@ def _error(
             "request_id": _request_id(request),
         },
     )
-
-
-def _service(config: APIConfig) -> ControlPlaneService:
-    state_path = config.validate_path(config.control_plane_state_relpath)
-    return ControlPlaneService(LocalControlPlaneRepository(state_path), workspace_root=config.workspace_root)
-
 
 def _load_session(request: Request, config: APIConfig):
     token = request.cookies.get(config.auth_session_cookie_name, "")
@@ -73,31 +70,11 @@ def _load_session(request: Request, config: APIConfig):
             message="Session invalid",
         )
 
-
-def _to_me_payload(user: dict[str, Any]) -> dict[str, Any]:
-    payload = {
-        "user_id": str(user.get("user_id", "")).strip(),
-        "email": str(user.get("email", "")).strip().lower(),
-        "display_name": str(user.get("display_name", "")).strip(),
-    }
-    return {
-        "ok": True,
-        **payload,
-        "user": dict(payload),
-        "me": dict(payload),
-        "data": dict(payload),
-    }
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 def create_me_router(config: APIConfig) -> APIRouter:
     """Create canonical `/api/v1/me` routes."""
 
     router = APIRouter(tags=["user"])
-    service = _service(config)
+    service = user_state_service(config)
 
     @router.get("/me")
     def get_me(request: Request):
@@ -114,19 +91,8 @@ def create_me_router(config: APIConfig) -> APIRouter:
             return session_or_error
         session = session_or_error
 
-        existing = next(
-            (user for user in service.list_users() if user.get("user_id") == session.user_id),
-            None,
-        )
-        merged_user = service.upsert_user(
-            session.user_id,
-            {
-                "email": session.email,
-                "display_name": (existing or {}).get("display_name", ""),
-                "last_seen_at": _now_iso(),
-            },
-        )
-        return _to_me_payload(merged_user)
+        merged_user = touch_user_profile(service, user_id=session.user_id, email=session.email)
+        return build_me_payload(merged_user)
 
     @router.get("/me/settings")
     def get_me_settings(request: Request):
@@ -143,11 +109,7 @@ def create_me_router(config: APIConfig) -> APIRouter:
             return session_or_error
         session = session_or_error
 
-        existing = next(
-            (user for user in service.list_users() if user.get("user_id") == session.user_id),
-            None,
-        )
-        settings = dict((existing or {}).get("settings") or {})
+        settings = read_user_settings(service, session.user_id)
         return {"ok": True, "settings": settings}
 
     @router.put("/me/settings")
@@ -168,18 +130,12 @@ def create_me_router(config: APIConfig) -> APIRouter:
             return session_or_error
         session = session_or_error
 
-        existing = next(
-            (user for user in service.list_users() if user.get("user_id") == session.user_id),
-            None,
+        settings = write_user_settings(
+            service,
+            user_id=session.user_id,
+            email=session.email,
+            settings=dict(body or {}),
         )
-        profile = {
-            "email": session.email,
-            "display_name": str((existing or {}).get("display_name", "")).strip(),
-            "settings": dict(body or {}),
-            "last_seen_at": _now_iso(),
-        }
-        service.upsert_user(session.user_id, profile)
-        return {"ok": True, "settings": dict(body or {})}
+        return {"ok": True, "settings": settings}
 
     return router
-

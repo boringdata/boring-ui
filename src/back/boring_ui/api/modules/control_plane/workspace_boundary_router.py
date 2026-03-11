@@ -219,6 +219,17 @@ def _spa_response(config: APIConfig):
     return JSONResponse({"error": "Frontend not available"}, status_code=404)
 
 
+def _workspace_root_response(request: Request, config: APIConfig, workspace_id: str):
+    accept = request.headers.get("accept", "")
+    if request.method == "GET" and "text/html" in accept:
+        return _spa_response(config)
+    return {
+        "ok": True,
+        "workspace_id": workspace_id,
+        "route": "root",
+    }
+
+
 def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
     """Create workspace-scoped boundary router at `/w/{workspace_id}/...`."""
 
@@ -352,6 +363,8 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
             return session_or_error
 
         normalized = "/" + str(path or "").lstrip("/")
+        if normalized == "/":
+            return _workspace_root_response(request, config, workspace_id)
         first_segment = normalized.lstrip("/").split("/", 1)[0]
         if first_segment in _RESERVED_SUBPATHS:
             return _error(

@@ -8,7 +8,20 @@ from boring_ui.api import APIConfig, create_app
 
 
 def _client(tmp_path: Path) -> TestClient:
-    config = APIConfig(workspace_root=tmp_path, auth_dev_login_enabled=True)
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=True,
+        auth_dev_auto_login=False,
+        control_plane_provider="local",
+        supabase_url=None,
+        supabase_anon_key=None,
+        supabase_service_role_key=None,
+        supabase_jwt_secret=None,
+        supabase_db_url=None,
+        database_url=None,
+        neon_auth_base_url=None,
+        neon_auth_jwks_url=None,
+    )
     app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
     return TestClient(app)
 
@@ -23,7 +36,7 @@ def _login(client: TestClient, *, user_id: str = "user-1", email: str = "user@ex
 
 def _create_workspace(client: TestClient, *, name: str = "Settings Test") -> str:
     response = client.post("/api/v1/workspaces", json={"name": name})
-    assert response.status_code == 200
+    assert response.status_code == 201
     return response.json()["id"]
 
 
@@ -165,6 +178,30 @@ def test_workspace_settings_isolated_per_workspace(tmp_path: Path) -> None:
 
     assert resp1.json()["settings"]["color"] == "blue"
     assert resp2.json()["settings"]["color"] == "red"
+
+
+def test_user_and_workspace_settings_remain_separate(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _login(client, user_id="user-separate", email="separate@example.com")
+    workspace_id = _create_workspace(client, name="Separate")
+
+    client.put("/api/v1/me/settings", json={"display_name": "Separate User", "theme": "midnight"})
+    client.put(
+        f"/api/v1/workspaces/{workspace_id}/settings",
+        json={"theme": "light", "layout": "compact"},
+    )
+
+    user_settings = client.get("/api/v1/me/settings").json()["settings"]
+    workspace_settings = client.get(f"/api/v1/workspaces/{workspace_id}/settings").json()["settings"]
+
+    assert user_settings["display_name"] == "Separate User"
+    assert user_settings["theme"] == "midnight"
+    assert "layout" not in user_settings
+    assert "workspace_id" not in user_settings
+
+    assert workspace_settings["theme"] == "light"
+    assert workspace_settings["layout"] == "compact"
+    assert "display_name" not in workspace_settings
 
 
 # ── Workspace Boundary Settings ────────────────────────────────────────

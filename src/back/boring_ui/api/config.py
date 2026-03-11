@@ -136,7 +136,7 @@ class APIConfig:
     )
     # Extra allowlist roots for workspace-scoped passthrough `/w/{id}/...`.
     # Defaults stay strict; set via APIConfig(...) or env:
-    # WORKSPACE_EXTRA_PASSTHROUGH_ROOTS=/api/v1/macro,/custom/root
+    # WORKSPACE_EXTRA_PASSTHROUGH_ROOTS=/api/v1/domain-extension,/custom/root
     extra_passthrough_roots: tuple[str, ...] = field(
         default_factory=_workspace_extra_passthrough_roots
     )
