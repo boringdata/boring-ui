@@ -15,6 +15,11 @@ export const normalizeMarkdownPane = (value) => {
 export const getEditorPanelComponent = (filepath, markdownPane = 'editor') =>
   isMarkdownFile(filepath) ? normalizeMarkdownPane(markdownPane) : 'editor'
 
+export const getMarkdownEditorParam = (filepath, markdownPane = 'editor') => {
+  if (!isMarkdownFile(filepath)) return undefined
+  return normalizeMarkdownPane(markdownPane) === 'potion' ? 'potion' : 'tiptap'
+}
+
 export const normalizeMarkdownEditorPanels = (layout, markdownPane = 'editor') => {
   if (!layout?.panels || typeof layout.panels !== 'object') return layout
 
@@ -31,6 +36,10 @@ export const normalizeMarkdownEditorPanels = (layout, markdownPane = 'editor') =
         {
           ...panel,
           contentComponent: nextComponent,
+          params: {
+            ...(panel?.params || {}),
+            markdownEditor: getMarkdownEditorParam(path, markdownPane),
+          },
         },
       ]
     }),

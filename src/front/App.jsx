@@ -84,6 +84,7 @@ import AuthPage, { AuthCallbackPage } from './pages/AuthPage'
 import CreateWorkspaceModal from './pages/CreateWorkspaceModal'
 import {
   getEditorPanelComponent,
+  getMarkdownEditorParam,
   normalizeMarkdownEditorPanels,
   normalizeMarkdownPane,
 } from './utils/editorFiles'
@@ -1955,11 +1956,15 @@ export default function App() {
 
       const panelId = `editor-${path}`
       const existingPanel = dockApi.getPanel(panelId)
+      const markdownEditor = getMarkdownEditorParam(path, markdownPane)
 
       if (existingPanel) {
-        // If opening with initialMode, update the panel params
-        if (extraParams.initialMode) {
-          existingPanel.api.updateParameters({ initialMode: extraParams.initialMode })
+        const nextParams = {
+          ...extraParams,
+          ...(markdownEditor ? { markdownEditor } : {}),
+        }
+        if (Object.keys(nextParams).length > 0) {
+          existingPanel.api.updateParameters(nextParams)
         }
         existingPanel.api.setActive()
         return
@@ -1998,6 +2003,7 @@ export default function App() {
           path,
           initialContent: content,
           contentVersion: 1,
+          ...(markdownEditor ? { markdownEditor } : {}),
           ...extraParams,
           onContentChange: (p, newContent) => {
             setTabs((prev) => ({
@@ -2099,8 +2105,12 @@ export default function App() {
 
       const panelId = `editor-${path}`
       const existingPanel = dockApi.getPanel(panelId)
+      const markdownEditor = getMarkdownEditorParam(path, markdownPane)
 
       if (existingPanel) {
+        if (markdownEditor) {
+          existingPanel.api.updateParameters({ markdownEditor })
+        }
         existingPanel.api.setActive()
         return true
       }

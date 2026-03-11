@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   getEditorPanelComponent,
+  getMarkdownEditorParam,
   isMarkdownFile,
   normalizeMarkdownEditorPanels,
   normalizeMarkdownPane,
@@ -19,6 +20,12 @@ describe('editorFiles', () => {
     expect(getEditorPanelComponent('README.md', 'potion')).toBe('potion')
     expect(getEditorPanelComponent('guide.mdx', 'potion')).toBe('potion')
     expect(getEditorPanelComponent('app.py')).toBe('editor')
+  })
+
+  it('derives markdown editor params from the selected pane', () => {
+    expect(getMarkdownEditorParam('README.md', 'potion')).toBe('potion')
+    expect(getMarkdownEditorParam('README.md', 'editor')).toBe('tiptap')
+    expect(getMarkdownEditorParam('app.py', 'potion')).toBeUndefined()
   })
 
   it('normalizes markdown pane values', () => {
@@ -44,6 +51,7 @@ describe('editorFiles', () => {
     const next = normalizeMarkdownEditorPanels(layout, 'potion')
 
     expect(next.panels['editor-README.md'].contentComponent).toBe('potion')
+    expect(next.panels['editor-README.md'].params.markdownEditor).toBe('potion')
     expect(next.panels['editor-src/app.py'].contentComponent).toBe('editor')
   })
 })
