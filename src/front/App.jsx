@@ -710,6 +710,7 @@ export default function App() {
   const isInitialized = useRef(false)
   const layoutRestored = useRef(false)
   const ensureCorePanelsRef = useRef(null)
+  const suppressPendingLayoutRestoreRef = useRef(false)
   const [projectRoot, setProjectRoot] = useState(null) // null = not loaded yet, '' = loaded but empty
   const projectRootRef = useRef(null) // Stable ref for callbacks
   const frontendStateClientIdRef = useRef('')
@@ -2568,9 +2569,17 @@ export default function App() {
   const handleSplitChatPanelRef = useRef(null)
 
   const addChatPanel = useCallback(
-    ({ mode = 'tab', sourcePanelId = '', piSessionBootstrap = 'latest' } = {}) => {
+    ({
+      mode = 'tab',
+      sourcePanelId = '',
+      piSessionBootstrap = 'latest',
+      suppressPendingLayoutRestore = false,
+    } = {}) => {
       const api = dockApiRef.current
       if (!api) return false
+      if (suppressPendingLayoutRestore) {
+        suppressPendingLayoutRestoreRef.current = true
+      }
 
       const sourcePanel = sourcePanelId ? api.getPanel(sourcePanelId) : null
       const sourceComponent = getPanelComponent(sourcePanel)
@@ -2780,13 +2789,14 @@ export default function App() {
       mode: 'split',
       sourcePanelId: panelId,
       piSessionBootstrap: options.piSessionBootstrap || 'latest',
+      suppressPendingLayoutRestore: true,
     })
   }, [addChatPanel])
   handleSplitChatPanelRef.current = handleSplitChatPanel
 
   const handleOpenChatTab = useCallback(() => {
     if (!dockApi) {
-      addChatPanel({ mode: 'split', piSessionBootstrap: 'new' })
+      addChatPanel({ mode: 'split', piSessionBootstrap: 'new', suppressPendingLayoutRestore: true })
       return
     }
 
@@ -2816,7 +2826,7 @@ export default function App() {
       return
     }
 
-    addChatPanel({ mode: 'split', piSessionBootstrap: 'new' })
+    addChatPanel({ mode: 'split', piSessionBootstrap: 'new', suppressPendingLayoutRestore: true })
   }, [addChatPanel, dockApi, handleSplitChatPanel])
 
   // Right header actions component - shell collapse control + quick chat action in editor groups.
@@ -3626,12 +3636,18 @@ export default function App() {
     layoutRestorationRan.current = false
     layoutRestored.current = false
     collapsedEffectRan.current = false
+    suppressPendingLayoutRestoreRef.current = false
   }, [storagePrefix, projectRoot])
 
   useEffect(() => {
     // Wait for dockApi, projectRoot, and layout persistence hydration so we
     // restore from the final per-user storage key only once.
     if (!dockApi || projectRoot === null || !layoutPersistenceReady || layoutRestorationRan.current) return
+    if (suppressPendingLayoutRestoreRef.current) {
+      layoutRestorationRan.current = true
+      layoutRestored.current = true
+      return
+    }
     layoutRestorationRan.current = true
     const collapsedState = {
       filetree: collapsed.filetree,
@@ -4725,6 +4741,7 @@ export default function App() {
           workspaceId={currentWorkspaceId}
           workspaceName={activeWorkspaceName}
           capabilities={capabilities}
+          capabilitiesPending={capabilitiesPending}
           onComplete={() => {
             const scope = routes.controlPlane.workspaces.scope(currentWorkspaceId)
             window.location.assign(routeHref(scope))

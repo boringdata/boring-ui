@@ -22,6 +22,16 @@ const waitForDockview = async (page: Page) => {
   }
 }
 
+const readStoredLayout = async (page: Page) =>
+  page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.endsWith('-layout')) {
+        return localStorage.getItem(key)
+      }
+    }
+    return null
+  })
+
 test.describe('Layout Persistence', () => {
   test.beforeEach(async ({ page }) => {
     // Clear localStorage before each test
@@ -51,34 +61,18 @@ test.describe('Layout Persistence', () => {
     await page.goto('/')
     await waitForDockview(page)
 
-    // Get initial layout state
-    const initialLayout = await page.evaluate(() => {
-      for (const key of Object.keys(localStorage)) {
-        if (key.includes('layout')) {
-          return localStorage.getItem(key)
-        }
-      }
-      return null
-    })
+    await expect.poll(() => readStoredLayout(page), { timeout: 15000 }).toBeTruthy()
+    const initialLayout = await readStoredLayout(page)
 
     // Reload the page
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
     await waitForDockview(page)
 
-    // Layout should be restored
-    const restoredLayout = await page.evaluate(() => {
-      for (const key of Object.keys(localStorage)) {
-        if (key.includes('layout')) {
-          return localStorage.getItem(key)
-        }
-      }
-      return null
-    })
+    await expect.poll(() => readStoredLayout(page), { timeout: 15000 }).toBeTruthy()
+    const restoredLayout = await readStoredLayout(page)
 
-    // Both should exist if layout was saved
-    if (initialLayout) {
-      expect(restoredLayout).toBeTruthy()
-    }
+    expect(initialLayout).toBeTruthy()
+    expect(restoredLayout).toBeTruthy()
   })
 
   test('collapsed state persists', async ({ page }) => {

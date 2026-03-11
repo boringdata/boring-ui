@@ -8,8 +8,14 @@ import PageShell from './PageShell'
  * Currently a single-step wizard for GitHub connection (skippable).
  * Can be extended with more steps later.
  */
-export default function WorkspaceSetupPage({ workspaceId, workspaceName, capabilities, onComplete }) {
-  const capabilitiesLoaded = capabilities != null
+export default function WorkspaceSetupPage({
+  workspaceId,
+  workspaceName,
+  capabilities,
+  capabilitiesPending = false,
+  onComplete,
+}) {
+  const capabilitiesLoaded = !capabilitiesPending && capabilities != null
   const githubEnabled = capabilities?.features?.github === true
   const { status, loading, connect } = useGitHubConnection(workspaceId, { enabled: githubEnabled })
 

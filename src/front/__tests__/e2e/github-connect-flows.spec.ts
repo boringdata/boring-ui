@@ -69,10 +69,28 @@ const stubWorkspaceData = async (page: Page, workspaceId = 'ws-gh-test') => {
  */
 const stubGitHubStatus = async (
   page: Page,
-  { configured = true, connected = false }: { configured?: boolean; connected?: boolean } = {},
+  {
+    configured = true,
+    connected = false,
+    installation_connected,
+    repo_selected,
+    repo_url,
+  }: {
+    configured?: boolean
+    connected?: boolean
+    installation_connected?: boolean
+    repo_selected?: boolean
+    repo_url?: string
+  } = {},
 ) => {
   await page.route('**/api/v1/auth/github/status**', (route) =>
-    fulfillJson(route, 200, { configured, connected }),
+    fulfillJson(route, 200, {
+      configured,
+      connected,
+      installation_connected,
+      repo_selected,
+      repo_url,
+    }),
   )
 }
 
@@ -294,12 +312,11 @@ test.describe('GitHub Connect — 3 Entry Points', () => {
     })
   })
 
-  // ── Entry Point 3: Files Header GitHub Button ──────────────────────────────
-  // The compact GitHub connect trigger is rendered in the Files panel header
-  // when github is configured and the workspace is not connected yet.
+  // ── Entry Point 3: Files Footer GitHub Button ──────────────────────────────
+  // The compact GitHub sync trigger is rendered in the Files panel footer.
 
-  test.describe('3. Files Header GitHub Button', () => {
-    test('shows Connect GitHub button in files header when not connected', async ({ page }) => {
+  test.describe('3. Files Footer GitHub Button', () => {
+    test('shows unlinked GitHub button in files footer when not connected', async ({ page }) => {
       await stubCapabilities(page, { github: true, control_plane: true })
       await stubIdentityAndWorkspaces(page)
       await stubWorkspaceData(page)
@@ -308,11 +325,11 @@ test.describe('GitHub Connect — 3 Entry Points', () => {
 
       await page.goto('/w/ws-gh-test/')
       await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
-      const connectBtn = page.getByRole('button', { name: 'Connect GitHub' })
+      const connectBtn = page.locator('.sync-github-button--unlinked')
       await expect(connectBtn).toBeVisible({ timeout: 10000 })
     })
 
-    test('clicking Connect GitHub in files header calls authorize', async ({ page }) => {
+    test('clicking the unlinked GitHub button in files footer calls authorize', async ({ page }) => {
       await stubCapabilities(page, { github: true, control_plane: true })
       await stubIdentityAndWorkspaces(page)
       await stubWorkspaceData(page)
@@ -323,7 +340,7 @@ test.describe('GitHub Connect — 3 Entry Points', () => {
       await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
       const { waitForCall } = await interceptGitHubAuthorize(page)
 
-      const connectBtn = page.getByRole('button', { name: 'Connect GitHub' })
+      const connectBtn = page.locator('.sync-github-button--unlinked')
       await expect(connectBtn).toBeVisible({ timeout: 10000 })
       await connectBtn.click()
 
@@ -332,19 +349,24 @@ test.describe('GitHub Connect — 3 Entry Points', () => {
       expect(url).toContain('/api/v1/auth/github/authorize')
     })
 
-    test('hides Connect GitHub button when already connected', async ({ page }) => {
+    test('keeps footer button unlinked when installation is connected but no repo is selected', async ({ page }) => {
       await stubCapabilities(page, { github: true, control_plane: true })
       await stubIdentityAndWorkspaces(page)
       await stubWorkspaceData(page)
-      await stubGitHubStatus(page, { configured: true, connected: true })
+      await stubGitHubStatus(page, {
+        configured: true,
+        connected: true,
+        installation_connected: true,
+        repo_selected: false,
+      })
       await stubGitStatus(page, true)
 
       await page.goto('/w/ws-gh-test/')
       await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
-      await expect(page.getByRole('button', { name: 'Connect GitHub' })).toHaveCount(0)
+      await expect(page.locator('.sync-github-button--unlinked')).toBeVisible({ timeout: 10000 })
     })
 
-    test('hides Connect GitHub button when github not configured', async ({ page }) => {
+    test('keeps footer GitHub button visible when github feature is enabled but backend is unconfigured', async ({ page }) => {
       await stubCapabilities(page, { github: true, control_plane: true })
       await stubIdentityAndWorkspaces(page)
       await stubWorkspaceData(page)
@@ -353,7 +375,7 @@ test.describe('GitHub Connect — 3 Entry Points', () => {
 
       await page.goto('/w/ws-gh-test/')
       await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
-      await expect(page.getByRole('button', { name: 'Connect GitHub' })).toHaveCount(0)
+      await expect(page.locator('.sync-github-button--unlinked')).toBeVisible({ timeout: 10000 })
     })
   })
 })
