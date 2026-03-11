@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import json
 import logging
+import base64
+import hashlib
 from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 import httpx
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -26,6 +29,7 @@ from ...config import APIConfig
 from .auth_session import create_session_cookie, parse_session_cookie, SessionExpired, SessionInvalid
 
 _logger = logging.getLogger(__name__)
+_PENDING_LOGIN_TTL_SECONDS = 30 * 60
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +130,38 @@ def _build_callback_url(request: Request, *, config: APIConfig, redirect_uri: st
     return f"{base}/auth/callback?redirect_uri={redirect_uri}"
 
 
+def _pending_login_fernet(config: APIConfig) -> Fernet:
+    digest = hashlib.sha256(config.auth_session_secret.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _encode_pending_login(*, config: APIConfig, email: str, password: str) -> str:
+    payload = json.dumps(
+        {"email": email, "password": password},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return _pending_login_fernet(config).encrypt(payload).decode("utf-8")
+
+
+def _decode_pending_login(*, config: APIConfig, token: str) -> dict[str, str] | None:
+    try:
+        raw = _pending_login_fernet(config).decrypt(
+            token.encode("utf-8"),
+            ttl=_PENDING_LOGIN_TTL_SECONDS,
+        )
+        payload = json.loads(raw.decode("utf-8"))
+    except (InvalidToken, ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    email = str(payload.get("email", "")).strip().lower()
+    password = str(payload.get("password", "")).strip()
+    if not email or not password:
+        return None
+    return {"email": email, "password": password}
+
+
 def _parse_neon_error_message(payload: object, fallback: str) -> str:
     if isinstance(payload, str):
         text = payload.strip()
@@ -216,7 +252,15 @@ async def _neon_password_auth(
     url = f"{neon_base}/{endpoint_path.lstrip('/')}"
     origin = _public_origin(request, config=config)
     upstream_payload = dict(payload)
-    upstream_payload["callbackURL"] = _build_callback_url(request, config=config, redirect_uri=redirect_uri)
+    callback_url = _build_callback_url(request, config=config, redirect_uri=redirect_uri)
+    if not complete_session:
+        email = str(upstream_payload.get("email", "")).strip().lower()
+        password = str(upstream_payload.get("password", "")).strip()
+        if email and password:
+            pending_login = _encode_pending_login(config=config, email=email, password=password)
+            separator = "&" if "?" in callback_url else "?"
+            callback_url = f"{callback_url}{separator}pending_login={pending_login}"
+    upstream_payload["callbackURL"] = callback_url
 
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
@@ -295,6 +339,31 @@ async def _neon_password_auth(
         config=config,
         access_token=access_token,
         redirect_uri=redirect_uri,
+    )
+
+
+async def _complete_pending_sign_in(
+    request: Request,
+    *,
+    config: APIConfig,
+    pending_login_token: str,
+    redirect_uri: str,
+) -> JSONResponse | None:
+    credentials = _decode_pending_login(config=config, token=pending_login_token)
+    if credentials is None:
+        return None
+
+    return await _neon_password_auth(
+        request,
+        config=config,
+        endpoint_path="/sign-in/email",
+        payload={
+            "email": credentials["email"],
+            "password": credentials["password"],
+            "redirect_uri": redirect_uri,
+        },
+        upstream_error_message="Unable to complete sign-in after email verification.",
+        missing_token_message="Neon Auth did not return a session token after verification.",
     )
 
 
@@ -1083,9 +1152,10 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
     async def auth_callback(request: Request):
         """Neon Auth callback handler.
 
-        For Neon Auth the primary flow goes through ``/auth/token-exchange``,
-        so this endpoint mostly exists for dev-login compatibility and as a
-        no-op landing that redirects to login.
+        Prefer a backend-completed sign-in when the callback carries a
+        short-lived pending-login token from the original sign-up. That keeps
+        email verification returning directly to the requested workspace path
+        without depending on a third-party browser cookie fetch to Neon.
         """
         # Local dev login fallback path.
         if config.auth_dev_login_enabled and request.query_params.get("user_id"):
@@ -1110,6 +1180,22 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
             response = RedirectResponse(url=redirect_uri, status_code=302)
             _set_session_cookie(response, token, config)
             return response
+
+        redirect_uri = _safe_redirect_path(request.query_params.get("redirect_uri"))
+        pending_login_token = str(request.query_params.get("pending_login", "")).strip()
+        if pending_login_token:
+            completed = await _complete_pending_sign_in(
+                request,
+                config=config,
+                pending_login_token=pending_login_token,
+                redirect_uri=redirect_uri,
+            )
+            if completed is not None and completed.status_code == 200:
+                response = RedirectResponse(url=redirect_uri, status_code=302)
+                cookie_header = completed.headers.get("set-cookie")
+                if cookie_header:
+                    response.headers.append("set-cookie", cookie_header)
+                return response
 
         return _render_neon_callback_html(
             request=request,

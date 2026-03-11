@@ -1,6 +1,7 @@
 """Unit tests for /auth/* session lifecycle routes."""
 
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import boring_ui.api.modules.control_plane.auth_router_neon as auth_router_neon
 from fastapi.testclient import TestClient
@@ -269,15 +270,17 @@ def test_neon_sign_up_requires_email_verification_instead_of_auto_login(
         "redirect_uri": "/",
     }
     assert "set-cookie" not in {k.lower(): v for k, v in response.headers.items()}
-    assert _FakeAsyncClient.last_post == (
-        "https://example.neonauth.test/neondb/auth/sign-up/email",
-        {
-            "email": "new@example.com",
-            "password": "password123",
-            "name": "new",
-            "callbackURL": "http://127.0.0.1:5176/auth/callback?redirect_uri=/",
-        },
-    )
+    assert _FakeAsyncClient.last_post is not None
+    assert _FakeAsyncClient.last_post[0] == "https://example.neonauth.test/neondb/auth/sign-up/email"
+    sent_payload = _FakeAsyncClient.last_post[1]
+    assert sent_payload["email"] == "new@example.com"
+    assert sent_payload["password"] == "password123"
+    assert sent_payload["name"] == "new"
+    parsed = urlparse(sent_payload["callbackURL"])
+    assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == "http://127.0.0.1:5176/auth/callback"
+    params = parse_qs(parsed.query)
+    assert params["redirect_uri"] == ["/"]
+    assert params["pending_login"]
 
 
 def test_neon_callback_renders_exchange_page(tmp_path: Path) -> None:
@@ -303,15 +306,12 @@ def test_neon_sign_up_uses_browser_origin_for_callback_url(tmp_path: Path, monke
     )
 
     assert response.status_code == 200
-    assert _FakeAsyncClient.last_post == (
-        "https://example.neonauth.test/neondb/auth/sign-up/email",
-        {
-            "email": "new@example.com",
-            "password": "password123",
-            "name": "new",
-            "callbackURL": "http://213.32.19.186:5176/auth/callback?redirect_uri=/",
-        },
-    )
+    assert _FakeAsyncClient.last_post is not None
+    parsed = urlparse(_FakeAsyncClient.last_post[1]["callbackURL"])
+    assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == "http://213.32.19.186:5176/auth/callback"
+    params = parse_qs(parsed.query)
+    assert params["redirect_uri"] == ["/"]
+    assert params["pending_login"]
 
 
 def test_neon_sign_up_ignores_untrusted_origin_for_callback_url(tmp_path: Path, monkeypatch) -> None:
@@ -328,12 +328,48 @@ def test_neon_sign_up_ignores_untrusted_origin_for_callback_url(tmp_path: Path, 
     )
 
     assert response.status_code == 200
+    assert _FakeAsyncClient.last_post is not None
+    parsed = urlparse(_FakeAsyncClient.last_post[1]["callbackURL"])
+    assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == "http://127.0.0.1:5176/auth/callback"
+    params = parse_qs(parsed.query)
+    assert params["redirect_uri"] == ["/"]
+    assert params["pending_login"]
+
+
+def test_neon_callback_completes_pending_sign_in_and_redirects_to_workspace(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = _client_neon(tmp_path)
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {})
+    _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "jwt-from-neon"})
+    _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.last_get = None
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(
+        auth_router_neon,
+        "_validate_neon_jwt",
+        lambda token, *, config: {"user_id": "user-neon-2", "email": "verified@example.com"},
+    )
+
+    pending = auth_router_neon._encode_pending_login(
+        config=client.app.state.app_config,
+        email="verified@example.com",
+        password="password123",
+    )
+    response = client.get(
+        f"/auth/callback?redirect_uri=/w/demo&pending_login={pending}",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/w/demo"
+    assert "boring_session=" in response.headers.get("set-cookie", "")
     assert _FakeAsyncClient.last_post == (
-        "https://example.neonauth.test/neondb/auth/sign-up/email",
+        "https://example.neonauth.test/neondb/auth/sign-in/email",
         {
-            "email": "new@example.com",
+            "email": "verified@example.com",
             "password": "password123",
-            "name": "new",
-            "callbackURL": "http://127.0.0.1:5176/auth/callback?redirect_uri=/",
+            "callbackURL": "http://127.0.0.1:5176/auth/callback?redirect_uri=/w/demo",
         },
     )
