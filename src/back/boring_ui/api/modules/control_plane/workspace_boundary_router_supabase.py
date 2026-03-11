@@ -44,6 +44,17 @@ _HOP_BY_HOP_HEADERS = {
 }
 
 
+def _workspace_passthrough_roots(config: APIConfig | None = None) -> tuple[str, ...]:
+    roots = list(_WORKSPACE_PASSTHROUGH_ROOTS)
+    extras = tuple(getattr(config, "extra_passthrough_roots", ()) or ()) if config is not None else ()
+    for root in extras:
+        normalized = "/" + str(root or "").strip().lstrip("/")
+        normalized = normalized.rstrip("/") or "/"
+        if normalized not in roots:
+            roots.append(normalized)
+    return tuple(roots)
+
+
 async def _require_workspace_member(request: Request, config: APIConfig, workspace_id: str):
     session_or_error = load_session(request, config)
     if isinstance(session_or_error, JSONResponse):
@@ -87,13 +98,14 @@ async def _require_workspace_member(request: Request, config: APIConfig, workspa
     return session
 
 
-def _is_allowed_workspace_passthrough_target(path: str) -> bool:
+def _is_allowed_workspace_passthrough_target(path: str, config: APIConfig | None = None) -> bool:
     normalized = "/" + str(path or "").lstrip("/")
     if normalized.startswith("/auth/"):
         return True
+    roots = _workspace_passthrough_roots(config)
     return any(
         normalized == root or normalized.startswith(f"{root}/")
-        for root in _WORKSPACE_PASSTHROUGH_ROOTS
+        for root in roots
     )
 
 
@@ -262,7 +274,7 @@ def create_workspace_boundary_router_supabase(config: APIConfig) -> APIRouter:
                 code="WORKSPACE_PATH_RESERVED",
                 message="Reserved workspace path",
             )
-        if not _is_allowed_workspace_passthrough_target(normalized):
+        if not _is_allowed_workspace_passthrough_target(normalized, config=config):
             # Non-API paths are frontend client routes — serve SPA index.html
             static_dir = os.environ.get("BORING_UI_STATIC_DIR", "")
             index_html = Path(static_dir) / "index.html" if static_dir else None

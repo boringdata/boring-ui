@@ -43,6 +43,16 @@ def test_sandbox_edge_passthrough_allowlist_is_controlled() -> None:
     assert not _is_allowed_workspace_passthrough_target("/w/ws-1/setup")
 
 
+def test_sandbox_edge_passthrough_allowlist_accepts_configured_extras() -> None:
+    cfg = APIConfig(
+        workspace_root=REPO_ROOT,
+        extra_passthrough_roots=("/api/v1/child-app", "api/v1/custom/"),
+    )
+    assert _is_allowed_workspace_passthrough_target("/api/v1/child-app/query", config=cfg)
+    assert _is_allowed_workspace_passthrough_target("/api/v1/custom/ping", config=cfg)
+    assert not _is_allowed_workspace_passthrough_target("/internal/secret", config=cfg)
+
+
 def test_sandbox_edge_mode_has_workspace_boundary_route() -> None:
     app = create_app(
         APIConfig(workspace_root=REPO_ROOT),
