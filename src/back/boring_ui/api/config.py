@@ -44,6 +44,21 @@ def _workspace_plugin_allowlist() -> list[str]:
     return [item.strip() for item in raw.split(',') if item.strip()]
 
 
+def _workspace_extra_passthrough_roots() -> tuple[str, ...]:
+    """Parse optional comma-separated extra workspace passthrough roots."""
+    raw = os.environ.get('WORKSPACE_EXTRA_PASSTHROUGH_ROOTS', '')
+    roots: list[str] = []
+    for item in raw.split(','):
+        text = str(item or '').strip()
+        if not text:
+            continue
+        normalized = '/' + text.lstrip('/')
+        normalized = normalized.rstrip('/') or '/'
+        if normalized not in roots:
+            roots.append(normalized)
+    return tuple(roots)
+
+
 def _env_str(name: str, default: str) -> str:
     """Read an environment variable as a stripped string."""
     value = os.environ.get(name)
@@ -118,6 +133,12 @@ class APIConfig:
     # Disabled by default because workspace plugins execute local Python modules.
     workspace_plugins_enabled: bool = field(
         default_factory=lambda: _env_bool('WORKSPACE_PLUGINS_ENABLED', False)
+    )
+    # Extra allowlist roots for workspace-scoped passthrough `/w/{id}/...`.
+    # Defaults stay strict; set via APIConfig(...) or env:
+    # WORKSPACE_EXTRA_PASSTHROUGH_ROOTS=/api/v1/macro,/custom/root
+    extra_passthrough_roots: tuple[str, ...] = field(
+        default_factory=_workspace_extra_passthrough_roots
     )
     workspace_plugin_allowlist: list[str] = field(
         default_factory=_workspace_plugin_allowlist
@@ -228,6 +249,18 @@ class APIConfig:
         if not self.auth_session_secret:
             # Generate an ephemeral secret when one is not configured explicitly.
             self.auth_session_secret = secrets.token_urlsafe(48)
+
+        # Normalize passthrough roots to canonical absolute roots without trailing slash.
+        normalized_roots: list[str] = []
+        for root in self.extra_passthrough_roots or ():
+            text = str(root or '').strip()
+            if not text:
+                continue
+            normalized = '/' + text.lstrip('/')
+            normalized = normalized.rstrip('/') or '/'
+            if normalized not in normalized_roots:
+                normalized_roots.append(normalized)
+        self.extra_passthrough_roots = tuple(normalized_roots)
 
         # Validate github_app_slug to prevent path traversal in URLs
         if self.github_app_slug and not _GITHUB_SLUG_RE.match(self.github_app_slug):
