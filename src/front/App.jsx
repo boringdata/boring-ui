@@ -82,6 +82,12 @@ import WorkspaceSettingsPage from './pages/WorkspaceSettingsPage'
 import WorkspaceSetupPage from './pages/WorkspaceSetupPage'
 import AuthPage, { AuthCallbackPage } from './pages/AuthPage'
 import CreateWorkspaceModal from './pages/CreateWorkspaceModal'
+import {
+  getEditorPanelComponent,
+  getMarkdownEditorParam,
+  normalizeMarkdownEditorPanels,
+  normalizeMarkdownPane,
+} from './utils/editorFiles'
 
 const URL_PARAMS = new URLSearchParams(window.location.search)
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
@@ -520,6 +526,7 @@ export default function App() {
   const hasLocalDataBackend = localDataBackend === 'lightningfs' || localDataBackend === 'cheerpx'
   const baseStoragePrefix = config.storage?.prefix || 'kurt-web'
   const layoutVersion = config.storage?.layoutVersion || 1
+  const markdownPane = normalizeMarkdownPane(config.editors?.markdownPane)
 
   // Panel sizing configuration from config
   const panelDefaults = config.panels?.defaults || { filetree: 280, terminal: 400, companion: 400, shell: 250 }
@@ -1954,17 +1961,22 @@ export default function App() {
 
       const panelId = `editor-${path}`
       const existingPanel = dockApi.getPanel(panelId)
+      const markdownEditor = getMarkdownEditorParam(path, markdownPane)
 
       if (existingPanel) {
-        // If opening with initialMode, update the panel params
-        if (extraParams.initialMode) {
-          existingPanel.api.updateParameters({ initialMode: extraParams.initialMode })
+        const nextParams = {
+          ...extraParams,
+          ...(markdownEditor ? { markdownEditor } : {}),
+        }
+        if (Object.keys(nextParams).length > 0) {
+          existingPanel.api.updateParameters(nextParams)
         }
         existingPanel.api.setActive()
         return
       }
 
       const addEditorPanel = (content) => {
+        const panelComponent = getEditorPanelComponent(path, markdownPane)
         const centerGroup = getLiveCenterGroup(dockApi)
         if (centerGroup) {
           centerGroup.header.hidden = false
@@ -1996,6 +2008,7 @@ export default function App() {
           path,
           initialContent: content,
           contentVersion: 1,
+          ...(markdownEditor ? { markdownEditor } : {}),
           ...extraParams,
           onContentChange: (p, newContent) => {
             setTabs((prev) => ({
@@ -2017,7 +2030,7 @@ export default function App() {
 
         let panel = dockApi.addPanel({
           id: panelId,
-          component: 'editor',
+          component: panelComponent,
           title: getFileName(path),
           position,
           params: panelParams,
@@ -2027,7 +2040,7 @@ export default function App() {
           const retryPosition = resolveRetryPosition()
           panel = dockApi.addPanel({
             id: panelId,
-            component: 'editor',
+            component: panelComponent,
             title: getFileName(path),
             position: retryPosition,
             params: panelParams,
@@ -2037,7 +2050,7 @@ export default function App() {
         if (!panel) {
           panel = dockApi.addPanel({
             id: panelId,
-            component: 'editor',
+            component: panelComponent,
             title: getFileName(path),
             params: panelParams,
           })
@@ -2086,6 +2099,7 @@ export default function App() {
       findCenterAnchorPanel,
       getLeftSidebarAnchorPosition,
       getLiveCenterGroup,
+      markdownPane,
       queryClient,
     ]
   )
@@ -2096,8 +2110,12 @@ export default function App() {
 
       const panelId = `editor-${path}`
       const existingPanel = dockApi.getPanel(panelId)
+      const markdownEditor = getMarkdownEditorParam(path, markdownPane)
 
       if (existingPanel) {
+        if (markdownEditor) {
+          existingPanel.api.updateParameters({ markdownEditor })
+        }
         existingPanel.api.setActive()
         return true
       }
@@ -3679,11 +3697,12 @@ export default function App() {
       return
     }
     if (savedLayout && typeof dockApi.fromJSON === 'function') {
+      const normalizedLayout = normalizeMarkdownEditorPanels(savedLayout, markdownPane)
       // Since onReady skips panel creation when a saved layout exists,
       // we can directly call fromJSON without clearing first
       // This avoids the create->destroy->recreate race condition
       try {
-        dockApi.fromJSON(savedLayout)
+        dockApi.fromJSON(normalizedLayout)
         layoutRestored.current = true
 
         // Safety net: if fromJSON failed to restore essential panels
@@ -4013,6 +4032,8 @@ export default function App() {
     storagePrefix,
     layoutVersion,
     layoutPersistenceReady,
+    markdownPane,
+    userIdentityAuthResolved,
     capabilities,
     capabilitiesLoading,
     collapsed.filetree,
