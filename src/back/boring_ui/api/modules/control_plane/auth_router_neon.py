@@ -265,16 +265,6 @@ async def _neon_password_auth(
     url = f"{neon_base}/{endpoint_path.lstrip('/')}"
     origin = _public_origin(request, config=config)
     upstream_payload = dict(payload)
-    callback_url = _build_callback_url(request, config=config, redirect_uri=redirect_uri)
-    if not complete_session:
-        email = str(upstream_payload.get("email", "")).strip().lower()
-        password = str(upstream_payload.get("password", "")).strip()
-        if email and password:
-            pending_login = _encode_pending_login(config=config, email=email, password=password)
-            separator = "&" if "?" in callback_url else "?"
-            callback_url = f"{callback_url}{separator}pending_login={pending_login}"
-    upstream_payload["callbackURL"] = callback_url
-
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             auth_response = await client.post(
@@ -332,8 +322,8 @@ async def _neon_password_auth(
             status_code=200,
             content={
                 "ok": True,
-                "requires_email_verification": True,
-                "message": "Check your email to verify your account.",
+                "requires_email_verification": False,
+                "message": "Account created. Sign in to continue.",
                 "redirect_uri": redirect_uri,
             },
         )

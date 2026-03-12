@@ -312,6 +312,10 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
 
     @router.get("/w/{workspace_id}/settings")
     def workspace_settings_get(workspace_id: str, request: Request):
+        accept = request.headers.get("accept", "")
+        if request.method == "GET" and "text/html" in accept:
+            return _spa_response(config)
+
         deny = enforce_delegated_policy_or_none(
             request,
             {"workspace.files.read"},
@@ -351,6 +355,15 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
     )
     async def workspace_passthrough(workspace_id: str, path: str, request: Request):
+        normalized = "/" + str(path or "").lstrip("/")
+        accept = request.headers.get("accept", "")
+        is_browser_navigation = request.method == "GET" and "text/html" in accept
+        if is_browser_navigation:
+            if normalized == "/":
+                return _workspace_root_response(request, config, workspace_id)
+            if not _is_allowed_workspace_passthrough_target(normalized, config=config):
+                return _spa_response(config)
+
         deny = enforce_delegated_policy_or_none(
             request,
             {"workspace.files.read"},
@@ -361,8 +374,6 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
         session_or_error = _require_workspace_member(request, service, config, workspace_id)
         if isinstance(session_or_error, JSONResponse):
             return session_or_error
-
-        normalized = "/" + str(path or "").lstrip("/")
         if normalized == "/":
             return _workspace_root_response(request, config, workspace_id)
         first_segment = normalized.lstrip("/").split("/", 1)[0]

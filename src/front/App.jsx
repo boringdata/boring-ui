@@ -718,6 +718,7 @@ export default function App() {
   const layoutRestored = useRef(false)
   const ensureCorePanelsRef = useRef(null)
   const suppressPendingLayoutRestoreRef = useRef(false)
+  const hasRestoredFromUrl = useRef(false)
   const [projectRoot, setProjectRoot] = useState(null) // null = not loaded yet, '' = loaded but empty
   const projectRootRef = useRef(null) // Stable ref for callbacks
   const frontendStateClientIdRef = useRef('')
@@ -4095,10 +4096,13 @@ export default function App() {
       } else {
         setActiveFile(null)
         setActiveDiffFile(null)
-        // Clear doc param when not on an editor
         const url = new URL(window.location.href)
-        url.searchParams.delete('doc')
-        window.history.replaceState({}, '', url)
+        const pendingUrlDoc = url.searchParams.has('doc') && !hasRestoredFromUrl.current
+        // Preserve an initial ?doc=... long enough for the restore effect to consume it.
+        if (!pendingUrlDoc) {
+          url.searchParams.delete('doc')
+          window.history.replaceState({}, '', url)
+        }
       }
       void publishFrontendState(dockApi)
     })
@@ -4402,13 +4406,19 @@ export default function App() {
   }, [tabs, projectRoot, storagePrefix])
 
   // Restore document from URL query param on load
-  const hasRestoredFromUrl = useRef(false)
   useEffect(() => {
     if (!dockApi || projectRoot === null || hasRestoredFromUrl.current) return
 
-    // Wait for core panels to exist before opening files
-    const filetreePanel = dockApi.getPanel('filetree')
-    if (!filetreePanel) return
+    // Custom layouts may omit filetree, but openFile still needs a live docking anchor.
+    const layoutReady = Boolean(
+      dockApi.getPanel('empty-center')
+      || getLiveCenterGroup(dockApi)
+      || dockApi.getPanel('filetree')
+      || dockApi.getPanel('companion')
+      || dockApi.getPanel('terminal')
+      || dockApi.getPanel('shell')
+    )
+    if (!layoutReady) return
 
     hasRestoredFromUrl.current = true
 
@@ -4419,7 +4429,7 @@ export default function App() {
         openFile(docPath)
       }, 150)
     }
-  }, [dockApi, projectRoot, openFile])
+  }, [dockApi, projectRoot, openFile, getLiveCenterGroup])
 
   const readDroppedSeriesId = useCallback((dataTransfer) => {
     const transferTypes = dataTransfer?.types && typeof dataTransfer.types[Symbol.iterator] === 'function'
