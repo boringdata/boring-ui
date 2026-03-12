@@ -107,6 +107,7 @@ def _normalize_origin(raw: str) -> str:
 def _public_origin(request: Request, *, config: APIConfig) -> str:
     origin = str(request.headers.get("origin", "")).strip()
     normalized_origin = _normalize_origin(origin)
+    request_origin = _normalize_origin(str(request.base_url).rstrip("/"))
     allowed_origins = {
         normalized
         for normalized in (_normalize_origin(item) for item in (config.cors_origins or []))
@@ -115,7 +116,19 @@ def _public_origin(request: Request, *, config: APIConfig) -> str:
     if normalized_origin and normalized_origin in allowed_origins:
         return normalized_origin
 
-    request_origin = _normalize_origin(str(request.base_url).rstrip("/"))
+    # Hosted same-origin requests can legitimately arrive from domains that are
+    # not prelisted in the dev-focused CORS default set (for example Modal
+    # deployment URLs). When the browser Origin matches the request base URL
+    # exactly and the request is HTTPS, trust that same-origin host for
+    # callback generation instead of falling back to a local dev origin.
+    if (
+        normalized_origin
+        and request_origin
+        and normalized_origin == request_origin
+        and urlparse(request_origin).scheme == "https"
+    ):
+        return request_origin
+
     if request_origin and request_origin in allowed_origins:
         return request_origin
 

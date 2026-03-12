@@ -314,6 +314,45 @@ def test_neon_sign_up_uses_browser_origin_for_callback_url(tmp_path: Path, monke
     assert params["pending_login"]
 
 
+def test_neon_sign_up_uses_same_origin_https_hosted_base_url_for_callback_url(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=False,
+        auth_dev_auto_login=False,
+        control_plane_provider="neon",
+        database_url="postgresql://example.invalid/neondb",
+        neon_auth_base_url="https://example.neonauth.test/neondb/auth",
+        neon_auth_jwks_url="https://example.neonauth.test/neondb/auth/.well-known/jwks.json",
+        cors_origins=["http://127.0.0.1:5176", "http://213.32.19.186:5176"],
+    )
+    app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
+    client = TestClient(app, base_url="https://julien-hurault--boring-ui-core-core.modal.run")
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
+    _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
+    _FakeAsyncClient.last_post = None
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = client.post(
+        "/auth/sign-up",
+        headers={"Origin": "https://julien-hurault--boring-ui-core-core.modal.run"},
+        json={"email": "new@example.com", "password": "password123", "redirect_uri": "/"},
+    )
+
+    assert response.status_code == 200
+    assert _FakeAsyncClient.last_post is not None
+    parsed = urlparse(_FakeAsyncClient.last_post[1]["callbackURL"])
+    assert (
+        f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        == "https://julien-hurault--boring-ui-core-core.modal.run/auth/callback"
+    )
+    params = parse_qs(parsed.query)
+    assert params["redirect_uri"] == ["/"]
+    assert params["pending_login"]
+
+
 def test_neon_sign_up_ignores_untrusted_origin_for_callback_url(tmp_path: Path, monkeypatch) -> None:
     client = _client_neon(tmp_path)
     _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
