@@ -39,8 +39,9 @@ def mount_static(app: FastAPI, static_path: Path) -> None:
 
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
-        requested = static_path / full_path
-        if full_path and requested.exists() and requested.is_file():
+        requested = (static_path / full_path).resolve()
+        # Guard against path traversal (e.g. ../../etc/passwd)
+        if full_path and str(requested).startswith(str(static_path.resolve())) and requested.is_file():
             return FileResponse(requested)
         return FileResponse(
             static_path / "index.html",
