@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ...config import APIConfig
 from ...policy import enforce_delegated_policy_or_none
+from ...git_backend import GitBackend
 from .service import GitService
 
 logger = logging.getLogger(__name__)
@@ -60,17 +61,18 @@ async def _resolve_credentials_async(config: APIConfig, request: Request) -> dic
     return None
 
 
-def create_git_router(config: APIConfig) -> APIRouter:
+def create_git_router(config: APIConfig, git_backend: GitBackend | None = None) -> APIRouter:
     """Create git operations router.
 
     Args:
         config: API configuration with workspace_root
+        git_backend: Git backend. Defaults to SubprocessGitBackend.
 
     Returns:
         FastAPI router with git endpoints
     """
     router = APIRouter(tags=['git'])
-    service = GitService(config)
+    service = GitService(config, backend=git_backend)
 
     @router.get('/status')
     async def get_status(request: Request):

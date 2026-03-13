@@ -1,26 +1,36 @@
-"""Git operations service for boring-ui API."""
-import os
+"""Git operations service for boring-ui API.
+
+Thin adapter: validates inputs, delegates to GitBackend, shapes results
+into HTTP response dicts, maps selected GitBackendError subclasses to
+HTTPException (GitCommandError, GitConflictError, GitAuthError).
+"""
 import re
-import shlex
-import stat
-import subprocess
-import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 from fastapi import HTTPException
 
 from ...config import APIConfig
+from ...git_backend import (
+    GitBackend,
+    GitAuthError,
+    GitCommandError,
+    GitConflictError,
+    GitCredentials,
+)
+from ...subprocess_git import SubprocessGitBackend
+
+# Re-export helpers that moved to subprocess_git — tests import from here.
+# TODO: migrate tests to import from subprocess_git directly, then remove.
+from ...subprocess_git import (  # noqa: F401
+    _create_askpass_script,
+    _cleanup_askpass,
+    _sanitize_git_error,
+)
 
 _ALLOWED_CLONE_SCHEMES = {'http', 'https', 'git', 'ssh'}
 _SAFE_NAME_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9._\-/]*$')
 # scp-style: user@host:path (no scheme, colon without //)
 _SCP_STYLE_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._\-]*@[A-Za-z0-9][A-Za-z0-9._\-]*:.+$')
-
-# Patterns that may leak credentials in git stderr
-_CREDENTIAL_PATTERNS = re.compile(
-    r'(https?://)[^\s@]+@',  # embedded creds in URLs
-    re.IGNORECASE,
-)
 
 
 def _validate_git_ref(value: str, label: str = 'value') -> None:
@@ -42,69 +52,52 @@ def _validate_git_url(url: str) -> None:
         )
 
 
-def _create_askpass_script(username: str, password: str) -> str:
-    """Create a GIT_ASKPASS script with proper shell escaping.
+def _creds_from_dict(credentials: dict | None) -> GitCredentials | None:
+    """Convert a credentials dict to GitCredentials, or None.
 
-    Creates the file with 0700 permissions from the start (no world-readable
-    window). Uses shlex.quote() to prevent shell injection via credentials.
-
-    Returns:
-        Path to the temporary script file.
+    Returns None if credentials are missing or incomplete to avoid
+    activating askpass with blank values.
     """
-    # Use os.open with explicit mode to avoid permission window
-    path = tempfile.mktemp(suffix='.sh', prefix='git_askpass_')
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRWXU)
-    try:
-        os.write(fd, (
-            '#!/bin/sh\n'
-            'case "$1" in\n'
-            f'  *sername*) echo {shlex.quote(username)} ;;\n'
-            f'  *) echo {shlex.quote(password)} ;;\n'
-            'esac\n'
-        ).encode())
-    finally:
-        os.close(fd)
-    return path
+    if not credentials:
+        return None
+    username = credentials.get('username')
+    password = credentials.get('password')
+    if not username or not password:
+        return None
+    return GitCredentials(username=username, password=password)
 
 
-def _cleanup_askpass(path: str | None) -> None:
-    """Remove a temporary askpass script."""
-    if path:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-
-
-def _sanitize_git_error(stderr: str) -> str:
-    """Strip credentials from git error messages before returning to client."""
-    sanitized = _CREDENTIAL_PATTERNS.sub(r'\1***@', stderr)
-    return sanitized.strip()
+def _map_backend_error(e: GitCommandError) -> HTTPException:
+    """Map a GitCommandError to an HTTPException."""
+    return HTTPException(status_code=500, detail=f'Git error: {e.stderr}')
 
 
 class GitService:
     """Service class for git operations.
 
-    Handles git command execution and path validation.
+    Validates inputs, delegates to GitBackend, shapes domain results into
+    HTTP response dicts, and maps GitBackendError → HTTPException.
     """
-    
-    def __init__(self, config: APIConfig):
+
+    def __init__(self, config: APIConfig, backend: GitBackend | None = None):
         """Initialize the git service.
-        
+
         Args:
             config: API configuration with workspace_root
+            backend: Git backend. Defaults to SubprocessGitBackend.
         """
         self.config = config
-    
+        self.backend = backend or SubprocessGitBackend(config.workspace_root)
+
     def validate_and_relativize(self, path_str: str) -> Path:
         """Validate path and return relative path.
-        
+
         Args:
             path_str: Path to validate
-            
+
         Returns:
             Path relative to workspace root
-            
+
         Raises:
             HTTPException: If path is invalid or outside workspace
         """
@@ -113,162 +106,44 @@ class GitService:
             return validated.relative_to(self.config.workspace_root)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-    
-    def run_git(self, args: list[str], credentials: dict | None = None,
-                timeout: int = 30) -> str:
-        """Run git command in workspace.
 
-        Args:
-            args: Git command arguments (without 'git' prefix)
-            credentials: Optional dict with 'username' and 'password' for HTTPS auth.
-            timeout: Command timeout in seconds (default: 30).
+    # ── Repo state ──
 
-        Returns:
-            stdout from git command
-
-        Raises:
-            HTTPException: If git command fails
-        """
-        env = None
-        askpass_path = None
-        try:
-            if credentials:
-                askpass_path = _create_askpass_script(
-                    credentials.get('username', ''),
-                    credentials.get('password', ''),
-                )
-                env = os.environ.copy()
-                env['GIT_ASKPASS'] = askpass_path
-                env['GIT_TERMINAL_PROMPT'] = '0'
-
-            result = subprocess.run(
-                ['git'] + args,
-                cwd=self.config.workspace_root,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                env=env,
-            )
-        finally:
-            _cleanup_askpass(askpass_path)
-        if result.returncode != 0:
-            raise HTTPException(
-                status_code=500,
-                detail=f'Git error: {_sanitize_git_error(result.stderr)}'
-            )
-        return result.stdout
-    
     def is_git_repo(self) -> bool:
-        """Check if workspace is a git repository.
-        
-        Returns:
-            True if workspace is a git repo, False otherwise
-        """
-        try:
-            self.run_git(['rev-parse', '--git-dir'])
-            return True
-        except HTTPException:
-            return False
-    
+        """Check if workspace is a git repository."""
+        return self.backend.is_repo()
+
     def get_status(self) -> dict:
         """Get git repository status.
 
         Returns:
             dict with is_repo (bool) and files (list of {path, status} dicts)
         """
-        if not self.is_git_repo():
+        is_repo = self.backend.is_repo()
+        if not is_repo:
             return {'is_repo': False, 'available': True, 'files': []}
-
-        # Get status (porcelain v1 format for stable parsing)
-        status = self.run_git(['status', '--porcelain'])
-        files = {}
-
-        # Priority for status codes (higher = more important, don't overwrite)
-        status_priority = {'C': 5, 'D': 4, 'A': 3, 'M': 2, 'U': 1}
-
-        def normalize_status(raw: str) -> str:
-            """Convert git XY status to single-char frontend status.
-
-            Returns: M (Modified), A (Added), D (Deleted), U (Untracked), C (Conflict)
-            """
-            raw = raw.strip()
-            # Untracked files (standard '??' or condensed '?' format)
-            if raw in ('??', '?'):
-                return 'U'
-            # Merge conflicts (unmerged states)
-            if raw in ('UU', 'AA', 'DD', 'DU', 'UD', 'AU', 'UA'):
-                return 'C'
-            # Deleted
-            if raw in ('D', 'D ', ' D'):
-                return 'D'
-            # Added
-            if raw in ('A', 'A ', ' A'):
-                return 'A'
-            # Modified (including MM - modified in both index and worktree)
-            if raw in ('M', 'M ', ' M', 'MM'):
-                return 'M'
-            # Renamed (show as modified for simplicity)
-            if raw.startswith('R'):
-                return 'M'
-            # Copied (show as added since it's a new file)
-            if raw.startswith('C'):
-                return 'A'
-            # Default: use first non-space character if recognized
-            for c in raw:
-                if c in 'MADU':
-                    return c
-                if c != ' ':
-                    break
-            return 'M'  # Fallback to modified for unknown
-
-        for line in status.strip().split('\n'):
-            if len(line) >= 3:
-                # Check if position 2 is a space (standard XY format)
-                if len(line) > 3 and line[2] == ' ':
-                    # Standard: XY PATH - path starts at position 3
-                    raw_status = line[:2]
-                    file_path = line[3:]
-                else:
-                    # Condensed: X PATH - path starts at position 2
-                    raw_status = line[0]
-                    file_path = line[2:] if line[1] == ' ' else line[3:]
-
-                # Handle rename/copy paths: "old -> new" format
-                # Only split for actual rename/copy statuses
-                if raw_status.startswith(('R', 'C')) and ' -> ' in file_path:
-                    file_path = file_path.split(' -> ')[-1]
-
-                if raw_status and file_path:
-                    status_code = normalize_status(raw_status)
-                    # Don't overwrite higher-priority status
-                    existing = files.get(file_path)
-                    if existing is None or status_priority.get(status_code, 0) > status_priority.get(existing, 0):
-                        files[file_path] = status_code
-
+        entries = self.backend.status()
         return {
             'is_repo': True,
-            'available': True,  # Compatibility with frontend
-            'files': [{'path': p, 'status': s} for p, s in files.items()],
+            'available': True,
+            'files': [dict(e) for e in entries],
         }
-    
+
     def get_diff(self, path: str) -> dict:
         """Get diff for a specific file against HEAD.
-        
+
         Args:
             path: File path relative to workspace root
-            
+
         Returns:
             dict with diff content and path
         """
         rel_path = self.validate_and_relativize(path)
-        
-        try:
-            diff = self.run_git(['diff', 'HEAD', '--', str(rel_path)])
+        diff = self.backend.diff(str(rel_path))
+        if diff:
             return {'diff': diff, 'path': path}
-        except HTTPException as e:
-            # File might be untracked
-            return {'diff': '', 'path': path, 'error': str(e.detail)}
-    
+        return {'diff': '', 'path': path}
+
     def get_show(self, path: str) -> dict:
         """Get file contents at HEAD.
 
@@ -279,20 +154,19 @@ class GitService:
             dict with content at HEAD (or null if not tracked)
         """
         rel_path = self.validate_and_relativize(path)
-
-        try:
-            content = self.run_git(['show', f'HEAD:{rel_path}'])
+        content = self.backend.show(str(rel_path))
+        if content is not None:
             return {'content': content, 'path': path}
-        except HTTPException:
-            return {'content': None, 'path': path, 'error': 'Not in HEAD'}
+        return {'content': None, 'path': path, 'error': 'Not in HEAD'}
 
-    # -------------------------------------------------------------------
-    # Write operations
-    # -------------------------------------------------------------------
+    # ── Write operations ──
 
     def init_repo(self) -> dict:
         """Initialize a git repository in the workspace."""
-        self.run_git(['init'])
+        try:
+            self.backend.init()
+        except GitCommandError as e:
+            raise _map_backend_error(e)
         return {'initialized': True}
 
     def add_files(self, paths: list[str] | None = None) -> dict:
@@ -302,251 +176,130 @@ class GitService:
             paths: Specific file paths to stage. If None, stages all.
                    If empty list, returns without staging.
         """
-        if paths is None:
-            self.run_git(['add', '-A'])
-        elif len(paths) == 0:
+        if paths is not None and len(paths) == 0:
             return {'staged': False}
-        else:
+        if paths is not None:
             validated = [str(self.validate_and_relativize(p)) for p in paths]
-            self.run_git(['add', '--'] + validated)
+        else:
+            validated = None
+        self.backend.add(validated)
         return {'staged': True}
 
     def commit(self, message: str, author_name: str | None = None,
                author_email: str | None = None) -> dict:
-        """Create a commit with staged changes.
-
-        Args:
-            message: Commit message.
-            author_name: Optional author name override.
-            author_email: Optional author email override.
-        """
-        args = ['commit', '-m', message]
-        if author_name and author_email:
-            args.extend(['--author', f'{author_name} <{author_email}>'])
-        result = subprocess.run(
-            ['git'] + args,
-            cwd=self.config.workspace_root,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            msg = _sanitize_git_error(result.stderr or result.stdout or '')
-            # "nothing to commit" is a client error, not a server error
-            if 'nothing to commit' in msg.lower():
-                raise HTTPException(status_code=400, detail=f'Git error: {msg}')
-            raise HTTPException(status_code=500, detail=f'Git error: {msg}')
-        oid = self.run_git(['rev-parse', 'HEAD']).strip()
-        return {'oid': oid, 'output': result.stdout.strip()}
+        """Create a commit with staged changes."""
+        try:
+            oid = self.backend.commit(message, author_name, author_email)
+            return {'oid': oid}
+        except GitCommandError as e:
+            if 'nothing to commit' in e.stderr.lower():
+                raise HTTPException(status_code=400, detail=f'Git error: {e.stderr}')
+            raise _map_backend_error(e)
 
     def push(self, remote: str = 'origin', branch: str | None = None,
              credentials: dict | None = None) -> dict:
-        """Push to a remote.
-
-        Args:
-            remote: Remote name (default: origin).
-            branch: Branch to push (default: current HEAD).
-            credentials: Optional dict with 'username' and 'password'.
-        """
+        """Push to a remote."""
         _validate_git_ref(remote, 'remote')
         if branch:
             _validate_git_ref(branch, 'branch')
-        args = ['push', remote]
-        if branch:
-            args.append(branch)
-        self.run_git(args, credentials=credentials, timeout=60)
+        creds = _creds_from_dict(credentials)
+        try:
+            self.backend.push(remote, branch, creds)
+        except GitAuthError as e:
+            raise HTTPException(status_code=401, detail=f'Authentication failed: {e}')
+        except GitCommandError as e:
+            raise _map_backend_error(e)
         return {'pushed': True}
 
     def pull(self, remote: str = 'origin', branch: str | None = None,
              credentials: dict | None = None) -> dict:
-        """Pull from a remote.
-
-        Args:
-            remote: Remote name (default: origin).
-            branch: Branch to pull.
-            credentials: Optional dict with 'username' and 'password'.
-        """
+        """Pull from a remote."""
         _validate_git_ref(remote, 'remote')
         if branch:
             _validate_git_ref(branch, 'branch')
-        args = ['pull', remote]
-        if branch:
-            args.append(branch)
-        self.run_git(args, credentials=credentials, timeout=60)
+        creds = _creds_from_dict(credentials)
+        try:
+            self.backend.pull(remote, branch, creds)
+        except GitAuthError as e:
+            raise HTTPException(status_code=401, detail=f'Authentication failed: {e}')
+        except GitConflictError as e:
+            raise HTTPException(status_code=409, detail=f'Pull conflict: {e}')
+        except GitCommandError as e:
+            raise _map_backend_error(e)
         return {'pulled': True}
 
     def clone_repo(self, url: str, branch: str | None = None,
                    credentials: dict | None = None) -> dict:
-        """Clone a repository into workspace.
-
-        Args:
-            url: Repository URL.
-            branch: Branch to clone.
-            credentials: Optional dict with 'username' and 'password'.
-        """
+        """Clone a repository into workspace."""
         _validate_git_url(url)
         if branch:
             _validate_git_ref(branch, 'branch')
-
-        env = None
-        askpass_path = None
+        creds = _creds_from_dict(credentials)
         try:
-            if credentials:
-                askpass_path = _create_askpass_script(
-                    credentials.get('username', ''),
-                    credentials.get('password', ''),
-                )
-                env = os.environ.copy()
-                env['GIT_ASKPASS'] = askpass_path
-                env['GIT_TERMINAL_PROMPT'] = '0'
-
-            args = ['clone', '--depth', '1']
-            if branch:
-                args.extend(['-b', branch])
-            args.extend(['--', url, str(self.config.workspace_root)])
-            # Clone runs from parent dir, not workspace_root
-            result = subprocess.run(
-                ['git'] + args,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                env=env,
-            )
-        finally:
-            _cleanup_askpass(askpass_path)
-        if result.returncode != 0:
-            raise HTTPException(status_code=500, detail=f'Git error: {_sanitize_git_error(result.stderr)}')
+            self.backend.clone(url, branch, creds)
+        except GitAuthError as e:
+            raise HTTPException(status_code=401, detail=f'Authentication failed: {e}')
+        except GitCommandError as e:
+            raise _map_backend_error(e)
         return {'cloned': True}
 
-    # -------------------------------------------------------------------
-    # Branch operations
-    # -------------------------------------------------------------------
+    # ── Branch operations ──
 
     def current_branch(self) -> dict:
         """Get the current branch name."""
-        if not self.is_git_repo():
-            return {'branch': None}
-        try:
-            name = self.run_git(['rev-parse', '--abbrev-ref', 'HEAD']).strip()
-            return {'branch': name}
-        except HTTPException:
-            return {'branch': None}
+        name = self.backend.current_branch_name()
+        return {'branch': name}
 
     def list_branches(self) -> dict:
         """List all local branches."""
-        if not self.is_git_repo():
+        if not self.backend.is_repo():
             return {'branches': [], 'current': None}
-        output = self.run_git(['branch', '--list', '--no-color'])
-        branches = []
-        current = None
-        for line in output.strip().split('\n'):
-            if not line.strip():
-                continue
-            is_current = line.startswith('*')
-            name = line.lstrip('* ').strip()
-            # Skip detached HEAD entries like "(HEAD detached at abc1234)"
-            if not name or name.startswith('('):
-                continue
-            branches.append(name)
-            if is_current:
-                current = name
+        branches, current = self.backend.branches()
         return {'branches': branches, 'current': current}
 
     def create_branch(self, name: str, checkout: bool = True) -> dict:
-        """Create a new branch.
-
-        Args:
-            name: Branch name.
-            checkout: Whether to checkout the new branch (default: True).
-        """
+        """Create a new branch."""
         _validate_git_ref(name, 'branch name')
-        if checkout:
-            self.run_git(['checkout', '-b', name])
-        else:
-            self.run_git(['branch', name])
+        try:
+            self.backend.create_branch(name, checkout)
+        except GitCommandError as e:
+            raise _map_backend_error(e)
         return {'created': True, 'branch': name, 'checked_out': checkout}
 
     def checkout_branch(self, name: str) -> dict:
-        """Checkout an existing branch.
-
-        Args:
-            name: Branch name to checkout.
-        """
+        """Checkout an existing branch."""
         _validate_git_ref(name, 'branch name')
-        self.run_git(['checkout', name])
+        try:
+            self.backend.checkout(name)
+        except GitCommandError as e:
+            raise _map_backend_error(e)
         return {'checked_out': True, 'branch': name}
 
     def merge_branch(self, source: str, message: str | None = None) -> dict:
-        """Merge a branch into the current branch.
-
-        Args:
-            source: Branch name to merge from.
-            message: Optional merge commit message.
-
-        Raises:
-            HTTPException 409: If merge conflict occurs.
-            HTTPException 500: If merge fails for other reasons.
-        """
+        """Merge a branch into the current branch."""
         _validate_git_ref(source, 'branch name')
-        args = ['merge', source]
-        if message:
-            args.extend(['-m', message])
-        result = subprocess.run(
-            ['git'] + args,
-            cwd=self.config.workspace_root,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode != 0:
-            stderr = _sanitize_git_error(result.stderr)
-            if 'conflict' in stderr.lower() or 'merge conflict' in (result.stdout or '').lower():
-                # Abort the failed merge to leave workspace clean
-                subprocess.run(
-                    ['git', 'merge', '--abort'],
-                    cwd=self.config.workspace_root,
-                    capture_output=True,
-                    timeout=10,
-                )
-                raise HTTPException(
-                    status_code=409,
-                    detail=f'Merge conflict: {stderr}',
-                )
-            raise HTTPException(status_code=500, detail=f'Git error: {stderr}')
+        try:
+            self.backend.merge(source, message)
+        except GitConflictError as e:
+            raise HTTPException(
+                status_code=409,
+                detail=f'Merge conflict: {e}',
+            )
+        except GitCommandError as e:
+            raise _map_backend_error(e)
         return {'merged': True, 'source': source}
 
     def add_remote(self, name: str, url: str) -> dict:
         """Add or update a remote."""
         _validate_git_ref(name, 'remote name')
         _validate_git_url(url)
-        # Remove existing first (ignore failure)
         try:
-            self.run_git(['remote', 'remove', '--', name])
-        except HTTPException:
-            pass
-        self.run_git(['remote', 'add', '--', name, url])
+            self.backend.add_remote(name, url)
+        except GitCommandError as e:
+            raise _map_backend_error(e)
         return {'added': True}
 
     def list_remotes(self) -> dict:
         """List configured remotes."""
-        if not self.is_git_repo():
-            return {'remotes': []}
-        output = self.run_git(['remote', '-v'])
-        remotes = []
-        seen = set()
-        for line in output.strip().split('\n'):
-            parts = line.split()
-            if len(parts) >= 2 and parts[-1] == '(fetch)' and parts[0] not in seen:
-                seen.add(parts[0])
-                remotes.append({'remote': parts[0], 'url': _sanitize_url(parts[1])})
-        return {'remotes': remotes}
-
-
-def _sanitize_url(url: str) -> str:
-    """Strip embedded credentials from a URL for display."""
-    if '://' in url and '@' in url:
-        scheme_rest = url.split('://', 1)
-        if len(scheme_rest) == 2 and '@' in scheme_rest[1]:
-            host_path = scheme_rest[1].split('@', 1)[1]
-            return f'{scheme_rest[0]}://{host_path}'
-    return url
+        remotes = self.backend.list_remotes()
+        return {'remotes': [dict(r) for r in remotes]}

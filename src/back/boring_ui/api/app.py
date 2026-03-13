@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import APIConfig
+from .git_backend import GitBackend
 from .storage import Storage, LocalStorage
 from .approval import ApprovalStore, InMemoryApprovalStore
 from .capabilities import (
@@ -34,6 +35,8 @@ def create_app(
     include_approval: bool = True,
     routers: list[str] | None = None,
     registry: RouterRegistry | None = None,
+    *,
+    git_backend: GitBackend | None = None,
 ) -> FastAPI:
     """Create a pre-wired FastAPI application.
 
@@ -226,7 +229,7 @@ def create_app(
     # Mount routers from registry based on enabled set.
     router_args = {
         'files': (config, storage),
-        'git': (config,),
+        'git': (config, git_backend),
         'ui_state': (),
         'control_plane': (config,),
         'pty': (config,),
