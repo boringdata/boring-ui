@@ -274,19 +274,6 @@ async def _neon_password_auth(
     url = f"{neon_base}/{endpoint_path.lstrip('/')}"
     origin = _public_origin(request, config=config)
     upstream_payload = dict(payload)
-    pending_login = None
-    if not complete_session:
-        pending_login = _encode_pending_login(
-            config=config,
-            email=str(upstream_payload.get("email", "")).strip().lower(),
-            password=str(upstream_payload.get("password", "")).strip(),
-        )
-    upstream_payload["callbackURL"] = _build_callback_url(
-        request,
-        config=config,
-        redirect_uri=redirect_uri,
-        pending_login=pending_login,
-    )
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             auth_response = await client.post(
