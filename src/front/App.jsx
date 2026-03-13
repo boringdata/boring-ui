@@ -83,6 +83,7 @@ import WorkspaceSetupPage from './pages/WorkspaceSetupPage'
 import AuthPage, { AuthCallbackPage } from './pages/AuthPage'
 import CreateWorkspaceModal from './pages/CreateWorkspaceModal'
 import {
+  isMarkdownFile,
   getEditorPanelComponent,
   getMarkdownEditorParam,
   normalizeMarkdownEditorPanels,
