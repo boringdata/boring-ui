@@ -52,6 +52,9 @@ artifacts/
 # Rejected patch files
 .beads/*.rej
 
+# Vendor (cloned at deploy time, not submoduled)
+vendor/
+
 # Misc
 excalidraw.log
 .air/

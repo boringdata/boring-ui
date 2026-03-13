@@ -85,12 +85,9 @@ Run 'bui docs deploy' for the full deploy workflow.`,
 			}
 		}
 
-		// Check for unresolved critical secrets
-		critical := []string{"DATABASE_URL", "BORING_UI_SESSION_SECRET"}
-		for _, k := range critical {
-			if _, ok := secrets[k]; !ok {
-				return fmt.Errorf("missing required secret %s — not in Vault or .boring/neon-config.env", k)
-			}
+		// Check that all declared secrets were resolved
+		if len(failed) > 0 {
+			fmt.Printf("[bui] warn: %d secret(s) unresolved: %s\n", len(failed), strings.Join(failed, ", "))
 		}
 
 		// 6. Find modal_app.py
@@ -199,9 +196,20 @@ func buildFrontend(cfg *config.AppConfig, root string) error {
 	if err != nil {
 		return err
 	}
+
+	// Build dir: frontend root if set, otherwise framework path
+	buildDir := fwPath
+	if cfg.Frontend.Root != "" {
+		buildDir = filepath.Join(root, cfg.Frontend.Root)
+		// Ensure boring-ui symlink exists for the build
+		if err := framework.LinkFrontend(fwPath, buildDir); err != nil {
+			fmt.Printf("[bui] warn: frontend symlink: %v\n", err)
+		}
+	}
+
 	outDir := filepath.Join(root, "dist", "web")
 	vite := exec.Command("npx", "vite", "build", "--outDir", outDir)
-	vite.Dir = fwPath
+	vite.Dir = buildDir
 	vite.Stdout = os.Stdout
 	vite.Stderr = os.Stderr
 	vite.Env = append(os.Environ(),

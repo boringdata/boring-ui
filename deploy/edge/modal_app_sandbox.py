@@ -6,23 +6,45 @@ Deploy:
 The sandbox gateway proxies /w/* requests to Sprite runtimes.
 Auth and control-plane routes are handled by boring-ui (deploy/edge/modal_app.py).
 
-Requires boring-sandbox source at vendor/boring-sandbox/ (git submodule).
+Requires boring-sandbox source: checks vendor/boring-sandbox/ first,
+then falls back to cloning from GitHub.
 """
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import modal
 
 app = modal.App("boring-sandbox")
 
-# Resolve vendor root — only meaningful locally (the Modal CLI side).
-# Inside the container the script lives at /root/modal_app_sandbox.py
-# so the relative path won't resolve; we guard against that.
+# Resolve vendor root — check local checkout, then clone if needed.
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_CANDIDATE = _SCRIPT_DIR.parent.parent / "vendor" / "boring-sandbox"
-VENDOR_ROOT: Path | None = _CANDIDATE if _CANDIDATE.is_dir() else None
+_REPO_ROOT = _SCRIPT_DIR.parent.parent
+_CANDIDATE = _REPO_ROOT / "vendor" / "boring-sandbox"
+
+
+def _ensure_boring_sandbox() -> Path | None:
+    """Ensure boring-sandbox source is available locally."""
+    if _CANDIDATE.is_dir() and (_CANDIDATE / "src" / "boring_sandbox").is_dir():
+        return _CANDIDATE
+    # Clone from GitHub (shallow, no submodules)
+    clone_dir = _REPO_ROOT / "vendor" / "boring-sandbox"
+    try:
+        clone_dir.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "clone", "--depth=1", "--no-recurse-submodules",
+             "https://github.com/boringdata/boring-sandbox.git",
+             str(clone_dir)],
+            check=True, capture_output=True, text=True,
+        )
+        return clone_dir
+    except Exception:
+        return None
+
+
+VENDOR_ROOT: Path | None = _ensure_boring_sandbox()
 
 
 def _base_image() -> modal.Image:
