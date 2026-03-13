@@ -4440,29 +4440,60 @@ export default function App() {
 
   // Restore document from URL query param on load
   useEffect(() => {
-    if (!dockApi || projectRoot === null || hasRestoredFromUrl.current) return
-
-    // Custom layouts may omit filetree, but openFile still needs a live docking anchor.
-    const layoutReady = Boolean(
-      dockApi.getPanel('empty-center')
-      || getLiveCenterGroup(dockApi)
-      || dockApi.getPanel('filetree')
-      || dockApi.getPanel('companion')
-      || dockApi.getPanel('terminal')
-      || dockApi.getPanel('shell')
-    )
-    if (!layoutReady) return
-
-    hasRestoredFromUrl.current = true
+    if (!dockApi || hasRestoredFromUrl.current) return
 
     const docPath = new URLSearchParams(window.location.search).get('doc')
-    if (docPath) {
-      // Small delay to ensure layout is fully ready
-      setTimeout(() => {
-        openFile(docPath)
-      }, 150)
+    if (!docPath) return
+
+    const existingPanel = dockApi.getPanel(`editor-${docPath}`)
+    if (existingPanel) {
+      hasRestoredFromUrl.current = true
+      return
     }
-  }, [dockApi, projectRoot, openFile, getLiveCenterGroup])
+
+    // Layout restoration can still replace center groups after the shell is mounted.
+    // Retry until the requested doc panel actually exists, then mark the URL as consumed.
+    let cancelled = false
+    let attemptCount = 0
+    let timerId = null
+    const maxAttempts = 20
+
+    const ensureDocPanel = () => {
+      if (cancelled || hasRestoredFromUrl.current) return
+
+      if (dockApi.getPanel(`editor-${docPath}`)) {
+        hasRestoredFromUrl.current = true
+        return
+      }
+
+      const openViaBridge = window[PI_OPEN_FILE_BRIDGE]
+      if (typeof openViaBridge === 'function') {
+        openViaBridge(docPath)
+      } else {
+        openFile(docPath)
+      }
+      attemptCount += 1
+
+      requestAnimationFrame(() => {
+        if (cancelled || hasRestoredFromUrl.current) return
+        if (dockApi.getPanel(`editor-${docPath}`)) {
+          hasRestoredFromUrl.current = true
+          return
+        }
+        if (attemptCount >= maxAttempts) return
+        timerId = window.setTimeout(ensureDocPanel, 250)
+      })
+    }
+
+    timerId = window.setTimeout(ensureDocPanel, 150)
+
+    return () => {
+      cancelled = true
+      if (timerId !== null) {
+        window.clearTimeout(timerId)
+      }
+    }
+  }, [dockApi, openFile, getLiveCenterGroup, tabs])
 
   const readDroppedSeriesId = useCallback((dataTransfer) => {
     const transferTypes = dataTransfer?.types && typeof dataTransfer.types[Symbol.iterator] === 'function'
