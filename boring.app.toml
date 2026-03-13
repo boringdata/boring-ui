@@ -1,0 +1,68 @@
+# boring.app.toml — Example configuration for boring-ui itself
+# Child apps copy this pattern and customize.
+
+[app]
+name = "boring-ui"
+logo = "B"
+id   = "boring-ui"
+
+# ─── Backend ───────────────────────────────────────────────
+[backend]
+entry = "boring_ui.api.app:create_app"
+port  = 8000
+# Additional FastAPI routers (Python dotted paths)
+routers = []
+
+# ─── Frontend ──────────────────────────────────────────────
+[frontend]
+port = 5173
+
+[frontend.branding]
+name = "Boring UI"
+
+[frontend.features]
+agentRailMode = "all"
+
+[frontend.data]
+backend = "http"
+
+# Custom panels: id = { component, title, placement }
+[frontend.panels]
+
+# ─── CLI commands (agent-discoverable) ────────────────────
+[cli]
+# Commands that `bui run <name>` will execute
+# The agent reads this section to know what's available
+[cli.commands]
+
+# ─── Auth ─────────────────────────────────────────────────
+[auth]
+provider = "neon"               # "neon" | "local" | "none"
+session_cookie = "boring_session"
+session_ttl = 86400
+
+# ─── Deploy ──────────────────────────────────────────────
+[deploy]
+platform = "modal"               # "modal" | "docker"
+env      = "prod"                # "prod" | "staging" | "dev" — Vault path isolation
+
+[deploy.secrets]
+DATABASE_URL              = { vault = "secret/agent/app/boring-ui/prod", field = "database_url" }
+BORING_UI_SESSION_SECRET  = { vault = "secret/agent/app/boring-ui/prod", field = "session_secret" }
+ANTHROPIC_API_KEY         = { vault = "secret/agent/anthropic", field = "api_key" }
+RESEND_API_KEY            = { vault = "secret/agent/services/resend", field = "api_key" }
+GITHUB_APP_ID             = { vault = "secret/agent/services/boring-ui-app", field = "app_id" }
+GITHUB_APP_CLIENT_ID      = { vault = "secret/agent/services/boring-ui-app", field = "client_id" }
+GITHUB_APP_CLIENT_SECRET  = { vault = "secret/agent/services/boring-ui-app", field = "client_secret" }
+GITHUB_APP_PRIVATE_KEY    = { vault = "secret/agent/services/boring-ui-app", field = "pem" }
+GITHUB_APP_SLUG           = { vault = "secret/agent/services/boring-ui-app", field = "slug" }
+
+[deploy.neon]
+project      = "long-glade-16936142"
+database     = "neondb"
+auth_url     = "https://ep-solitary-darkness-ag6rrvrn.neonauth.c-2.eu-central-1.aws.neon.tech/neondb/auth"
+jwks_url     = "https://ep-solitary-darkness-ag6rrvrn.neonauth.c-2.eu-central-1.aws.neon.tech/neondb/auth/.well-known/jwks.json"
+
+[deploy.modal]
+app_name = "boring-ui"
+min_containers = 0

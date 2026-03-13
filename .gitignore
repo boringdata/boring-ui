@@ -38,6 +38,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# boring-ui local state (secrets, neon config, session keys)
+.boring/
+
 # Verification / test artifacts
 .verify/
 playwright-report/
@@ -51,3 +54,6 @@ artifacts/
 
 # Misc
 excalidraw.log
+.air/
+.air.toml
+bui/bui
