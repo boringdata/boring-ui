@@ -85,6 +85,21 @@ Run 'bui docs deploy' for the full deploy workflow.`,
 			}
 		}
 
+		// 5b. Fallback for BORING_SETTINGS_KEY (encryption for workspace settings + GitHub connection)
+		if _, ok := secrets["BORING_SETTINGS_KEY"]; !ok {
+			if sk := loadNeonEnvField(root, "BORING_SETTINGS_KEY"); sk != "" {
+				secrets["BORING_SETTINGS_KEY"] = sk
+				fmt.Println("  ✓ BORING_SETTINGS_KEY (from .boring/neon-config.env)")
+			} else {
+				sk, err := ensureSettingsKey(root)
+				if err != nil {
+					return fmt.Errorf("settings key: %w", err)
+				}
+				secrets["BORING_SETTINGS_KEY"] = sk
+				fmt.Println("  ✓ BORING_SETTINGS_KEY (generated)")
+			}
+		}
+
 		// Check that all declared secrets were resolved
 		if len(failed) > 0 {
 			fmt.Printf("[bui] warn: %d secret(s) unresolved: %s\n", len(failed), strings.Join(failed, ", "))
@@ -120,12 +135,23 @@ Run 'bui docs deploy' for the full deploy workflow.`,
 			}
 			modal.Env = append(modal.Env, k+"="+v)
 		}
-		// Pass config path and env-aware app name so modal_app.py can use them
+		// Resolve framework path for modal_app.py to mount
+		fwPath, _ := framework.Resolve(cfg, "deploy")
+		if fwPath == "" {
+			// Fallback: try dev resolution (sibling)
+			fwPath, _ = framework.Resolve(cfg, "dev")
+		}
+
+		// Pass config path, app name, and framework path so modal_app.py can use them
 		modal.Env = append(modal.Env,
 			fmt.Sprintf("BUI_APP_TOML=%s", filepath.Join(root, config.ConfigFile)),
 			fmt.Sprintf("BUI_MODAL_APP_NAME=%s", modalAppName),
 			fmt.Sprintf("BUI_DEPLOY_ENV=%s", cfg.Deploy.Env),
 		)
+		if fwPath != "" {
+			modal.Env = append(modal.Env, fmt.Sprintf("BUI_FRAMEWORK_PATH=%s", fwPath))
+			fmt.Printf("[bui] framework: %s\n", fwPath)
+		}
 
 		if err := modal.Run(); err != nil {
 			return fmt.Errorf("modal deploy: %w", err)
@@ -162,6 +188,34 @@ func ensureSessionSecret(root string) (string, error) {
 	}
 	fmt.Printf("[bui] generated new session secret → %s\n", secretFile)
 	return secret, nil
+}
+
+// ensureSettingsKey reads or creates a stable settings encryption key in .boring/settings-key.
+func ensureSettingsKey(root string) (string, error) {
+	boringDir := filepath.Join(root, ".boring")
+	keyFile := filepath.Join(boringDir, "settings-key")
+
+	data, err := os.ReadFile(keyFile)
+	if err == nil {
+		s := strings.TrimSpace(string(data))
+		if len(s) >= 32 {
+			return s, nil
+		}
+	}
+
+	// Generate new key
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	key := hex.EncodeToString(buf)
+
+	os.MkdirAll(boringDir, 0o700)
+	if err := os.WriteFile(keyFile, []byte(key+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	fmt.Printf("[bui] generated new settings key → %s\n", keyFile)
+	return key, nil
 }
 
 func init() {
