@@ -333,10 +333,13 @@ async def _neon_password_auth(
             # Origin must match Neon Auth's own origin, not the app's origin.
             parsed_neon = urlparse(neon_base)
             neon_origin = f"{parsed_neon.scheme}://{parsed_neon.netloc}"
+            # Neon Auth requires a relative callbackURL + Origin header.
+            callback_path = f"/auth/callback?redirect_uri={quote(redirect_uri, safe='/')}"
             await _auto_send_verification_email(
                 neon_base=neon_base,
                 email=signup_email,
-                origin=neon_origin,
+                origin=origin,
+                callback_url=callback_path,
             )
 
         return JSONResponse(
@@ -475,9 +478,13 @@ async def _auto_send_verification_email(
     neon_base: str,
     email: str,
     origin: str,
+    callback_url: str = "",
 ) -> None:
     """Best-effort send of verification email after signup."""
     try:
+        payload: dict[str, str] = {"email": email}
+        if callback_url:
+            payload["callbackURL"] = callback_url
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             resp = await client.post(
                 f"{neon_base}/send-verification-email",
@@ -485,9 +492,7 @@ async def _auto_send_verification_email(
                     "Content-Type": "application/json",
                     "Origin": origin,
                 },
-                json={
-                    "email": email,
-                },
+                json=payload,
             )
             if resp.status_code not in {200, 201}:
                 _logger.warning(
