@@ -41,7 +41,7 @@ def main() -> int:
         email = args.email
         password = args.password
     else:
-        email = args.recipient or f"qa+smoke-core-{int(time.time())}@mail.boringdata.io"
+        email = args.recipient or f"qa+smoke-core-{int(time.time())}@boringdata.io"
         password = random_password()
         resend_key = resend_api_key()
 

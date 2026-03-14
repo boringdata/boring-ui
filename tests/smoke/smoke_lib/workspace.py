@@ -100,6 +100,10 @@ def get_workspace_boundary_runtime(client: SmokeClient, workspace_id: str) -> di
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Workspace boundary runtime failed: {resp.status_code} {resp.text[:300]}")
+    content_type = resp.headers.get("content-type", "")
+    if "json" not in content_type:
+        # Core mode serves SPA HTML for boundary paths — not an API endpoint
+        return {}
     return resp.json()
 
 

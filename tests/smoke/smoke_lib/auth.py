@@ -370,18 +370,19 @@ def neon_signup_verify_flow(
     print(f"[smoke] Verification email received: {email_summary.get('subject', '?')}")
 
     client.set_phase("neon-verify-email")
+    # Strip callbackURL from verification link — Neon Auth rejects absolute
+    # callbackURLs in verify-email even when the origin is in trusted_origins.
+    # Without callbackURL, verification succeeds and sets session cookies.
+    clean_url = confirmation_url.split("&callbackURL")[0]
     verify_client = httpx.Client(
         headers={"Origin": origin},
         timeout=30.0,
         follow_redirects=True,
     )
     try:
-        verify_resp = verify_client.get(confirmation_url)
-        final_url = str(verify_resp.url)
-        parsed = urlparse(final_url)
-        expected_origin = urlparse(origin)
-        if (parsed.scheme, parsed.netloc) != (expected_origin.scheme, expected_origin.netloc):
-            raise RuntimeError(f"Verification landed on unexpected origin: {final_url}")
+        verify_resp = verify_client.get(clean_url)
+        if verify_resp.status_code not in {200, 302}:
+            raise RuntimeError(f"Verification failed: {verify_resp.status_code} {verify_resp.text[:300]}")
 
         token_resp = verify_client.get(f"{neon_auth_url.rstrip('/')}/token")
         if token_resp.status_code != 200:
