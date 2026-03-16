@@ -54,8 +54,10 @@ _fw_repo = _fw_cfg.get("repo", "github.com/hachej/boring-ui")
 _fw_commit = os.environ.get("BUI_FRAMEWORK_COMMIT") or _fw_cfg.get("commit", "main")
 _min_containers = _modal_cfg.get("min_containers", 0)
 
-# Backend pythonpath (child app code)
+# Backend pythonpath (child app code) and extra pip dependencies
 _pythonpath = _backend_cfg.get("pythonpath", [])
+_extra_deps = _backend_cfg.get("dependencies", [])
+_boot_module = _deploy_cfg.get("boot_module", "")
 
 # ---------------------------------------------------------------------------
 # Modal app
@@ -83,6 +85,7 @@ def _base_image() -> modal.Image:
         )
         .pip_install(
             f"boring-ui @ git+https://{_fw_repo}.git@{_fw_commit}",
+            *_extra_deps,
         )
     )
 
@@ -158,6 +161,13 @@ def web():
     """Config-driven ASGI entrypoint for any boring-ui child app."""
     workspace_root = Path(os.environ.get("BORING_UI_WORKSPACE_ROOT", f"/tmp/{_app_id}-workspace"))
     workspace_root.mkdir(parents=True, exist_ok=True)
+
+    # Optional boot module: runs before app import (e.g. env normalization)
+    if _boot_module:
+        import importlib
+        mod = importlib.import_module(_boot_module)
+        if hasattr(mod, "boot"):
+            mod.boot()
 
     from boring_ui.runtime import app as runtime_app
     return runtime_app

@@ -34,11 +34,12 @@ type App struct {
 }
 
 type Backend struct {
-	Type       string   `toml:"type"`
-	Entry      string   `toml:"entry"`
-	Port       int      `toml:"port"`
-	Routers    []string `toml:"routers"`
-	PythonPath []string `toml:"pythonpath"`
+	Type         string   `toml:"type"`
+	Entry        string   `toml:"entry"`
+	Port         int      `toml:"port"`
+	Routers      []string `toml:"routers"`
+	PythonPath   []string `toml:"pythonpath"`
+	Dependencies []string `toml:"dependencies"`
 }
 
 type Frontend struct {
@@ -77,12 +78,13 @@ type Auth struct {
 }
 
 type Deploy struct {
-	Platform  string               `toml:"platform"`
-	Env       string               `toml:"env"`
-	Secrets   map[string]SecretRef `toml:"secrets"`
-	DeployEnv map[string]string    `toml:"env_vars"`
-	Neon      NeonConfig           `toml:"neon"`
-	Modal     ModalConfig          `toml:"modal"`
+	Platform   string               `toml:"platform"`
+	Env        string               `toml:"env"`
+	Secrets    map[string]SecretRef `toml:"secrets"`
+	DeployEnv  map[string]string    `toml:"env_vars"`
+	BootModule string               `toml:"boot_module"`
+	Neon       NeonConfig           `toml:"neon"`
+	Modal      ModalConfig          `toml:"modal"`
 }
 
 type SecretRef struct {
