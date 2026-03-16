@@ -7,7 +7,7 @@
  * @module hooks/useCapabilities
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiFetchJson } from '../utils/transport'
 import { routes } from '../utils/routes'
 
@@ -49,10 +49,13 @@ export const useCapabilities = () => {
   const [capabilities, setCapabilities] = useState(UNKNOWN_CAPABILITIES)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const hasLoaded = useRef(false)
 
   const fetchCapabilities = useCallback(async () => {
     try {
-      setLoading(true)
+      // Only show loading spinner on initial fetch — refetches keep
+      // the workspace visible to avoid unmount/remount "bounce".
+      if (!hasLoaded.current) setLoading(true)
       setError(null)
 
       const route = routes.capabilities.get()
@@ -62,6 +65,7 @@ export const useCapabilities = () => {
       }
 
       setCapabilities(data)
+      hasLoaded.current = true
     } catch (err) {
       console.error('[Capabilities] Failed to fetch:', err)
       setError(err)
