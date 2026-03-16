@@ -278,6 +278,11 @@ async def _neon_password_auth(
     parsed_neon = urlparse(neon_base)
     neon_origin = f"{parsed_neon.scheme}://{parsed_neon.netloc}"
     upstream_payload = dict(payload)
+    # Better Auth validates callbackURL against trusted origins.  Use a
+    # relative path so it resolves against the Neon Auth origin we send.
+    if "callbackURL" not in upstream_payload:
+        callback_path = f"/auth/callback?redirect_uri={quote(redirect_uri, safe='/')}"
+        upstream_payload["callbackURL"] = callback_path
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             auth_response = await client.post(
