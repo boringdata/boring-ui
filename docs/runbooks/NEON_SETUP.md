@@ -214,11 +214,15 @@ bui deploy --env staging
 ```
 
 `bui deploy` automatically:
-1. Resolves secrets from Vault (using paths in `boring.app.toml`)
+1. Resolves secrets from Vault (using paths in `boring.app.toml` `[deploy.secrets]`)
 2. Falls back to `.boring/neon-config.env` for secrets not in Vault
 3. Auto-generates `BORING_UI_SESSION_SECRET` and `BORING_SETTINGS_KEY` if missing
 4. Injects `NEON_AUTH_BASE_URL` and `NEON_AUTH_JWKS_URL` from config
-5. Runs `modal deploy` with all env vars injected
+5. Injects `[deploy.env_vars]` as static env vars
+6. Uses the **framework's** canonical `deploy/core/modal_app.py` (child apps do not maintain their own)
+7. Runs `modal deploy` with all env vars injected
+
+Child apps only need `boring.app.toml` — no `deploy/core/modal_app.py` required.
 
 Verify after deploy:
 

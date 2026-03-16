@@ -105,10 +105,31 @@ Run 'bui docs deploy' for the full deploy workflow.`,
 			fmt.Printf("[bui] warn: %d secret(s) unresolved: %s\n", len(failed), strings.Join(failed, ", "))
 		}
 
-		// 6. Find modal_app.py
+		// 5c. Inject [deploy.env_vars] as env vars for modal_app.py
+		for k, v := range cfg.Deploy.DeployEnv {
+			secrets[k] = v
+			fmt.Printf("  ✓ %s (from config)\n", k)
+		}
+
+		// 5d. Resolve framework path early (needed for modal_app.py lookup)
+		fwPath, _ := framework.Resolve(cfg, "deploy")
+		if fwPath == "" {
+			fwPath, _ = framework.Resolve(cfg, "dev")
+		}
+
+		// 6. Find modal_app.py — prefer framework's canonical template
 		modalFile := findModalFile(root)
+		if fwPath != "" {
+			fwModal := filepath.Join(fwPath, "deploy", "core", "modal_app.py")
+			if _, err := os.Stat(fwModal); err == nil {
+				if modalFile != "" && modalFile != fwModal {
+					fmt.Printf("[bui] note: ignoring local %s, using framework template\n", modalFile)
+				}
+				modalFile = fwModal
+			}
+		}
 		if modalFile == "" {
-			return fmt.Errorf("no modal_app.py found in deploy/")
+			return fmt.Errorf("no modal_app.py found in framework or deploy/")
 		}
 		fmt.Printf("[bui] using %s\n", modalFile)
 
@@ -135,13 +156,6 @@ Run 'bui docs deploy' for the full deploy workflow.`,
 			}
 			modal.Env = append(modal.Env, k+"="+v)
 		}
-		// Resolve framework path for modal_app.py to mount
-		fwPath, _ := framework.Resolve(cfg, "deploy")
-		if fwPath == "" {
-			// Fallback: try dev resolution (sibling)
-			fwPath, _ = framework.Resolve(cfg, "dev")
-		}
-
 		// Pass config path, app name, and framework path so modal_app.py can use them
 		modal.Env = append(modal.Env,
 			fmt.Sprintf("BUI_APP_TOML=%s", filepath.Join(root, config.ConfigFile)),

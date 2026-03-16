@@ -49,7 +49,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 		name,
 		filepath.Join(name, "src", pyName, "routers"),
 		filepath.Join(name, "panels"),
-		filepath.Join(name, "deploy", "sql"),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -77,13 +76,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if fwCommit != "" {
 		fwSection = fmt.Sprintf(`
 [framework]
-repo   = "github.com/boringdata/boring-ui"
+repo   = "github.com/hachej/boring-ui"
 commit = %q
 `, fwCommit)
 	} else {
 		fwSection = `
 # [framework]
-# repo   = "github.com/boringdata/boring-ui"
+# repo   = "github.com/hachej/boring-ui"
 # commit = ""  # set with 'bui upgrade'
 `
 	}
@@ -133,6 +132,10 @@ env      = "prod"
 
 [deploy.secrets]
 ANTHROPIC_API_KEY = { vault = "secret/agent/anthropic", field = "api_key" }
+
+# [deploy.env_vars]
+# App-specific static env vars (non-secret, baked into container)
+# MY_SETTING = "value"
 
 [deploy.neon]
 # Populated by 'bui neon setup'
