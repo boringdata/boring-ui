@@ -18,6 +18,18 @@ from .repository import LocalControlPlaneRepository
 from .service import ControlPlaneService
 
 _RESERVED_SUBPATHS = {"setup", "runtime", "settings"}
+_STATIC_ASSET_PREFIXES = ("/assets/", "/fonts/")
+
+
+def _resolve_static_dir() -> Path | None:
+    """Resolve static dir from available env vars."""
+    for var in ("BORING_UI_STATIC_DIR", "BORING_MACRO_STATIC_DIR"):
+        val = (os.environ.get(var) or "").strip()
+        if val:
+            p = Path(val)
+            if p.is_dir():
+                return p
+    return None
 _WORKSPACE_PASSTHROUGH_ROOTS = (
     "/api/v1/me",
     "/api/v1/workspaces",
@@ -208,15 +220,32 @@ async def _forward_http_request(request: Request, target_path: str, workspace_id
 
 def _spa_response(config: APIConfig):
     """Serve the SPA index.html for browser navigation to workspace pages."""
-    static_dir = os.environ.get("BORING_UI_STATIC_DIR", "")
+    static_dir = _resolve_static_dir()
     if static_dir:
-        index = Path(static_dir) / "index.html"
+        index = static_dir / "index.html"
         if index.exists():
             return FileResponse(
                 index,
                 headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
             )
     return JSONResponse({"error": "Frontend not available"}, status_code=404)
+
+
+def _static_asset_response(normalized_path: str) -> FileResponse | None:
+    """Serve a static asset if the path matches a known asset prefix."""
+    if not any(normalized_path.startswith(p) for p in _STATIC_ASSET_PREFIXES):
+        return None
+    static_dir = _resolve_static_dir()
+    if not static_dir:
+        return None
+    asset = (static_dir / normalized_path.lstrip("/")).resolve()
+    # Guard against path traversal
+    if str(asset).startswith(str(static_dir.resolve())) and asset.is_file():
+        return FileResponse(
+            asset,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
+    return None
 
 
 def _workspace_root_response(request: Request, config: APIConfig, workspace_id: str):
@@ -356,6 +385,13 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
     )
     async def workspace_passthrough(workspace_id: str, path: str, request: Request):
         normalized = "/" + str(path or "").lstrip("/")
+
+        # Serve static assets (JS/CSS/fonts) without auth — these are public build artifacts
+        if request.method == "GET":
+            asset_resp = _static_asset_response(normalized)
+            if asset_resp is not None:
+                return asset_resp
+
         accept = request.headers.get("accept", "")
         is_browser_navigation = request.method == "GET" and "text/html" in accept
         if is_browser_navigation:
@@ -387,20 +423,7 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
             )
         if not _is_allowed_workspace_passthrough_target(normalized, config=config):
             # Non-API paths are frontend client routes — serve SPA index.html
-            static_dir = os.environ.get("BORING_UI_STATIC_DIR", "")
-            index_html = Path(static_dir) / "index.html" if static_dir else None
-            if index_html and index_html.exists():
-                return FileResponse(
-                    index_html,
-                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
-                )
-            return _error(
-                request,
-                status_code=404,
-                error="not_found",
-                code="WORKSPACE_PATH_DENIED",
-                message="Path is outside allowed workspace-scoped families",
-            )
+            return _spa_response(config)
         return await _forward_http_request(request, normalized, workspace_id)
 
     return router
