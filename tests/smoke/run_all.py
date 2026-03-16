@@ -39,7 +39,9 @@ BASE_SUITES: list[tuple[str, str, bool, list[str]]] = [
     ("workspace-lifecycle", "smoke_workspace_lifecycle.py", True,  []),
     ("filesystem",          "smoke_filesystem.py",          True,  []),
     ("settings",            "smoke_settings.py",            True,  []),
+    ("ui-state",            "smoke_ui_state.py",            True,  []),
     ("git-sync",            "smoke_git_sync.py",            True,  []),
+    ("agent-ws",            "smoke_agent_ws.py",            True,  []),
 ]
 
 
