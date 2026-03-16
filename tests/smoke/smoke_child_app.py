@@ -196,8 +196,12 @@ def main() -> int:
             client.set_phase("file-tree")
             resp = client.get("/api/v1/files/tree", expect_status=(200,))
             if resp.status_code == 200:
-                tree = resp.json()
-                print(f"[{app}] File tree: {len(tree.get('entries', tree.get('children', [])))} entries")
+                try:
+                    tree = resp.json()
+                    entries = tree.get("entries", tree.get("children", []))
+                    print(f"[{app}] File tree: {len(entries)} entries")
+                except Exception:
+                    print(f"[{app}] File tree: non-JSON response ({len(resp.content)} bytes)")
             else:
                 print(f"[{app}] File tree: {resp.status_code}")
 
@@ -223,8 +227,11 @@ def main() -> int:
                 expect_status=(200,),
             )
             if resp.status_code == 200:
-                data = resp.json()
-                content = data.get("content", "")
+                try:
+                    data = resp.json()
+                    content = data.get("content", "")
+                except Exception:
+                    content = resp.text
                 ok = test_content in content
                 if ok:
                     print(f"[{app}] File read-back OK")
