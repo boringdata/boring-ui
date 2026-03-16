@@ -6,6 +6,7 @@ Serves API + built frontend from one FastAPI service when BORING_UI_STATIC_DIR i
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -15,10 +16,34 @@ from starlette.responses import FileResponse
 
 from .api import APIConfig, create_app
 
+_WS_ASSET_RE = re.compile(r"^/w/[^/]+(/assets/|/fonts/)")
+
+
+class _WorkspaceAssetRewriteMiddleware:
+    """Rewrite /w/{id}/assets/… → /assets/… so static mounts serve them.
+
+    Build artifacts are public and don't need workspace auth.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            m = _WS_ASSET_RE.match(path)
+            if m:
+                scope = dict(scope)
+                scope["path"] = path[m.start(1):]
+        await self.app(scope, receive, send)
+
 
 def mount_static(app: FastAPI, static_path: Path) -> None:
     """Mount built frontend assets with gzip and proper cache headers."""
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    # Rewrite /w/{id}/assets/… → /assets/… so the static mount serves them.
+    # Must be added AFTER GZip (Starlette middleware stack is LIFO).
+    app.add_middleware(_WorkspaceAssetRewriteMiddleware)
 
     @app.middleware("http")
     async def _cache_control(request, call_next):
