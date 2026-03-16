@@ -87,6 +87,7 @@ def _base_image() -> modal.Image:
         .pip_install(
             f"boring-ui @ git+https://{_fw_repo}.git@{_fw_commit}",
             *_extra_deps,
+            force_build=_fw_commit != "main",  # bust cache on commit change
         )
     )
 
