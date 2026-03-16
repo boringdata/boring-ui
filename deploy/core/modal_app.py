@@ -58,6 +58,7 @@ _min_containers = _modal_cfg.get("min_containers", 0)
 _pythonpath = _backend_cfg.get("pythonpath", [])
 _extra_deps = _backend_cfg.get("dependencies", [])
 _boot_module = _deploy_cfg.get("boot_module", "")
+_entry = _backend_cfg.get("entry", "")  # e.g. "backend.app:app"
 
 # ---------------------------------------------------------------------------
 # Modal app
@@ -168,6 +169,14 @@ def web():
         mod = importlib.import_module(_boot_module)
         if hasattr(mod, "boot"):
             mod.boot()
+
+    # Use child app entry point if configured, else boring-ui default
+    if _entry:
+        import importlib
+        module_path, _, attr = _entry.partition(":")
+        mod = importlib.import_module(module_path)
+        child_app = getattr(mod, attr or "app")
+        return child_app
 
     from boring_ui.runtime import app as runtime_app
     return runtime_app
