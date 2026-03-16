@@ -4749,7 +4749,9 @@ export default function App() {
     if (workspaceOptions.length > 0) {
       const firstWs = workspaceOptions[0]
       const route = routes.controlPlane.workspaces.scope(firstWs.id)
-      window.location.replace(route.path)
+      // Use client-side navigation to avoid a full page reload bounce
+      window.history.replaceState(null, '', route.path)
+      setCurrentWorkspaceId(firstWs.id)
     } else if (!autoCreateAttempted.current) {
       // Auto-create a default workspace instead of prompting for a name
       autoCreateAttempted.current = true
