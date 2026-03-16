@@ -16,13 +16,13 @@ from starlette.responses import FileResponse
 
 from .api import APIConfig, create_app
 
-_WS_ASSET_RE = re.compile(r"^/w/[^/]+(/assets/|/fonts/)")
+_PREFIXED_ASSET_RE = re.compile(r"^(?:/w/[^/]+|/auth)(/assets/|/fonts/)")
 
 
 class _WorkspaceAssetRewriteMiddleware:
-    """Rewrite /w/{id}/assets/… → /assets/… so static mounts serve them.
+    """Rewrite /w/{id}/assets/… and /auth/assets/… → /assets/….
 
-    Build artifacts are public and don't need workspace auth.
+    Build artifacts are public and don't need workspace or auth routing.
     """
 
     def __init__(self, app):
@@ -31,7 +31,7 @@ class _WorkspaceAssetRewriteMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             path = scope.get("path", "")
-            m = _WS_ASSET_RE.match(path)
+            m = _PREFIXED_ASSET_RE.match(path)
             if m:
                 scope = dict(scope)
                 scope["path"] = path[m.start(1):]

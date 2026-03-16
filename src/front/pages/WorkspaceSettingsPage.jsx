@@ -302,19 +302,21 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
           </SettingsSection>
         )}
 
-        <SettingsSection title="Auto-Sync" icon={RefreshCw} description="Automatically commit and push changes at a regular interval">
-          <SettingsField label="Sync Frequency" description="How often to check for changes and sync">
-            <select
-              className="settings-input settings-select"
-              value={syncInterval}
-              onChange={(e) => handleSyncIntervalChange(e.target.value)}
-            >
-              {SYNC_INTERVAL_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </SettingsField>
-        </SettingsSection>
+        {capabilities?.features?.github && (
+          <SettingsSection title="Auto-Sync" icon={RefreshCw} description="Automatically commit and push changes at a regular interval">
+            <SettingsField label="Sync Frequency" description="How often to check for changes and sync">
+              <select
+                className="settings-input settings-select"
+                value={syncInterval}
+                onChange={(e) => handleSyncIntervalChange(e.target.value)}
+              >
+                {SYNC_INTERVAL_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </SettingsField>
+          </SettingsSection>
+        )}
 
         {hasRuntime && <SettingsSection title="Runtime" icon={Activity}>
           <SettingsField label="Status">
