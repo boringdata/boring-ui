@@ -59,6 +59,7 @@ class _FakeAsyncClient:
     token_response = _FakeAsyncResponse(200, {"token": "jwt-from-neon"})
     last_post: tuple[str, dict] | None = None
     last_get: str | None = None
+    posts: list[tuple[str, dict]] = []
 
     def __init__(self, *args, **kwargs):
         pass
@@ -70,6 +71,7 @@ class _FakeAsyncClient:
         return False
 
     async def post(self, url, *, headers=None, json=None):
+        type(self).posts.append((url, json or {}))
         if type(self).last_post is None:
             type(self).last_post = (url, json or {})
         return type(self).post_response
@@ -198,6 +200,7 @@ def test_neon_sign_in_sets_session_cookie_without_browser_direct_neon_calls(
     _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "jwt-from-neon"})
     _FakeAsyncClient.last_post = None
     _FakeAsyncClient.last_get = None
+    _FakeAsyncClient.posts = []
     monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
     monkeypatch.setattr(
         auth_router_neon,
@@ -217,7 +220,6 @@ def test_neon_sign_in_sets_session_cookie_without_browser_direct_neon_calls(
         {
             "email": "owner@example.com",
             "password": "password123",
-            "callbackURL": "http://127.0.0.1:5176/auth/callback?redirect_uri=/w/demo",
         },
     )
     assert _FakeAsyncClient.last_get == "https://example.neonauth.test/neondb/auth/token"
@@ -256,6 +258,7 @@ def test_neon_sign_up_requires_email_verification_instead_of_auto_login(
     _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
     _FakeAsyncClient.last_post = None
     _FakeAsyncClient.last_get = None
+    _FakeAsyncClient.posts = []
     monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
 
     response = client.post(
@@ -271,14 +274,16 @@ def test_neon_sign_up_requires_email_verification_instead_of_auto_login(
         "redirect_uri": "/",
     }
     assert "set-cookie" not in {k.lower(): v for k, v in response.headers.items()}
-    assert _FakeAsyncClient.last_post is not None
-    assert _FakeAsyncClient.last_post[0] == "https://example.neonauth.test/neondb/auth/sign-up/email"
-    sent_payload = _FakeAsyncClient.last_post[1]
+    assert len(_FakeAsyncClient.posts) == 2
+    assert _FakeAsyncClient.posts[0][0] == "https://example.neonauth.test/neondb/auth/sign-up/email"
+    sent_payload = _FakeAsyncClient.posts[0][1]
     assert sent_payload["email"] == "new@example.com"
     assert sent_payload["password"] == "password123"
     assert sent_payload["name"] == "new"
-    parsed = urlparse(sent_payload["callbackURL"])
-    assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == "http://127.0.0.1:5176/auth/callback"
+    assert "callbackURL" not in sent_payload
+    assert _FakeAsyncClient.posts[1][0] == "https://example.neonauth.test/neondb/auth/send-verification-email"
+    parsed = urlparse(_FakeAsyncClient.posts[1][1]["callbackURL"])
+    assert parsed.path == "/auth/callback"
     params = parse_qs(parsed.query)
     assert params["redirect_uri"] == ["/"]
     assert params["pending_login"]
@@ -411,17 +416,18 @@ def test_neon_callback_renders_exchange_page(tmp_path: Path) -> None:
     assert "/w/demo" in response.text
 
 
-def test_neon_sign_up_uses_browser_origin_for_callback_url(tmp_path: Path, monkeypatch) -> None:
+def test_neon_resend_verification_uses_browser_origin_for_callback_url(tmp_path: Path, monkeypatch) -> None:
     client = _client_neon(tmp_path)
     _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
     _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
     _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.posts = []
     monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
 
     response = client.post(
-        "/auth/sign-up",
+        "/auth/resend-verification",
         headers={"Origin": "http://213.32.19.186:5176"},
-        json={"email": "new@example.com", "password": "password123", "redirect_uri": "/"},
+        json={"email": "new@example.com", "redirect_uri": "/"},
     )
 
     assert response.status_code == 200
@@ -430,10 +436,9 @@ def test_neon_sign_up_uses_browser_origin_for_callback_url(tmp_path: Path, monke
     assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == "http://213.32.19.186:5176/auth/callback"
     params = parse_qs(parsed.query)
     assert params["redirect_uri"] == ["/"]
-    assert params["pending_login"]
 
 
-def test_neon_sign_up_uses_same_origin_https_hosted_base_url_for_callback_url(
+def test_neon_resend_verification_uses_same_origin_https_hosted_base_url_for_callback_url(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -452,12 +457,13 @@ def test_neon_sign_up_uses_same_origin_https_hosted_base_url_for_callback_url(
     _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
     _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
     _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.posts = []
     monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
 
     response = client.post(
-        "/auth/sign-up",
+        "/auth/resend-verification",
         headers={"Origin": "https://julien-hurault--boring-ui-core-core.modal.run"},
-        json={"email": "new@example.com", "password": "password123", "redirect_uri": "/"},
+        json={"email": "new@example.com", "redirect_uri": "/"},
     )
 
     assert response.status_code == 200
@@ -469,20 +475,20 @@ def test_neon_sign_up_uses_same_origin_https_hosted_base_url_for_callback_url(
     )
     params = parse_qs(parsed.query)
     assert params["redirect_uri"] == ["/"]
-    assert params["pending_login"]
 
 
-def test_neon_sign_up_ignores_untrusted_origin_for_callback_url(tmp_path: Path, monkeypatch) -> None:
+def test_neon_resend_verification_ignores_untrusted_origin_for_callback_url(tmp_path: Path, monkeypatch) -> None:
     client = _client_neon(tmp_path)
     _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
     _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
     _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.posts = []
     monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
 
     response = client.post(
-        "/auth/sign-up",
+        "/auth/resend-verification",
         headers={"Origin": "https://attacker.example"},
-        json={"email": "new@example.com", "password": "password123", "redirect_uri": "/"},
+        json={"email": "new@example.com", "redirect_uri": "/"},
     )
 
     assert response.status_code == 200
@@ -491,7 +497,6 @@ def test_neon_sign_up_ignores_untrusted_origin_for_callback_url(tmp_path: Path, 
     assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == "http://127.0.0.1:5176/auth/callback"
     params = parse_qs(parsed.query)
     assert params["redirect_uri"] == ["/"]
-    assert params["pending_login"]
 
 
 def test_neon_callback_completes_pending_sign_in_and_redirects_to_workspace(
@@ -503,6 +508,7 @@ def test_neon_callback_completes_pending_sign_in_and_redirects_to_workspace(
     _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "jwt-from-neon"})
     _FakeAsyncClient.last_post = None
     _FakeAsyncClient.last_get = None
+    _FakeAsyncClient.posts = []
     monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
     monkeypatch.setattr(
         auth_router_neon,
@@ -528,6 +534,5 @@ def test_neon_callback_completes_pending_sign_in_and_redirects_to_workspace(
         {
             "email": "verified@example.com",
             "password": "password123",
-            "callbackURL": "http://127.0.0.1:5176/auth/callback?redirect_uri=/w/demo",
         },
     )

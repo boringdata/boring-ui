@@ -149,10 +149,30 @@ def _build_callback_url(
     pending_login: str | None = None,
 ) -> str:
     base = _public_origin(request, config=config)
+    query = _build_callback_query(
+        redirect_uri=redirect_uri,
+        pending_login=pending_login,
+    )
+    return f"{base}/auth/callback?{query}"
+
+
+def _build_callback_query(
+    *,
+    redirect_uri: str,
+    pending_login: str | None = None,
+) -> str:
     query = f"redirect_uri={quote(redirect_uri, safe='/')}"
     if pending_login:
         query = f"{query}&pending_login={quote(pending_login, safe='')}"
-    return f"{base}/auth/callback?{query}"
+    return query
+
+
+def _build_callback_path(
+    *,
+    redirect_uri: str,
+    pending_login: str | None = None,
+) -> str:
+    return f"/auth/callback?{_build_callback_query(redirect_uri=redirect_uri, pending_login=pending_login)}"
 
 
 def _build_password_reset_url(
@@ -273,6 +293,7 @@ async def _neon_password_auth(
     upstream_error_message: str,
     missing_token_message: str,
     complete_session: bool = True,
+    verification_pending_login: str | None = None,
 ) -> JSONResponse:
     neon_base = (config.neon_auth_base_url or "").rstrip("/")
     if not neon_base:
@@ -286,20 +307,11 @@ async def _neon_password_auth(
 
     redirect_uri = _safe_redirect_path(payload.pop("redirect_uri", "/"))
     url = f"{neon_base}/{endpoint_path.lstrip('/')}"
-    origin = _public_origin(request, config=config)
     # Server-to-server call: use the Neon Auth origin so Better Auth's
     # CSRF / trusted-origin check passes for any deployment domain.
     parsed_neon = urlparse(neon_base)
     neon_origin = f"{parsed_neon.scheme}://{parsed_neon.netloc}"
     upstream_payload = dict(payload)
-    # Keep callbackURL on the app origin so hosted deployments can round-trip
-    # back through boring-ui after the Neon Auth browser step completes.
-    if "callbackURL" not in upstream_payload:
-        upstream_payload["callbackURL"] = _build_callback_url(
-            request,
-            config=config,
-            redirect_uri=redirect_uri,
-        )
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             auth_response = await client.post(
@@ -361,7 +373,10 @@ async def _neon_password_auth(
         signup_email = payload.get("email", "")
         if signup_email and neon_base:
             # Neon Auth requires a relative callbackURL + Origin header.
-            callback_path = f"/auth/callback?redirect_uri={quote(redirect_uri, safe='/')}"
+            callback_path = _build_callback_path(
+                redirect_uri=redirect_uri,
+                pending_login=verification_pending_login,
+            )
             await _auto_send_verification_email(
                 neon_base=neon_base,
                 email=signup_email,
@@ -1708,16 +1723,11 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
                 "password": password,
                 "name": name,
                 "redirect_uri": redirect_uri,
-                "callbackURL": _build_callback_url(
-                    request,
-                    config=config,
-                    redirect_uri=redirect_uri,
-                    pending_login=pending_login,
-                ),
             },
             upstream_error_message="Unable to create account.",
             missing_token_message="Account created but Neon Auth did not return a session token.",
             complete_session=False,
+            verification_pending_login=pending_login,
         )
 
     @router.post("/sign-in")
