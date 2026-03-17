@@ -56,6 +56,9 @@ func TestPanicMiddlewareReturnsJSONErrorWithRequestID(t *testing.T) {
 	if payload["code"] != "internal_error" {
 		t.Fatalf("expected internal_error code, got %q", payload["code"])
 	}
+	if payload["detail"] != "internal server error" {
+		t.Fatalf("unexpected detail: %q", payload["detail"])
+	}
 	if payload["message"] != "internal server error" {
 		t.Fatalf("unexpected message: %q", payload["message"])
 	}

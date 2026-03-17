@@ -1,17 +1,20 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/boringdata/boring-ui/internal/auth"
 	"github.com/boringdata/boring-ui/internal/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -55,6 +58,29 @@ func (r *responseRecorder) Status() int {
 		return http.StatusOK
 	}
 	return r.status
+}
+
+func (r *responseRecorder) Flush() {
+	flusher, ok := r.ResponseWriter.(http.Flusher)
+	if ok {
+		flusher.Flush()
+	}
+}
+
+func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return hijacker.Hijack()
+}
+
+func (r *responseRecorder) Push(target string, opts *http.PushOptions) error {
+	pusher, ok := r.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return pusher.Push(target, opts)
 }
 
 type appMetrics struct {
@@ -108,7 +134,7 @@ func (a *App) middlewareStack() []namedMiddleware {
 		{name: "prometheus", fn: prometheusMiddleware(a.metrics)},
 		{name: "slog", fn: slogMiddleware(a.logger)},
 		{name: "error", fn: errorMiddleware()},
-		{name: "auth", fn: authPassthroughMiddleware()},
+		{name: "auth", fn: authMiddleware(a.auth)},
 	}
 }
 
@@ -205,6 +231,7 @@ func errorMiddleware() middleware {
 					}
 					writeJSON(w, apiErr.Status, map[string]string{
 						"code":       apiErr.Code,
+						"detail":     apiErr.Message,
 						"message":    apiErr.Message,
 						"request_id": requestIDFromContext(req.Context()),
 					})
@@ -216,12 +243,17 @@ func errorMiddleware() middleware {
 	}
 }
 
-func authPassthroughMiddleware() middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			next.ServeHTTP(w, req)
-		})
-	}
+func authMiddleware(sessionManager *auth.SessionManager) middleware {
+	return auth.NewMiddleware(auth.MiddlewareConfig{
+		SessionManager:    sessionManager,
+		ProtectedPrefixes: []string{"/api/", "/ws/", "/w/"},
+		PublicPaths: []string{
+			"/api/capabilities",
+			"/api/config",
+			"/api/project",
+			"/api/v1/auth/github/installations",
+		},
+	})
 }
 
 func requestIDFromContext(ctx context.Context) string {

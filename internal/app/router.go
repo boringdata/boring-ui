@@ -46,6 +46,10 @@ func (r *chiAdapter) HandleWebSocket(pattern string, handler http.Handler) {
 	})
 }
 
+func URLParam(req *http.Request, name string) string {
+	return chi.URLParam(req, name)
+}
+
 func (r *chiAdapter) Handler() http.Handler {
 	return r.router
 }
