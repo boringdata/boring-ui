@@ -439,26 +439,34 @@ Both modes use the same PI chat UI shape, but the app chooses one mode in config
 
 ### What Gets Removed
 
-**Frontend (Phase 4)**:
+**Frontend (Phase 4)** — precise file list:
 
-| Component | Location | Size | Reason |
-|---|---|---|---|
-| Companion adapter | `src/front/providers/companion/adapter.jsx` + `config.js` + `EmbeddedSessionToolbar.jsx` | ~10KB | Legacy Claude CLI bridge |
-| Companion upstream app | `src/front/providers/companion/upstream/` (App.tsx, ChatView, MessageFeed, ToolBlock, TaskPanel, Sidebar, Composer, etc.) | ~40 files | Full standalone Claude Code web UI — replaced by standard PI chat |
-| Companion panel | `src/front/panels/CompanionPanel.jsx` + test | ~10KB | Panel wrapper for companion |
-| Companion CSS | `src/front/providers/companion/overrides.css`, `theme-bridge.css`, `upstream.css` | ~40KB | Companion styling |
-| CheerpX provider | `src/front/providers/data/cheerpxDataProvider.js` + `cheerpxRuntime.js` + test | ~28KB | Experimental WASM runtime |
-| `DATA_BACKEND_OVERRIDE` | `src/front/App.jsx` (line ~96) | 1 line | Legacy URL param for data provider switching |
-| Deploy mode branching | `src/front/app.config.js` (core/edge profile inference) | ~10 lines | Legacy `core` vs `edge` distinction |
+| Component | Location | Reason |
+|---|---|---|
+| Companion provider (entire dir) | `src/front/providers/companion/` | Legacy Claude CLI bridge — all files including upstream/ |
+| Companion panel | `src/front/panels/CompanionPanel.jsx` + `CompanionPanel.test.jsx` | Panel wrapper |
+| Companion pane registration | `src/front/registry/panes.jsx` (line ~423) | No separate companion surface |
+| CheerpX provider | `src/front/providers/data/cheerpxDataProvider.js` + `cheerpxRuntime.js` + test | Experimental third mode |
+| Legacy rail/profile switch | `src/front/app.config.js` (line ~6): `core\|edge`, `pi-cheerpx`, `pi-httpfs`, `companion-httpfs`, `native\|companion\|all` | Replace with `frontend\|backend` |
+| Legacy URL/runtime overrides | `src/front/App.jsx` (line ~93): `DATA_BACKEND_OVERRIDE`, `data_fs`, agentRailMode branching (`all\|native\|companion\|pi` at line ~516) | App-level config via `boring.app.toml` instead |
+| Companion/edge tests | `src/front/__tests__/e2e/companion.spec.ts`, `chat-panel-tabs.spec.ts`, companion cases in `app.config.test.js`, `configLayout.test.js`, `panes.test.js` | Tests for removed code |
+
+**Python backend (Phase 4)** — config cleanup:
+
+| Component | Location | Reason |
+|---|---|---|
+| `COMPANION_URL` | `src/back/boring_ui/api/config.py` (line ~124) | No separate companion service contract |
+| `PI_URL` + `PI_MODE` (iframe/direct-connect) | `src/back/boring_ui/api/config.py` (line ~127) | Agent mode comes from `boring.app.toml`, not legacy env/profile split |
 
 **Backend (Phase 5 — after deployment validation)**:
 
-| Component | Location | Size | Reason |
-|---|---|---|---|
-| Go backend modules | `internal/`, `cmd/server/` | ~23K LOC | Superseded by Python backend. `bui/` CLI is KEPT — it's the framework CLI, not the backend. |
-| Go Dockerfile | `deploy/go/Dockerfile` | 1 file | Replace with Python Dockerfile |
-| Go CI jobs | `.github/workflows/` | varies | Remove Go-specific CI |
-| `agent_normal` module | `src/back/.../modules/agent_normal/` | ~100 LOC | Fold useful parts into `agents/` package or remove |
+| Component | Location | Reason |
+|---|---|---|
+| Go backend modules | `internal/`, `cmd/server/` (~23K LOC) | Superseded by Python. `bui/` CLI is KEPT. |
+| Go Dockerfile | `deploy/go/Dockerfile` | Replace with Python Dockerfile |
+| Go CI jobs | `.github/workflows/` | Remove Go backend CI |
+| `agent_normal` module | `src/back/.../modules/agent_normal/` | Fold attachment upload into `agents/`, remove the rest |
+| `boring-sandbox` | `vendor/boring-sandbox/` | Edge-mode gateway — no longer needed for canonical architecture |
 
 **NOT removed** (needed for frontend agent mode):
 - PI native adapter, backendAdapter, defaultTools, providerKeys
