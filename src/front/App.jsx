@@ -685,7 +685,9 @@ export default function App() {
   const pageSearchParams = new URLSearchParams(window.location.search)
   const workspaceSubpath = getWorkspacePathSuffix(pagePathname)
   const isUserSettingsPage = pagePathname === '/auth/settings'
-  const isAuthLoginPage = pagePathname === '/auth/login' || pagePathname === '/auth/signup'
+  const isAuthLoginPage = pagePathname === '/auth/login'
+    || pagePathname === '/auth/signup'
+    || pagePathname === '/auth/reset-password'
   const isAuthCallbackPage = pagePathname === '/auth/callback'
   const isWorkspaceSettingsPage = currentWorkspaceId && workspaceSubpath === 'settings'
   const userSettingsWorkspaceId = String(pageSearchParams.get('workspace_id') || '').trim()
@@ -4787,7 +4789,11 @@ export default function App() {
           supabaseAnonKey: capabilities?.auth?.supabaseAnonKey || '',
           callbackUrl: capabilities?.auth?.callbackUrl || '',
           redirectUri: new URLSearchParams(window.location.search).get('redirect_uri') || '/',
-          initialMode: pagePathname === '/auth/signup' ? 'sign_up' : 'sign_in',
+          initialMode: pagePathname === '/auth/signup'
+            ? 'sign_up'
+            : pagePathname === '/auth/reset-password'
+              ? 'reset_password'
+              : 'sign_in',
           appName: capabilities?.auth?.appName || '',
           appDescription: capabilities?.auth?.appDescription || '',
         }} />

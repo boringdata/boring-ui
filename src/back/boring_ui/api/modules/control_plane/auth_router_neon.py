@@ -9,6 +9,9 @@ This module mirrors the Supabase auth router but uses Neon Auth endpoints
    returns a "check your email" response instead of auto-signing the user in.
 3. Email verification: Neon redirects back to ``/auth/callback`` and the
    callback page exchanges the Neon session for a boring-ui session cookie.
+4. Password reset: boring-ui requests a reset email, Neon redirects back to
+   ``/auth/reset-password?token=...``, and the browser submits the new password
+   through boring-ui to Neon.
 """
 
 from __future__ import annotations
@@ -152,6 +155,17 @@ def _build_callback_url(
     return f"{base}/auth/callback?{query}"
 
 
+def _build_password_reset_url(
+    request: Request,
+    *,
+    config: APIConfig,
+    redirect_uri: str,
+) -> str:
+    base = _public_origin(request, config=config)
+    query = f"redirect_uri={quote(redirect_uri, safe='/')}"
+    return f"{base}/auth/reset-password?{query}"
+
+
 def _pending_login_fernet(config: APIConfig) -> Fernet:
     digest = hashlib.sha256(config.auth_session_secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
@@ -278,11 +292,14 @@ async def _neon_password_auth(
     parsed_neon = urlparse(neon_base)
     neon_origin = f"{parsed_neon.scheme}://{parsed_neon.netloc}"
     upstream_payload = dict(payload)
-    # Better Auth validates callbackURL against trusted origins.  Use a
-    # relative path so it resolves against the Neon Auth origin we send.
+    # Keep callbackURL on the app origin so hosted deployments can round-trip
+    # back through boring-ui after the Neon Auth browser step completes.
     if "callbackURL" not in upstream_payload:
-        callback_path = f"/auth/callback?redirect_uri={quote(redirect_uri, safe='/')}"
-        upstream_payload["callbackURL"] = callback_path
+        upstream_payload["callbackURL"] = _build_callback_url(
+            request,
+            config=config,
+            redirect_uri=redirect_uri,
+        )
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             auth_response = await client.post(
@@ -516,6 +533,174 @@ async def _auto_send_verification_email(
         _logger.warning("Auto-send verification email error for %s", email, exc_info=True)
 
 
+async def _request_neon_password_reset_email(
+    request: Request,
+    *,
+    config: APIConfig,
+    email: str,
+    redirect_uri: str,
+) -> JSONResponse:
+    neon_base = (config.neon_auth_base_url or "").rstrip("/")
+    if not neon_base:
+        return _error(
+            request,
+            status_code=500,
+            error="server_error",
+            code="NEON_AUTH_NOT_CONFIGURED",
+            message="NEON_AUTH_BASE_URL is not configured",
+        )
+
+    redirect_after = _safe_redirect_path(redirect_uri)
+    redirect_to = _build_password_reset_url(
+        request,
+        config=config,
+        redirect_uri=redirect_after,
+    )
+    parsed_neon = urlparse(neon_base)
+    origin = f"{parsed_neon.scheme}://{parsed_neon.netloc}"
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            auth_response = await client.post(
+                f"{neon_base}/request-password-reset",
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": origin,
+                },
+                json={
+                    "email": email,
+                    "redirectTo": redirect_to,
+                },
+            )
+            auth_body = auth_response.json() if auth_response.content else {}
+    except httpx.TimeoutException:
+        return _error(
+            request,
+            status_code=504,
+            error="upstream_timeout",
+            code="NEON_AUTH_TIMEOUT",
+            message="Neon Auth did not respond in time",
+        )
+    except httpx.HTTPError as exc:
+        _logger.warning("Neon password reset email request failed: %s", exc)
+        return _error(
+            request,
+            status_code=502,
+            error="upstream_error",
+            code="NEON_AUTH_UNAVAILABLE",
+            message="Unable to reach Neon Auth",
+        )
+
+    if auth_response.status_code not in {200, 201}:
+        if 400 <= auth_response.status_code < 500 and auth_response.status_code != 429:
+            _logger.info(
+                "Neon password reset request rejected with client error; returning generic success: status=%s body=%s",
+                auth_response.status_code,
+                auth_body,
+            )
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "ok": True,
+                    "message": "Password reset email sent. Check your inbox.",
+                    "redirect_uri": redirect_after,
+                },
+            )
+
+        message = _parse_neon_error_message(auth_body, "Unable to send password reset email.")
+        status_code = auth_response.status_code if 400 <= auth_response.status_code < 500 else 502
+        return _error(
+            request,
+            status_code=status_code,
+            error="auth_failed",
+            code="NEON_AUTH_REJECTED",
+            message=message,
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "ok": True,
+            "message": "Password reset email sent. Check your inbox.",
+            "redirect_uri": redirect_after,
+        },
+    )
+
+
+async def _reset_neon_password(
+    request: Request,
+    *,
+    config: APIConfig,
+    token: str,
+    new_password: str,
+    redirect_uri: str,
+) -> JSONResponse:
+    neon_base = (config.neon_auth_base_url or "").rstrip("/")
+    if not neon_base:
+        return _error(
+            request,
+            status_code=500,
+            error="server_error",
+            code="NEON_AUTH_NOT_CONFIGURED",
+            message="NEON_AUTH_BASE_URL is not configured",
+        )
+
+    parsed_neon = urlparse(neon_base)
+    origin = f"{parsed_neon.scheme}://{parsed_neon.netloc}"
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            auth_response = await client.post(
+                f"{neon_base}/reset-password",
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": origin,
+                },
+                json={
+                    "newPassword": new_password,
+                    "token": token,
+                },
+            )
+            auth_body = auth_response.json() if auth_response.content else {}
+    except httpx.TimeoutException:
+        return _error(
+            request,
+            status_code=504,
+            error="upstream_timeout",
+            code="NEON_AUTH_TIMEOUT",
+            message="Neon Auth did not respond in time",
+        )
+    except httpx.HTTPError as exc:
+        _logger.warning("Neon password reset failed: %s", exc)
+        return _error(
+            request,
+            status_code=502,
+            error="upstream_error",
+            code="NEON_AUTH_UNAVAILABLE",
+            message="Unable to reach Neon Auth",
+        )
+
+    if auth_response.status_code not in {200, 201}:
+        message = _parse_neon_error_message(auth_body, "Unable to reset password.")
+        status_code = auth_response.status_code if 400 <= auth_response.status_code < 500 else 502
+        return _error(
+            request,
+            status_code=status_code,
+            error="auth_failed",
+            code="NEON_AUTH_REJECTED",
+            message=message,
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "ok": True,
+            "message": "Password updated. Sign in with your new password.",
+            "redirect_uri": _safe_redirect_path(redirect_uri),
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Login / signup HTML template
 # ---------------------------------------------------------------------------
@@ -710,7 +895,7 @@ _NEON_LOGIN_HTML_TEMPLATE: str = """\
       border-color: var(--color-accent);
       box-shadow: 0 0 0 4px var(--focus);
     }
-    .name-field { display: none; }
+    .field-hidden { display: none; }
     .submit {
       margin-top: 16px;
       width: 100%;
@@ -736,6 +921,35 @@ _NEON_LOGIN_HTML_TEMPLATE: str = """\
       font-size: 0.9rem;
       color: var(--color-info);
       line-height: 1.4;
+    }
+    .alt-actions {
+      margin-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .muted {
+      margin: 0;
+      color: var(--color-text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+    .link-btn {
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: var(--color-link);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .link-btn:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 4px var(--focus);
+      border-radius: 6px;
     }
     .error { color: var(--color-error); }
     button:disabled, input:disabled {
@@ -817,16 +1031,28 @@ workspace.open(session.id)</pre>
         <h2 id="title">Welcome back</h2>
         <p id="subtitle" class="subtitle">Use your email and password to continue.</p>
         <form id="auth-form" autocomplete="on" novalidate>
-          <div id="name-group" class="name-field">
+          <div id="name-group" class="field-hidden">
             <label for="name">Name</label>
             <input id="name" type="text" autocomplete="name" placeholder="Your name">
           </div>
-          <label for="email">Work email</label>
-          <input id="email" type="email" autocomplete="email" placeholder="you@company.com" required>
-          <label for="password">Password</label>
-          <input id="password" type="password" autocomplete="current-password" placeholder="Enter your password" required>
+          <div id="email-group">
+            <label for="email">Work email</label>
+            <input id="email" type="email" autocomplete="email" placeholder="you@company.com" required>
+          </div>
+          <div id="password-group">
+            <label id="password-label" for="password">Password</label>
+            <input id="password" type="password" autocomplete="current-password" placeholder="Enter your password" required>
+          </div>
+          <div id="confirm-password-group" class="field-hidden">
+            <label for="confirm-password">Confirm new password</label>
+            <input id="confirm-password" type="password" autocomplete="new-password" placeholder="Repeat your new password" required>
+          </div>
           <button id="submit" class="submit" type="submit">Continue</button>
         </form>
+        <div id="alt-actions" class="alt-actions">
+          <p id="alt-actions-copy" class="muted">Lost access to your password?</p>
+          <button id="forgot-password" class="link-btn" type="button">Forgot password?</button>
+        </div>
         <div id="oauth-section" class="oauth-hidden">
           <div class="divider">or</div>
           <div class="oauth-buttons">
@@ -856,14 +1082,27 @@ workspace.open(session.id)</pre>
     var subtitleEl = document.getElementById("subtitle");
     var form = document.getElementById("auth-form");
     var nameGroupEl = document.getElementById("name-group");
+    var emailGroupEl = document.getElementById("email-group");
     var nameEl = document.getElementById("name");
     var emailEl = document.getElementById("email");
+    var passwordLabelEl = document.getElementById("password-label");
     var passwordEl = document.getElementById("password");
+    var confirmPasswordGroupEl = document.getElementById("confirm-password-group");
+    var confirmPasswordEl = document.getElementById("confirm-password");
     var submitEl = document.getElementById("submit");
+    var altActionsEl = document.getElementById("alt-actions");
+    var altActionsCopyEl = document.getElementById("alt-actions-copy");
+    var forgotPasswordEl = document.getElementById("forgot-password");
     var tabSignInEl = document.getElementById("tab-signin");
     var tabSignUpEl = document.getElementById("tab-signup");
+    var modeTabsEl = document.querySelector(".mode-tabs");
+    var oauthSectionEl = document.getElementById("oauth-section");
 
-    var mode = AUTH.initialMode === "sign_up" ? "sign_up" : "sign_in";
+    var mode = AUTH.initialMode === "sign_up"
+      ? "sign_up"
+      : AUTH.initialMode === "reset_password"
+        ? "reset_password"
+        : "sign_in";
     var busy = false;
 
     function setStatus(message, isError) {
@@ -894,9 +1133,11 @@ workspace.open(session.id)</pre>
       nameEl.disabled = busy;
       emailEl.disabled = busy;
       passwordEl.disabled = busy;
+      confirmPasswordEl.disabled = busy;
       submitEl.disabled = busy;
       tabSignInEl.disabled = busy;
       tabSignUpEl.disabled = busy;
+      forgotPasswordEl.disabled = busy;
     }
 
     function setTabState(isSignUp) {
@@ -911,34 +1152,145 @@ workspace.open(session.id)</pre>
 
     function setMode(nextMode) {
       if (busy) return;
-      mode = nextMode === "sign_up" ? "sign_up" : "sign_in";
+      mode = nextMode === "sign_up"
+        ? "sign_up"
+        : nextMode === "reset_password"
+          ? "reset_password"
+          : "sign_in";
       var signUp = mode === "sign_up";
+      var resetPassword = mode === "reset_password";
       setTabState(signUp);
-      titleEl.textContent = signUp ? "Create your account" : "Welcome back";
-      subtitleEl.textContent = signUp
-        ? "Get started in minutes."
-        : "Use your email and password to continue.";
-      submitEl.textContent = signUp ? "Create account" : "Continue";
-      passwordEl.autocomplete = signUp ? "new-password" : "current-password";
-      passwordEl.placeholder = signUp ? "Create a password (8+ characters)" : "Enter your password";
+      if (modeTabsEl) {
+        modeTabsEl.style.display = resetPassword ? "none" : "grid";
+      }
+      titleEl.textContent = resetPassword ? "Set a new password" : signUp ? "Create your account" : "Welcome back";
+      subtitleEl.textContent = resetPassword
+        ? "Choose a new password for your account."
+        : signUp
+          ? "Get started in minutes."
+          : "Use your email and password to continue.";
+      submitEl.textContent = resetPassword ? "Update password" : signUp ? "Create account" : "Continue";
+      passwordLabelEl.textContent = resetPassword ? "New password" : "Password";
+      passwordEl.autocomplete = signUp || resetPassword ? "new-password" : "current-password";
+      passwordEl.placeholder = signUp || resetPassword ? "Create a password (8+ characters)" : "Enter your password";
       nameGroupEl.style.display = signUp ? "block" : "none";
+      emailGroupEl.style.display = resetPassword ? "none" : "block";
+      confirmPasswordGroupEl.style.display = resetPassword ? "block" : "none";
+      altActionsEl.hidden = signUp;
+      altActionsCopyEl.textContent = resetPassword
+        ? "Need to try another account?"
+        : "Lost access to your password?";
+      forgotPasswordEl.textContent = resetPassword ? "Back to sign in" : "Forgot password?";
+      if (oauthSectionEl) {
+        oauthSectionEl.classList.toggle("oauth-hidden", resetPassword);
+      }
+      document.title = (resetPassword ? "Reset password" : signUp ? "Create account" : "Sign in")
+        + " — "
+        + (String(AUTH.appName || "").trim() || "Boring UI");
+      confirmPasswordEl.value = "";
+      setupOAuth();
+      if (!resetPassword) {
+        emailEl.focus();
+      } else {
+        passwordEl.focus();
+      }
       setStatus("");
     }
 
     tabSignInEl.addEventListener("click", function() { setMode("sign_in"); });
     tabSignUpEl.addEventListener("click", function() { setMode("sign_up"); });
+    forgotPasswordEl.addEventListener("click", async function() {
+      if (busy) return;
+      if (mode === "reset_password") {
+        setMode("sign_in");
+        return;
+      }
+
+      var email = (emailEl.value || "").trim().toLowerCase();
+      if (!email) {
+        setStatus("Enter your email to receive a reset link.", true);
+        return;
+      }
+
+      setBusy(true);
+      setStatus("Sending password reset email...");
+      try {
+        var resetReqResp = await fetch("/auth/request-password-reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email,
+            redirect_uri: AUTH.redirectUri || "/"
+          }),
+        });
+        var resetReqData = {};
+        try { resetReqData = await resetReqResp.json(); } catch(_) {}
+        if (!resetReqResp.ok) {
+          setStatus(resetReqData.message || resetReqData.error || "Unable to send password reset email.", true);
+          return;
+        }
+        setStatus(resetReqData.message || "Password reset email sent. Check your inbox.");
+      } finally {
+        setBusy(false);
+      }
+    });
 
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
       if (busy) return;
-      var email = (emailEl.value || "").trim();
       var password = passwordEl.value || "";
+      var email = (emailEl.value || "").trim();
+
+      if (mode === "reset_password") {
+        var token = String(AUTH.resetToken || "").trim();
+        var confirmPassword = confirmPasswordEl.value || "";
+        if (!token) {
+          setStatus("Password reset link is missing or invalid. Request a new one.", true);
+          return;
+        }
+        if (!password || !confirmPassword) {
+          setStatus("Enter and confirm your new password.", true);
+          return;
+        }
+        if (password !== confirmPassword) {
+          setStatus("Passwords do not match.", true);
+          return;
+        }
+
+        setBusy(true);
+        try {
+          setStatus("Updating password...");
+          var resetResp = await fetch("/auth/reset-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token: token,
+              new_password: password,
+              redirect_uri: AUTH.redirectUri || "/"
+            }),
+          });
+          var resetData = {};
+          try { resetData = await resetResp.json(); } catch(_) {}
+          if (!resetResp.ok) {
+            setStatus(resetData.message || resetData.error || "Unable to reset password.", true);
+            return;
+          }
+          passwordEl.value = "";
+          confirmPasswordEl.value = "";
+          setMode("sign_in");
+          setStatus(resetData.message || "Password updated. Sign in with your new password.");
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+
       if (!email || !password) {
         setStatus("Enter email and password.", true);
         return;
       }
 
-        setBusy(true);
+      setBusy(true);
       try {
         if (mode === "sign_up") {
           setStatus("Creating account...");
@@ -992,8 +1344,8 @@ workspace.open(session.id)</pre>
     function setupOAuth() {
       var providers = AUTH.oauthProviders || [];
       if (!providers.length) return;
-      var sectionEl = document.getElementById("oauth-section");
-      sectionEl.classList.remove("oauth-hidden");
+      if (mode === "reset_password") return;
+      oauthSectionEl.classList.remove("oauth-hidden");
       var redirectUri = AUTH.redirectUri || "/";
       providers.forEach(function(p) {
         var btn = document.getElementById("oauth-" + p);
@@ -1006,6 +1358,20 @@ workspace.open(session.id)</pre>
 
     applyBranding();
     setMode(mode);
+    if (mode === "reset_password") {
+      var resetToken = String(AUTH.resetToken || "").trim();
+      var resetError = String(AUTH.resetError || "").trim().toLowerCase();
+      if (!resetToken) {
+        setStatus("Password reset link is missing or invalid. Request a new one.", true);
+      } else if (resetError) {
+        setStatus(
+          resetError.indexOf("invalid") >= 0 || resetError.indexOf("expired") >= 0
+            ? "This password reset link is invalid or has expired. Request a new one."
+            : "Unable to use this reset link: " + AUTH.resetError,
+          true
+        );
+      }
+    }
     setupOAuth();
     });
   </script>
@@ -1142,7 +1508,13 @@ def _render_neon_login_html(
     cfg = {
         "neonAuthUrl": config.neon_auth_base_url.rstrip("/"),
         "redirectUri": redirect_after,
-        "initialMode": "sign_up" if initial_mode == "sign_up" else "sign_in",
+        "initialMode": (
+            "sign_up"
+            if initial_mode == "sign_up"
+            else "reset_password" if initial_mode == "reset_password" else "sign_in"
+        ),
+        "resetToken": str(request.query_params.get("token", "")).strip(),
+        "resetError": str(request.query_params.get("error", "")).strip(),
         "appName": config.auth_app_name,
         "appDescription": config.auth_app_description,
         "railCode": config.auth_rail_code,
@@ -1280,6 +1652,14 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
             initial_mode="sign_up",
         )
 
+    @router.get("/reset-password")
+    async def auth_reset_password_page(request: Request):
+        return _render_neon_login_html(
+            request=request,
+            config=config,
+            initial_mode="reset_password",
+        )
+
     @router.post("/sign-up")
     async def auth_sign_up(request: Request):
         try:
@@ -1313,6 +1693,12 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
                 message="email and password are required",
             )
 
+        redirect_uri = _safe_redirect_path(body.get("redirect_uri"))
+        pending_login = _encode_pending_login(
+            config=config,
+            email=email,
+            password=password,
+        )
         return await _neon_password_auth(
             request,
             config=config,
@@ -1321,7 +1707,13 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
                 "email": email,
                 "password": password,
                 "name": name,
-                "redirect_uri": body.get("redirect_uri", "/"),
+                "redirect_uri": redirect_uri,
+                "callbackURL": _build_callback_url(
+                    request,
+                    config=config,
+                    redirect_uri=redirect_uri,
+                    pending_login=pending_login,
+                ),
             },
             upstream_error_message="Unable to create account.",
             missing_token_message="Account created but Neon Auth did not return a session token.",
@@ -1408,6 +1800,84 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
             request,
             config=config,
             email=email,
+            redirect_uri=str(body.get("redirect_uri", "/")),
+        )
+
+    @router.post("/request-password-reset")
+    async def auth_request_password_reset(request: Request):
+        try:
+            body = await request.json()
+        except Exception:
+            return _error(
+                request,
+                status_code=400,
+                error="bad_request",
+                code="INVALID_JSON",
+                message="Expected JSON payload",
+            )
+        if not isinstance(body, dict):
+            return _error(
+                request,
+                status_code=400,
+                error="bad_request",
+                code="INVALID_JSON",
+                message="Expected JSON object",
+            )
+
+        email = str(body.get("email", "")).strip().lower()
+        if not email:
+            return _error(
+                request,
+                status_code=400,
+                error="bad_request",
+                code="EMAIL_REQUIRED",
+                message="email is required",
+            )
+
+        return await _request_neon_password_reset_email(
+            request,
+            config=config,
+            email=email,
+            redirect_uri=str(body.get("redirect_uri", "/")),
+        )
+
+    @router.post("/reset-password")
+    async def auth_reset_password(request: Request):
+        try:
+            body = await request.json()
+        except Exception:
+            return _error(
+                request,
+                status_code=400,
+                error="bad_request",
+                code="INVALID_JSON",
+                message="Expected JSON payload",
+            )
+        if not isinstance(body, dict):
+            return _error(
+                request,
+                status_code=400,
+                error="bad_request",
+                code="INVALID_JSON",
+                message="Expected JSON object",
+            )
+
+        token = str(body.get("token", "")).strip()
+        new_password = str(body.get("new_password") or body.get("newPassword") or "").strip()
+        if not token or not new_password:
+            return _error(
+                request,
+                status_code=400,
+                error="bad_request",
+                code="TOKEN_PASSWORD_REQUIRED",
+                message="token and new_password are required",
+            )
+
+        return await _reset_neon_password(
+            request,
+            config=config,
+            token=token,
+            new_password=new_password,
             redirect_uri=str(body.get("redirect_uri", "/")),
         )
 

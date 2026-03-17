@@ -70,7 +70,8 @@ class _FakeAsyncClient:
         return False
 
     async def post(self, url, *, headers=None, json=None):
-        type(self).last_post = (url, json or {})
+        if type(self).last_post is None:
+            type(self).last_post = (url, json or {})
         return type(self).post_response
 
     async def get(self, url):
@@ -310,6 +311,95 @@ def test_neon_resend_verification_email_uses_same_origin_backend_endpoint(
             "callbackURL": "http://127.0.0.1:5176/auth/callback?redirect_uri=/w/demo",
         },
     )
+
+
+def test_neon_request_password_reset_uses_app_reset_password_route(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = _client_neon(tmp_path)
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"ok": True})
+    _FakeAsyncClient.last_post = None
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = client.post(
+        "/auth/request-password-reset",
+        json={"email": "new@example.com", "redirect_uri": "/w/demo"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "message": "Password reset email sent. Check your inbox.",
+        "redirect_uri": "/w/demo",
+    }
+    assert _FakeAsyncClient.last_post is not None
+    assert _FakeAsyncClient.last_post[0] == "https://example.neonauth.test/neondb/auth/request-password-reset"
+    sent_payload = _FakeAsyncClient.last_post[1]
+    assert sent_payload["email"] == "new@example.com"
+    parsed = urlparse(sent_payload["redirectTo"])
+    assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == "http://127.0.0.1:5176/auth/reset-password"
+    params = parse_qs(parsed.query)
+    assert params["redirect_uri"] == ["/w/demo"]
+
+
+def test_neon_request_password_reset_masks_unknown_email_errors(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = _client_neon(tmp_path)
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(404, {"message": "User not found"})
+    _FakeAsyncClient.last_post = None
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = client.post(
+        "/auth/request-password-reset",
+        json={"email": "missing@example.com", "redirect_uri": "/w/demo"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "message": "Password reset email sent. Check your inbox.",
+        "redirect_uri": "/w/demo",
+    }
+
+
+def test_neon_reset_password_proxies_token_and_new_password(tmp_path: Path, monkeypatch) -> None:
+    client = _client_neon(tmp_path)
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"ok": True})
+    _FakeAsyncClient.last_post = None
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = client.post(
+        "/auth/reset-password",
+        json={"token": "reset-token", "new_password": "new-password-123", "redirect_uri": "/w/demo"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "message": "Password updated. Sign in with your new password.",
+        "redirect_uri": "/w/demo",
+    }
+    assert _FakeAsyncClient.last_post == (
+        "https://example.neonauth.test/neondb/auth/reset-password",
+        {
+            "newPassword": "new-password-123",
+            "token": "reset-token",
+        },
+    )
+
+
+def test_neon_reset_password_page_renders_reset_mode(tmp_path: Path) -> None:
+    client = _client_neon(tmp_path)
+    response = client.get("/auth/reset-password?token=reset-token&error=invalid_token&redirect_uri=/w/demo")
+
+    assert response.status_code == 200
+    assert '"initialMode":"reset_password"' in response.text
+    assert '"resetToken":"reset-token"' in response.text
+    assert '"resetError":"invalid_token"' in response.text
+    assert "/w/demo" in response.text
 
 
 def test_neon_callback_renders_exchange_page(tmp_path: Path) -> None:

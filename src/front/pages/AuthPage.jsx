@@ -95,12 +95,19 @@ export default function AuthPage({ authConfig }) {
 
   const provider = authConfig?.provider || 'supabase'
   const isNeon = provider === 'neon'
+  const urlSearchParams = new URLSearchParams(window.location.search)
 
   const supabaseUrl = authConfig?.supabaseUrl || ''
   const supabaseAnonKey = authConfig?.supabaseAnonKey || ''
   const callbackUrl = authConfig?.callbackUrl || `${window.location.origin}/auth/callback`
-  const redirectUri = safeRedirectPath(authConfig?.redirectUri || new URLSearchParams(window.location.search).get('redirect_uri'))
-  const initialMode = authConfig?.initialMode === 'sign_up' ? 'sign_up' : 'sign_in'
+  const redirectUri = safeRedirectPath(authConfig?.redirectUri || urlSearchParams.get('redirect_uri'))
+  const resetToken = String(urlSearchParams.get('token') || '').trim()
+  const resetLinkError = String(urlSearchParams.get('error') || '').trim()
+  const initialMode = authConfig?.initialMode === 'sign_up'
+    ? 'sign_up'
+    : authConfig?.initialMode === 'reset_password'
+      ? 'reset_password'
+      : 'sign_in'
 
   // Only load Supabase SDK when using supabase provider
   const client = useSupabaseClient(
@@ -111,16 +118,27 @@ export default function AuthPage({ authConfig }) {
   const [mode, setMode] = useState(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [status, setStatus] = useState('')
   const [isError, setIsError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [verificationRecoveryEmail, setVerificationRecoveryEmail] = useState('')
   const emailRef = useRef(null)
+  const passwordRef = useRef(null)
 
   useEffect(() => {
-    document.title = `Sign in — ${appName}`
+    const pageTitle = mode === 'sign_up'
+      ? 'Create account'
+      : mode === 'reset_password'
+        ? 'Reset password'
+        : 'Sign in'
+    document.title = `${pageTitle} — ${appName}`
+    if (mode === 'reset_password') {
+      passwordRef.current?.focus()
+      return
+    }
     emailRef.current?.focus()
-  }, [appName])
+  }, [appName, mode])
 
   const showStatus = useCallback((message, error = false) => {
     setStatus(message)
@@ -130,6 +148,33 @@ export default function AuthPage({ authConfig }) {
   const clearVerificationRecovery = useCallback(() => {
     setVerificationRecoveryEmail('')
   }, [])
+
+  const clearFormStatus = useCallback(() => {
+    showStatus('')
+  }, [showStatus])
+
+  const switchMode = useCallback((nextMode) => {
+    setMode(nextMode)
+    clearVerificationRecovery()
+    clearFormStatus()
+    setPassword('')
+    setConfirmPassword('')
+  }, [clearFormStatus, clearVerificationRecovery])
+
+  useEffect(() => {
+    if (mode !== 'reset_password') return
+    if (!resetToken) {
+      showStatus('Password reset link is missing or invalid. Request a new one.', true)
+      return
+    }
+    if (!resetLinkError) return
+    const normalizedError = resetLinkError.replace(/[_-]+/g, ' ').toLowerCase()
+    if (normalizedError.includes('expired') || normalizedError.includes('invalid')) {
+      showStatus('This password reset link is invalid or has expired. Request a new one.', true)
+      return
+    }
+    showStatus(`Unable to use this reset link: ${resetLinkError}`, true)
+  }, [mode, resetLinkError, resetToken, showStatus])
 
   const isRateLimited = (error) => {
     if (!error) return false
@@ -230,6 +275,68 @@ export default function AuthPage({ authConfig }) {
     }
   }
 
+  const handleRequestPasswordReset = async () => {
+    if (busy) return
+    const trimmed = email.trim().toLowerCase()
+    if (!trimmed) {
+      showStatus('Enter your email to receive a reset link.', true)
+      return
+    }
+
+    setBusy(true)
+    showStatus('Sending password reset email...')
+    try {
+      const result = await neonPasswordAuth('/auth/request-password-reset', {
+        email: trimmed,
+        redirect_uri: redirectUri,
+      })
+      if (result.error) {
+        showStatus(result.error, true)
+        return
+      }
+      showStatus(result.message || 'Password reset email sent. Check your inbox.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    if (!resetToken) {
+      showStatus('Password reset link is missing or invalid. Request a new one.', true)
+      return
+    }
+    if (!password || !confirmPassword) {
+      showStatus('Enter and confirm your new password.', true)
+      return
+    }
+    if (password !== confirmPassword) {
+      showStatus('Passwords do not match.', true)
+      return
+    }
+
+    setBusy(true)
+    showStatus('Updating password...')
+    try {
+      const result = await neonPasswordAuth('/auth/reset-password', {
+        token: resetToken,
+        new_password: password,
+        redirect_uri: redirectUri,
+      })
+      if (result.error) {
+        showStatus(result.error, true)
+        return
+      }
+      setPassword('')
+      setConfirmPassword('')
+      setMode('sign_in')
+      showStatus(result.message || 'Password updated. Sign in with your new password.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // --- Supabase magic link handler ---
   const handleMagicLink = async () => {
     if (busy || !client) return
@@ -314,16 +421,36 @@ export default function AuthPage({ authConfig }) {
     }
   }
 
-  const handleSubmit = isNeon ? handleNeonSubmit : handleSupabaseSubmit
+  const handleSubmit = mode === 'reset_password'
+    ? handleResetPasswordSubmit
+    : isNeon
+      ? handleNeonSubmit
+      : handleSupabaseSubmit
 
   // For Neon, the form is ready immediately (no SDK to load).
   // For Supabase, we need the client to be loaded.
-  const formReady = isNeon ? true : !!client
   const isSignUp = mode === 'sign_up'
+  const isResetPassword = mode === 'reset_password'
+  const formReady = isNeon || isResetPassword ? true : !!client
   const canResendVerification = isNeon
-    && !isSignUp
+    && mode === 'sign_in'
     && !!verificationRecoveryEmail
     && verificationRecoveryEmail === email.trim().toLowerCase()
+  const title = isResetPassword
+    ? 'Set a new password'
+    : isSignUp
+      ? 'Create your account'
+      : 'Welcome back'
+  const subtitle = isResetPassword
+    ? 'Choose a new password for your account.'
+    : isSignUp
+      ? 'Get started in minutes.'
+      : 'Use your email and password to continue.'
+  const submitLabel = isResetPassword
+    ? 'Update password'
+    : isSignUp
+      ? 'Create account'
+      : 'Continue'
 
   return (
     <div className="auth-page">
@@ -338,66 +465,80 @@ export default function AuthPage({ authConfig }) {
 
         <main className="auth-card">
           <div className="auth-card-header">
-            <div className="auth-tabs" role="tablist" aria-label="Authentication mode">
+            {isResetPassword ? (
               <button
                 type="button"
-                className={`auth-tab ${!isSignUp ? 'active' : ''}`}
-                role="tab"
-                aria-selected={!isSignUp}
-                onClick={() => { setMode('sign_in'); clearVerificationRecovery(); showStatus('') }}
+                className="auth-link-btn"
+                onClick={() => switchMode('sign_in')}
                 disabled={busy}
               >
-                Sign in
+                Back to sign in
               </button>
-              <button
-                type="button"
-                className={`auth-tab ${isSignUp ? 'active' : ''}`}
-                role="tab"
-                aria-selected={isSignUp}
-                onClick={() => { setMode('sign_up'); clearVerificationRecovery(); showStatus('') }}
-                disabled={busy}
-              >
-                Create account
-              </button>
-            </div>
+            ) : (
+              <div className="auth-tabs" role="tablist" aria-label="Authentication mode">
+                <button
+                  type="button"
+                  className={`auth-tab ${!isSignUp ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={!isSignUp}
+                  onClick={() => switchMode('sign_in')}
+                  disabled={busy}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  className={`auth-tab ${isSignUp ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={isSignUp}
+                  onClick={() => switchMode('sign_up')}
+                  disabled={busy}
+                >
+                  Create account
+                </button>
+              </div>
+            )}
             <ThemeToggle />
           </div>
 
-          <h2 className="auth-title">{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
-          <p className="auth-subtitle">
-            {isSignUp
-              ? 'Get started in minutes.'
-              : 'Use your email and password to continue.'}
-          </p>
+          <h2 className="auth-title">{title}</h2>
+          <p className="auth-subtitle">{subtitle}</p>
 
           <form onSubmit={handleSubmit} autoComplete="on" noValidate>
-            <label className="auth-label" htmlFor="auth-email">Work email</label>
-            <input
-              ref={emailRef}
-              id="auth-email"
-              className="auth-input"
-              type="email"
-              autoComplete="email"
-              placeholder="you@company.com"
-              value={email}
-              onChange={(e) => {
-                const nextValue = e.target.value
-                setEmail(nextValue)
-                if (verificationRecoveryEmail && nextValue.trim().toLowerCase() !== verificationRecoveryEmail) {
-                  clearVerificationRecovery()
-                }
-              }}
-              disabled={busy}
-              required
-            />
+            {!isResetPassword && (
+              <>
+                <label className="auth-label" htmlFor="auth-email">Work email</label>
+                <input
+                  ref={emailRef}
+                  id="auth-email"
+                  className="auth-input"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => {
+                    const nextValue = e.target.value
+                    setEmail(nextValue)
+                    if (verificationRecoveryEmail && nextValue.trim().toLowerCase() !== verificationRecoveryEmail) {
+                      clearVerificationRecovery()
+                    }
+                  }}
+                  disabled={busy}
+                  required
+                />
+              </>
+            )}
 
-            <label className="auth-label" htmlFor="auth-password">Password</label>
+            <label className="auth-label" htmlFor="auth-password">
+              {isResetPassword ? 'New password' : 'Password'}
+            </label>
             <input
+              ref={passwordRef}
               id="auth-password"
               className="auth-input"
               type="password"
-              autoComplete={isSignUp ? 'new-password' : 'current-password'}
-              placeholder={isSignUp ? 'Create a password (8+ characters)' : 'Enter your password'}
+              autoComplete={isSignUp || isResetPassword ? 'new-password' : 'current-password'}
+              placeholder={isResetPassword || isSignUp ? 'Create a password (8+ characters)' : 'Enter your password'}
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value)
@@ -406,9 +547,28 @@ export default function AuthPage({ authConfig }) {
               required
             />
 
+            {isResetPassword && (
+              <>
+                <label className="auth-label" htmlFor="auth-confirm-password">Confirm new password</label>
+                <input
+                  id="auth-confirm-password"
+                  className="auth-input"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Repeat your new password"
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value)
+                  }}
+                  disabled={busy}
+                  required
+                />
+              </>
+            )}
+
             <button className="auth-submit" type="submit" disabled={busy || !formReady}>
               {busy && <Loader2 size={16} className="auth-spinner" />}
-              {isSignUp ? 'Create account' : 'Continue'}
+              {submitLabel}
             </button>
           </form>
 
@@ -431,6 +591,20 @@ export default function AuthPage({ authConfig }) {
             <p className={`auth-status ${isError ? 'auth-status-error' : ''}`} aria-live="polite">
               {status}
             </p>
+          )}
+
+          {isNeon && mode === 'sign_in' && (
+            <div className="auth-alt-actions">
+              <p className="auth-muted">Lost access to your password?</p>
+              <button
+                type="button"
+                className="auth-link-btn"
+                onClick={handleRequestPasswordReset}
+                disabled={busy}
+              >
+                Forgot password?
+              </button>
+            </div>
           )}
 
           {canResendVerification && (

@@ -29,12 +29,32 @@ const DEFAULT_AUTH_CONFIG = {
   appDescription: 'A test workspace',
 }
 
+const ORIGINAL_LOCATION = window.location
+
+const setWindowLocation = (overrides = {}) => {
+  Object.defineProperty(window, 'location', {
+    writable: true,
+    value: {
+      ...ORIGINAL_LOCATION,
+      origin: 'http://localhost',
+      href: 'http://localhost/auth/login',
+      pathname: '/auth/login',
+      search: '',
+      hash: '',
+      assign: vi.fn(),
+      replace: vi.fn(),
+      ...overrides,
+    },
+  })
+}
+
 describe('AuthPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     // Reset supabase global
     delete window.supabase
     global.fetch = vi.fn()
+    setWindowLocation()
   })
 
   it('renders sign-in form by default', () => {
@@ -379,6 +399,122 @@ describe('AuthPage', () => {
       expect(screen.getByText('Verification email sent. Check your inbox.')).toBeInTheDocument()
     })
   })
+
+  it('requests a Neon password reset email from sign-in', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        ok: true,
+        message: 'Password reset email sent. Check your inbox.',
+        redirect_uri: '/w/demo',
+      }),
+    })
+
+    render(<AuthPage authConfig={{ ...DEFAULT_AUTH_CONFIG, provider: 'neon', redirectUri: '/w/demo' }} />)
+
+    fireEvent.change(screen.getByLabelText('Work email'), { target: { value: 'reset@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: /forgot password\?/i }))
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/auth/request-password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'reset@example.com',
+          redirect_uri: '/w/demo',
+        }),
+      })
+    })
+
+    expect(screen.getByText('Password reset email sent. Check your inbox.')).toBeInTheDocument()
+  })
+
+  it('renders Neon reset-password mode from the reset route', () => {
+    setWindowLocation({
+      pathname: '/auth/reset-password',
+      search: '?token=reset-token&redirect_uri=%2Fw%2Fdemo',
+      href: 'http://localhost/auth/reset-password?token=reset-token&redirect_uri=%2Fw%2Fdemo',
+    })
+
+    render(<AuthPage authConfig={{ ...DEFAULT_AUTH_CONFIG, provider: 'neon', initialMode: 'reset_password', redirectUri: '/w/demo' }} />)
+
+    expect(screen.getByText('Set a new password')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Work email')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('New password')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirm new password')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /update password/i })).toBeInTheDocument()
+  })
+
+  it('keeps reset-password mode while auth provider capabilities are still loading', () => {
+    setWindowLocation({
+      pathname: '/auth/reset-password',
+      search: '?token=reset-token',
+      href: 'http://localhost/auth/reset-password?token=reset-token',
+    })
+
+    render(<AuthPage authConfig={{ ...DEFAULT_AUTH_CONFIG, initialMode: 'reset_password' }} />)
+
+    expect(screen.getByText('Set a new password')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /update password/i })).not.toBeDisabled()
+  })
+
+  it('submits a Neon password reset with the token from the reset link', async () => {
+    setWindowLocation({
+      pathname: '/auth/reset-password',
+      search: '?token=reset-token&redirect_uri=%2Fw%2Fdemo',
+      href: 'http://localhost/auth/reset-password?token=reset-token&redirect_uri=%2Fw%2Fdemo',
+    })
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        ok: true,
+        message: 'Password updated. Sign in with your new password.',
+        redirect_uri: '/w/demo',
+      }),
+    })
+
+    render(<AuthPage authConfig={{ ...DEFAULT_AUTH_CONFIG, provider: 'neon', initialMode: 'reset_password', redirectUri: '/w/demo' }} />)
+
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'new-password-123' } })
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'new-password-123' } })
+    fireEvent.click(screen.getByRole('button', { name: /update password/i }))
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: 'reset-token',
+          new_password: 'new-password-123',
+          redirect_uri: '/w/demo',
+        }),
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Password updated. Sign in with your new password.')).toBeInTheDocument()
+      expect(screen.getByText('Welcome back')).toBeInTheDocument()
+    })
+  })
+
+  it('validates Neon reset-password confirmation mismatch', async () => {
+    setWindowLocation({
+      pathname: '/auth/reset-password',
+      search: '?token=reset-token',
+      href: 'http://localhost/auth/reset-password?token=reset-token',
+    })
+
+    render(<AuthPage authConfig={{ ...DEFAULT_AUTH_CONFIG, provider: 'neon', initialMode: 'reset_password' }} />)
+
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'new-password-123' } })
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'mismatch-password' } })
+    fireEvent.click(screen.getByRole('button', { name: /update password/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Passwords do not match.')).toBeInTheDocument()
+    })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
 })
 
 describe('AuthPage — safeRedirectPath', () => {
@@ -396,6 +532,10 @@ describe('AuthPage — safeRedirectPath', () => {
 describe('AuthCallbackPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    setWindowLocation({
+      pathname: '/auth/callback',
+      href: 'http://localhost/auth/callback',
+    })
   })
 
   it('shows error when no token in hash', async () => {
