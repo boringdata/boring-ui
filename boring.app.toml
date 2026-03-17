@@ -8,8 +8,9 @@ id   = "boring-ui"
 
 # ─── Backend ───────────────────────────────────────────────
 [backend]
-type  = "go"
+type  = "python"
 entry = "boring_ui.api.app:create_app"
+pythonpath = ["src/back"]
 port  = 8000
 # Additional FastAPI routers (Python dotted paths)
 routers = []

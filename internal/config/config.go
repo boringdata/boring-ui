@@ -146,7 +146,7 @@ func (c *Config) applyDefaults() {
 		c.PTYProviders = ClonePTYProviders(c.PTYProviders)
 	}
 	if c.Backend.Type == "" {
-		c.Backend.Type = "go"
+		c.Backend.Type = "python"
 	}
 	if c.Backend.Host == "" {
 		c.Backend.Host = "0.0.0.0"

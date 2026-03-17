@@ -422,8 +422,21 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
                 message="Reserved workspace path",
             )
         if not _is_allowed_workspace_passthrough_target(normalized, config=config):
-            # Non-API paths are frontend client routes — serve SPA index.html
-            return _spa_response(config)
+            # Non-API paths are frontend client routes when a built SPA exists.
+            static_dir = _resolve_static_dir()
+            index_html = static_dir / "index.html" if static_dir else None
+            if index_html and index_html.exists():
+                return FileResponse(
+                    index_html,
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+                )
+            return _error(
+                request,
+                status_code=404,
+                error="not_found",
+                code="WORKSPACE_PATH_DENIED",
+                message="Path is outside allowed workspace-scoped families",
+            )
         return await _forward_http_request(request, normalized, workspace_id)
 
     return router

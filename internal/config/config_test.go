@@ -70,7 +70,7 @@ func TestLoadAppliesCORSOriginsEnvOverride(t *testing.T) {
 	}
 }
 
-func TestLoadDefaultsBackendTypeToGo(t *testing.T) {
+func TestLoadDefaultsBackendTypeToPython(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, ConfigFile)
 	if err := os.WriteFile(configPath, []byte("[app]\nname = \"boring-ui\"\nid = \"boring-ui\"\n"), 0o644); err != nil {
@@ -82,8 +82,8 @@ func TestLoadDefaultsBackendTypeToGo(t *testing.T) {
 		t.Fatalf("load config: %v", err)
 	}
 
-	if cfg.Backend.Type != "go" {
-		t.Fatalf("expected backend type go, got %q", cfg.Backend.Type)
+	if cfg.Backend.Type != "python" {
+		t.Fatalf("expected backend type python, got %q", cfg.Backend.Type)
 	}
 }
 
