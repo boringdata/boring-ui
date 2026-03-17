@@ -151,44 +151,43 @@ Per-workspace `.pip-local/` overrides system packages (earlier in Python path). 
 
 ### Child App CLI (Bring Your Own Binary)
 
-Each child app **ships its own CLI binary** (Rust, Go, Python — whatever the app prefers). The framework doesn't scaffold or wrap it — it just makes it discoverable and accessible to the agent inside nsjail.
+Each child app **ships its own CLI binary** (Rust, Go, Python — whatever the app prefers). The framework doesn't scaffold or wrap it. The binary IS the source of truth for commands — no need to duplicate them in config.
 
-**Existing pattern** (boring-macro already does this with a Rust CLI):
+**Config is minimal** — just the binary name:
 
 ```toml
 # boring-macro/boring.app.toml
 [cli]
-name = "bm"
-
-[cli.commands]
-ingest  = { run = "bm ingest",  description = "Ingest FRED series" }
-sql     = { run = "bm sql",     description = "Run SQL query" }
-train   = { run = "bm train",   description = "Train forecast model" }
+name = "bm"       # the binary name — that's all the framework needs
 ```
 
-boring-macro ships a **Rust binary** (`bm`) compiled from `src/main.rs` with clap subcommands (`src/cli/sql.rs`, `src/cli/transform.rs`, etc.). Each command returns structured JSON. Some delegate to Python (`python3 -m boring_macro.sdk.runner`).
+The binary owns its own commands, help text, and argument parsing. The agent discovers commands by running `bm help` (or `bm --help`). No TOML command declarations needed — the binary is the source of truth.
 
-**How the framework integrates child app CLIs**:
+**Existing pattern** (boring-macro already does this):
+- Rust binary (`bm`) compiled from `src/main.rs` with clap subcommands
+- `src/cli/sql.rs`, `src/cli/transform.rs`, etc.
+- Each command returns structured JSON
+- `bm help` shows all available commands
+
+**How the framework integrates it**:
 
 1. Child app builds its own CLI binary (Rust/Go/Python — app's choice)
-2. Binary installed in the Docker image on PATH
-3. nsjail mounts it so the agent can call it
-4. `boring.app.toml` declares commands → agent discovers them via `bui info`
-5. `bui run <cmd>` outside sandbox invokes the same binary (developer entry point)
-6. Agent inside sandbox calls the binary directly (agent entry point)
+2. `boring.app.toml` declares `[cli].name` — the binary name
+3. Binary installed in Docker image on PATH
+4. nsjail mounts it so the agent can call it
+5. Agent discovers commands via `exec("bm help")` — no config indirection
+6. `bui run <args>` outside sandbox delegates to `{cli.name} <args>` (developer entry point)
 
 ```
-Agent: exec("bm help")           → child app's own help output
+Agent: exec("bm help")           → child app's own help (clap/cobra/argparse)
 Agent: exec("bm sql 'SELECT 1'") → child app handles, returns JSON
 Agent: exec("bm ingest")         → child app handles
 ```
 
-**Framework provides standard tools separately** (pre-installed in Docker image, not in child CLI):
-- `rg` (ripgrep) for search
-- `pytest`/`jest`/`go test` for testing
-- `python3`, `git`, `curl`, `jq` — standard Unix tools
+**Framework provides standard tools separately** (pre-installed in Docker image):
+- `rg` (ripgrep), `python3`, `git`, `curl`, `jq`, `tree` — standard Unix tools
 
-The child app owns its CLI entirely. The framework ensures it's on PATH inside the sandbox and discoverable via `boring.app.toml`. One config, two entry points: `bui run` for developers, direct binary call for agents.
+The child app owns its CLI entirely. The framework just needs `[cli].name` to know what binary to put on PATH and what `bui run` delegates to.
 
 ### Module Map
 
@@ -605,7 +604,7 @@ Additionally, the current plan hardcodes PI agent as the only agent surface. But
 |---|---|---|
 | `[backend].routers` — child app registers custom routes | **BROKEN** — Python `app_config_loader.py` deleted in Phase 6 | Go backend needs TOML-driven router registration |
 | `[frontend.panels]` — child app registers custom panels | **AT RISK** — Phase 5 simplifies frontend | PaneRegistry + TOML panel loading must survive |
-| `[cli.commands]` — child app defines `bui run` commands | **PARALLEL** — plan adds `/opt/boring/bin/` tools | Reconcile: `bui run` reads TOML, custom CLI is separate |
+| `[cli]` — child app CLI binary | **SIMPLIFIED** — `[cli].name` is the binary name, `bui run` delegates to it | Binary is source of truth for commands. No `[cli.commands]` duplication needed. |
 | `boring.app.toml` config contract | **IGNORED** — plan uses env vars only | Go backend must read `boring.app.toml` for child app config |
 | `bui deploy` | **REPLACED** — plan uses Docker Compose directly | Add `platform = "docker"` to `bui deploy` |
 | `bui dev` | **UNAFFECTED** — still works | Ensure Go backend mode works with `bui dev` |
