@@ -455,7 +455,7 @@ Both modes use the same PI chat UI shape, but the app chooses one mode in config
 
 | Component | Location | Size | Reason |
 |---|---|---|---|
-| Go backend | `internal/`, `cmd/`, `bui/` | ~23K LOC | Superseded by Python. Assess whether to keep as optional reference. |
+| Go backend modules | `internal/`, `cmd/server/` | ~23K LOC | Superseded by Python backend. `bui/` CLI is KEPT — it's the framework CLI, not the backend. |
 | Go Dockerfile | `deploy/go/Dockerfile` | 1 file | Replace with Python Dockerfile |
 | Go CI jobs | `.github/workflows/` | varies | Remove Go-specific CI |
 | `agent_normal` module | `src/back/.../modules/agent_normal/` | ~100 LOC | Fold useful parts into `agents/` package or remove |
@@ -606,12 +606,12 @@ Provider: Hetzner Cloud (cheapest MVP) or OVH (sovereignty).
 2. Docker Compose with Caddy
 3. `bui deploy` with `platform = "docker"` support
 4. GitHub Actions CI/CD pipeline
-5. Remove or archive Go backend:
-   - `internal/` (Go modules — ~23K LOC)
-   - `cmd/` (Go entrypoints)
-   - `bui/` (Go CLI source — keep `bui` binary itself, remove Go source if CLI stays as-is)
-   - `deploy/go/Dockerfile` (replace with Python Dockerfile)
-   - Go-specific CI jobs
+5. Remove or archive Go **backend** (NOT the `bui` CLI):
+   - `internal/` (Go backend modules — files, git, pty, stream, controlplane — ~23K LOC)
+   - `cmd/server/` (Go backend entrypoint)
+   - `deploy/go/Dockerfile` (Go backend Docker image — replace with Python Dockerfile)
+   - Go backend CI jobs (build, test for `internal/`)
+   - **KEEP**: `bui/` (Go CLI source — `bui dev`, `bui deploy`, `bui run`, `bui info`, `bui neon`). This is the framework CLI, not the backend.
 6. Fold `agent_normal` module into `agents/` package or remove
 6. Port existing Go-specific tests to Python equivalents where needed
 7. Run smoke tests against deployed instance
