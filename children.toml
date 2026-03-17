@@ -1,0 +1,13 @@
+# children.toml — child apps built on boring-ui framework
+
+[apps.boring-macro]
+repo = "boringdata/boring-macro"
+
+[apps.boring-content]
+repo = "boringdata/boring-de-nl"
+
+[apps.bdocs]
+repo = "boringdata/boring-docs"
+
+[apps.boring-doctor]
+repo = "hachej/boring-doctor"
