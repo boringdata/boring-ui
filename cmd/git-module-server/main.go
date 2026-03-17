@@ -10,8 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	boringui "github.com/boringdata/boring-ui"
+	apppkg "github.com/boringdata/boring-ui/internal/app"
 	"github.com/boringdata/boring-ui/internal/config"
+	gitmodule "github.com/boringdata/boring-ui/internal/modules/git"
 )
 
 func main() {
@@ -21,22 +22,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	application, err := boringui.BuildApp(cfg)
+	application := apppkg.New(cfg)
+	module, err := gitmodule.NewModule(cfg, nil)
 	if err != nil {
-		slog.Error("build application", "error", err)
+		slog.Error("create git module", "error", err)
 		os.Exit(1)
 	}
-	if err := application.Start(context.Background()); err != nil {
-		slog.Error("start application modules", "error", err)
-		os.Exit(1)
-	}
-	defer func() {
-		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := application.Stop(stopCtx); err != nil {
-			slog.Error("stop application modules", "error", err)
-		}
-	}()
+	application.AddModule(module)
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddress(),
@@ -56,7 +48,7 @@ func main() {
 		}
 	}()
 
-	slog.Info("starting go backend", "addr", server.Addr, "config", cfg.ConfigPath)
+	slog.Info("starting go git module server", "addr", server.Addr, "config", cfg.ConfigPath)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("server exited", "error", err)
 		os.Exit(1)
