@@ -149,24 +149,52 @@ Agent: exec("python3 -c 'import transformers; print(transformers.__version__)'")
 
 Per-workspace `.pip-local/` overrides system packages (earlier in Python path). Each workspace has independent package state.
 
-### Custom CLI Tools
+### Framework CLI Scaffold (Per-App Customizable)
 
-The agent gets workspace-aware commands mounted at `/opt/boring/bin/`:
+The framework provides a **single CLI scaffold binary** that each child app customizes via `boring.app.toml`. The CLI name, app-specific commands, and branding are all configurable. The agent sees one unified CLI.
+
+```toml
+# boring-macro/boring.app.toml
+[app]
+name = "boring-macro"
+
+[cli]
+name = "bm"                    # CLI name (agent sees "bm", not "boring")
+
+[cli.commands]
+ingest  = { run = "python3 -m boring_macro.ingest", description = "Ingest FRED series" }
+sql     = { run = "python3 -m boring_macro.sql",    description = "Run SQL query" }
+train   = { run = "python3 -m boring_macro.train",  description = "Train forecast model" }
+```
+
+Inside nsjail:
 
 ```
-Agent: exec("boring help")
-→ "Available workspace commands:
-   boring search <pattern>  — full-text search across workspace
-   boring test              — run detected test suite (pytest/jest/go test)
-   boring lint              — run detected linters
-   boring deps              — show dependency tree
-   boring context           — workspace summary for LLM context"
+Agent: exec("bm help")
+→ "bm — boring-macro workspace CLI
 
-Agent: exec("boring search 'TODO' --type=py")
-→ (thin wrapper around ripgrep with workspace-aware defaults)
+   Framework commands:
+     bm search <pattern>    — full-text search across workspace
+     bm test                — run detected test suite
+     bm lint                — run detected linters
+     bm context             — workspace summary for LLM context
+
+   App commands:
+     bm ingest              — Ingest FRED series
+     bm sql <query>         — Run SQL query
+     bm train               — Train forecast model"
 ```
 
-These are static scripts/binaries baked into the Docker image. They run inside nsjail with the same isolation. Updating them is a Docker image rebuild, no per-workspace changes needed.
+**How it works**:
+- Framework provides a Go scaffold binary at build time
+- At runtime, scaffold reads `boring.app.toml` for `[cli].name` and `[cli.commands]`
+- Framework commands (search, test, lint, context) are built-in
+- App commands delegate to `[cli.commands].run` (subprocess execution)
+- Binary installed at `/opt/boring/bin/{cli.name}` in Docker image
+- nsjail mounts `/opt/boring/bin/` read-only + `boring.app.toml` readable
+- Agent doesn't know which commands are framework vs app — all one CLI
+
+Each child app defines its own commands. The framework scaffold discovers them at runtime. `bui run <cmd>` outside the sandbox reads the same `[cli.commands]` — one config, two entry points (developer CLI and agent CLI).
 
 ### Module Map
 
