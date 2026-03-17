@@ -149,52 +149,46 @@ Agent: exec("python3 -c 'import transformers; print(transformers.__version__)'")
 
 Per-workspace `.pip-local/` overrides system packages (earlier in Python path). Each workspace has independent package state.
 
-### Framework CLI Scaffold (Per-App Customizable)
+### Child App CLI (Bring Your Own Binary)
 
-The framework provides a **single CLI scaffold binary** that each child app customizes via `boring.app.toml`. The CLI name, app-specific commands, and branding are all configurable. The agent sees one unified CLI.
+Each child app **ships its own CLI binary** (Rust, Go, Python — whatever the app prefers). The framework doesn't scaffold or wrap it — it just makes it discoverable and accessible to the agent inside nsjail.
+
+**Existing pattern** (boring-macro already does this with a Rust CLI):
 
 ```toml
 # boring-macro/boring.app.toml
-[app]
-name = "boring-macro"
-
 [cli]
-name = "bm"                    # CLI name (agent sees "bm", not "boring")
+name = "bm"
 
 [cli.commands]
-ingest  = { run = "python3 -m boring_macro.ingest", description = "Ingest FRED series" }
-sql     = { run = "python3 -m boring_macro.sql",    description = "Run SQL query" }
-train   = { run = "python3 -m boring_macro.train",  description = "Train forecast model" }
+ingest  = { run = "bm ingest",  description = "Ingest FRED series" }
+sql     = { run = "bm sql",     description = "Run SQL query" }
+train   = { run = "bm train",   description = "Train forecast model" }
 ```
 
-Inside nsjail:
+boring-macro ships a **Rust binary** (`bm`) compiled from `src/main.rs` with clap subcommands (`src/cli/sql.rs`, `src/cli/transform.rs`, etc.). Each command returns structured JSON. Some delegate to Python (`python3 -m boring_macro.sdk.runner`).
+
+**How the framework integrates child app CLIs**:
+
+1. Child app builds its own CLI binary (Rust/Go/Python — app's choice)
+2. Binary installed in the Docker image on PATH
+3. nsjail mounts it so the agent can call it
+4. `boring.app.toml` declares commands → agent discovers them via `bui info`
+5. `bui run <cmd>` outside sandbox invokes the same binary (developer entry point)
+6. Agent inside sandbox calls the binary directly (agent entry point)
 
 ```
-Agent: exec("bm help")
-→ "bm — boring-macro workspace CLI
-
-   Framework commands:
-     bm search <pattern>    — full-text search across workspace
-     bm test                — run detected test suite
-     bm lint                — run detected linters
-     bm context             — workspace summary for LLM context
-
-   App commands:
-     bm ingest              — Ingest FRED series
-     bm sql <query>         — Run SQL query
-     bm train               — Train forecast model"
+Agent: exec("bm help")           → child app's own help output
+Agent: exec("bm sql 'SELECT 1'") → child app handles, returns JSON
+Agent: exec("bm ingest")         → child app handles
 ```
 
-**How it works**:
-- Framework provides a Go scaffold binary at build time
-- At runtime, scaffold reads `boring.app.toml` for `[cli].name` and `[cli.commands]`
-- Framework commands (search, test, lint, context) are built-in
-- App commands delegate to `[cli.commands].run` (subprocess execution)
-- Binary installed at `/opt/boring/bin/{cli.name}` in Docker image
-- nsjail mounts `/opt/boring/bin/` read-only + `boring.app.toml` readable
-- Agent doesn't know which commands are framework vs app — all one CLI
+**Framework provides standard tools separately** (pre-installed in Docker image, not in child CLI):
+- `rg` (ripgrep) for search
+- `pytest`/`jest`/`go test` for testing
+- `python3`, `git`, `curl`, `jq` — standard Unix tools
 
-Each child app defines its own commands. The framework scaffold discovers them at runtime. `bui run <cmd>` outside the sandbox reads the same `[cli.commands]` — one config, two entry points (developer CLI and agent CLI).
+The child app owns its CLI entirely. The framework ensures it's on PATH inside the sandbox and discoverable via `boring.app.toml`. One config, two entry points: `bui run` for developers, direct binary call for agents.
 
 ### Module Map
 
