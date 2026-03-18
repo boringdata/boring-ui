@@ -41,4 +41,4 @@ COPY --from=frontend-build /build/dist ./dist
 
 EXPOSE 8000
 
-CMD ["uv", "run", "python", "scripts/run_backend.py", "--host", "0.0.0.0", "--port", "8000", "--deploy-mode", "core"]
+CMD ["uv", "run", "uvicorn", "boring_ui.runtime:app", "--host", "0.0.0.0", "--port", "8000"]
