@@ -85,6 +85,8 @@ type Deploy struct {
 	BootModule string               `toml:"boot_module"`
 	Neon       NeonConfig           `toml:"neon"`
 	Modal      ModalConfig          `toml:"modal"`
+	Fly        FlyConfig            `toml:"fly"`
+	Docker     DockerConfig         `toml:"docker"`
 }
 
 type SecretRef struct {
@@ -103,6 +105,31 @@ type ModalConfig struct {
 	AppName       string `toml:"app_name"`
 	MinContainers int    `toml:"min_containers"`
 	GPU           bool   `toml:"gpu"`
+}
+
+type DockerConfig struct {
+	Registry    string `toml:"registry"`
+	ComposeFile string `toml:"compose_file"`
+	Dockerfile  string `toml:"dockerfile"`
+	CaddyFile   string `toml:"caddy_file"`
+	Host        string `toml:"host"`
+	SSHKeyVault string `toml:"ssh_key_vault"`
+	RemoteDir   string `toml:"remote_dir"`
+}
+
+type FlyConfig struct {
+	Org              string `toml:"org"`
+	ControlPlaneApp  string `toml:"control_plane_app"`
+	WorkspaceApp     string `toml:"workspace_app"`
+	Region           string `toml:"region"`
+	WorkspaceSizeGB  int    `toml:"workspace_size_gb"`
+	WorkspaceGuest   FlyGuest `toml:"workspace_guest"`
+}
+
+type FlyGuest struct {
+	CPUs     int    `toml:"cpus"`
+	MemoryMB int    `toml:"memory_mb"`
+	CPUKind  string `toml:"cpu_kind"`
 }
 
 // Load reads boring.app.toml from the given directory (or current dir).

@@ -18,162 +18,206 @@ import (
 var (
 	deploySkipBuild bool
 	deployEnv       string
+	deployDryRun    bool
 )
 
 var deployCmd = &cobra.Command{
 	Use:   "deploy",
-	Short: "Build frontend, resolve secrets, deploy to Modal",
-	Long: `Build frontend, resolve Vault secrets, deploy to Modal.
-Use --env to target staging/dev (separate Vault path + Modal app name).
-
-Run 'bui docs deploy' for the full deploy workflow.`,
+	Short: "Build frontend, resolve secrets, deploy to target platform",
+	Long: `Build frontend, resolve Vault secrets, deploy to the configured platform.
+Platform is set in boring.app.toml [deploy] platform = "fly" | "modal" | "docker".
+Use --env to target staging/dev. Use --dry-run to preview without executing.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, root := config.MustLoad()
 		if deployEnv != "" {
 			cfg.Deploy.Env = deployEnv
 		}
 
-		// 1. Safety: warn if local boring-ui differs from pin
-		checkFrameworkDrift(cfg)
-
-		// 2. Build frontend
-		if !deploySkipBuild {
-			fmt.Println("[bui] building frontend...")
-			if err := buildFrontend(cfg, root); err != nil {
-				return fmt.Errorf("build: %w", err)
-			}
+		// Route to platform-specific deploy handler
+		platform := cfg.Deploy.Platform
+		if platform == "" {
+			platform = "modal" // legacy default
 		}
-
-		// 3. Resolve secrets from Vault (best-effort, fallbacks below)
-		fmt.Println("[bui] resolving secrets from Vault...")
-		secrets, failed := vaultpkg.ResolveSecrets(cfg.Deploy.Secrets)
-		for k := range secrets {
-			fmt.Printf("  ✓ %s\n", k)
+		switch platform {
+		case "fly":
+			return deployFly(cfg, root)
+		case "docker":
+			return deployDocker(cfg, root)
+		case "modal":
+			return deployModal(cfg, root)
+		default:
+			return fmt.Errorf("unsupported deploy platform: %s", platform)
 		}
-		for _, k := range failed {
-			fmt.Printf("  ✗ %s (Vault failed)\n", k)
-		}
-
-		// 4. Inject Neon config values from boring.app.toml (non-secret URLs)
-		if cfg.Deploy.Neon.AuthURL != "" {
-			secrets["NEON_AUTH_BASE_URL"] = cfg.Deploy.Neon.AuthURL
-			fmt.Println("  ✓ NEON_AUTH_BASE_URL (from config)")
-		}
-		if cfg.Deploy.Neon.JWKSURL != "" {
-			secrets["NEON_AUTH_JWKS_URL"] = cfg.Deploy.Neon.JWKSURL
-			fmt.Println("  ✓ NEON_AUTH_JWKS_URL (from config)")
-		}
-
-		// 5. Fallbacks from .boring/neon-config.env for secrets that failed Vault
-		if _, ok := secrets["DATABASE_URL"]; !ok {
-			if dbURL := loadNeonEnvField(root, "DATABASE_POOLER_URL"); dbURL != "" {
-				secrets["DATABASE_URL"] = dbURL
-				fmt.Println("  ✓ DATABASE_URL (from .boring/neon-config.env)")
-			}
-		}
-		if _, ok := secrets["BORING_UI_SESSION_SECRET"]; !ok {
-			if ss := loadNeonEnvField(root, "BORING_UI_SESSION_SECRET"); ss != "" {
-				secrets["BORING_UI_SESSION_SECRET"] = ss
-				fmt.Println("  ✓ BORING_UI_SESSION_SECRET (from .boring/neon-config.env)")
-			} else {
-				secret, err := ensureSessionSecret(root)
-				if err != nil {
-					return fmt.Errorf("session secret: %w", err)
-				}
-				secrets["BORING_UI_SESSION_SECRET"] = secret
-				fmt.Println("  ✓ BORING_UI_SESSION_SECRET (generated)")
-			}
-		}
-
-		// 5b. Fallback for BORING_SETTINGS_KEY (encryption for workspace settings + GitHub connection)
-		if _, ok := secrets["BORING_SETTINGS_KEY"]; !ok {
-			if sk := loadNeonEnvField(root, "BORING_SETTINGS_KEY"); sk != "" {
-				secrets["BORING_SETTINGS_KEY"] = sk
-				fmt.Println("  ✓ BORING_SETTINGS_KEY (from .boring/neon-config.env)")
-			} else {
-				sk, err := ensureSettingsKey(root)
-				if err != nil {
-					return fmt.Errorf("settings key: %w", err)
-				}
-				secrets["BORING_SETTINGS_KEY"] = sk
-				fmt.Println("  ✓ BORING_SETTINGS_KEY (generated)")
-			}
-		}
-
-		// Check that all declared secrets were resolved
-		if len(failed) > 0 {
-			fmt.Printf("[bui] warn: %d secret(s) unresolved: %s\n", len(failed), strings.Join(failed, ", "))
-		}
-
-		// 5c. Inject [deploy.env_vars] as env vars for modal_app.py
-		for k, v := range cfg.Deploy.DeployEnv {
-			secrets[k] = v
-			fmt.Printf("  ✓ %s (from config)\n", k)
-		}
-
-		// 5d. Resolve framework path early (needed for modal_app.py lookup)
-		fwPath, _ := framework.Resolve(cfg, "deploy")
-		if fwPath == "" {
-			fwPath, _ = framework.Resolve(cfg, "dev")
-		}
-
-		// 6. Find modal_app.py — prefer framework's canonical template
-		modalFile := findModalFile(root)
-		if fwPath != "" {
-			fwModal := filepath.Join(fwPath, "deploy", "core", "modal_app.py")
-			if _, err := os.Stat(fwModal); err == nil {
-				if modalFile != "" && modalFile != fwModal {
-					fmt.Printf("[bui] note: ignoring local %s, using framework template\n", modalFile)
-				}
-				modalFile = fwModal
-			}
-		}
-		if modalFile == "" {
-			return fmt.Errorf("no modal_app.py found in framework or deploy/")
-		}
-		fmt.Printf("[bui] using %s\n", modalFile)
-
-		// 7. Deploy (env-aware app naming)
-		modalAppName := cfg.Deploy.Modal.AppName
-		if modalAppName == "" {
-			modalAppName = cfg.App.Name
-		}
-		if cfg.Deploy.Env != "" && cfg.Deploy.Env != "prod" {
-			modalAppName = modalAppName + "-" + cfg.Deploy.Env
-		}
-
-		fmt.Printf("[bui] deploying %s (env=%s)...\n", modalAppName, cfg.Deploy.Env)
-		modal := exec.Command("modal", "deploy", modalFile)
-		modal.Dir = root
-		modal.Stdout = os.Stdout
-		modal.Stderr = os.Stderr
-
-		// Inject resolved secrets as env vars (reject null bytes)
-		modal.Env = os.Environ()
-		for k, v := range secrets {
-			if strings.Contains(v, "\x00") {
-				return fmt.Errorf("secret %s contains null byte — cannot inject as env var", k)
-			}
-			modal.Env = append(modal.Env, k+"="+v)
-		}
-		// Pass config path, app name, and framework path so modal_app.py can use them
-		modal.Env = append(modal.Env,
-			fmt.Sprintf("BUI_APP_TOML=%s", filepath.Join(root, config.ConfigFile)),
-			fmt.Sprintf("BUI_MODAL_APP_NAME=%s", modalAppName),
-			fmt.Sprintf("BUI_DEPLOY_ENV=%s", cfg.Deploy.Env),
-		)
-		if fwPath != "" {
-			modal.Env = append(modal.Env, fmt.Sprintf("BUI_FRAMEWORK_PATH=%s", fwPath))
-			fmt.Printf("[bui] framework: %s\n", fwPath)
-		}
-
-		if err := modal.Run(); err != nil {
-			return fmt.Errorf("modal deploy: %w", err)
-		}
-
-		fmt.Println("[bui] deploy complete")
-		return nil
 	},
+}
+
+func deployFly(cfg *config.AppConfig, root string) error {
+	fly := cfg.Deploy.Fly
+	appName := fly.ControlPlaneApp
+	if appName == "" {
+		appName = cfg.App.ID
+	}
+
+	// 1. Safety: warn if local boring-ui differs from pin
+	checkFrameworkDrift(cfg)
+
+	// 2. Build frontend
+	if !deploySkipBuild {
+		fmt.Println("[bui] building frontend...")
+		if err := buildFrontend(cfg, root); err != nil {
+			return fmt.Errorf("build: %w", err)
+		}
+	}
+
+	// 3. Resolve secrets from Vault
+	fmt.Println("[bui] resolving secrets from Vault...")
+	secrets, failed := vaultpkg.ResolveSecrets(cfg.Deploy.Secrets)
+	for k := range secrets {
+		fmt.Printf("  ✓ %s\n", k)
+	}
+	for _, k := range failed {
+		fmt.Printf("  ✗ %s (Vault failed)\n", k)
+	}
+
+	// 4. Inject Neon config values
+	if cfg.Deploy.Neon.AuthURL != "" {
+		secrets["NEON_AUTH_BASE_URL"] = cfg.Deploy.Neon.AuthURL
+	}
+	if cfg.Deploy.Neon.JWKSURL != "" {
+		secrets["NEON_AUTH_JWKS_URL"] = cfg.Deploy.Neon.JWKSURL
+	}
+
+	// 5. Set secrets via fly CLI
+	if !deployDryRun {
+		fmt.Printf("[bui] setting secrets for %s...\n", appName)
+		flySecretArgs := []string{"secrets", "set", "--app", appName}
+		for k, v := range secrets {
+			flySecretArgs = append(flySecretArgs, k+"="+v)
+		}
+		flyCmd := exec.Command("fly", flySecretArgs...)
+		flyCmd.Stdout = os.Stdout
+		flyCmd.Stderr = os.Stderr
+		if err := flyCmd.Run(); err != nil {
+			return fmt.Errorf("fly secrets set: %w", err)
+		}
+	} else {
+		fmt.Printf("[bui] DRY RUN: would set %d secrets for %s\n", len(secrets), appName)
+	}
+
+	// 6. Find fly.toml — prefer deploy/fly/fly.toml, then deploy/fly/fly.control-plane.toml
+	flyToml := findFlyToml(root)
+	if flyToml == "" {
+		return fmt.Errorf("no fly.toml found in deploy/fly/")
+	}
+	fmt.Printf("[bui] using %s\n", flyToml)
+
+	// 7. Deploy
+	if !deployDryRun {
+		fmt.Printf("[bui] deploying %s...\n", appName)
+		deployCmd := exec.Command("fly", "deploy", "-c", flyToml)
+		deployCmd.Dir = root
+		deployCmd.Stdout = os.Stdout
+		deployCmd.Stderr = os.Stderr
+		if err := deployCmd.Run(); err != nil {
+			return fmt.Errorf("fly deploy: %w", err)
+		}
+		fmt.Println("[bui] deploy complete")
+	} else {
+		fmt.Printf("[bui] DRY RUN: would run fly deploy -c %s\n", flyToml)
+	}
+
+	return nil
+}
+
+func findFlyToml(root string) string {
+	candidates := []string{
+		filepath.Join(root, "deploy", "fly", "fly.toml"),
+		filepath.Join(root, "deploy", "fly", "fly.control-plane.toml"),
+		filepath.Join(root, "fly.toml"),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
+}
+
+func deployDocker(cfg *config.AppConfig, root string) error {
+	return fmt.Errorf("docker deploy not yet implemented (use deploy/fly/ for Fly.io)")
+}
+
+func deployModal(cfg *config.AppConfig, root string) error {
+	checkFrameworkDrift(cfg)
+	if !deploySkipBuild {
+		fmt.Println("[bui] building frontend...")
+		if err := buildFrontend(cfg, root); err != nil {
+			return fmt.Errorf("build: %w", err)
+		}
+	}
+
+	fmt.Println("[bui] resolving secrets from Vault...")
+	secrets, failed := vaultpkg.ResolveSecrets(cfg.Deploy.Secrets)
+	for k := range secrets {
+		fmt.Printf("  ✓ %s\n", k)
+	}
+	for _, k := range failed {
+		fmt.Printf("  ✗ %s (Vault failed)\n", k)
+	}
+	if cfg.Deploy.Neon.AuthURL != "" {
+		secrets["NEON_AUTH_BASE_URL"] = cfg.Deploy.Neon.AuthURL
+	}
+	if cfg.Deploy.Neon.JWKSURL != "" {
+		secrets["NEON_AUTH_JWKS_URL"] = cfg.Deploy.Neon.JWKSURL
+	}
+	for k, v := range cfg.Deploy.DeployEnv {
+		secrets[k] = v
+	}
+
+	fwPath, _ := framework.Resolve(cfg, "deploy")
+	if fwPath == "" {
+		fwPath, _ = framework.Resolve(cfg, "dev")
+	}
+	modalFile := findModalFile(root)
+	if fwPath != "" {
+		fwModal := filepath.Join(fwPath, "deploy", "core", "modal_app.py")
+		if _, err := os.Stat(fwModal); err == nil {
+			modalFile = fwModal
+		}
+	}
+	if modalFile == "" {
+		return fmt.Errorf("no modal_app.py found in framework or deploy/")
+	}
+
+	modalAppName := cfg.Deploy.Modal.AppName
+	if modalAppName == "" {
+		modalAppName = cfg.App.Name
+	}
+	if cfg.Deploy.Env != "" && cfg.Deploy.Env != "prod" {
+		modalAppName = modalAppName + "-" + cfg.Deploy.Env
+	}
+
+	fmt.Printf("[bui] deploying %s via modal...\n", modalAppName)
+	modal := exec.Command("modal", "deploy", modalFile)
+	modal.Dir = root
+	modal.Stdout = os.Stdout
+	modal.Stderr = os.Stderr
+	modal.Env = os.Environ()
+	for k, v := range secrets {
+		if strings.Contains(v, "\x00") {
+			return fmt.Errorf("secret %s contains null byte", k)
+		}
+		modal.Env = append(modal.Env, k+"="+v)
+	}
+	modal.Env = append(modal.Env,
+		"BUI_APP_TOML="+filepath.Join(root, config.ConfigFile),
+		"BUI_MODAL_APP_NAME="+modalAppName,
+		"BUI_DEPLOY_ENV="+cfg.Deploy.Env,
+	)
+	if fwPath != "" {
+		modal.Env = append(modal.Env, "BUI_FRAMEWORK_PATH="+fwPath)
+	}
+	return modal.Run()
 }
 
 // ensureSessionSecret reads or creates a stable session secret in .boring/session-secret.
@@ -235,6 +279,7 @@ func ensureSettingsKey(root string) (string, error) {
 func init() {
 	deployCmd.Flags().BoolVar(&deploySkipBuild, "skip-build", false, "Skip frontend build")
 	deployCmd.Flags().StringVar(&deployEnv, "env", "", "Override deploy environment (default from config)")
+	deployCmd.Flags().BoolVar(&deployDryRun, "dry-run", false, "Show what would be done without executing")
 }
 
 func checkFrameworkDrift(cfg *config.AppConfig) {
