@@ -223,6 +223,17 @@ func runNeonSetup(cmd *cobra.Command, args []string) error {
 		configureEmailProvider(apiKey, projectID, neonEmailProvider, cfg.App.Name)
 	}
 
+	// 5b. Set email verification to link mode (requires custom email provider).
+	// Default Neon Auth projects use OTP codes; link mode sends a clickable
+	// verification URL which our /auth/callback handler expects.
+	fmt.Println("[bui] setting email verification to link mode...")
+	if err := neonSetEmailVerificationMethod(apiKey, projectID, branchID, "link"); err != nil {
+		fmt.Printf("  warn: could not set verification method: %v\n", err)
+		fmt.Println("  Set manually in Neon Console → Settings → Auth → Verification method → Link")
+	} else {
+		fmt.Println("  ✓ email verification method set to link")
+	}
+
 	// 6. Generate session secret + settings key
 	sessionSecret := generateRandomHex(32)
 	settingsKey := generateRandomHex(32)
@@ -515,6 +526,16 @@ func configureEmailProvider(apiKey, projectID, provider, appName string) {
 	default:
 		fmt.Printf("  Unknown email provider: %q (supported: resend, smtp, none)\n", provider)
 	}
+}
+
+// neonSetEmailVerificationMethod sets the email verification method (link or otp).
+// PATCH /projects/{project_id}/branches/{branch_id}/auth/email_and_password
+func neonSetEmailVerificationMethod(apiKey, projectID, branchID, method string) error {
+	path := fmt.Sprintf("/projects/%s/branches/%s/auth/email_and_password", projectID, branchID)
+	_, err := neonAPI("PATCH", path, apiKey, map[string]interface{}{
+		"email_verification_method": method,
+	})
+	return err
 }
 
 // neonConfigureEmailServer sets the email server config via Neon API.
