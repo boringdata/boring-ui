@@ -56,7 +56,7 @@ async def create_workspace_for_user(
                 if workspace_row is None:
                     workspace_row = await conn.fetchrow(
                         """
-                        SELECT id, app_id, name, created_by
+                        SELECT id, app_id, name, created_by, machine_id, volume_id, fly_region
                         FROM workspaces
                         WHERE created_by = $1 AND app_id = $2 AND is_default = true
                         """,
@@ -226,7 +226,7 @@ def create_workspace_router_supabase(config: APIConfig) -> APIRouter:
 
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT id, app_id, name, created_by FROM workspaces WHERE id = $1",
+                "SELECT id, app_id, name, created_by, machine_id, volume_id, fly_region FROM workspaces WHERE id = $1",
                 uuid.UUID(workspace_id),
             )
         data = normalize_workspace_payload(row)
@@ -280,7 +280,7 @@ def create_workspace_router_supabase(config: APIConfig) -> APIRouter:
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT w.id, w.app_id, w.name, w.created_by
+                SELECT w.id, w.app_id, w.name, w.created_by, w.machine_id, w.volume_id, w.fly_region
                 FROM workspaces w
                 JOIN workspace_members m ON w.id = m.workspace_id
                 WHERE m.user_id = $1 AND w.app_id = $2 AND w.deleted_at IS NULL
