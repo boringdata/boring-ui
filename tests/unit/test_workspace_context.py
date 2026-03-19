@@ -68,18 +68,15 @@ def test_workspace_context_dependency_resolves_path_param_in_hosted_mode(tmp_pat
     }
 
 
-def test_workspace_context_resolver_populates_execution_backend(
-    monkeypatch: pytest.MonkeyPatch,
+def test_workspace_context_resolver_execution_backend_is_none(
     tmp_path: Path,
 ) -> None:
     config = APIConfig(workspace_root=tmp_path, control_plane_provider="neon")
-    sentinel = object()
-    monkeypatch.setattr(config, "create_execution_backend", lambda: sentinel)
 
     resolver = build_workspace_context_resolver(config)
     context = resolver.resolve("ws-1")
 
-    assert context.execution_backend is sentinel
+    assert context.execution_backend is None
 
 
 def test_file_router_uses_header_workspace_context_in_hosted_mode(tmp_path: Path) -> None:

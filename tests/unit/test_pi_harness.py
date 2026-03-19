@@ -86,6 +86,7 @@ def test_pi_harness_proxy_routes_forward_workspace_context(tmp_path: Path) -> No
     config = APIConfig(
         workspace_root=tmp_path,
         agents_mode="backend",
+        control_plane_provider="neon",
         agents={"pi": AgentRuntimeConfig(enabled=True, port=8789)},
     )
     harness = PiHarness(

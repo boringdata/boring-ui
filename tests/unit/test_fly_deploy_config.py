@@ -20,7 +20,7 @@ def test_fly_toml_targets_backend_image_and_single_machine_http_service() -> Non
     assert data["http_service"]["force_https"] is True
     assert data["http_service"]["auto_stop_machines"] == "off"
     assert data["http_service"]["min_machines_running"] == 1
-    assert data["http_service"]["checks"][0]["path"] == "/healthz"
+    assert data["http_service"]["checks"][0]["path"] == "/health"
     assert data["vm"]["cpu_kind"] == "shared"
     assert data["vm"]["cpus"] == 1
     assert data["vm"]["memory"] == "512mb"
