@@ -31,6 +31,7 @@ _WORKSPACE_PASSTHROUGH_ROOTS = (
     "/api/config",
     "/api/project",
     "/api/approval",
+    "/api/v1/sandbox",
 )
 _HOP_BY_HOP_HEADERS = {
     "connection",

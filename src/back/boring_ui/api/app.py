@@ -308,6 +308,10 @@ def create_app(
     if 'pty' in enabled_routers:
         app.include_router(create_pty_lifecycle_router(config), prefix='/api/v1/pty')
 
+    # Direct exec endpoint — VM is the sandbox, no isolation layer.
+    from .modules.exec.router import create_exec_router
+    app.include_router(create_exec_router(config))
+
     # agent-normal owns runtime-only session lifecycle endpoints under canonical prefix.
     app.include_router(
         create_agent_normal_router(config, pty_enabled=('pty' in enabled_routers)),

@@ -37,7 +37,7 @@ class FakeExecBackend:
             stdout="ok",
             stderr="",
             duration_ms=12,
-            working_dir=kwargs["cwd"],
+            truncated=False,
         )
 
 
