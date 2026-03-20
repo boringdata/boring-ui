@@ -75,4 +75,18 @@ describe('GitChangesView HTTP provider', () => {
 
     expect(screen.queryByText('Working tree is clean')).not.toBeInTheDocument()
   })
+
+  it('uses immediate centered layout for the loading state', () => {
+    setupApiMocks({})
+
+    renderWithProvider(createHttpProvider())
+
+    const loading = screen.getByText('Loading changes...').closest('.git-changes-loading')
+    expect(loading).toHaveStyle({
+      display: 'flex',
+      width: '100%',
+      justifyContent: 'center',
+      textAlign: 'center',
+    })
+  })
 })

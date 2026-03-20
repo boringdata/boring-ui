@@ -5,6 +5,15 @@ import { routeHref, routes } from '../utils/routes'
 import PageShell, { SettingsSection, SettingsField } from './PageShell'
 import GitHubConnect from '../components/GitHubConnect'
 
+const centeredPageLoadingStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '100%',
+  textAlign: 'center',
+}
+
 /**
  * Inline workspace switcher — dropdown that lists all workspaces
  * and navigates to the selected one's settings page.
@@ -221,7 +230,7 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
   if (loading) {
     return (
       <PageShell title="Workspace Settings" backHref={backHref}>
-        <div className="page-loading">
+        <div className="page-loading" style={centeredPageLoadingStyle}>
           <Loader2 className="page-loading-icon" size={32} />
           <span>Loading workspace settings...</span>
         </div>

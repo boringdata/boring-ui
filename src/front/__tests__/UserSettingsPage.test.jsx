@@ -87,6 +87,12 @@ describe('UserSettingsPage', () => {
     mockApiFetchJson.mockReturnValue(new Promise(() => {})) // never resolves
     render(<UserSettingsPage />)
     expect(screen.getByText('Loading settings...')).toBeInTheDocument()
+    expect(screen.getByText('Loading settings...').closest('.page-loading')).toHaveStyle({
+      display: 'flex',
+      width: '100%',
+      justifyContent: 'center',
+      textAlign: 'center',
+    })
   })
 
   it('renders profile section when authenticated', async () => {

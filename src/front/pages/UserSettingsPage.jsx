@@ -12,6 +12,15 @@ import {
 } from '../providers/pi/providerKeys'
 import PageShell, { SettingsSection, SettingsField } from './PageShell'
 
+const centeredPageLoadingStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '100%',
+  textAlign: 'center',
+}
+
 export default function UserSettingsPage({ workspaceId }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -208,7 +217,7 @@ export default function UserSettingsPage({ workspaceId }) {
   if (loading) {
     return (
       <PageShell title="User Settings" backHref={backHref}>
-        <div className="page-loading">
+        <div className="page-loading" style={centeredPageLoadingStyle}>
           <Loader2 className="page-loading-icon" size={32} />
           <span>Loading settings...</span>
         </div>

@@ -55,6 +55,12 @@ describe('WorkspaceSettingsPage', () => {
     mockApiFetchJson.mockReturnValue(new Promise(() => {}))
     render(<WorkspaceSettingsPage workspaceId={WORKSPACE_ID} />)
     expect(screen.getByText('Loading workspace settings...')).toBeInTheDocument()
+    expect(screen.getByText('Loading workspace settings...').closest('.page-loading')).toHaveStyle({
+      display: 'flex',
+      width: '100%',
+      justifyContent: 'center',
+      textAlign: 'center',
+    })
   })
 
   it('renders general section with workspace name', async () => {

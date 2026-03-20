@@ -5,6 +5,15 @@ import { useGitHubConnection } from './GitHubConnect'
 import { useLightningFsGitBootstrap } from '../hooks/useLightningFsGitBootstrap'
 import { routes } from '../utils/routes'
 
+const centeredInlineLoadingStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '100%',
+  textAlign: 'center',
+}
+
 const STATUS_CONFIG = {
   M: { label: 'Modified', className: 'git-status-modified', icon: 'M' },
   U: { label: 'Untracked', className: 'git-status-new', icon: 'U' },
@@ -117,7 +126,7 @@ export default function GitChangesView({ onOpenDiff, activeDiffFile, workspaceId
   if (isLoading) {
     return (
       <div className="git-changes-view">
-        <div className="git-changes-loading">
+        <div className="git-changes-loading" style={centeredInlineLoadingStyle}>
           <Loader2 className="git-inline-spinner" size={14} />
           <span>Loading changes...</span>
         </div>
