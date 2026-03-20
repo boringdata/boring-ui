@@ -146,6 +146,7 @@ def create_app(
     plugin_manager = None
     _db_pool_url: str | None = None
     _provisioner = None
+    _pi_startup_attempted = False
 
     # Only backend-agent deployments provision dedicated workspace Machines.
     if config.agents_mode == 'backend' and config.fly_api_token and config.fly_workspace_app:
@@ -190,6 +191,9 @@ def create_app(
                 await pi_harness.ensure_ready()
             except Exception:
                 logger.exception('PI sidecar did not become ready during startup')
+            finally:
+                nonlocal _pi_startup_attempted
+                _pi_startup_attempted = True
         if _db_pool_url:
             await control_plane_db_client.create_pool(_db_pool_url)
 
@@ -412,14 +416,12 @@ def create_app(
     async def health():
         """Health check endpoint.
 
-        Returns 503 while the PI sidecar is still initialising for the first
-        time.  This prevents Fly from marking the Machine as healthy (and
-        therefore routable) before PI can actually serve requests.  Once the
-        sidecar has been proven ready at least once, /health always returns 200
-        — transient PI restarts handled by the monitor loop do not cause the
-        Machine to appear unhealthy to the platform.
+        Returns 503 while the PI sidecar startup attempt is still in progress.
+        Once the lifespan has finished attempting PI startup (success or
+        failure), /health returns 200 so Fly can route traffic.  PI-specific
+        routes still gate individually via ensure_ready().
         """
-        if pi_harness is not None and not pi_harness.ever_ready:
+        if pi_harness is not None and not _pi_startup_attempted:
             return JSONResponse(
                 {'status': 'starting', 'detail': 'pi sidecar not yet ready'},
                 status_code=503,
