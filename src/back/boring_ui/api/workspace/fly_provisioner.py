@@ -16,17 +16,42 @@ FLY_API_BASE = "https://api.machines.dev/v1"
 
 
 def _default_machine_env() -> dict[str, str]:
-    """Build default env vars for workspace Machines."""
+    """Build default env vars for workspace Machines.
+
+    IMPORTANT: In the Fly Machines API, ``config.env`` completely replaces
+    the environment for the Machine -- app-level secrets are NOT inherited.
+    We must forward every secret the workspace process needs from the
+    control-plane's own environment.
+    """
     env = {
         "AGENTS_MODE": "backend",
         "BORING_UI_WORKSPACE_ROOT": "/workspace",
     }
-    # Forward the session secret so workspace can validate cookies.
-    session_secret = os.environ.get("BORING_SESSION_SECRET") or os.environ.get(
-        "BORING_UI_SESSION_SECRET", ""
-    )
-    if session_secret:
-        env["BORING_SESSION_SECRET"] = session_secret
+    # Forward essential secrets from the control plane environment.
+    # The workspace Machine needs these to validate cookies, talk to the DB,
+    # verify JWTs, encrypt settings, and call the Claude API.
+    for key in (
+        "BORING_SESSION_SECRET",
+        "BORING_UI_SESSION_SECRET",
+        "ANTHROPIC_API_KEY",
+        "BORING_SETTINGS_KEY",
+        "DATABASE_URL",
+        "NEON_AUTH_BASE_URL",
+        "NEON_AUTH_JWKS_URL",
+        "CONTROL_PLANE_PROVIDER",
+        "CONTROL_PLANE_APP_ID",
+        "AUTH_SESSION_SECURE_COOKIE",
+        "RESEND_API_KEY",
+        "GITHUB_APP_ID",
+        "GITHUB_APP_CLIENT_ID",
+        "GITHUB_APP_CLIENT_SECRET",
+        "GITHUB_APP_PRIVATE_KEY",
+        "GITHUB_APP_SLUG",
+        "APP_ENV",
+    ):
+        val = os.environ.get(key)
+        if val:
+            env[key] = val
     return env
 
 

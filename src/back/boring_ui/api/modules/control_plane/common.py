@@ -81,10 +81,15 @@ def ensure_pool(request: Request):
 
 def normalize_workspace_payload(row: Any) -> dict[str, Any]:
     app_id = row["app_id"] if "app_id" in row else "boring-ui"
-    return {
+    payload = {
         "id": str(row["id"]),
         "workspace_id": str(row["id"]),
         "app_id": app_id,
         "name": row["name"],
         "created_by": str(row["created_by"]),
     }
+    # Include Fly Machine info when available
+    for key in ("machine_id", "volume_id", "fly_region"):
+        if key in row and row[key]:
+            payload[key] = str(row[key])
+    return payload
