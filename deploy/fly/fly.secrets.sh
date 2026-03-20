@@ -76,6 +76,21 @@ PY
 
 require_cmd python3
 
+retry_fly_secrets_set() {
+  local attempts="${1:-5}"
+  shift
+  local attempt
+  for attempt in $(seq 1 "$attempts"); do
+    if "$FLY_BIN" secrets set "$@"; then
+      return 0
+    fi
+    if [[ "$attempt" -ge "$attempts" ]]; then
+      return 1
+    fi
+    sleep 15
+  done
+}
+
 declare -a pairs=()
 
 pairs+=("DATABASE_URL=$(secret_value "DATABASE_URL" "secret/agent/app/boring-ui/prod" "database_url")")
@@ -91,4 +106,4 @@ pairs+=("GITHUB_APP_CLIENT_SECRET=$(secret_value "GITHUB_APP_CLIENT_SECRET" "sec
 pairs+=("GITHUB_APP_PRIVATE_KEY=$(secret_value "GITHUB_APP_PRIVATE_KEY" "secret/agent/services/boring-ui-app" "pem")")
 pairs+=("GITHUB_APP_SLUG=$(secret_value "GITHUB_APP_SLUG" "secret/agent/services/boring-ui-app" "slug")")
 
-"$FLY_BIN" secrets set --app "$APP_NAME" "${pairs[@]}"
+retry_fly_secrets_set 5 --app "$APP_NAME" "${pairs[@]}"
