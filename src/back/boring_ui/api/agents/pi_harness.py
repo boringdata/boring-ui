@@ -336,15 +336,38 @@ class PiHarness(AgentHarness):
             return await resolve_workspace_context(request, config=self.config)
 
         async def _try_fly_replay_for_workspace(ctx: WorkspaceContext) -> Response | None:
-            """If this workspace has a dedicated Fly Machine, redirect there."""
+            """If this workspace has a dedicated Fly Machine, redirect there.
+
+            Returns a fly-replay Response when we're on the control plane
+            and the workspace has a Machine assigned. Returns None when:
+            - No workspace_id
+            - Already on the target Machine (FLY_MACHINE_ID matches)
+            - No DB pool / lookup fails (workspace Machine doesn't need DB)
+            """
             if not ctx.workspace_id:
                 return None
+            current_machine = os.environ.get("FLY_MACHINE_ID", "")
+            if not current_machine:
+                return None  # Not on Fly — local dev, handle locally
             try:
-                from ..modules.control_plane.workspace_boundary_router_hosted import _try_fly_replay
-                result = await _try_fly_replay(ctx.workspace_id)
-                return result.response  # None if already on target Machine
+                from ..modules.control_plane import db_client
+                pool = db_client.get_pool()
+                import uuid
+                row = await pool.fetchrow(
+                    "SELECT machine_id FROM workspaces WHERE id = $1",
+                    uuid.UUID(ctx.workspace_id),
+                )
+                if row and row.get("machine_id"):
+                    target = row["machine_id"]
+                    if current_machine == target:
+                        return None  # Already on the right Machine
+                    return Response(
+                        status_code=200,
+                        headers={"fly-replay": f"instance={target}"},
+                    )
             except Exception:
-                return None
+                pass  # No DB pool (workspace Machine) — handle locally
+            return None
 
         async def _proxy_response(
             request: Request,
