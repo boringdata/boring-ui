@@ -8,7 +8,7 @@ Draft implementation plan for three linked deliverables:
 2. Expose those primitives as `@boring/ui` for child apps and agent-authored panels.
 3. Replace the current Vite-only workspace panel loader with a backend-bundled runtime panel pipeline.
 
-This plan complements [docs/plans/PLAN_SHADCN_MIGRATION.md](/home/ubuntu/projects/boring-ui/docs/plans/PLAN_SHADCN_MIGRATION.md). That document is useful migration context, but this one is the execution plan for the full SDK + runtime-panel architecture.
+This plan complements [docs/plans/ui-platform/PLAN_SHADCN_MIGRATION.md](/home/ubuntu/projects/boring-ui/docs/plans/ui-platform/PLAN_SHADCN_MIGRATION.md). That document is useful migration context, but this one is the execution plan for the full SDK + runtime-panel architecture.
 
 ---
 

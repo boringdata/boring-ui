@@ -7,6 +7,7 @@ import { promisify } from 'node:util'
 const execAsync = promisify(execCb)
 
 const WORKSPACE_ROOT = process.env.BORING_UI_WORKSPACE_ROOT || process.cwd()
+console.log(`[pi-tools] WORKSPACE_ROOT=${WORKSPACE_ROOT}`)
 
 const textResult = (text, details = {}) => ({
   content: [{ type: 'text', text }],
@@ -129,12 +130,15 @@ export function createWorkspaceTools(_context) {
         content: Type.String({ description: 'Content to write' }),
       }),
       execute: async (_toolCallId, params) => {
+        console.log(`[pi-tools] write_file called: path=${params?.path}`)
         const filePath = normalizeFilePath(params?.path)
         if (!filePath) throw new Error('path is required')
         const fullPath = resolveSafe(filePath)
+        console.log(`[pi-tools] write_file resolved: ${fullPath}`)
         await fs.mkdir(path.dirname(fullPath), { recursive: true })
         const content = String(params?.content ?? '')
         await fs.writeFile(fullPath, content, 'utf-8')
+        console.log(`[pi-tools] write_file done: ${fullPath} (${content.length} bytes)`)
         return textResult(`Wrote ${content.length} bytes to ${filePath}`, { path: filePath, size: content.length })
       },
     },
