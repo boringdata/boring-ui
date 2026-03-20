@@ -290,15 +290,15 @@ def create_capabilities_router(
             capabilities['workspace_panes'] = plugin_manager.list_workspace_panes()
             capabilities['workspace_routes'] = plugin_manager.list_workspace_routes()
 
-        # Service connection info for direct-connect panels
+        # Service connection info for direct-connect panels.
+        # Use relative URL so it works behind TLS-terminating proxies (Fly).
         if pi_harness is not None:
             services = capabilities.setdefault('services', {})
-            base_url = str(request.base_url).rstrip('/')
             workspace_id = (
                 str(request.path_params.get('workspace_id', '')).strip()
                 or str(request.headers.get('x-workspace-id', '')).strip()
             )
-            service_url = f"{base_url}/w/{workspace_id}" if workspace_id else base_url
+            service_url = f"/w/{workspace_id}" if workspace_id else ""
             services['pi'] = {
                 'url': service_url,
                 'mode': 'backend',
