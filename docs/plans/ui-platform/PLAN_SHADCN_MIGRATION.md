@@ -3,8 +3,9 @@
 ## Status
 
 Revised execution plan for migrating boring-ui's generic primitive surface to shadcn/ui,
-publishing that surface as `@boring/ui`, and replacing the Vite-only workspace panel loader
-with a production-safe backend-bundled runtime panel pipeline.
+publishing that surface as real workspace packages `@boring/ui` and `@boring/sdk`, and
+replacing the Vite-only workspace panel loader with a production-safe backend-bundled
+runtime panel pipeline.
 
 This document intentionally merges the strongest parts of earlier drafts:
 
@@ -15,9 +16,17 @@ This document intentionally merges the strongest parts of earlier drafts:
   - Tailwind v4 browser-support and migration-risk gating
   - runtime-panel utility-class generation
   - visible compile/runtime error handling
-  - security/trust-boundary clarity
-  - phased rollout with a temporary fallback path
-  - CI guardrails to prevent legacy generic classes from creeping back in
+- security/trust-boundary clarity
+- phased rollout with a temporary fallback path
+- CI guardrails to prevent legacy generic classes from creeping back in
+
+Execution strategy:
+
+- Track A: `@boring/ui` extraction and host-app primitive migration
+- Track B: runtime panel pipeline and `@boring/sdk`
+
+Tracks are independently releasable, keep separate feature flags, and may soak on different
+timelines.
 
 ---
 
@@ -43,14 +52,17 @@ generic CSS and repeated primitive implementations.
 1. Replace the generic primitive layer (buttons, menus, dialogs, inputs, badges, tabs,
    avatars, tooltips, alerts, simple cards, separators) with shadcn/ui-backed primitives.
 2. Keep boring-ui's design tokens as the visual source of truth. This is a migration, not a redesign.
-3. Expose the shared primitive surface as `@boring/ui` for the host app, child apps, and
-   runtime panels.
-4. Replace the current Vite-only runtime panel loading path with a backend-bundled ESM pipeline
+3. Expose the shared primitive surface as a real workspace package `@boring/ui` with its own
+   source tree, build pipeline, CSS entrypoint, and semver policy for the host app, child apps,
+   and runtime panels.
+4. Expose the runtime authoring contract as a companion workspace package `@boring/sdk` whose
+   public API is versioned independently from host-private frontend code.
+5. Replace the current Vite-only runtime panel loading path with a backend-bundled ESM pipeline
    that works the same way in development and production.
-5. Ensure runtime panel failures are isolated, visible, and diagnosable instead of becoming
+6. Ensure runtime panel failures are isolated, visible, and diagnosable instead of becoming
    silent broken imports or blank tabs.
-6. Preserve accessibility, keyboard navigation, theming, and existing user flows.
-7. Remove dead generic CSS only after the new primitives are proven by visual and functional QA.
+7. Preserve accessibility, keyboard navigation, theming, and existing user flows.
+8. Remove dead generic CSS only after the new primitives are proven by visual and functional QA.
 
 ---
 
@@ -62,10 +74,11 @@ By the end of this project:
 - the host app uses those primitives instead of ad hoc class bundles
 - boring-ui tokens still define color, typography, radii, spacing semantics, and dark mode
 - child apps can import `@boring/ui` directly
+- child apps and the host app import `@boring/ui` and `@boring/sdk` through the same public
+  package boundaries
 - runtime workspace panels can import:
   - `react`
   - `react/jsx-runtime`
-  - `react-dom`
   - `@boring/ui`
   - `@boring/sdk`
 - the backend discovers, validates, bundles, caches, and serves runtime panels as ESM
@@ -97,14 +110,19 @@ existing CSS tokens and maps shadcn semantic variables to those tokens.
 
 ### 2. Canonical package/import strategy
 
-Use `@boring/ui` as the canonical SDK import path. Keep the current package/import story as a
-compatibility alias during migration so existing consumers do not break all at once.
+Use real workspace packages:
+
+- `@boring/ui`
+- `@boring/sdk`
+
+Keep the current import story only as a temporary compatibility alias during migration so existing
+consumers do not break all at once.
 
 Practical rule:
 
 - new code uses `@boring/ui`
 - existing imports remain supported for at least one release cycle or one full internal soak
-- runtime panels only document `@boring/ui`, not internal source paths
+- runtime panels document only `@boring/ui` and `@boring/sdk`, never internal source paths
 
 ### 3. Runtime import contract for v1
 
@@ -112,9 +130,17 @@ Version 1 of runtime panels supports only:
 
 - `react`
 - `react/jsx-runtime`
-- `react-dom`
 - `@boring/ui`
 - `@boring/sdk`
+
+Additionally:
+
+- local `./*.json`, `./*.svg`, `./*.png`, `./*.jpg`, and `./*.webp` imports from the panel
+  directory are allowed under documented size limits
+- CSS imports remain unsupported in v1
+- Node built-ins, `http(s):` imports, non-literal dynamic imports, Web Workers, `eval`, and
+  `new Function` are rejected
+- bundles that exceed documented size/time budgets fail with a visible policy error
 
 No host-private imports. No `@workspace` filesystem alias. No arbitrary third-party packages.
 
@@ -125,12 +151,11 @@ Do not couple runtime panels to Vite chunk names or hashed application artifacts
 Use stable shim modules such as:
 
 - `/__bui/runtime/react.js`
-- `/__bui/runtime/react-dom.js`
 - `/__bui/runtime/jsx-runtime.js`
 - `/__bui/runtime/boring-ui.js`
 - `/__bui/runtime/boring-sdk.js`
 
-Those modules can be backed by a boot-time global such as `window.__BORING_RUNTIME__`, but the
+Those modules can be backed by a boot-time global such as `globalThis.__BORING_RUNTIME__`, but the
 runtime-panel import contract must point at stable module URLs, not directly at globals.
 
 ### 5. Runtime panel manifest/status contract
@@ -148,9 +173,16 @@ Capabilities and/or a dedicated panel endpoint must expose:
 - `name`
 - `entry`
 - `module_url`
+- `source_map_url`
 - `hash`
 - `status`
 - `error`
+- `diagnostics`
+- `warnings`
+- `build_ms`
+- `artifact_bytes`
+- `last_successful_hash`
+- `last_successful_module_url`
 - `updated_at`
 - `placement`
 - `icon`
@@ -192,6 +224,11 @@ Before committing to Tailwind v4 migration, confirm boring-ui's browser support 
 with Tailwind v4's platform requirements. Tailwind v4 is designed for Safari 16.4+, Chrome 111+,
 and Firefox 128+, and the Tailwind team recommends staying on v3.4 if older browsers must be
 supported. Also verify Node/tooling versions before migration work begins.
+
+Because this plan relies on `@source inline()` for the runtime utility allowlist, pin the minimum
+Tailwind version to `4.1.x` or later instead of a generic `v4`.
+
+Encode the browser floor, Node floor, and approved Tailwind version in CI before migration begins.
 
 If boring-ui must support older browsers, stop here and either:
 
@@ -300,10 +337,6 @@ Recommended runtime-panel authoring shape:
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@boring/ui'
 import { useFileContent } from '@boring/sdk'
 
-export const meta = {
-  minSize: { width: 320, height: 220 },
-}
-
 export default function ExamplePanel() {
   const file = useFileContent?.('README.md')
 
@@ -324,7 +357,8 @@ export default function ExamplePanel() {
 Rules:
 
 - default export must be a React component
-- optional named export `meta` is allowed
+- `panel.json` is the canonical discovery metadata source in v1
+- module-exported metadata is intentionally not used for discovery in v1
 - allowed imports are limited to the runtime contract above
 - no host-private imports
 - no arbitrary npm imports
@@ -340,18 +374,23 @@ Suggested v1 fields:
 
 ```json
 {
+  "schemaVersion": 1,
+  "id": "git-insights",
   "title": "Git Insights",
   "entry": "Panel.jsx",
   "placement": "right",
   "icon": "git-branch",
   "description": "Workspace git metrics and status",
-  "minSize": { "width": 320, "height": 220 }
+  "minSize": { "width": 320, "height": 220 },
+  "runtimeApiVersion": 1,
+  "sdkRange": "^1.0.0"
 }
 ```
 
 Validation rules:
 
-- unknown fields warn but do not fail the whole panel
+- unknown unprefixed fields fail validation
+- `x-*` fields are allowed for forward-compatible panel-local extensions
 - invalid `entry` paths fail that panel only
 - path traversal is rejected
 - missing file -> `error` status
@@ -369,12 +408,22 @@ Validation rules:
 
 ## Phase 1: Build The shadcn / `@boring/ui` Foundation
 
-### 1.1 Initialize shadcn for Vite + Tailwind v4 mode
+### 1.1 Move the host app onto the approved Tailwind baseline
+
+Before running `shadcn init`:
+
+- adopt the dedicated `@tailwindcss/vite` plugin
+- confirm Node 20+ in local dev and CI
+- confirm the approved browser matrix in automated smoke tests
+
+### 1.2 Initialize shadcn for Vite + Tailwind v4 mode
 
 shadcn's CLI supports initialization for Vite, supports Tailwind v4 projects, and uses
 `components.json` to control output paths, aliases, CSS variables, and whether generated
 components are `.tsx` or `.jsx`. For Tailwind v4 projects, the Tailwind config path is left
 blank, `new-york` is the preferred style, and `tsx: false` allows JavaScript `.jsx` output.
+For workspace packages, keep separate `components.json` files where package-local output paths and
+ownership boundaries matter.
 
 Suggested command:
 
@@ -408,7 +457,7 @@ Target `components.json`:
 }
 ```
 
-### 1.2 Add `cn()` utility
+### 1.3 Add `cn()` utility
 
 **File**: `src/front/lib/utils.js`
 
@@ -421,7 +470,7 @@ export function cn(...inputs) {
 }
 ```
 
-### 1.3 Bridge shadcn semantic tokens to boring-ui tokens
+### 1.4 Bridge shadcn semantic tokens to boring-ui tokens
 
 Tailwind v4 supports CSS-driven theme variables with `@theme`, and shadcn supports Tailwind v4
 and `@theme inline`. Keep boring-ui tokens as the source of truth and map shadcn semantics onto
@@ -459,7 +508,7 @@ dark-mode selectors.
 }
 ```
 
-### 1.4 Keep `tailwind.config.js` as a transition bridge
+### 1.5 Keep `tailwind.config.js` as a transition bridge
 
 Do **not** delete `tailwind.config.js` in the first foundation commit.
 
@@ -477,7 +526,7 @@ Plan:
    - the runtime utility allowlist is in place
    - no remaining dependency on JS-only config behavior exists
 
-### 1.5 Add a runtime utility allowlist stylesheet
+### 1.6 Add a runtime utility allowlist stylesheet
 
 Because Tailwind generates CSS by scanning project sources, backend-served runtime panel files are
 not automatically part of that scan. Tailwind v4 provides `@source` and `@source inline()` for
@@ -505,7 +554,13 @@ Important rule:
 - runtime panels may use only the documented utility subset outside `@boring/ui`
 - arbitrary values and arbitrary utilities are unsupported in v1
 
-### 1.6 Install initial shadcn component set
+Also add a standard runtime panel root contract:
+
+- every panel mounts inside `.bui-runtime-panel-root`
+- the root provides inherited typography, colors, and overflow defaults
+- panel authors should prefer `@boring/ui` layout primitives over raw utility composition
+
+### 1.7 Install initial shadcn component set
 
 Install components in batches.
 
@@ -515,25 +570,33 @@ Install components in batches.
 npx shadcn@latest add button badge separator input textarea label switch avatar kbd
 ```
 
-**Batch 2 — Composite**
+**Batch 2 — Composite / form**
 
 ```bash
-npx shadcn@latest add card alert tabs toggle toggle-group select
+npx shadcn@latest add card alert tabs toggle toggle-group select field native-select
 ```
 
 **Batch 3 — Overlay**
 
 ```bash
-npx shadcn@latest add dialog dropdown-menu context-menu tooltip popover
+npx shadcn@latest add dialog alert-dialog dropdown-menu context-menu tooltip popover
 ```
 
 **Batch 4 — Data / panel-friendly**
 
 ```bash
-npx shadcn@latest add table scroll-area
+npx shadcn@latest add table scroll-area skeleton progress empty spinner
 ```
 
-### 1.7 Add thin boring-specific wrappers only where justified
+### 1.7A Generated-code ownership policy
+
+Track each adopted shadcn component in `docs/UPSTREAM_SHADCN.md` with:
+
+- original source/reference
+- local modifications
+- last intentional sync date
+
+### 1.8 Add thin boring-specific wrappers only where justified
 
 Default rule: export the shadcn components directly.
 
@@ -542,7 +605,18 @@ re-implemented over and over (for example a menu-content offset, standard icon-b
 or a destructive-confirm dialog composition), create a thin wrapper in `@boring/ui` instead of
 re-creating local CSS or one-off component forks.
 
-### 1.8 Verify foundation before migration
+For runtime panels, explicitly add:
+
+- `PanelScaffold`
+- `PanelHeader`
+- `PanelSection`
+- `Stack`
+- `Inline`
+- `EmptyState`
+- `LoadingState`
+- `ErrorState`
+
+### 1.9 Verify foundation before migration
 
 Checklist:
 
@@ -723,54 +797,47 @@ Add a CI guardrail:
 
 ---
 
-## Phase 3: Publish `@boring/ui` As A Real SDK
+## Phase 3: Publish `@boring/ui` And `@boring/sdk` As Real Packages
 
-### 3.1 Create the public barrel
+### 3.1 Create real workspace packages
 
-**File**: `src/front/components/ui/index.js`
+Preferred structure:
+
+```text
+packages/
+  ui/
+    src/
+    components.json
+    package.json
+  sdk/
+    src/
+    package.json
+```
+
+Rules:
+
+- `react` and `react-dom` are `peerDependencies`, not bundled dependencies
+- the host app imports `@boring/ui` and `@boring/sdk` the same way child apps do
+- runtime shim modules are generated from the public export manifest so browser shims and package
+  exports cannot silently drift
+- Tailwind explicitly registers package source paths with `@source` where automatic detection is
+  not sufficient
+
+### 3.2 Public package entrypoints
+
+**File**: `packages/ui/src/index.js`
 
 Export:
 
 - primitives
+- panel-oriented layout primitives
 - `cn`
 - any approved thin boring wrappers
 - no host-private components by default
 
-### 3.2 Update the library entrypoint
+`src/front` should consume `@boring/ui`; it should no longer define the public UI package surface.
 
-**File**: `src/front/index.js`
-
-```js
-export * from './components/ui'
-```
-
-### 3.3 Update package exports
-
-Support:
-
-- main SDK import path
-- CSS entrypoint
-- optional subpath exports if needed
-
-Example target direction:
-
-```json
-{
-  "exports": {
-    ".": {
-      "import": "./dist/boring-ui.js",
-      "require": "./dist/boring-ui.cjs"
-    },
-    "./style.css": "./dist/style.css",
-    "./ui": {
-      "import": "./dist/boring-ui.js",
-      "require": "./dist/boring-ui.cjs"
-    }
-  }
-}
-```
-
-### 3.4 Canonicalize import examples
+### 3.3 Package exports and compatibility aliases
 
 Document only these styles for new consumers:
 
@@ -779,6 +846,12 @@ import { Button, Card, Badge } from '@boring/ui'
 ```
 
 If compatibility aliases remain during migration, document them as temporary compatibility only.
+
+### 3.4 Public API stability tiers
+
+- `@boring/ui` root exports are stable once documented
+- `@boring/sdk` root exports are stable once documented
+- `@boring/sdk/experimental` may evolve faster and is never used by runtime panels in v1
 
 ### 3.5 Verify in at least one child app
 
@@ -820,7 +893,7 @@ Document:
 
 1. backend discovers panel directories and manifests
 2. backend validates and compiles each panel to ESM
-3. backend reports `module_url`, `hash`, `status`, and `error`
+3. backend reports content-addressed artifact URLs, hashes, statuses, and diagnostics
 4. frontend imports `module_url`
 5. file-watch invalidation updates manifest state and refreshes affected panels
 
@@ -830,7 +903,6 @@ Document:
 
 ```js
 import * as React from 'react'
-import * as ReactDOM from 'react-dom'
 import * as jsxRuntime from 'react/jsx-runtime'
 import * as boringUI from '../components/ui'
 import {
@@ -841,10 +913,9 @@ import {
 import { buildApiUrl } from '../utils/apiBase'
 import { apiFetch } from '../utils/transport'
 
-window.__BORING_RUNTIME__ = {
+globalThis.__BORING_RUNTIME__ = Object.freeze({
   version: 'v1',
   React,
-  ReactDOM,
   jsxRuntime,
   ui: boringUI,
   sdk: {
@@ -854,7 +925,7 @@ window.__BORING_RUNTIME__ = {
     buildApiUrl,
     apiFetch,
   },
-}
+})
 ```
 
 Import this before workspace panel loading.
@@ -866,12 +937,11 @@ Serve stable modules from predictable URLs.
 Suggested files or generated responses:
 
 - `/__bui/runtime/react.js`
-- `/__bui/runtime/react-dom.js`
 - `/__bui/runtime/jsx-runtime.js`
 - `/__bui/runtime/boring-ui.js`
 - `/__bui/runtime/boring-sdk.js`
 
-Each shim re-exports from `window.__BORING_RUNTIME__`.
+Each shim re-exports from `globalThis.__BORING_RUNTIME__`.
 
 Why this design:
 
@@ -891,13 +961,9 @@ Initial recommended exports:
 - `useGitStatus`
 - `buildApiUrl`
 - `apiFetch`
-
-Possible later additions after real usage proves the need:
-
-- theme helpers
-- toast/notification helpers
-- workspace context helpers
-- selection/navigation helpers
+- `usePanelStorage`
+- `useTheme`
+- `toast`
 
 Do not expose host internals casually. Every addition increases long-term compatibility burden.
 
@@ -917,6 +983,11 @@ Responsibilities:
 
 Recommended implementation details:
 
+- keep Python responsible for discovery and HTTP APIs
+- delegate compilation to a long-lived Node worker that uses esbuild's JavaScript API
+- keep one warm `context()` per active panel or per workspace and use `rebuild()` for incremental builds
+- use esbuild plugins for import-policy validation, local-asset rules, diagnostics normalization,
+  and robust watch dependency tracking
 - use the project-local `esbuild` install, not a global binary
 - bundle as ESM
 - emit source maps
@@ -929,35 +1000,49 @@ Recommended implementation details:
   - manifest
   - relevant SDK/UI version marker
 
-esbuild supports build-time aliasing, loaders, ESM output format, and source maps, which makes it a
-good fit for this controlled bundling layer.
+esbuild supports long-lived JavaScript `context()` objects with incremental `rebuild()`, and its
+plugin API is available from JavaScript and Go rather than the CLI. That makes a small Node worker
+the better long-term fit for policy enforcement and fast rebuilds.
 
-Recommended esbuild direction:
+Recommended Node worker direction:
 
-```python
-subprocess.run([
-    "node_modules/.bin/esbuild",
-    str(entry_file),
-    "--bundle",
-    "--format=esm",
-    "--platform=browser",
-    "--jsx=automatic",
-    "--sourcemap=external",
-    "--loader:.jsx=jsx",
-    "--loader:.tsx=tsx",
-    "--loader:.json=json",
-    "--alias:react=/__bui/runtime/react.js",
-    "--alias:react-dom=/__bui/runtime/react-dom.js",
-    "--alias:react/jsx-runtime=/__bui/runtime/jsx-runtime.js",
-    "--alias:@boring/ui=/__bui/runtime/boring-ui.js",
-    "--alias:@boring/sdk=/__bui/runtime/boring-sdk.js",
-], capture_output=True, text=True)
+```js
+import * as esbuild from 'esbuild'
+
+const ctx = await esbuild.context({
+  entryPoints: [entryFile],
+  bundle: true,
+  format: 'esm',
+  platform: 'browser',
+  jsx: 'automatic',
+  sourcemap: 'external',
+  loader: {
+    '.jsx': 'jsx',
+    '.tsx': 'tsx',
+    '.json': 'json',
+  },
+  alias: {
+    react: '/__bui/runtime/react.js',
+    'react/jsx-runtime': '/__bui/runtime/jsx-runtime.js',
+    '@boring/ui': '/__bui/runtime/boring-ui.js',
+    '@boring/sdk': '/__bui/runtime/boring-sdk.js',
+  },
+  plugins: [
+    runtimeImportPolicyPlugin(),
+    runtimeDiagnosticsPlugin(),
+  ],
+})
+
+const result = await ctx.rebuild()
 ```
 
 Important v1 restriction:
 
 - do **not** enable arbitrary CSS importing for runtime panels yet
 - reject `.css` imports in v1 to avoid global style injection and styling inconsistency
+- reject `node:` and browser-remote URL imports entirely
+- reject dynamic import specifiers that are not string literals
+- allow only local static assets within the panel directory and enforce per-asset size caps
 
 ### 4.5 Manifest state and validation
 
@@ -984,6 +1069,8 @@ Validation behavior:
 - validation error -> panel status `error`
 - unchanged panels reuse cached build output
 - rebuilds are debounced on rapid saves
+- diagnostics are normalized to `{ code, severity, message, file, line, column, hint }`
+- source maps are served only to authenticated/dev users by default
 
 ### 4.6 Update workspace discovery
 
@@ -1006,10 +1093,13 @@ Suggested response shape:
     "name": "Git Insights",
     "placement": "right",
     "icon": "git-branch",
-    "module_url": "/api/panels/ws-git-insights/module.js?v=<hash>",
+    "module_url": "/api/panel-artifacts/ws-git-insights/<hash>/module.js",
+    "source_map_url": "/api/panel-artifacts/ws-git-insights/<hash>/module.js.map",
     "hash": "<hash>",
     "status": "ready",
     "error": None,
+    "last_successful_hash": "<hash>",
+    "last_successful_module_url": "/api/panel-artifacts/ws-git-insights/<hash>/module.js",
     "updated_at": "...",
 }
 ```
@@ -1022,6 +1112,9 @@ Make `workspace_panes` include runtime bundle metadata:
 - `hash`
 - `status`
 - `error`
+- `diagnostics`
+- `last_successful_hash`
+- `last_successful_module_url`
 
 The frontend should not have to reverse-engineer source paths anymore.
 
@@ -1032,9 +1125,17 @@ The frontend should not have to reverse-engineer source paths anymore.
 New behavior:
 
 - if `status === "ready"`, import `module_url`
-- if `status === "building"`, render a building placeholder panel
-- if `status === "error"`, render a visible error panel
+- import ready panels in parallel via `Promise.allSettled`
+- lazy-load panels on first activation when possible instead of eagerly importing every discovered panel
+- if `status === "building"` and `last_successful_module_url` exists, keep rendering the last good
+  panel with a rebuilding badge instead of blanking the tab
+- if `status === "error"` and `last_successful_module_url` exists, keep rendering the last good
+  panel with an error badge and diagnostics drawer
+- if no last successful artifact exists, render visible building/error placeholder panels
 - if dynamic import itself fails, render a visible load error
+
+Do not assume Vite will automatically module-preload these backend-served artifacts. If preload is
+desired, own it explicitly rather than relying on HTML-entry behavior or library-mode defaults.
 
 Example direction:
 
@@ -1149,6 +1250,8 @@ Add tests for:
 - panel error boundary behavior
 - websocket-driven refresh
 - runtime-panel error UI
+- public API contract snapshots for `@boring/ui` and `@boring/sdk`
+- agent-contract artifact generation and drift detection
 
 ### 5.5 End-to-end runtime panel tests
 
@@ -1166,6 +1269,15 @@ Verify:
 - DockView renders the panel
 - editing the file updates the panel
 - bad panels fail visibly and locally
+
+### 5.5A Observability and inspector
+
+Add:
+
+- structured logs keyed by `panel_id`, `hash`, and workspace
+- metrics for discovery, build, load, and render-failure rates
+- a small developer inspector route or drawer showing current panel status, hashes, artifacts,
+  and diagnostics
 
 ### 5.6 Child-app verification
 
@@ -1206,6 +1318,10 @@ Must document:
 - unsupported patterns
 - error-debugging workflow
 - compatibility alias deprecation plan
+- machine-readable agent contract artifacts:
+  - `docs/agent-ui-catalog.json`
+  - `docs/agent-runtime-contract.json`
+  - `docs/panel-diagnostic-codes.json`
 
 ---
 
@@ -1282,18 +1398,25 @@ Mitigation:
 
 ### New Files
 
-- `components.json`
-- `src/front/lib/utils.js`
-- `src/front/components/ui/*.jsx`
-- `src/front/components/ui/index.js`
+- `packages/ui/src/*`
+- `packages/ui/components.json`
+- `packages/ui/package.json`
+- `packages/sdk/src/*`
+- `packages/sdk/package.json`
+- package-level `components.json` files where needed
 - `src/front/styles/runtime-panel-utilities.css`
 - `src/front/workspace/hostBridge.js`
 - runtime placeholder/error components for panel states
 - `src/back/boring_ui/api/panel_bundler.py`
+- Node build worker files for esbuild contexts/plugins
 - runtime shim module files or route handlers
 - `tests/visual/capture-baseline.spec.ts`
 - backend and frontend tests for runtime panels
 - `scripts/check-no-legacy-generic-ui.mjs`
+- `docs/UPSTREAM_SHADCN.md`
+- `docs/agent-ui-catalog.json`
+- `docs/agent-runtime-contract.json`
+- `docs/panel-diagnostic-codes.json`
 
 ### Modified Files
 
@@ -1333,23 +1456,27 @@ Mitigation:
 
 ```text
 1. chore: add deterministic visual baselines and migration inventory
-2. chore: initialize shadcn foundation and token bridge
-3. chore: add runtime utility allowlist stylesheet
-4. chore: add shadcn component primitives
-5. refactor: migrate buttons and badges to @boring/ui
-6. refactor: migrate menus and context menus to @boring/ui
-7. refactor: migrate dialogs to @boring/ui
-8. refactor: migrate inputs, textareas, and selects to @boring/ui
-9. refactor: migrate tooltip, tabs, switch, avatar, alert, card, separator
-10. chore: remove retired generic primitive CSS and add CI guardrail
-11. feat: publish @boring/ui exports and compatibility alias
-12. feat: add runtime host bridge, shim modules, and @boring/sdk
-13. feat: add backend panel compiler, manifest state, and serving routes
-14. feat: switch frontend loader to backend ESM with error states
-15. test: add runtime panel integration fixtures and loader tests
-16. docs: update extension guide and SDK docs
-17. chore: remove old @workspace loader path after soak
-18. chore: delete transition-only tailwind config if no longer needed
+2. chore: move to the approved Tailwind 4.1+/Node 20+ baseline
+3. chore: initialize shadcn foundation and token bridge
+4. chore: add runtime utility allowlist stylesheet
+5. chore: add shadcn component primitives
+6. feat: extract `@boring/ui` workspace package
+7. refactor: migrate buttons and badges to @boring/ui
+8. refactor: migrate menus and context menus to @boring/ui
+9. refactor: migrate dialogs to @boring/ui
+10. refactor: migrate inputs, textareas, and selects to @boring/ui
+11. refactor: migrate tooltip, tabs, switch, avatar, alert, card, separator
+12. chore: remove retired generic primitive CSS and add CI guardrail
+13. feat: publish `@boring/ui` workspace package and compatibility alias
+14. release: soak Track A independently
+15. feat: extract `@boring/sdk` workspace package
+16. feat: add runtime host bridge, shim modules, and machine-readable contracts
+17. feat: add Node-worker panel compiler, manifest state, diagnostics, and serving routes
+18. feat: switch frontend loader to backend ESM with last-known-good behavior
+19. test: add runtime panel integration fixtures, observability, and contract tests
+20. docs: update extension guide and SDK docs
+21. chore: remove old @workspace loader path after Track B soak
+22. chore: delete transition-only tailwind config if no longer needed
 ```
 
 ---
@@ -1375,10 +1502,13 @@ This project is done when all of the following are true:
 ## Final Execution Summary
 
 ```text
+Track A  workspace-package extraction for `@boring/ui` + host primitive migration
+Track B  runtime panel pipeline + `@boring/sdk`
+
 Phase 0  Baseline + inventory + contract lock
-Phase 1  shadcn/@boring/ui foundation + token bridge + runtime utility allowlist
+Phase 1  Tailwind baseline + shadcn foundation + runtime utility allowlist
 Phase 2  host app migration by primitive category + CSS cleanup + CI guardrail
-Phase 3  publish/verify @boring/ui for child apps
+Phase 3  publish/verify real workspace packages for child apps
 Phase 4  backend-bundled runtime panel pipeline + stable shim modules + visible statuses/errors
 Phase 5  test, soak, document, and remove old paths
 ```

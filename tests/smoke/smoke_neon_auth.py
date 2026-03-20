@@ -27,8 +27,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from smoke_lib.auth import (
+    neon_signup_verify_flow,
     random_password,
-    neon_signup_then_signin,
     neon_signin_flow,
 )
 from smoke_lib.client import SmokeClient
@@ -82,15 +82,10 @@ def _phase(name: str) -> None:
 # ---------------------------------------------------------------------------
 
 def test_signup_and_verify(client: SmokeClient, neon_url: str, email: str, password: str, timeout: int) -> dict:
-    """Phase 1: Signup + email delivery check + signin.
-
-    Tries link-based verification first (neon_signup_verify_flow).
-    Falls back to OTP-aware flow (neon_signup_then_signin) if the
-    verification email doesn't contain a clickable link.
-    """
+    """Phase 1: Signup + click the exact delivered verification link."""
     _phase("1. Signup + Verification")
     print(f"  Email: {email}")
-    session = neon_signup_then_signin(
+    session = neon_signup_verify_flow(
         client,
         neon_auth_url=neon_url,
         resend_api_key=resend_api_key(),

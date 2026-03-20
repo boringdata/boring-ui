@@ -131,6 +131,50 @@ def extract_confirmation_url(payload: dict[str, Any]) -> str:
     raise RuntimeError("No URL found in Resend payload")
 
 
+def confirmation_callback_url(url: str) -> str:
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    raw = (
+        (params.get("callbackURL") or [""])[0].strip()
+        or (params.get("callbackUrl") or [""])[0].strip()
+    )
+    if not raw:
+        raise RuntimeError("Confirmation URL missing callbackURL")
+    value = html.unescape(raw)
+    for _ in range(3):
+        decoded = unquote(value)
+        if decoded == value:
+            break
+        value = decoded
+    return value
+
+
+def assert_confirmation_callback_url(
+    url: str,
+    *,
+    expected_app_base_url: str,
+    expected_redirect_uri: str,
+    require_pending_login: bool = False,
+) -> str:
+    callback_url = confirmation_callback_url(url)
+    actual = urlparse(callback_url)
+    expected = urlparse(f"{expected_app_base_url.rstrip('/')}/auth/callback")
+    actual_origin_path = f"{actual.scheme}://{actual.netloc}{actual.path}"
+    expected_origin_path = f"{expected.scheme}://{expected.netloc}{expected.path}"
+    if actual_origin_path != expected_origin_path:
+        raise RuntimeError(
+            f"Unexpected verification callback target: expected {expected_origin_path}, got {actual_origin_path}"
+        )
+    params = parse_qs(actual.query)
+    if params.get("redirect_uri") != [expected_redirect_uri]:
+        raise RuntimeError(
+            f"Unexpected verification redirect_uri: expected {expected_redirect_uri!r}, got {params.get('redirect_uri')!r}"
+        )
+    if require_pending_login and not ((params.get("pending_login") or [""])[0].strip()):
+        raise RuntimeError("Verification callback URL missing pending_login")
+    return callback_url
+
+
 def callback_path_from_confirmation_url(url: str) -> str:
     parsed = urlparse(url)
     params = parse_qs(parsed.query)

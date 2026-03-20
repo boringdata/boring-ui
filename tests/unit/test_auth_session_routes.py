@@ -55,6 +55,7 @@ class _FakeAsyncClient:
     last_post: tuple[str, dict] | None = None
     last_get: str | None = None
     posts: list[tuple[str, dict]] = []
+    post_headers: list[dict] = []
 
     def __init__(self, *args, **kwargs):
         pass
@@ -67,6 +68,7 @@ class _FakeAsyncClient:
 
     async def post(self, url, *, headers=None, json=None):
         type(self).posts.append((url, json or {}))
+        type(self).post_headers.append(headers or {})
         if type(self).last_post is None:
             type(self).last_post = (url, json or {})
         return type(self).post_response
@@ -278,6 +280,47 @@ def test_neon_sign_up_requires_email_verification_instead_of_auto_login(
     assert "callbackURL" not in sent_payload
     assert _FakeAsyncClient.posts[1][0] == "https://example.neonauth.test/neondb/auth/send-verification-email"
     parsed = urlparse(_FakeAsyncClient.posts[1][1]["callbackURL"])
+    assert parsed.path == "/auth/callback"
+    params = parse_qs(parsed.query)
+    assert params["redirect_uri"] == ["/"]
+    assert params["pending_login"]
+
+
+def test_neon_sign_up_auto_verification_uses_public_origin_for_relative_callback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=False,
+        auth_dev_auto_login=False,
+        control_plane_provider="neon",
+        database_url="postgresql://example.invalid/neondb",
+        neon_auth_base_url="https://example.neonauth.test/neondb/auth",
+        neon_auth_jwks_url="https://example.neonauth.test/neondb/auth/.well-known/jwks.json",
+        cors_origins=["https://boring-ui-frontend-agent.fly.dev", "http://127.0.0.1:5176"],
+    )
+    app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
+    client = TestClient(app)
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
+    _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
+    _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.last_get = None
+    _FakeAsyncClient.posts = []
+    _FakeAsyncClient.post_headers = []
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = client.post(
+        "/auth/sign-up",
+        headers={"Origin": "https://boring-ui-frontend-agent.fly.dev"},
+        json={"email": "new@example.com", "password": "password123", "redirect_uri": "/"},
+    )
+
+    assert response.status_code == 200
+    assert len(_FakeAsyncClient.post_headers) == 2
+    assert _FakeAsyncClient.post_headers[1]["Origin"] == "https://boring-ui-frontend-agent.fly.dev"
+    callback_path = _FakeAsyncClient.posts[1][1]["callbackURL"]
+    parsed = urlparse(callback_path)
     assert parsed.path == "/auth/callback"
     params = parse_qs(parsed.query)
     assert params["redirect_uri"] == ["/"]

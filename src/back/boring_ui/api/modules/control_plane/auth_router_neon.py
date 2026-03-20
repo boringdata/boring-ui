@@ -381,6 +381,7 @@ async def _neon_password_auth(
     parsed_neon = urlparse(neon_base)
     neon_origin = f"{parsed_neon.scheme}://{parsed_neon.netloc}"
     upstream_payload = dict(payload)
+    public_origin = _public_origin(request, config=config)
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             auth_response = await client.post(
@@ -441,16 +442,19 @@ async def _neon_password_auth(
         # Auto-send verification email — Better Auth doesn't send on signup.
         signup_email = payload.get("email", "")
         if signup_email and neon_base:
-            # Neon Auth requires a relative callbackURL + Origin header.
-            callback_path = _build_callback_path(
+            # Send absolute callbackURL so Neon Auth's verification email
+            # links back to our app, not to Neon Auth's own host.
+            callback_url = _build_callback_url(
+                request,
+                config=config,
                 redirect_uri=redirect_uri,
                 pending_login=verification_pending_login,
             )
             await _auto_send_verification_email(
                 neon_base=neon_base,
                 email=signup_email,
-                origin=neon_origin,
-                callback_url=callback_path,
+                origin=public_origin,
+                callback_url=callback_url,
             )
 
         return JSONResponse(
