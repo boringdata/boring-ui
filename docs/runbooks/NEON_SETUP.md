@@ -81,6 +81,28 @@ RESEND_API_KEY=<resend-api-key>
 
 **Important**: Use the `-pooler` hostname in `DATABASE_URL` for production (connection pooling). Free tier has 100 connection limit.
 
+### Neon Auth Trusted Origins
+
+Neon Auth keeps its own `trusted_origins` list. This is separate from
+boring-ui's `CORS_ORIGINS`.
+
+Keep `trusted_origins` aligned with every real browser origin that can host the
+app or appear in auth emails:
+
+- `https://boring-ui-frontend-agent.fly.dev`
+- any current Modal deploy URL
+- any custom production domain
+
+If `trusted_origins` is stale, auth can partially work while email-based flows
+still break:
+
+- `POST /auth/sign-up` or `/auth/resend-verification` can fail with `INVALID_ORIGIN`
+- the delivered verification email can fail with `INVALID_CALLBACKURL`
+- password-reset and OAuth callback flows can fail for the same reason
+
+When migrating deploy platforms, add the new origin before cutover and remove
+stale origins only after the new auth flows are verified.
+
 ### App-Specific Vault Paths
 
 `bui neon setup` stores all secrets in a consolidated app-specific vault key:
@@ -152,7 +174,8 @@ JWT audience: Neon Auth origin URL (e.g., `https://ep-<id>.neonauth.<region>.aws
 
 - Neon Auth (Better Auth) does **not** auto-send verification emails on signup.
 - `bui neon setup` configures Resend SMTP by default (`--email-provider resend`), so emails are sent through Resend using the `auth@mail.boringdata.io` sender address.
-- boring-ui's backend auto-sends a verification email after successful signup by calling Neon Auth's `/send-verification-email` endpoint (added in commit `9df6aa2`). The Origin header must match Neon Auth's own origin, not the app's origin.
+- boring-ui's backend auto-sends a verification email after successful signup by calling Neon Auth's `/send-verification-email` endpoint (added in commit `9df6aa2`).
+- The Neon Auth project `trusted_origins` must include the actual deploy origin used by the browser and callback URLs. If this list still points at an old Modal or local URL, direct verification-link clicks can fail with `INVALID_CALLBACKURL` even though signup itself appears healthy.
 - Depending on the Neon Auth project configuration, the verification email may contain a clickable link or a 6-digit OTP code. Users can sign in regardless of verification status.
 - In boring-ui, Neon signup flow:
   - `POST /auth/sign-up` creates the account via Neon Auth, auto-sends verification email, and returns `requires_email_verification: true`
@@ -330,6 +353,11 @@ For new projects (boring-macro, boring-sandbox, etc.) that need their own Neon d
 
 **Auth returns 400 "MISSING_ORIGIN"**
 - All auth POST requests need `Origin` header matching a trusted domain
+
+**Direct verification email link returns `INVALID_CALLBACKURL`**
+- Check Neon Auth `trusted_origins`
+- Add the current Fly/Modal/custom app origin, not just an old deploy URL
+- Re-run `tests/smoke/smoke_neon_auth.py` and confirm phase 1 clicks the exact delivered verification link successfully
 
 **Session cookie not set (cross-domain)**
 - Neon Auth sets `__Secure-neon-auth.session_token` with `SameSite=None; Partitioned`

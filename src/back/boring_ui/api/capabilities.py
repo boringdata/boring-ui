@@ -298,7 +298,7 @@ def create_capabilities_router(
                 str(request.path_params.get('workspace_id', '')).strip()
                 or str(request.headers.get('x-workspace-id', '')).strip()
             )
-            service_url = f"/w/{workspace_id}" if workspace_id else ""
+            service_url = f"/w/{workspace_id}" if workspace_id else "/"
             services['pi'] = {
                 'url': service_url,
                 'mode': 'backend',

@@ -131,7 +131,13 @@ def extract_confirmation_url(payload: dict[str, Any]) -> str:
     raise RuntimeError("No URL found in Resend payload")
 
 
-def confirmation_callback_url(url: str) -> str:
+def confirmation_callback_url(url: str) -> str | None:
+    """Extract callbackURL from a verification link's query params.
+
+    Returns None when the verification link does not embed a callbackURL
+    (e.g. Neon Auth ``/verify-email?token=<jwt>`` where the callback is
+    stored server-side).
+    """
     parsed = urlparse(url)
     params = parse_qs(parsed.query)
     raw = (
@@ -139,7 +145,7 @@ def confirmation_callback_url(url: str) -> str:
         or (params.get("callbackUrl") or [""])[0].strip()
     )
     if not raw:
-        raise RuntimeError("Confirmation URL missing callbackURL")
+        return None
     value = html.unescape(raw)
     for _ in range(3):
         decoded = unquote(value)
@@ -155,8 +161,13 @@ def assert_confirmation_callback_url(
     expected_app_base_url: str,
     expected_redirect_uri: str,
     require_pending_login: bool = False,
-) -> str:
+) -> str | None:
     callback_url = confirmation_callback_url(url)
+    if callback_url is None:
+        # Neon Auth verify-email links don't embed callbackURL in the URL —
+        # the callback is stored server-side. Skip assertion; the actual
+        # redirect is validated when the link is followed.
+        return None
     actual = urlparse(callback_url)
     expected = urlparse(f"{expected_app_base_url.rstrip('/')}/auth/callback")
     actual_origin_path = f"{actual.scheme}://{actual.netloc}{actual.path}"

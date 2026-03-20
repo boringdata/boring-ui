@@ -90,7 +90,7 @@ Systematic 19-phase auth test covering positive flows, negative validation, and 
 
 | Phase | Test | What it proves |
 |-------|------|----------------|
-| 1 | Signup + Email | Account creation, verification email delivery |
+| 1 | Signup + Direct Verify Link | Account creation, verification email delivery, and successful click of the exact delivered verification URL |
 | 2 | Signin | Password auth → JWT → token exchange → session cookie |
 | 3 | Session Check | Cookie validity, user data in session |
 | 4 | Identity | `/api/v1/me` resolves correct user |
@@ -112,6 +112,10 @@ Systematic 19-phase auth test covering positive flows, negative validation, and 
 
 Supports both link-based and OTP-based Neon Auth configurations.
 With `--skip-signup`, skips phase 1 and runs phases 2-19 against an existing account.
+
+Important:
+- phase 1 is intentionally strict
+- if the email arrives but the raw verification link fails with `INVALID_CALLBACKURL` or similar, the smoke must fail
 
 ```bash
 # Full suite with signup (requires Resend API key in Vault)

@@ -231,6 +231,10 @@ Commands:
   "MISSING_ORIGIN":
     Auth POST requests need Origin header matching a trusted domain.
 
+  "INVALID_CALLBACKURL" from email verification:
+    Neon Auth trusted_origins must include the current Fly/Modal/custom app URL,
+    not just an old deploy origin.
+
   Token exchange returns 401:
     The sign-in 'token' is opaque — fetch /token to get the JWT.
 `,

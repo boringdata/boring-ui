@@ -209,7 +209,10 @@ def neon_signup_verify_flow(
         require_pending_login=True,
     )
     print(f"[smoke] Verification email received: {email_summary.get('subject', '?')}")
-    print(f"[smoke] Verification callback target OK: {callback_url}")
+    if callback_url:
+        print(f"[smoke] Verification callback target OK: {callback_url}")
+    else:
+        print(f"[smoke] Neon Auth verify-email link (callback stored server-side)")
 
     client.set_phase("neon-verify-email")
     # Exercise the exact link delivered in the email. If that raw URL is not
