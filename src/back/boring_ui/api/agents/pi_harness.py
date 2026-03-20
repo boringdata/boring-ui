@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator, Callable
 
 import httpx
 import jwt as pyjwt
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
@@ -23,6 +23,8 @@ from .harness import AgentHarness, HarnessHealth, SessionInfo, SessionRequest
 
 logger = logging.getLogger(__name__)
 _LOCAL_WORKSPACE_HEADER = "x-boring-local-workspace"
+_PI_READY_TIMEOUT_SECONDS = 10.0
+_PI_READY_POLL_INTERVAL_SECONDS = 0.1
 
 
 def _create_workspace_token(workspace_id: str, *, secret: str, ttl_seconds: int = 300) -> str:
@@ -89,6 +91,33 @@ class PiHarness(AgentHarness):
             if not self._started:
                 await self.start()
 
+    async def ensure_ready(
+        self,
+        *,
+        timeout: float = _PI_READY_TIMEOUT_SECONDS,
+        poll_interval: float = _PI_READY_POLL_INTERVAL_SECONDS,
+    ) -> None:
+        """Block until the sidecar is healthy, or fail fast with context."""
+        await self.ensure_started()
+        deadline = time.monotonic() + timeout
+        last_detail = "pi sidecar not ready"
+
+        while True:
+            health = await self.healthy()
+            if health.ok:
+                self._restart_backoff = 1.0
+                return
+
+            last_detail = health.detail or last_detail
+            process = self._process
+            if process is None or process.returncode is not None:
+                await self._restart(last_detail)
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise HTTPException(status_code=503, detail=last_detail)
+            await self._sleep(min(poll_interval, remaining))
+
     async def stop(self) -> None:
         self._stopping = True
         self._started = False
@@ -150,6 +179,7 @@ class PiHarness(AgentHarness):
         )
 
     async def stream(self, ctx: WorkspaceContext, session_id: str) -> AsyncIterator[Any]:
+        await self.ensure_ready()
         request = httpx.Request(
             "POST",
             self._service_url(f"/api/v1/agent/pi/sessions/{session_id}/stream"),
@@ -172,6 +202,7 @@ class PiHarness(AgentHarness):
         session_id: str,
         message: str,
     ) -> None:
+        await self.ensure_ready()
         async with self._client_factory() as client:
             await client.post(
                 self._service_url(f"/api/v1/agent/pi/sessions/{session_id}/stream"),
@@ -180,6 +211,7 @@ class PiHarness(AgentHarness):
             )
 
     async def terminate_session(self, ctx: WorkspaceContext, session_id: str) -> None:
+        await self.ensure_ready()
         async with self._client_factory() as client:
             await client.post(
                 self._service_url(f"/api/v1/agent/pi/sessions/{session_id}/stop"),
@@ -195,6 +227,7 @@ class PiHarness(AgentHarness):
         ctx: WorkspaceContext,
         json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        await self.ensure_ready()
         async with self._client_factory() as client:
             response = await client.request(
                 method,
@@ -350,7 +383,7 @@ class PiHarness(AgentHarness):
             *,
             ctx: WorkspaceContext,
         ) -> Response:
-            await self.ensure_started()
+            await self.ensure_ready()
             request_id = ensure_request_id(request)
             body = await request.body()
             headers = self._proxy_headers(ctx, request_id)
@@ -382,7 +415,7 @@ class PiHarness(AgentHarness):
             *,
             ctx: WorkspaceContext,
         ) -> StreamingResponse:
-            await self.ensure_started()
+            await self.ensure_ready()
             request_id = ensure_request_id(request)
             body = await request.body()
             headers = self._proxy_headers(ctx, request_id)

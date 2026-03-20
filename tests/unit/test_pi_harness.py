@@ -94,7 +94,7 @@ def test_pi_harness_proxy_routes_forward_workspace_context(tmp_path: Path) -> No
         config,
         client_factory=lambda: httpx.AsyncClient(transport=transport),
     )
-    harness.ensure_started = lambda: asyncio.sleep(0)
+    harness.ensure_ready = lambda **kwargs: asyncio.sleep(0)
 
     app = FastAPI()
     for router in harness.routes():
@@ -135,7 +135,7 @@ def test_pi_harness_local_workspace_forward_keeps_base_root(tmp_path: Path) -> N
         config,
         client_factory=lambda: httpx.AsyncClient(transport=transport),
     )
-    harness.ensure_started = lambda: asyncio.sleep(0)
+    harness.ensure_ready = lambda **kwargs: asyncio.sleep(0)
 
     app = FastAPI()
     for router in harness.routes():
@@ -182,7 +182,7 @@ def test_pi_harness_stream_route_proxies_sse_payload(tmp_path: Path) -> None:
         config,
         client_factory=lambda: httpx.AsyncClient(transport=transport),
     )
-    harness.ensure_started = lambda: asyncio.sleep(0)
+    harness.ensure_ready = lambda **kwargs: asyncio.sleep(0)
 
     app = FastAPI()
     for router in harness.routes():
@@ -260,3 +260,38 @@ async def test_pi_harness_monitor_once_restarts_exited_process(tmp_path: Path) -
     await harness._monitor_once()
 
     assert events == [1.0, "spawn"]
+
+
+@pytest.mark.asyncio
+async def test_pi_harness_ensure_ready_waits_for_health(tmp_path: Path) -> None:
+    config = APIConfig(
+        workspace_root=tmp_path,
+        agents_mode="backend",
+        agents={"pi": AgentRuntimeConfig(enabled=True)},
+    )
+    harness = PiHarness(config)
+
+    calls = {"count": 0}
+    sleeps: list[float] = []
+
+    async def fake_ensure_started() -> None:
+        return None
+
+    async def fake_healthy() -> HarnessHealth:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return HarnessHealth(ok=False, detail="All connection attempts failed")
+        return HarnessHealth(ok=True)
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    harness.ensure_started = fake_ensure_started
+    harness.healthy = fake_healthy
+    harness._sleep = fake_sleep
+    harness._process = FakeProcess()
+
+    await harness.ensure_ready(timeout=1.0, poll_interval=0.01)
+
+    assert calls["count"] == 2
+    assert sleeps == [0.01]
