@@ -113,16 +113,26 @@ def _is_allowed_workspace_passthrough_target(path: str, config: APIConfig | None
 
 
 async def _try_fly_replay(workspace_id: str) -> Response | None:
-    """Return a fly-replay Response if the workspace has a Fly Machine, else None."""
+    """Return a fly-replay Response if the workspace has a Fly Machine, else None.
+
+    Skips the redirect when the current process is already running on the
+    target Machine (avoids an infinite fly-replay loop).  Fly sets
+    ``FLY_MACHINE_ID`` in every Machine's environment.
+    """
     try:
         pool = db_client.get_pool()
         ws_row = await pool.fetchrow(
             "SELECT machine_id FROM workspaces WHERE id = $1", uuid.UUID(workspace_id)
         )
         if ws_row and ws_row.get("machine_id"):
+            target = ws_row["machine_id"]
+            current = os.environ.get("FLY_MACHINE_ID", "")
+            if current and current == target:
+                # Already on the workspace Machine — handle locally.
+                return None
             return Response(
                 status_code=200,
-                headers={"fly-replay": f"instance={ws_row['machine_id']}"},
+                headers={"fly-replay": f"instance={target}"},
             )
     except Exception as exc:
         logger.warning("fly-replay lookup failed for workspace %s: %s", workspace_id, exc)
