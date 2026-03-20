@@ -77,7 +77,7 @@ class FlyProvisioner:
         vol_resp = await self._client.post(
             f"/apps/{app}/volumes",
             json={
-                "name": f"ws-{workspace_id[:8]}",
+                "name": f"ws_{workspace_id[:8].replace('-', '_')}",
                 "region": region,
                 "size_gb": size_gb,
                 "encrypted": True,
@@ -92,7 +92,7 @@ class FlyProvisioner:
             machine_resp = await self._client.post(
                 f"/apps/{app}/machines",
                 json={
-                    "name": f"ws-{workspace_id[:8]}",
+                    "name": f"ws_{workspace_id[:8].replace('-', '_')}",
                     "region": region,
                     "config": {
                         "image": self.image,
