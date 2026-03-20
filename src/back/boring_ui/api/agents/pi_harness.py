@@ -218,7 +218,7 @@ class PiHarness(AgentHarness):
 
         process = self._process
         if process is None or process.returncode is not None:
-            await self._restart("pi sidecar exited")
+            await self._restart(f"pi sidecar exited (code={getattr(process, 'returncode', '?')})")
             return
 
         health = await self.healthy()
@@ -235,6 +235,17 @@ class PiHarness(AgentHarness):
         self._restart_backoff = min(delay * 2, self.max_restart_backoff)
         await self._spawn_process()
 
+    async def _drain_stderr(self) -> None:
+        """Read stderr from sidecar process to prevent buffer deadlock."""
+        process = self._process
+        if process is None or process.stderr is None:
+            return
+        try:
+            async for line in process.stderr:
+                logger.warning("pi sidecar: %s", line.decode(errors="replace").rstrip())
+        except Exception:
+            pass
+
     async def _spawn_process(self) -> None:
         if self._process is not None and self._process.returncode is None:
             return
@@ -244,25 +255,30 @@ class PiHarness(AgentHarness):
             cwd=str(self._repo_root()),
             env=self._process_env(),
             stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
             start_new_session=(os.name != "nt"),
         )
         self._restart_backoff = 1.0
+        # Drain stderr in background to prevent pipe buffer deadlock
+        asyncio.create_task(self._drain_stderr(), name="pi-stderr-drain")
 
     async def _terminate_process(self) -> None:
         process = self._process
-        self._process = None
         if process is None:
             return
+        self._process = None
         if process.returncode is not None:
             return
 
-        process.terminate()
         try:
+            process.terminate()
             await asyncio.wait_for(process.wait(), timeout=5)
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
+        except (ProcessLookupError, asyncio.TimeoutError):
+            try:
+                process.kill()
+                await process.wait()
+            except ProcessLookupError:
+                pass
 
     async def _sleep(self, delay: float) -> None:
         await asyncio.sleep(delay)
@@ -281,7 +297,9 @@ class PiHarness(AgentHarness):
         env = os.environ.copy()
         env.setdefault("PI_SERVICE_HOST", self.host)
         env["PI_SERVICE_PORT"] = str(self.port)
-        env.setdefault("BORING_BACKEND_URL", "http://127.0.0.1:8000")
+        # Use PORT env var if set (uvicorn convention), otherwise fall back to 8000
+        backend_port = os.environ.get("PORT", "8000")
+        env.setdefault("BORING_BACKEND_URL", f"http://127.0.0.1:{backend_port}")
 
         agent_config = self.config.agents.get("pi")
         if agent_config is not None:

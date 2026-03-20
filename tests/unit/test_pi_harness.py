@@ -20,6 +20,7 @@ class FakeProcess:
         self.pid = 321
         self.terminated = False
         self.killed = False
+        self.stderr = None
 
     def terminate(self) -> None:
         self.terminated = True
