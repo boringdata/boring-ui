@@ -24,8 +24,29 @@ _BWRAP_BIN: str | None = shutil.which('bwrap')
 _bootstrapped: set[str] = set()
 
 
+def _run_in_sandbox(workspace_root: Path, shell_cmd: str) -> bool:
+    """Run a command inside bwrap (or plain shell if bwrap unavailable).
+
+    Returns True on success, False on failure.
+    """
+    import subprocess
+    if _BWRAP_BIN:
+        argv = _build_sandbox_argv(shell_cmd, workspace_root, workspace_root)
+        result = subprocess.run(argv, capture_output=True, timeout=30)
+    else:
+        result = subprocess.run(
+            ['sh', '-c', shell_cmd],
+            cwd=str(workspace_root), capture_output=True, timeout=30,
+        )
+    return result.returncode == 0
+
+
 def _ensure_workspace_bootstrapped(workspace_root: Path) -> None:
     """One-time workspace bootstrap: git init + virtualenv.
+
+    Both git and venv are created inside the bwrap sandbox so that paths
+    in .git/config and .venv/pyvenv.cfg use /workspace/ (the sandbox
+    mount point) rather than the host /app/<id>/ path.
 
     Idempotent — skips if already done (this process) or markers exist on disk.
     """
@@ -33,39 +54,27 @@ def _ensure_workspace_bootstrapped(workspace_root: Path) -> None:
     if root_str in _bootstrapped:
         return
 
-    # Git init
+    # Git init (inside sandbox so .git paths use /workspace)
     git_dir = workspace_root / '.git'
     if not git_dir.exists():
-        import subprocess
-        try:
-            subprocess.run(
-                ['git', 'init'],
-                cwd=root_str, check=True, capture_output=True,
-            )
-            subprocess.run(
-                ['git', 'config', 'user.email', 'workspace@boring.dev'],
-                cwd=root_str, check=True, capture_output=True,
-            )
-            subprocess.run(
-                ['git', 'config', 'user.name', 'Workspace'],
-                cwd=root_str, check=True, capture_output=True,
-            )
+        ok = _run_in_sandbox(workspace_root, (
+            'git init'
+            ' && git config user.email workspace@boring.dev'
+            ' && git config user.name Workspace'
+        ))
+        if ok:
             logger.info('Bootstrapped git repo at %s', workspace_root)
-        except Exception:
-            logger.warning('Failed to bootstrap git at %s', workspace_root, exc_info=True)
+        else:
+            logger.warning('Failed to bootstrap git at %s', workspace_root)
 
-    # Python virtualenv
+    # Python virtualenv (inside sandbox so pyvenv.cfg uses /workspace/.venv)
     venv_dir = workspace_root / '.venv'
     if not venv_dir.exists():
-        import subprocess
-        try:
-            subprocess.run(
-                ['python3', '-m', 'venv', str(venv_dir)],
-                cwd=root_str, check=True, capture_output=True,
-            )
+        ok = _run_in_sandbox(workspace_root, 'python3 -m venv /workspace/.venv')
+        if ok:
             logger.info('Bootstrapped venv at %s', venv_dir)
-        except Exception:
-            logger.warning('Failed to create venv at %s', venv_dir, exc_info=True)
+        else:
+            logger.warning('Failed to create venv at %s', venv_dir)
 
     _bootstrapped.add(root_str)
 
