@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -16,6 +17,8 @@ from ...policy import enforce_delegated_policy_or_none
 from .common import error_response, load_session
 from .membership import NotAMember, WorkspaceNotFound, require_membership
 from . import db_client
+
+logger = logging.getLogger(__name__)
 
 _RESERVED_SUBPATHS = {"setup", "runtime", "settings"}
 _WORKSPACE_PASSTHROUGH_ROOTS = (
@@ -122,8 +125,8 @@ async def _try_fly_replay(workspace_id: str) -> Response | None:
                 status_code=200,
                 headers={"fly-replay": f"instance={ws_row['machine_id']}"},
             )
-    except Exception:
-        pass  # Fall through to internal forward
+    except Exception as exc:
+        logger.warning("fly-replay lookup failed for workspace %s: %s", workspace_id, exc)
     return None
 
 

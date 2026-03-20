@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 def _create_workspace_token(workspace_id: str, *, secret: str, ttl_seconds: int = 300) -> str:
     now = int(time.time())
-    payload = {"workspace_id": str(workspace_id).strip(), "scope": "workspace.sandbox.exec", "iat": now, "exp": now + ttl_seconds}
+    payload = {"workspace_id": str(workspace_id).strip(), "scope": "workspace.exec", "iat": now, "exp": now + ttl_seconds}
     return pyjwt.encode(payload, secret, algorithm="HS256")
 
 
@@ -60,6 +60,7 @@ class PiHarness(AgentHarness):
         self._stopping = False
         self._restart_backoff = 1.0
         self._started = False
+        self._start_lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -81,8 +82,11 @@ class PiHarness(AgentHarness):
 
     async def ensure_started(self) -> None:
         """Start the sidecar on first use if not already running."""
-        if not self._started:
-            await self.start()
+        if self._started:
+            return
+        async with self._start_lock:
+            if not self._started:
+                await self.start()
 
     async def stop(self) -> None:
         self._stopping = True

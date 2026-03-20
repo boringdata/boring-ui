@@ -28,7 +28,7 @@ PANEL_REQUIREMENTS: dict[str, dict] = {
     "editor": {"features": ["files"], "essential": False},
     "terminal": {"routers": ["chat_claude_code"], "essential": False},
     "shell": {"routers": ["pty"], "essential": True},
-    "companion": {"any_features": ["companion", "pi"], "essential": False},
+    "agent": {"any_features": ["pi"], "essential": False},
     "review": {"routers": ["approval"], "essential": False},
     "data-catalog": {"features": [], "essential": False},
     "empty": {"features": [], "essential": False},

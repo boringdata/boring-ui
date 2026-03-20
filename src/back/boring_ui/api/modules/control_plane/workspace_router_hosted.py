@@ -20,6 +20,8 @@ from .user_settings_state import read_user_github_link, user_state_service
 
 logger = logging.getLogger(__name__)
 
+_background_tasks: set = set()
+
 
 async def _provision_workspace(provisioner, pool, workspace_id: str, config: APIConfig):
     """Background task: create Fly Machine + Volume, then update DB state."""
@@ -241,7 +243,9 @@ def create_workspace_router_hosted(config: APIConfig) -> APIRouter:
         # Provision Fly Machine in background if provisioner is configured
         provisioner = getattr(request.app.state, 'provisioner', None)
         if provisioner:
-            asyncio.create_task(_provision_workspace(provisioner, pool, workspace_id, config))
+            task = asyncio.create_task(_provision_workspace(provisioner, pool, workspace_id, config))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         github_link = read_user_github_link(user_service, str(session.user_id))
         default_installation_id = github_link.get("default_installation_id")

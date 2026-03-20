@@ -285,7 +285,7 @@ class APIConfig:
         if claude_override and "claude" in self.pty_providers:
             self.pty_providers["claude"] = claude_override
         if not self.auth_session_secret:
-            # Backward compatibility with sandbox naming.
+            # Fallback: also check the legacy env var name.
             self.auth_session_secret = _env_str('BORING_SESSION_SECRET', '')
         if not self.auth_session_secret:
             # Generate an ephemeral secret when one is not configured explicitly.

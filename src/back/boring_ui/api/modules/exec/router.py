@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 
@@ -35,8 +36,21 @@ def create_exec_router(config) -> APIRouter:
 
     @router.post("/exec", response_model=ExecResponse)
     async def exec_command(body: ExecRequest, request: Request):
-        workspace_root = getattr(config, "workspace_root", ".")
-        cwd = str(workspace_root / body.cwd) if hasattr(workspace_root, "__truediv__") else body.cwd
+        workspace_root = Path(getattr(config, "workspace_root", ".")).resolve()
+        resolved_cwd = (workspace_root / body.cwd).resolve()
+
+        # Path traversal protection: cwd must stay within workspace root.
+        if not resolved_cwd.is_relative_to(workspace_root):
+            raise HTTPException(
+                status_code=400,
+                detail="cwd must be within the workspace root",
+            )
+
+        cwd = str(resolved_cwd)
+
+        # NOTE: create_subprocess_shell is intentional. The agent needs to run
+        # arbitrary shell commands on its own VM. The Fly VM (Firecracker)
+        # boundary is the security isolation layer, not the exec endpoint.
 
         start = time.monotonic()
         try:

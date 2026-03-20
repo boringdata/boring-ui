@@ -283,25 +283,27 @@ def _issue_session_response(
     return response
 
 
+_background_tasks: set = set()
+
+
 async def _eager_workspace_provision(
     request: Request,
     *,
     config: APIConfig,
-    access_token: str,
+    user_id: str,
 ) -> None:
     """Best-effort create a default workspace for new users at login time.
 
     Called after a successful token-exchange so the Fly Machine is already
     being provisioned by the time the user lands on the dashboard.  Failures
     are logged but never surface to the caller -- auth must always succeed.
+
+    ``user_id`` is passed directly by the caller (already validated from the
+    JWT) to avoid redundant token re-validation.
     """
     import asyncio
 
     try:
-        verified = _validate_neon_jwt(access_token, config=config)
-        if verified is None:
-            return
-        user_id = str(verified["user_id"]).strip()
         if not user_id:
             return
 
@@ -320,9 +322,11 @@ async def _eager_workspace_provision(
             provisioner = getattr(request.app.state, "provisioner", None)
             if provisioner:
                 from .workspace_router_hosted import _provision_workspace
-                asyncio.create_task(
+                task = asyncio.create_task(
                     _provision_workspace(provisioner, pool, workspace_id, config)
                 )
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
                 _logger.info(
                     "Eager workspace provisioning started for user %s: workspace=%s",
                     user_id,
@@ -2133,9 +2137,14 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
 
         # Eager workspace provisioning: create a default workspace for new
         # users so the Fly Machine is already being provisioned by the time
-        # they land on the dashboard.
+        # they land on the dashboard.  Extract user_id from the already-
+        # validated JWT to avoid redundant re-validation.
         if response.status_code == 200:
-            await _eager_workspace_provision(request, config=config, access_token=access_token)
+            verified = _validate_neon_jwt(access_token, config=config)
+            if verified:
+                user_id = str(verified.get("user_id", "")).strip()
+                if user_id:
+                    await _eager_workspace_provision(request, config=config, user_id=user_id)
 
         return response
 
