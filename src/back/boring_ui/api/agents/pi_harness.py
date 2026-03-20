@@ -335,12 +335,28 @@ class PiHarness(AgentHarness):
         async def _workspace_context(request: Request) -> WorkspaceContext:
             return await resolve_workspace_context(request, config=self.config)
 
+        async def _try_fly_replay_for_workspace(ctx: WorkspaceContext) -> Response | None:
+            """If this workspace has a dedicated Fly Machine, redirect there."""
+            if not ctx.workspace_id:
+                return None
+            try:
+                from ..modules.control_plane.workspace_boundary_router_hosted import _try_fly_replay
+                result = await _try_fly_replay(ctx.workspace_id)
+                return result.response  # None if already on target Machine
+            except Exception:
+                return None
+
         async def _proxy_response(
             request: Request,
             upstream_path: str,
             *,
             ctx: WorkspaceContext,
         ) -> Response:
+            # Route to workspace Machine if one exists
+            replay = await _try_fly_replay_for_workspace(ctx)
+            if replay is not None:
+                return replay
+
             await self.ensure_started()
             request_id = ensure_request_id(request)
             body = await request.body()
@@ -373,6 +389,11 @@ class PiHarness(AgentHarness):
             *,
             ctx: WorkspaceContext,
         ) -> StreamingResponse:
+            # Route to workspace Machine if one exists
+            replay = await _try_fly_replay_for_workspace(ctx)
+            if replay is not None:
+                return replay
+
             await self.ensure_started()
             request_id = ensure_request_id(request)
             body = await request.body()
