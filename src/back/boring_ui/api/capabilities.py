@@ -107,6 +107,7 @@ def create_default_registry() -> RouterRegistry:
     """
     from .modules.files import create_file_router
     from .modules.git import create_git_router
+    from .modules.exec import create_exec_router
     from .modules.ui_state import create_ui_state_router
     from .modules.control_plane import create_control_plane_router
     from .modules.pty import create_pty_router
@@ -129,6 +130,13 @@ def create_default_registry() -> RouterRegistry:
         create_git_router,
         description='Git operations (status, diff, show)',
         tags=['git'],
+    )
+    registry.register(
+        'exec',
+        '/api/v1',
+        create_exec_router,
+        description='Command execution',
+        tags=['exec'],
     )
     registry.register(
         'ui_state',
@@ -238,6 +246,7 @@ def create_capabilities_router(
             contract_by_router: dict[str, dict[str, Any]] = {
                 "files": {"owner_service": "workspace-core", "canonical_families": ["/api/v1/files/*"]},
                 "git": {"owner_service": "workspace-core", "canonical_families": ["/api/v1/git/*"]},
+                "exec": {"owner_service": "workspace-core", "canonical_families": ["/api/v1/exec"]},
                 "ui_state": {"owner_service": "workspace-core", "canonical_families": ["/api/v1/ui/*"]},
                 "control_plane": {
                     "owner_service": "boring-ui",

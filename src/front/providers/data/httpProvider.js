@@ -13,6 +13,7 @@ import { buildApiUrl } from '../../utils/apiBase'
 // ---------------------------------------------------------------------------
 
 const API = {
+  exec: '/api/v1/exec',
   files: {
     list: '/api/v1/files/list',
     read: '/api/v1/files/read',
@@ -237,5 +238,15 @@ export const createHttpProvider = (options = {}) => {
 
     merge: (source, message, opts) =>
       sendJson('POST', API.git.merge, undefined, { source, message }, opts),
+  },
+
+  runCommand: async (command, options = {}) => {
+    const cwd = options?.cwd !== undefined ? String(options.cwd) : undefined
+    const data = await sendJson('POST', API.exec, undefined, { command, cwd })
+    return {
+      stdout: data?.stdout || '',
+      stderr: data?.stderr || '',
+      exitCode: data?.exit_code ?? 0,
+    }
   },
 })}

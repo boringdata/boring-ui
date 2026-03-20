@@ -1,0 +1,48 @@
+# boring.app.toml — boring-ui-lite (browser agent + exec endpoint)
+# Key difference: data backend is "http" (real filesystem) instead of "lightningfs"
+
+[app]
+name = "boring-ui-lite"
+logo = "B"
+id   = "boring-ui-lite"
+
+# ─── Backend ───────────────────────────────────────────────
+[backend]
+type  = "python"
+entry = "boring_ui.api.app:create_app"
+pythonpath = ["src/back"]
+port  = 8000
+routers = []
+
+[agents]
+mode = "frontend"  # browser PI — no sidecar
+default = "pi"
+
+[agents.pi]
+enabled = true
+
+# ─── Frontend ──────────────────────────────────────────────
+[frontend]
+port = 5173
+
+[frontend.branding]
+name = "Boring UI Lite"
+
+[frontend.features]
+agentRailMode = "all"
+
+[frontend.data]
+backend = "http"
+
+[frontend.panels]
+
+# ─── Auth ─────────────────────────────────────────────────
+[auth]
+provider = "neon"
+session_cookie = "boring_session"
+session_ttl = 86400
+
+# ─── Deploy ──────────────────────────────────────────────
+[deploy]
+platform = "fly"
+env      = "prod"

@@ -27,6 +27,7 @@ KNOWN_CAPABILITY_CLAIMS: frozenset[str] = frozenset(
         "workspace.files.write",
         "workspace.git.read",
         "workspace.git.write",
+        "workspace.exec",
         "pty.session.start",
         "pty.session.attach",
     }
