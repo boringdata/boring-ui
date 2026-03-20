@@ -2149,8 +2149,8 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
 
         # Eager workspace provisioning: create a default workspace for new
         # users so the Fly Machine is already being provisioned by the time
-        # they land on the dashboard.  Extract user_id from the already-
-        # validated JWT to avoid redundant re-validation.
+        # they land on the dashboard.
+        _logger.info("token-exchange: status=%s, starting eager provision check", response.status_code)
         if response.status_code == 200:
             verified = _validate_neon_jwt(access_token, config=config)
             if verified:
