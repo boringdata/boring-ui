@@ -70,6 +70,34 @@ jobs:
       - name: Scale backend-agent to one machine
         run: fly scale count 1 -a boring-ui-backend-agent -y
 
+      - name: Cull stale backend-agent machines
+        run: |
+          machines_json="$(fly machine list -a boring-ui-backend-agent -j)"
+          echo "$machines_json"
+          keeper_id="$(
+            echo "$machines_json" | jq -r '
+              map(select((.id // "") != "" and (.state // "") != "destroyed"))
+              | sort_by(.updated_at // .created_at // "")
+              | reverse
+              | .[0].id // empty
+            '
+          )"
+          if [ -z "$keeper_id" ]; then
+            echo "Failed to resolve backend-agent keeper machine" >&2
+            exit 1
+          fi
+          mapfile -t destroy_ids < <(
+            echo "$machines_json" | jq -r --arg keep "$keeper_id" '
+              map(select((.id // "") != "" and (.state // "") != "destroyed" and .id != $keep))
+              | .[].id
+            '
+          )
+          if [ "${#destroy_ids[@]}" -eq 0 ]; then
+            echo "No stale backend-agent machines to destroy"
+            exit 0
+          fi
+          fly machine destroy -a boring-ui-backend-agent -f "${destroy_ids[@]}"
+
       - name: Sync workspace image ref
         run: |
           APP_IMAGE="$(fly status -a boring-ui-backend-agent | sed -n 's/^  Image    = //p' | head -n1 | tr -d '[:space:]')"
