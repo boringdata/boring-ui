@@ -20,7 +20,9 @@ export default function AgentPanel({ params }) {
 
   const ready = useMemo(() => {
     if (!backendMode) return true
-    return Boolean(serviceUrl)
+    // In backend mode, the PI agent is always available — PiBackendAdapter
+    // falls back to same-origin routes when serviceUrl is empty.
+    return true
   }, [backendMode, serviceUrl])
 
   return (
