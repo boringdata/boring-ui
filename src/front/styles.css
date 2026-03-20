@@ -6433,6 +6433,26 @@ kbd {
   border-radius: 8px;
   margin-bottom: 24px;
 }
+.setup-wizard-step-status {
+  padding: 18px 20px;
+}
+.setup-wizard-status-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.setup-wizard-status-copy {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.setup-wizard-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  margin-top: 14px;
+}
 .setup-wizard-footer {
   display: flex;
   justify-content: center;
@@ -6441,4 +6461,8 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+.setup-wizard-footnote {
+  color: var(--text-muted);
+  font-size: 13px;
 }

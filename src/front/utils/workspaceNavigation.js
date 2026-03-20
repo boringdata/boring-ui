@@ -2,6 +2,7 @@ import { routes } from './routes'
 import {
   extractWorkspaceSettingsPayload,
   getWorkspacePathSuffix,
+  isRuntimeReady,
   shouldRetryRuntime,
 } from './controlPlane'
 
@@ -46,10 +47,13 @@ export const syncWorkspaceRuntimeAndSettings = async ({
 
 export const resolveWorkspaceNavigationRoute = ({
   workspaceId,
-  runtimePayload: _runtimePayload,
+  runtimePayload,
   currentWorkspacePathSuffix = '',
-  onboardingEnabled: _onboardingEnabled = true,
+  onboardingEnabled = true,
 }) => {
+  if (onboardingEnabled && !isRuntimeReady(runtimePayload)) {
+    return routes.controlPlane.workspaces.setup(workspaceId)
+  }
   return routes.controlPlane.workspaces.scope(workspaceId, currentWorkspacePathSuffix)
 }
 

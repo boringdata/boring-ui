@@ -597,6 +597,8 @@ export default function App() {
   const controlPlaneOnboardingEnabled =
     config.features?.controlPlaneOnboarding === true ||
     capabilities?.features?.control_plane === true
+  const backendWorkspaceRuntimeEnabled =
+    String(capabilities?.workspace_runtime?.agent_mode || '').toLowerCase() === 'backend'
   const capabilitiesRef = useRef(capabilities)
   const capabilitiesLoadingRef = useRef(capabilitiesLoading)
   capabilitiesRef.current = capabilities
@@ -1532,7 +1534,7 @@ export default function App() {
     await fetchWorkspaceList()
     setShowCreateWorkspaceModal(false)
 
-    if (!controlPlaneOnboardingEnabled) {
+    if (!controlPlaneOnboardingEnabled && !backendWorkspaceRuntimeEnabled) {
       const route = routes.controlPlane.workspaces.scope(
         createdWorkspaceId,
         getWorkspacePathSuffix(window.location.pathname),
@@ -1541,28 +1543,9 @@ export default function App() {
       return
     }
 
-    const route = await runWithPreflightFallback({
-      run: async () => {
-        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings({
-          workspaceId: createdWorkspaceId,
-          writeSettings: true,
-          apiFetchJson,
-          apiFetch,
-        })
-        return resolveWorkspaceNavigationRouteFromPathname({
-          workspaceId: createdWorkspaceId,
-          runtimePayload,
-          pathname: window.location.pathname,
-        })
-      },
-      fallbackRoute: routes.controlPlane.workspaces.scope(
-        createdWorkspaceId,
-        getWorkspacePathSuffix(window.location.pathname),
-      ),
-      warningMessage: '[UserMenu] Create workspace preflight failed:',
-    })
+    const route = routes.controlPlane.workspaces.setup(createdWorkspaceId)
     window.location.assign(routeHref(route))
-  }, [controlPlaneOnboardingEnabled, fetchWorkspaceList])
+  }, [backendWorkspaceRuntimeEnabled, controlPlaneOnboardingEnabled, fetchWorkspaceList])
 
   const handleOpenUserSettings = useCallback(() => {
     if (userMenuAuthStatus === 'unauthenticated') {
