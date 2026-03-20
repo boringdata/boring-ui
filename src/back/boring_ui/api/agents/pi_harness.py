@@ -380,31 +380,35 @@ class PiHarness(AgentHarness):
             if replay is not None:
                 return replay
 
-            await self.ensure_started()
-            request_id = ensure_request_id(request)
-            body = await request.body()
-            headers = self._proxy_headers(ctx, request_id)
-            content_type = request.headers.get("content-type")
-            if content_type:
-                headers["content-type"] = content_type
+            try:
+                await self.ensure_started()
+                request_id = ensure_request_id(request)
+                body = await request.body()
+                headers = self._proxy_headers(ctx, request_id)
+                content_type = request.headers.get("content-type")
+                if content_type:
+                    headers["content-type"] = content_type
 
-            async with self._client_factory() as client:
-                upstream = await client.request(
-                    request.method,
-                    self._service_url(upstream_path),
-                    content=body or None,
-                    headers=headers,
-                )
-                passthrough_headers = {
-                    key: value
-                    for key, value in upstream.headers.items()
-                    if key.lower() in {"cache-control", "content-type"}
-                }
-                return Response(
-                    content=upstream.content,
-                    status_code=upstream.status_code,
-                    headers=passthrough_headers,
-                )
+                async with self._client_factory() as client:
+                    upstream = await client.request(
+                        request.method,
+                        self._service_url(upstream_path),
+                        content=body or None,
+                        headers=headers,
+                    )
+                    passthrough_headers = {
+                        key: value
+                        for key, value in upstream.headers.items()
+                        if key.lower() in {"cache-control", "content-type"}
+                    }
+                    return Response(
+                        content=upstream.content,
+                        status_code=upstream.status_code,
+                        headers=passthrough_headers,
+                    )
+            except Exception as exc:
+                logger.error("PiHarness proxy error for %s: %s", upstream_path, exc, exc_info=True)
+                raise
 
         async def _proxy_stream(
             request: Request,
