@@ -82,7 +82,8 @@ def _parse_agents_config(cfg: dict[str, Any]) -> tuple[str, str | None, dict[str
     mode = str(agents_section.get("mode", "frontend")).strip().lower() or "frontend"
     default_name = str(agents_section.get("default", "pi")).strip() or None
     mode_override = (
-        os.environ.get("BUI_AGENTS_MODE")
+        os.environ.get("AGENTS_MODE")
+        or os.environ.get("BUI_AGENTS_MODE")
         or os.environ.get("BORING_UI_AGENTS_MODE")
         or ""
     ).strip()
