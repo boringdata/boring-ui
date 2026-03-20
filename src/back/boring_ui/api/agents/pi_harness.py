@@ -335,84 +335,27 @@ class PiHarness(AgentHarness):
         async def _workspace_context(request: Request) -> WorkspaceContext:
             return await resolve_workspace_context(request, config=self.config)
 
-        def _workspace_machine_url(ctx: WorkspaceContext) -> str | None:
-            """Get the internal URL of the workspace Machine, if any.
-
-            Returns the Fly private network URL when we're on the control plane
-            and the workspace has a Machine assigned. Returns None when:
-            - No workspace_id
-            - Already on the target Machine (FLY_MACHINE_ID matches)
-            - No DB pool / lookup fails
-            - Not on Fly (local dev)
-            """
-            if not ctx.workspace_id:
-                return None
-            current_machine = os.environ.get("FLY_MACHINE_ID", "")
-            if not current_machine:
-                return None  # Not on Fly — local dev
-            return current_machine  # placeholder, replaced by async version
-
-        async def _get_workspace_proxy_url(ctx: WorkspaceContext) -> str | None:
-            """Look up workspace Machine and return its internal proxy URL."""
-            if not ctx.workspace_id:
-                return None
-            current_machine = os.environ.get("FLY_MACHINE_ID", "")
-            if not current_machine:
-                return None
-            try:
-                from ..modules.control_plane import db_client
-                pool = db_client.get_pool()
-                import uuid
-                row = await pool.fetchrow(
-                    "SELECT machine_id FROM workspaces WHERE id = $1",
-                    uuid.UUID(ctx.workspace_id),
-                )
-                if row and row.get("machine_id"):
-                    target = row["machine_id"]
-                    if current_machine == target:
-                        return None  # Already on the right Machine
-                    # Fly internal DNS: <machine_id>.vm.<app>.internal
-                    app_name = os.environ.get("FLY_APP_NAME", "boring-ui-backend-agent")
-                    return f"http://{target}.vm.{app_name}.internal:8000"
-            except Exception as exc:
-                logger.warning("workspace Machine lookup failed for %s: %s", ctx.workspace_id, exc)
-            return None
-
         async def _proxy_response(
             request: Request,
             upstream_path: str,
             *,
             ctx: WorkspaceContext,
         ) -> Response:
-            # Route to workspace Machine via Fly private network if available
-            ws_url = await _get_workspace_proxy_url(ctx)
+            await self.ensure_started()
+            request_id = ensure_request_id(request)
+            body = await request.body()
+            headers = self._proxy_headers(ctx, request_id)
+            content_type = request.headers.get("content-type")
+            if content_type:
+                headers["content-type"] = content_type
 
-            try:
-                request_id = ensure_request_id(request)
-                body = await request.body()
-                headers = self._proxy_headers(ctx, request_id)
-                content_type = request.headers.get("content-type")
-                if content_type:
-                    headers["content-type"] = content_type
-
-                if ws_url:
-                    # Proxy to workspace Machine's PI sidecar directly
-                    target = f"{ws_url}{upstream_path}"
-                    async with httpx.AsyncClient(timeout=30) as client:
-                        upstream = await client.request(
-                            request.method, target,
-                            content=body or None, headers=headers,
-                        )
-                else:
-                    # Local sidecar (workspace Machine or local dev)
-                    await self.ensure_started()
-                    async with self._client_factory() as client:
-                        upstream = await client.request(
-                            request.method,
-                            self._service_url(upstream_path),
-                            content=body or None, headers=headers,
-                        )
-
+            async with self._client_factory() as client:
+                upstream = await client.request(
+                    request.method,
+                    self._service_url(upstream_path),
+                    content=body or None,
+                    headers=headers,
+                )
                 passthrough_headers = {
                     key: value
                     for key, value in upstream.headers.items()
@@ -423,9 +366,6 @@ class PiHarness(AgentHarness):
                     status_code=upstream.status_code,
                     headers=passthrough_headers,
                 )
-            except Exception as exc:
-                logger.error("PiHarness proxy error for %s: %s", upstream_path, exc, exc_info=True)
-                raise
 
         async def _proxy_stream(
             request: Request,
@@ -433,7 +373,7 @@ class PiHarness(AgentHarness):
             *,
             ctx: WorkspaceContext,
         ) -> StreamingResponse:
-            ws_url = await _get_workspace_proxy_url(ctx)
+            await self.ensure_started()
             request_id = ensure_request_id(request)
             body = await request.body()
             headers = self._proxy_headers(ctx, request_id)
@@ -441,16 +381,10 @@ class PiHarness(AgentHarness):
             if content_type:
                 headers["content-type"] = content_type
 
-            if ws_url:
-                target = f"{ws_url}{upstream_path}"
-                client = httpx.AsyncClient(timeout=None)
-            else:
-                await self.ensure_started()
-                client = self._client_factory()
-                target = self._service_url(upstream_path)
-
+            client = self._client_factory()
             upstream_request = client.build_request(
-                request.method, target,
+                request.method,
+                self._service_url(upstream_path),
                 content=body or None, headers=headers,
             )
             upstream = await client.send(upstream_request, stream=True)
@@ -468,7 +402,9 @@ class PiHarness(AgentHarness):
 
         def _add_proxy_route(path: str, endpoint, methods: list[str]) -> None:
             router.add_api_route(path, endpoint, methods=methods)
-            router.add_api_route(f"/w/{{workspace_id}}{path}", endpoint, methods=methods)
+            # Don't register /w/{workspace_id} routes — the boundary router
+            # handles workspace-scoped requests and fly-replays them to the
+            # workspace Machine, where PiHarness serves them at the base path.
 
         async def list_sessions(
             request: Request,
