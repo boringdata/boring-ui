@@ -1,5 +1,6 @@
 """Command execution service for boring-ui API."""
 import asyncio
+import shutil
 import time
 from pathlib import Path
 
@@ -12,6 +13,46 @@ from ...workspace.paths import resolve_path_beneath
 _TIMEOUT_SECONDS = 60
 _MAX_OUTPUT_BYTES = 512 * 1024  # 512 KB
 
+# Paths to bind-mount read-only into the sandbox.
+_RO_BINDS = ('/usr', '/lib', '/lib64', '/bin', '/sbin', '/etc')
+
+_BWRAP_BIN: str | None = shutil.which('bwrap')
+
+
+def _build_sandbox_argv(command: str, workspace_root: Path, cwd: Path) -> list[str]:
+    """Build a bwrap command line that jails *command* into *workspace_root*.
+
+    The sandbox sees:
+      /workspace  ← read-write bind of workspace_root
+      /tmp        ← private tmpfs
+      /dev, /proc ← minimal device + proc
+      /usr /lib …  ← read-only host binaries
+    Nothing outside these mounts is visible — no /app, no other workspaces.
+    """
+    argv: list[str] = [
+        _BWRAP_BIN,
+        '--tmpfs', '/',
+        '--proc', '/proc',
+        '--dev', '/dev',
+        '--tmpfs', '/tmp',
+    ]
+    for host_path in _RO_BINDS:
+        if Path(host_path).is_dir():
+            argv += ['--ro-bind', host_path, host_path]
+
+    argv += ['--bind', str(workspace_root), '/workspace']
+
+    # Map cwd into the sandbox namespace.
+    if cwd == workspace_root:
+        sandbox_cwd = '/workspace'
+    else:
+        relative = cwd.relative_to(workspace_root)
+        sandbox_cwd = f'/workspace/{relative}'
+
+    argv += ['--chdir', sandbox_cwd]
+    argv += ['--', 'sh', '-c', command]
+    return argv
+
 
 async def execute_command(
     command: str,
@@ -19,6 +60,10 @@ async def execute_command(
     workspace_root: Path,
 ) -> dict:
     """Execute a shell command within the workspace.
+
+    When bubblewrap (bwrap) is available the command runs inside a
+    filesystem-namespace sandbox that only exposes the workspace directory.
+    Falls back to a plain subprocess when bwrap is not installed (local dev).
 
     Args:
         command: Shell command to execute
@@ -41,19 +86,28 @@ async def execute_command(
         exec_dir = resolved_root
 
     env = {
-        'HOME': str(resolved_root),
+        'HOME': '/workspace' if _BWRAP_BIN else str(resolved_root),
         'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
     }
 
     start = time.monotonic()
     try:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            cwd=str(exec_dir),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
+        if _BWRAP_BIN:
+            argv = _build_sandbox_argv(command, resolved_root, exec_dir)
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+        else:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                cwd=str(exec_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             proc.communicate(),
             timeout=_TIMEOUT_SECONDS,

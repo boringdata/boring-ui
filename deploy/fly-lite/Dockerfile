@@ -26,6 +26,7 @@ WORKDIR /app
 
 # System packages — NO Node.js
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    bubblewrap \
     curl \
     git \
     jq \
