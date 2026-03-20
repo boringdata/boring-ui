@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -19,6 +20,7 @@ from .service import ControlPlaneService
 
 _RESERVED_SUBPATHS = {"setup", "runtime", "settings"}
 _STATIC_ASSET_PREFIXES = ("/assets/", "/fonts/")
+_HASHED_ASSET_RE = re.compile(r"^(?P<base>.+)-[A-Za-z0-9_-]{6,}\.(?P<ext>js|mjs|css)$")
 
 _STALE_JS_RECOVERY_SOURCE = """const marker='__buiChunkReloaded__';
 if (typeof window !== 'undefined') {
@@ -255,6 +257,25 @@ def _static_asset_response(normalized_path: str) -> FileResponse | None:
             asset,
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
         )
+    if normalized_path.startswith("/assets/"):
+        filename = Path(normalized_path).name
+        match = _HASHED_ASSET_RE.match(filename)
+        if match is not None:
+            base = match.group("base")
+            ext = match.group("ext")
+            assets_dir = static_dir / "assets"
+            candidates = sorted(
+                assets_dir.glob(f"{base}-*.{ext}"),
+                key=lambda candidate: candidate.stat().st_mtime,
+                reverse=True,
+            )
+            for candidate in candidates:
+                if candidate.name == filename or not candidate.is_file():
+                    continue
+                return FileResponse(
+                    candidate,
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+                )
     if normalized_path.startswith("/assets/"):
         if normalized_path.endswith((".js", ".mjs")):
             return Response(

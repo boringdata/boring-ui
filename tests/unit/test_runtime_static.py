@@ -29,6 +29,22 @@ def test_missing_stale_js_chunk_returns_recovery_module(tmp_path: Path) -> None:
     assert "window.location.reload()" in response.text
 
 
+def test_missing_hashed_js_chunk_aliases_to_current_chunk(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    assets_dir = static_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (static_dir / "index.html").write_text("<!doctype html><html></html>\n", encoding="utf-8")
+    (assets_dir / "vendor-pi-NEW12345.js").write_text("export const current = true;\n", encoding="utf-8")
+
+    client = _client(static_dir)
+    response = client.get("/assets/vendor-pi-OLD67890.js")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/javascript")
+    assert response.headers["cache-control"] == "no-store, no-cache, must-revalidate, max-age=0"
+    assert "current = true" in response.text
+
+
 def test_missing_stale_css_chunk_returns_empty_stylesheet(tmp_path: Path) -> None:
     static_dir = tmp_path / "static"
     assets_dir = static_dir / "assets"
@@ -44,6 +60,22 @@ def test_missing_stale_css_chunk_returns_empty_stylesheet(tmp_path: Path) -> Non
     assert "Missing stale asset chunk" in response.text
 
 
+def test_missing_hashed_css_chunk_aliases_to_current_chunk(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    assets_dir = static_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (static_dir / "index.html").write_text("<!doctype html><html></html>\n", encoding="utf-8")
+    (assets_dir / "index-NEW12345.css").write_text("body{color:red}\n", encoding="utf-8")
+
+    client = _client(static_dir)
+    response = client.get("/assets/index-OLD67890.css")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/css")
+    assert response.headers["cache-control"] == "no-store, no-cache, must-revalidate, max-age=0"
+    assert "color:red" in response.text
+
+
 def test_existing_asset_keeps_immutable_cache_headers(tmp_path: Path) -> None:
     static_dir = tmp_path / "static"
     assets_dir = static_dir / "assets"
@@ -57,4 +89,3 @@ def test_existing_asset_keeps_immutable_cache_headers(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/javascript")
     assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
-

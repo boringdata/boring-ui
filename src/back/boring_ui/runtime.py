@@ -18,6 +18,7 @@ from starlette.responses import FileResponse, Response
 from .api import APIConfig, create_app
 
 _PREFIXED_ASSET_RE = re.compile(r"^(?:/w/[^/]+|/auth)(/assets/|/fonts/)")
+_HASHED_ASSET_RE = re.compile(r"^(?P<base>.+)-[A-Za-z0-9_-]{6,}\.(?P<ext>js|mjs|css)$")
 
 _STALE_JS_RECOVERY_SOURCE = """const marker='__buiChunkReloaded__';
 if (typeof window !== 'undefined') {
@@ -50,20 +51,57 @@ def _missing_asset_recovery_response(path: str) -> Response | None:
     return None
 
 
+def _stale_hashed_asset_alias(path: str, assets_path: Path) -> FileResponse | None:
+    raw = str(path or "").lstrip("/")
+    filename = Path(raw).name
+    match = _HASHED_ASSET_RE.match(filename)
+    if match is None:
+        return None
+    base = match.group("base")
+    ext = match.group("ext")
+    candidates = sorted(
+        assets_path.glob(f"{base}-*.{ext}"),
+        key=lambda candidate: candidate.stat().st_mtime,
+        reverse=True,
+    )
+    for candidate in candidates:
+        if candidate.name == filename or not candidate.is_file():
+            continue
+        return FileResponse(
+            candidate,
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
+    return None
+
+
 class _RecoveringStaticFiles(StaticFiles):
     """Serve recovery payloads for stale hashed asset URLs after deploys."""
 
     async def get_response(self, path: str, scope):
+        directory = getattr(self, "directory", None)
+        assets_path = Path(directory) if directory else None
+        if assets_path is not None:
+            alias = _stale_hashed_asset_alias(path, assets_path)
+            if alias is not None:
+                return alias
         try:
             response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             if exc.status_code != 404:
                 raise
+            if assets_path is not None:
+                alias = _stale_hashed_asset_alias(path, assets_path)
+                if alias is not None:
+                    return alias
             recovery = _missing_asset_recovery_response(path)
             if recovery is not None:
                 return recovery
             raise
         if getattr(response, "status_code", None) == 404:
+            if assets_path is not None:
+                alias = _stale_hashed_asset_alias(path, assets_path)
+                if alias is not None:
+                    return alias
             recovery = _missing_asset_recovery_response(path)
             if recovery is not None:
                 return recovery
