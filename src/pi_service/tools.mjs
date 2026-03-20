@@ -1,21 +1,17 @@
 import { Type } from '@sinclair/typebox'
+import { exec as execCb } from 'node:child_process'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
+import { promisify } from 'node:util'
 
-const DEFAULT_BACKEND_URL = 'http://127.0.0.1:8000'
+const execAsync = promisify(execCb)
+
+const WORKSPACE_ROOT = process.env.BORING_UI_WORKSPACE_ROOT || process.cwd()
 
 const textResult = (text, details = {}) => ({
   content: [{ type: 'text', text }],
   details,
 })
-
-const normalizeBaseUrl = (value) => {
-  const trimmed = String(value || '').trim().replace(/\/+$/, '')
-  return trimmed || DEFAULT_BACKEND_URL
-}
-
-const normalizeWorkspaceId = (value) => {
-  const trimmed = String(value || '').trim()
-  return trimmed || ''
-}
 
 const normalizePath = (value, fallback = '.') => {
   const trimmed = String(value || '').trim().replace(/^\/+/, '')
@@ -24,51 +20,44 @@ const normalizePath = (value, fallback = '.') => {
 
 const normalizeFilePath = (value) => normalizePath(value, '')
 
+const resolveSafe = (relPath) => {
+  const resolved = path.resolve(WORKSPACE_ROOT, relPath)
+  if (!resolved.startsWith(path.resolve(WORKSPACE_ROOT))) {
+    throw new Error('Path escapes workspace root')
+  }
+  return resolved
+}
+
 const formatDirEntries = (entries) => {
   if (!Array.isArray(entries) || entries.length === 0) return '(empty)'
   return entries
-    .slice()
-    .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')))
-    .map((entry) => {
-      const name = String(entry?.name || entry?.path || '')
-      return entry?.is_dir ? `${name}/` : name
-    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((e) => (e.isDir ? `${e.name}/` : e.name))
     .join('\n')
 }
 
-const formatExecOutput = (payload) => {
-  if (typeof payload?.presented_output === 'string' && payload.presented_output.trim()) {
-    return payload.presented_output
-  }
-
-  const stdout = typeof payload?.stdout === 'string' ? payload.stdout : ''
-  const stderr = typeof payload?.stderr === 'string' ? payload.stderr : ''
-  const exitCode = Number.isFinite(payload?.exit_code) ? Number(payload.exit_code) : null
+const formatExecOutput = (result) => {
   const chunks = []
-  if (stdout) chunks.push(stdout)
-  if (stderr) chunks.push(`[stderr]\n${stderr}`)
-  if (exitCode !== null && exitCode !== 0) chunks.push(`[exit_code] ${exitCode}`)
+  if (result.stdout) chunks.push(result.stdout)
+  if (result.stderr) chunks.push(`[stderr]\n${result.stderr}`)
+  if (result.exitCode !== null && result.exitCode !== 0) chunks.push(`[exit_code] ${result.exitCode}`)
   return chunks.join('\n') || '(no output)'
 }
 
-const formatGitStatus = (payload) => {
-  if (payload?.available === false) return 'Git not available'
-  if (payload?.is_repo === false) return 'Not a git repository'
-  const files = Array.isArray(payload?.files) ? payload.files : []
-  if (files.length === 0) return 'Clean working tree'
-  return files
-    .slice()
-    .sort((a, b) => String(a?.path || '').localeCompare(String(b?.path || '')))
-    .map((entry) => `${String(entry?.status || '').toUpperCase()} ${String(entry?.path || '')}`.trim())
-    .filter(Boolean)
-    .join('\n') || 'Clean working tree'
-}
+// --- Session context (kept for API compatibility with server.mjs) ---
+
+const normalizeWorkspaceId = (value) => String(value || '').trim()
 
 const bearerTokenFromHeader = (authorization) => {
   const raw = String(authorization || '').trim()
   if (!raw) return ''
   const match = raw.match(/^Bearer\s+(.+)$/i)
   return match ? String(match[1] || '').trim() : ''
+}
+
+const normalizeBaseUrl = (value) => {
+  const trimmed = String(value || '').trim().replace(/\/+$/, '')
+  return trimmed || 'http://127.0.0.1:8000'
 }
 
 export function resolveSessionContext(payload = {}, headers = {}, env = process.env) {
@@ -98,91 +87,23 @@ export function resolveSessionContext(payload = {}, headers = {}, env = process.
     || env.BORING_BACKEND_URL
   )
 
-  return {
-    workspaceId,
-    internalApiToken,
-    backendUrl,
-  }
+  return { workspaceId, internalApiToken, backendUrl }
 }
 
 export function buildSessionSystemPrompt(basePrompt, context = {}) {
   const prompt = String(basePrompt || '').trim()
   const sections = [prompt]
-  if (context.workspaceId) {
-    sections.push(`Active workspace: ${context.workspaceId}.`)
-  }
   sections.push(
-    'Use the available workspace tools for file reads/writes, directory listing, git inspection/commit, and sandboxed command execution.',
+    `Workspace root: ${WORKSPACE_ROOT}.`,
+    'Use the available tools for file reads/writes, directory listing, git, and command execution.',
+    'You have direct filesystem and shell access on this workspace VM.',
   )
   return sections.filter(Boolean).join(' ')
 }
 
-function requireWorkspaceId(context) {
-  const workspaceId = normalizeWorkspaceId(context?.workspaceId)
-  if (!workspaceId) {
-    throw new Error('workspace_id is required for PI workspace tools')
-  }
-  return workspaceId
-}
+// --- Direct tools (no HTTP, runs on the workspace VM) ---
 
-function buildHeaders(context, extraHeaders = {}) {
-  const headers = {
-    accept: 'application/json',
-    ...extraHeaders,
-  }
-
-  if (context.workspaceId) {
-    headers['x-workspace-id'] = context.workspaceId
-  }
-  if (context.internalApiToken) {
-    headers.authorization = `Bearer ${context.internalApiToken}`
-    headers['x-boring-internal-token'] = context.internalApiToken
-  }
-
-  return headers
-}
-
-async function requestJson(fetchImpl, context, method, routePath, { searchParams, body, signal } = {}) {
-  const workspaceId = requireWorkspaceId(context)
-  const url = new URL(
-    `/w/${encodeURIComponent(workspaceId)}${routePath}`,
-    normalizeBaseUrl(context.backendUrl),
-  )
-  if (searchParams) {
-    for (const [key, value] of Object.entries(searchParams)) {
-      if (value === undefined || value === null) continue
-      url.searchParams.set(key, String(value))
-    }
-  }
-
-  const response = await fetchImpl(url, {
-    method,
-    headers: buildHeaders(
-      context,
-      body === undefined ? {} : { 'content-type': 'application/json' },
-    ),
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal,
-  })
-
-  const rawText = await response.text()
-  let payload = {}
-  if (rawText.trim()) {
-    try {
-      payload = JSON.parse(rawText)
-    } catch {
-      payload = { raw: rawText }
-    }
-  }
-
-  if (!response.ok) {
-    const detail = payload?.detail || payload?.error || `${response.status} ${response.statusText}`
-    throw new Error(String(detail))
-  }
-  return payload
-}
-
-export function createWorkspaceTools(context, fetchImpl = fetch) {
+export function createWorkspaceTools(_context) {
   const tools = [
     {
       name: 'read_file',
@@ -191,34 +112,30 @@ export function createWorkspaceTools(context, fetchImpl = fetch) {
       parameters: Type.Object({
         path: Type.String({ description: 'Relative file path (e.g. README.md or src/main.py)' }),
       }),
-      execute: async (_toolCallId, params, signal) => {
-        const path = normalizeFilePath(params?.path)
-        if (!path) throw new Error('path is required')
-        const payload = await requestJson(fetchImpl, context, 'GET', '/api/v1/files/read', {
-          searchParams: { path },
-          signal,
-        })
-        return textResult(String(payload?.content || ''), { path })
+      execute: async (_toolCallId, params) => {
+        const filePath = normalizeFilePath(params?.path)
+        if (!filePath) throw new Error('path is required')
+        const fullPath = resolveSafe(filePath)
+        const content = await fs.readFile(fullPath, 'utf-8')
+        return textResult(content, { path: filePath })
       },
     },
     {
       name: 'write_file',
       label: 'Write File',
-      description: 'Write content to a file at a workspace-relative path.',
+      description: 'Write content to a file at a workspace-relative path. Creates parent directories if needed.',
       parameters: Type.Object({
         path: Type.String({ description: 'Relative file path' }),
         content: Type.String({ description: 'Content to write' }),
       }),
-      execute: async (_toolCallId, params, signal) => {
-        const path = normalizeFilePath(params?.path)
-        if (!path) throw new Error('path is required')
-        await requestJson(fetchImpl, context, 'PUT', '/api/v1/files/write', {
-          searchParams: { path },
-          body: { content: params?.content ?? '' },
-          signal,
-        })
+      execute: async (_toolCallId, params) => {
+        const filePath = normalizeFilePath(params?.path)
+        if (!filePath) throw new Error('path is required')
+        const fullPath = resolveSafe(filePath)
+        await fs.mkdir(path.dirname(fullPath), { recursive: true })
         const content = String(params?.content ?? '')
-        return textResult(`Wrote ${content.length} bytes to ${path}`, { path, size: content.length })
+        await fs.writeFile(fullPath, content, 'utf-8')
+        return textResult(`Wrote ${content.length} bytes to ${filePath}`, { path: filePath, size: content.length })
       },
     },
     {
@@ -228,80 +145,101 @@ export function createWorkspaceTools(context, fetchImpl = fetch) {
       parameters: Type.Object({
         path: Type.Optional(Type.String({ description: 'Relative directory path (default: project root)' })),
       }),
-      execute: async (_toolCallId, params, signal) => {
-        const path = normalizePath(params?.path)
-        const payload = await requestJson(fetchImpl, context, 'GET', '/api/v1/files/list', {
-          searchParams: { path },
-          signal,
-        })
-        return textResult(formatDirEntries(payload?.entries), { path, entries: payload?.entries || [] })
+      execute: async (_toolCallId, params) => {
+        const dirPath = normalizePath(params?.path)
+        const fullPath = resolveSafe(dirPath)
+        const entries = await fs.readdir(fullPath, { withFileTypes: true })
+        const formatted = entries.map((e) => ({ name: e.name, isDir: e.isDirectory() }))
+        return textResult(formatDirEntries(formatted), { path: dirPath, entries: formatted })
       },
     },
     {
       name: 'exec',
-      label: 'Exec',
-      description: 'Run a command inside the active workspace sandbox.',
+      label: 'Execute Command',
+      description: 'Run a shell command in the workspace. Has full access to the workspace filesystem.',
       parameters: Type.Object({
-        command: Type.String({ description: 'Command to execute' }),
-        cwd: Type.Optional(Type.String({ description: 'Optional working directory (relative path)' })),
+        command: Type.String({ description: 'Shell command to execute' }),
+        cwd: Type.Optional(Type.String({ description: 'Working directory (relative to workspace root)' })),
         timeout_seconds: Type.Optional(Type.Number({ description: 'Timeout in seconds', default: 60 })),
       }),
-      execute: async (_toolCallId, params, signal) => {
+      execute: async (_toolCallId, params) => {
         const command = String(params?.command || '').trim()
         if (!command) throw new Error('command is required')
-        const payload = await requestJson(fetchImpl, context, 'POST', '/api/v1/sandbox/exec', {
-          body: {
-            command,
-            cwd: normalizePath(params?.cwd),
-            timeout_seconds: Number.isFinite(params?.timeout_seconds) ? Number(params.timeout_seconds) : 60,
-          },
-          signal,
-        })
-        return textResult(formatExecOutput(payload), payload)
+        const cwd = resolveSafe(normalizePath(params?.cwd))
+        const timeout = (Number.isFinite(params?.timeout_seconds) ? Number(params.timeout_seconds) : 60) * 1000
+        const start = Date.now()
+        try {
+          const { stdout, stderr } = await execAsync(command, {
+            cwd,
+            timeout,
+            maxBuffer: 512 * 1024,
+            env: { ...process.env, HOME: WORKSPACE_ROOT },
+          })
+          const duration = Date.now() - start
+          const result = { stdout, stderr, exitCode: 0, duration_ms: duration }
+          return textResult(formatExecOutput(result), result)
+        } catch (err) {
+          const duration = Date.now() - start
+          const result = {
+            stdout: err.stdout || '',
+            stderr: err.stderr || err.message || '',
+            exitCode: err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 124 : (err.code || 1),
+            duration_ms: duration,
+          }
+          return textResult(formatExecOutput(result), result)
+        }
       },
     },
     {
       name: 'git_status',
       label: 'Git Status',
-      description: 'Show git working tree status using canonical status codes.',
+      description: 'Show git working tree status.',
       parameters: Type.Object({}),
-      execute: async (_toolCallId, _params, signal) => {
-        const payload = await requestJson(fetchImpl, context, 'GET', '/api/v1/git/status', { signal })
-        return textResult(formatGitStatus(payload), { files: payload?.files || [] })
+      execute: async () => {
+        try {
+          const { stdout } = await execAsync('git status --porcelain', { cwd: WORKSPACE_ROOT })
+          const lines = stdout.trim().split('\n').filter(Boolean)
+          if (lines.length === 0) return textResult('Clean working tree')
+          return textResult(stdout.trim())
+        } catch (err) {
+          return textResult(err.stderr || 'Not a git repository')
+        }
       },
     },
     {
       name: 'git_diff',
       label: 'Git Diff',
-      description: 'Show git diff for a workspace-relative file path.',
+      description: 'Show git diff for a file.',
       parameters: Type.Object({
         path: Type.String({ description: 'Relative file path' }),
       }),
-      execute: async (_toolCallId, params, signal) => {
-        const path = normalizeFilePath(params?.path)
-        if (!path) throw new Error('path is required')
-        const payload = await requestJson(fetchImpl, context, 'GET', '/api/v1/git/diff', {
-          searchParams: { path },
-          signal,
-        })
-        return textResult(String(payload?.diff || '(no diff)'), { path })
+      execute: async (_toolCallId, params) => {
+        const filePath = normalizeFilePath(params?.path)
+        if (!filePath) throw new Error('path is required')
+        try {
+          const { stdout } = await execAsync(`git diff -- ${filePath}`, { cwd: WORKSPACE_ROOT })
+          return textResult(stdout || '(no diff)', { path: filePath })
+        } catch (err) {
+          return textResult(err.stderr || '(no diff)', { path: filePath })
+        }
       },
     },
     {
       name: 'git_commit',
       label: 'Git Commit',
-      description: 'Create a git commit from the currently staged changes.',
+      description: 'Create a git commit from staged changes.',
       parameters: Type.Object({
         message: Type.String({ description: 'Commit message' }),
       }),
-      execute: async (_toolCallId, params, signal) => {
+      execute: async (_toolCallId, params) => {
         const message = String(params?.message || '').trim()
         if (!message) throw new Error('message is required')
-        const payload = await requestJson(fetchImpl, context, 'POST', '/api/v1/git/commit', {
-          body: { message },
-          signal,
-        })
-        return textResult(`Committed: ${payload?.oid || '(ok)'}`, { oid: payload?.oid || null })
+        try {
+          const { stdout } = await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: WORKSPACE_ROOT })
+          return textResult(stdout.trim())
+        } catch (err) {
+          return textResult(err.stderr || err.message)
+        }
       },
     },
   ]
