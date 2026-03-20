@@ -67,6 +67,9 @@ jobs:
       - name: Deploy backend-agent app
         run: fly deploy --remote-only -c deploy/fly/fly.backend-agent.toml
 
+      - name: Scale backend-agent to one machine
+        run: fly scale count 1 -a boring-ui-backend-agent -y
+
       - name: Sync workspace image ref
         run: |
           APP_IMAGE="$(fly status -a boring-ui-backend-agent | sed -n 's/^  Image    = //p' | head -n1 | tr -d '[:space:]')"
