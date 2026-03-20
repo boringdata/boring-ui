@@ -112,12 +112,26 @@ def _is_allowed_workspace_passthrough_target(path: str, config: APIConfig | None
     )
 
 
-async def _try_fly_replay(workspace_id: str) -> Response | None:
-    """Return a fly-replay Response if the workspace has a Fly Machine, else None.
+class _FlyReplayResult:
+    """Result of a fly-replay lookup."""
 
-    Skips the redirect when the current process is already running on the
-    target Machine (avoids an infinite fly-replay loop).  Fly sets
-    ``FLY_MACHINE_ID`` in every Machine's environment.
+    __slots__ = ("response", "is_local_workspace")
+
+    def __init__(self, response: Response | None, *, is_local_workspace: bool = False):
+        self.response = response
+        self.is_local_workspace = is_local_workspace
+
+
+async def _try_fly_replay(workspace_id: str) -> _FlyReplayResult:
+    """Check whether to redirect via fly-replay or handle locally.
+
+    Returns a ``_FlyReplayResult``:
+    - ``.response`` is a fly-replay ``Response`` when the request should be
+      forwarded to another Machine, or ``None`` when it should be handled here.
+    - ``.is_local_workspace`` is ``True`` when the current process IS the
+      dedicated workspace Machine (detected by comparing ``FLY_MACHINE_ID``).
+      Callers use this to skip workspace-id path scoping — the volume is
+      mounted directly at ``BORING_UI_WORKSPACE_ROOT``.
     """
     try:
         pool = db_client.get_pool()
@@ -129,23 +143,36 @@ async def _try_fly_replay(workspace_id: str) -> Response | None:
             current = os.environ.get("FLY_MACHINE_ID", "")
             if current and current == target:
                 # Already on the workspace Machine — handle locally.
-                return None
-            return Response(
-                status_code=200,
-                headers={"fly-replay": f"instance={target}"},
+                return _FlyReplayResult(None, is_local_workspace=True)
+            return _FlyReplayResult(
+                Response(
+                    status_code=200,
+                    headers={"fly-replay": f"instance={target}"},
+                )
             )
     except Exception as exc:
         logger.warning("fly-replay lookup failed for workspace %s: %s", workspace_id, exc)
-    return None
+    return _FlyReplayResult(None)
 
 
-async def _forward_http_request(request: Request, target_path: str, workspace_id: str) -> Response:
+async def _forward_http_request(
+    request: Request,
+    target_path: str,
+    workspace_id: str,
+    *,
+    is_local_workspace: bool = False,
+) -> Response:
     body = await request.body()
     headers = dict(request.headers)
     headers.pop("host", None)
     headers.pop("content-length", None)
     if not target_path.startswith("/auth/"):
-        headers["x-workspace-id"] = workspace_id
+        # On the workspace Machine itself (reached via fly-replay), the
+        # volume is mounted directly at BORING_UI_WORKSPACE_ROOT.  Skip
+        # the workspace-id header so the files/git routers use the base
+        # root instead of appending a workspace-id subdirectory.
+        if not is_local_workspace:
+            headers["x-workspace-id"] = workspace_id
 
     transport = httpx.ASGITransport(app=request.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://workspace-boundary.local") as client:
@@ -216,14 +243,15 @@ def create_workspace_boundary_router_hosted(config: APIConfig) -> APIRouter:
             return session_or_error
 
         # Route to Fly Machine if workspace has one assigned
-        fly_replay = await _try_fly_replay(workspace_id)
-        if fly_replay is not None:
-            return fly_replay
+        replay = await _try_fly_replay(workspace_id)
+        if replay.response is not None:
+            return replay.response
 
         runtime_response = await _forward_http_request(
             request,
             f"/api/v1/workspaces/{workspace_id}/runtime",
             workspace_id,
+            is_local_workspace=replay.is_local_workspace,
         )
         runtime_payload = {}
         try:
@@ -250,10 +278,13 @@ def create_workspace_boundary_router_hosted(config: APIConfig) -> APIRouter:
         session_or_error = await _require_workspace_member(request, config, workspace_id)
         if isinstance(session_or_error, JSONResponse):
             return session_or_error
-        fly_replay = await _try_fly_replay(workspace_id)
-        if fly_replay is not None:
-            return fly_replay
-        return await _forward_http_request(request, f"/api/v1/workspaces/{workspace_id}/runtime", workspace_id)
+        replay = await _try_fly_replay(workspace_id)
+        if replay.response is not None:
+            return replay.response
+        return await _forward_http_request(
+            request, f"/api/v1/workspaces/{workspace_id}/runtime", workspace_id,
+            is_local_workspace=replay.is_local_workspace,
+        )
 
     @router.post("/w/{workspace_id}/runtime/retry")
     async def workspace_runtime_retry(workspace_id: str, request: Request):
@@ -267,10 +298,13 @@ def create_workspace_boundary_router_hosted(config: APIConfig) -> APIRouter:
         session_or_error = await _require_workspace_member(request, config, workspace_id)
         if isinstance(session_or_error, JSONResponse):
             return session_or_error
-        fly_replay = await _try_fly_replay(workspace_id)
-        if fly_replay is not None:
-            return fly_replay
-        return await _forward_http_request(request, f"/api/v1/workspaces/{workspace_id}/runtime/retry", workspace_id)
+        replay = await _try_fly_replay(workspace_id)
+        if replay.response is not None:
+            return replay.response
+        return await _forward_http_request(
+            request, f"/api/v1/workspaces/{workspace_id}/runtime/retry", workspace_id,
+            is_local_workspace=replay.is_local_workspace,
+        )
 
     @router.get("/w/{workspace_id}/settings")
     async def workspace_settings_get(workspace_id: str, request: Request):
@@ -288,10 +322,13 @@ def create_workspace_boundary_router_hosted(config: APIConfig) -> APIRouter:
         session_or_error = await _require_workspace_member(request, config, workspace_id)
         if isinstance(session_or_error, JSONResponse):
             return session_or_error
-        fly_replay = await _try_fly_replay(workspace_id)
-        if fly_replay is not None:
-            return fly_replay
-        return await _forward_http_request(request, f"/api/v1/workspaces/{workspace_id}/settings", workspace_id)
+        replay = await _try_fly_replay(workspace_id)
+        if replay.response is not None:
+            return replay.response
+        return await _forward_http_request(
+            request, f"/api/v1/workspaces/{workspace_id}/settings", workspace_id,
+            is_local_workspace=replay.is_local_workspace,
+        )
 
     @router.put("/w/{workspace_id}/settings")
     async def workspace_settings_put(workspace_id: str, request: Request):
@@ -305,10 +342,13 @@ def create_workspace_boundary_router_hosted(config: APIConfig) -> APIRouter:
         session_or_error = await _require_workspace_member(request, config, workspace_id)
         if isinstance(session_or_error, JSONResponse):
             return session_or_error
-        fly_replay = await _try_fly_replay(workspace_id)
-        if fly_replay is not None:
-            return fly_replay
-        return await _forward_http_request(request, f"/api/v1/workspaces/{workspace_id}/settings", workspace_id)
+        replay = await _try_fly_replay(workspace_id)
+        if replay.response is not None:
+            return replay.response
+        return await _forward_http_request(
+            request, f"/api/v1/workspaces/{workspace_id}/settings", workspace_id,
+            is_local_workspace=replay.is_local_workspace,
+        )
 
     @router.api_route(
         "/w/{workspace_id}/{path:path}",
@@ -361,9 +401,12 @@ def create_workspace_boundary_router_hosted(config: APIConfig) -> APIRouter:
                 code="WORKSPACE_PATH_DENIED",
                 message="Path is outside allowed workspace-scoped families",
             )
-        fly_replay = await _try_fly_replay(workspace_id)
-        if fly_replay is not None:
-            return fly_replay
-        return await _forward_http_request(request, normalized, workspace_id)
+        replay = await _try_fly_replay(workspace_id)
+        if replay.response is not None:
+            return replay.response
+        return await _forward_http_request(
+            request, normalized, workspace_id,
+            is_local_workspace=replay.is_local_workspace,
+        )
 
     return router
