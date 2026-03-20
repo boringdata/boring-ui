@@ -132,6 +132,16 @@ class FlyProvisioner:
                                 ],
                                 "autostop": "suspend",
                                 "autostart": True,
+                                "checks": [
+                                    {
+                                        "type": "http",
+                                        "interval": "15s",
+                                        "timeout": "5s",
+                                        "grace_period": "30s",
+                                        "method": "GET",
+                                        "path": "/health",
+                                    }
+                                ],
                             }
                         ],
                         "guest": {
