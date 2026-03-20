@@ -18,10 +18,11 @@ from starlette.background import BackgroundTask
 
 from ..config import APIConfig
 from ..middleware.request_id import ensure_request_id
-from ..workspace import WorkspaceContext, resolve_workspace_context
+from ..workspace import WorkspaceContext, build_workspace_context_resolver, resolve_workspace_context
 from .harness import AgentHarness, HarnessHealth, SessionInfo, SessionRequest
 
 logger = logging.getLogger(__name__)
+_LOCAL_WORKSPACE_HEADER = "x-boring-local-workspace"
 
 
 def _create_workspace_token(workspace_id: str, *, secret: str, ttl_seconds: int = 300) -> str:
@@ -331,8 +332,16 @@ class PiHarness(AgentHarness):
 
     def _build_router(self) -> APIRouter:
         router = APIRouter(tags=["agent-pi"])
+        local_workspace_resolver = build_workspace_context_resolver(
+            self.config,
+            single_mode=True,
+        )
 
         async def _workspace_context(request: Request) -> WorkspaceContext:
+            local_workspace = str(request.headers.get(_LOCAL_WORKSPACE_HEADER, "")).strip().lower()
+            workspace_id = str(request.headers.get("x-workspace-id", "")).strip() or None
+            if local_workspace in {"1", "true", "yes", "on"} and workspace_id:
+                return local_workspace_resolver.resolve(workspace_id)
             return await resolve_workspace_context(request, config=self.config)
 
         async def _proxy_response(

@@ -140,12 +140,6 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
   }, [createSession, listSessions, loadHistory, publishState, sessionBootstrap])
 
   useEffect(() => {
-    if (!piRoutes.isConfigured) {
-      setError('PI backend URL is not configured.')
-      publishPiSessionState(panelId, EMPTY_STATE)
-      return undefined
-    }
-
     let disposed = false
 
     refreshSessions().catch((err) => {

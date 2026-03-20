@@ -45,6 +45,7 @@ _HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
+_LOCAL_WORKSPACE_HEADER = "x-boring-local-workspace"
 
 
 def _workspace_passthrough_roots(config: APIConfig | None = None) -> tuple[str, ...]:
@@ -167,12 +168,17 @@ async def _forward_http_request(
     headers.pop("host", None)
     headers.pop("content-length", None)
     if not target_path.startswith("/auth/"):
-        # On the workspace Machine itself (reached via fly-replay), the
-        # volume is mounted directly at BORING_UI_WORKSPACE_ROOT.  Skip
-        # the workspace-id header so the files/git routers use the base
-        # root instead of appending a workspace-id subdirectory.
         if not is_local_workspace:
             headers["x-workspace-id"] = workspace_id
+        elif (
+            target_path == "/api/capabilities"
+            or target_path.startswith("/api/v1/agent/")
+        ):
+            # Agent/capability routes still need the logical workspace id on
+            # the dedicated workspace Machine, but their filesystem root must
+            # remain the mounted volume root rather than a nested <root>/<id>.
+            headers["x-workspace-id"] = workspace_id
+            headers[_LOCAL_WORKSPACE_HEADER] = "1"
 
     transport = httpx.ASGITransport(app=request.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://workspace-boundary.local") as client:

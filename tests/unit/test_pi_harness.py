@@ -94,6 +94,7 @@ def test_pi_harness_proxy_routes_forward_workspace_context(tmp_path: Path) -> No
         config,
         client_factory=lambda: httpx.AsyncClient(transport=transport),
     )
+    harness.ensure_started = lambda: asyncio.sleep(0)
 
     app = FastAPI()
     for router in harness.routes():
@@ -101,9 +102,9 @@ def test_pi_harness_proxy_routes_forward_workspace_context(tmp_path: Path) -> No
 
     client = TestClient(app)
     response = client.post(
-        "/w/ws-1/api/v1/agent/pi/sessions/create",
+        "/api/v1/agent/pi/sessions/create",
         json={},
-        headers={"x-request-id": "req-pi-1"},
+        headers={"x-request-id": "req-pi-1", "x-workspace-id": "ws-1"},
     )
 
     assert response.status_code == 201
@@ -113,6 +114,49 @@ def test_pi_harness_proxy_routes_forward_workspace_context(tmp_path: Path) -> No
     assert headers["x-request-id"] == "req-pi-1"
     assert headers["x-workspace-id"] == "ws-1"
     assert headers["x-boring-workspace-root"] == str((tmp_path / "ws-1").resolve())
+    assert headers["authorization"].startswith("Bearer ")
+
+
+def test_pi_harness_local_workspace_forward_keeps_base_root(tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(201, json={"session": {"id": "sess-local"}})
+
+    transport = httpx.MockTransport(handler)
+    config = APIConfig(
+        workspace_root=tmp_path,
+        agents_mode="backend",
+        control_plane_provider="neon",
+        agents={"pi": AgentRuntimeConfig(enabled=True, port=8789)},
+    )
+    harness = PiHarness(
+        config,
+        client_factory=lambda: httpx.AsyncClient(transport=transport),
+    )
+    harness.ensure_started = lambda: asyncio.sleep(0)
+
+    app = FastAPI()
+    for router in harness.routes():
+        app.include_router(router)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/agent/pi/sessions/create",
+        json={},
+        headers={
+            "x-request-id": "req-pi-local",
+            "x-workspace-id": "ws-1",
+            "x-boring-local-workspace": "1",
+        },
+    )
+
+    assert response.status_code == 201
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["x-workspace-id"] == "ws-1"
+    assert headers["x-boring-workspace-root"] == str(tmp_path.resolve())
     assert headers["authorization"].startswith("Bearer ")
 
 
@@ -138,6 +182,7 @@ def test_pi_harness_stream_route_proxies_sse_payload(tmp_path: Path) -> None:
         config,
         client_factory=lambda: httpx.AsyncClient(transport=transport),
     )
+    harness.ensure_started = lambda: asyncio.sleep(0)
 
     app = FastAPI()
     for router in harness.routes():
@@ -187,7 +232,7 @@ def test_capabilities_reflect_pi_harness_health_and_backend_url(
     payload = response.json()
     assert payload["features"]["pi"] is True
     assert payload["services"]["pi"]["mode"] == "backend"
-    assert payload["services"]["pi"]["url"] == "http://testserver/w/ws-1"
+    assert payload["services"]["pi"]["url"] == "/w/ws-1"
 
 
 @pytest.mark.asyncio
