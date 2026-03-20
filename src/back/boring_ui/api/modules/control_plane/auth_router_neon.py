@@ -318,9 +318,20 @@ async def _eager_workspace_provision(
             "My Workspace",
             is_default=True,
         )
-        if created:
-            provisioner = getattr(request.app.state, "provisioner", None)
-            if provisioner:
+        provisioner = getattr(request.app.state, "provisioner", None)
+        if provisioner:
+            import uuid
+            # Check if workspace needs provisioning (new or missing machine_id)
+            needs_provision = created
+            if not needs_provision:
+                async with pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        "SELECT machine_id FROM workspaces WHERE id = $1",
+                        uuid.UUID(workspace_id),
+                    )
+                    needs_provision = row is not None and not row["machine_id"]
+
+            if needs_provision:
                 from .workspace_router_hosted import _provision_workspace
                 task = asyncio.create_task(
                     _provision_workspace(provisioner, pool, workspace_id, config)
@@ -328,9 +339,10 @@ async def _eager_workspace_provision(
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
                 _logger.info(
-                    "Eager workspace provisioning started for user %s: workspace=%s",
+                    "Eager workspace provisioning started for user %s: workspace=%s (new=%s)",
                     user_id,
                     workspace_id,
+                    created,
                 )
     except Exception as exc:
         _logger.warning("Eager workspace provisioning failed: %s", exc)
