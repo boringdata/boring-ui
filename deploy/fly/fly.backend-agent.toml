@@ -4,6 +4,12 @@ primary_region = "cdg"
 [build]
   dockerfile = "../shared/Dockerfile.backend"
 
+[deploy]
+  # Backend-agent serves hashed Vite bundles from the same app process.
+  # Avoid mixed old/new machine pools during rollout, which can pair stale
+  # index.html with a different asset set and trigger MIME/module failures.
+  strategy = "immediate"
+
 [env]
   APP_ENV = "production"
   AGENTS_MODE = "backend"
