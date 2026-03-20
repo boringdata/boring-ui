@@ -150,8 +150,11 @@ def build_runtime_config_payload(
     branding.setdefault("name", app_name)
     branding.setdefault("logo", app_logo)
 
+    # AGENTS_MODE env var takes precedence over boring.app.toml [agents] mode
     agent_mode = _normalize_agent_mode(
-        effective_agents_cfg.get("mode") if effective_agents_cfg else None
+        config.agents_mode if config is not None else (
+            effective_agents_cfg.get("mode") if effective_agents_cfg else None
+        )
     )
     data_backend = str(data.get("backend") or "http").strip().lower() or "http"
     explicit_profile = _normalize_profile(
