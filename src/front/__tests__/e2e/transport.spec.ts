@@ -12,6 +12,7 @@ const fulfillJson = (route: Route, status: number, body: unknown) => {
 }
 
 const waitForUserMenuButton = async (page: Page) => {
+  await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
   const button = page.locator('[aria-label="User menu"]').first()
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -20,9 +21,40 @@ const waitForUserMenuButton = async (page: Page) => {
     } catch (error) {
       if (attempt === 2) throw error
       await page.reload()
+      await page.waitForSelector('[data-testid="dockview"]', { timeout: 20000 })
     }
   }
   return button
+}
+
+const stubAppBootstrap = async (page: Page) => {
+  await page.route('**/__bui/config', (route) =>
+    fulfillJson(route, 200, {
+      app: { id: 'boring-ui', name: 'Boring UI', logo: 'B' },
+      frontend: {
+        branding: { name: 'Boring UI', logo: 'B' },
+        data: { backend: 'lightningfs' },
+        agents: { mode: 'frontend' },
+        mode: { profile: 'frontend' },
+      },
+      agents: { mode: 'frontend', default: 'pi', available: ['pi'] },
+      auth: { provider: 'local' },
+    }),
+  )
+  await page.route('**/api/capabilities', (route) =>
+    fulfillJson(route, 200, {
+      version: 'test',
+      features: {
+        files: true,
+        git: true,
+        pty: true,
+        chat_claude_code: true,
+        approval: true,
+        pi: true,
+      },
+      routers: [],
+    }),
+  )
 }
 
 test.describe('Canonical Transport Regression', () => {
@@ -36,6 +68,7 @@ test.describe('Canonical Transport Regression', () => {
       }
     })
 
+    await stubAppBootstrap(page)
     await page.route('**/auth/logout', (route) => {
       route.fulfill({
         status: 204,
@@ -43,7 +76,7 @@ test.describe('Canonical Transport Regression', () => {
       })
     })
     await page.route('**/api/v1/me', (route) =>
-      fulfillJson(route, 200, { email: 'john@example.com' }),
+      fulfillJson(route, 200, { email: 'john@example.com', user_id: 'user-1' }),
     )
     await page.route('**/api/v1/workspaces', (route) =>
       fulfillJson(route, 200, { workspaces: [{ id: 'ws-1', name: 'One' }] }),

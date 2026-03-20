@@ -511,7 +511,9 @@ export default function App() {
 
   // Panel sizing configuration from config
   const panelDefaults = config.panels?.defaults || { filetree: 280, terminal: 400, agent: 400, shell: 250 }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fallback object is stable across renders when config is unchanged
   const panelMin = config.panels?.min || { filetree: 180, terminal: 250, agent: 250, shell: 100, center: 200 }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fallback object is stable across renders when config is unchanged
   const panelCollapsed = config.panels?.collapsed || { filetree: 48, terminal: 48, agent: 48, shell: 36 }
   const rightRailDefaults = {
     agent:
@@ -861,6 +863,7 @@ export default function App() {
         : nextCollapsed
     ))
     setLayoutChromeHydratedPrefix(storagePrefix)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- outer-scope functions are stable; intentionally run only on storagePrefix change
   }, [storagePrefix, readPersistedCollapsedState, readPersistedPanelSizes])
 
   const publishFrontendState = useCallback(async (api, options = {}) => {
@@ -1761,6 +1764,7 @@ export default function App() {
         }
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally limited deps to avoid re-running layout logic on every config change
   }, [dockApi, collapsed, getLeftSidebarGroups, leftSidebarCollapsedWidth, leftSidebarMinWidth])
 
   // Git status polling removed - not currently used in UI
@@ -2094,6 +2098,7 @@ export default function App() {
       openFileAtPosition(path, position)
       return true
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- markdownPane is derived from config and stable; adding it would trigger unnecessary re-creations
     [dockApi, findCenterAnchorPanel, getLiveCenterGroup, getLeftSidebarAnchorPosition, openFileAtPosition]
   )
 
@@ -3917,6 +3922,7 @@ export default function App() {
         layoutRestored.current = false
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- layout restoration effect intentionally omits derived/stable values to avoid re-triggering
   }, [
     dockApi,
     projectRoot,
@@ -4056,6 +4062,7 @@ export default function App() {
         catalogActivityIntent,
       })
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- panel update effect intentionally omits derived/stable values to avoid excessive re-renders
   }, [
     dockApi,
     openFile,

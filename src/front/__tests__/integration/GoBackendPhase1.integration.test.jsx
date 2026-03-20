@@ -169,7 +169,7 @@ const waitForHealth = async (baseUrl, serverProcess, readLogs) => {
     try {
       const response = await httpRequest(`${baseUrl}/health`)
       if (response.status >= 200 && response.status < 300) return
-    } catch (_error) {
+    } catch {
       // Ignore transient connection failures until the deadline expires.
     }
     await new Promise((resolve) => setTimeout(resolve, 250))

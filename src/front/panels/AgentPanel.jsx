@@ -35,7 +35,7 @@ export default function AgentPanel({ params }) {
     // In backend mode, the PI agent is always available — PiBackendAdapter
     // falls back to same-origin routes when serviceUrl is empty.
     return true
-  }, [backendMode, serviceUrl])
+  }, [backendMode])
 
   return (
     <div className="panel-content terminal-panel-content agent-panel-content" data-testid="agent-panel">

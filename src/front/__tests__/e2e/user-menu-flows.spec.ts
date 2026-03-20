@@ -22,7 +22,10 @@ const fulfillJson = (route: Route, status: number, body: unknown) => {
   })
 }
 
-const stubCapabilities = async (page: Page) => {
+const stubAppBootstrap = async (page: Page) => {
+  await page.route('**/__bui/config', (route) =>
+    fulfillJson(route, 200, { auth: { provider: 'local' } }),
+  )
   await page.route('**/api/capabilities', (route) =>
     fulfillJson(route, 200, {
       version: 'test',
@@ -33,6 +36,7 @@ const stubCapabilities = async (page: Page) => {
         chat_claude_code: true,
         approval: true,
         pi: true,
+        control_plane: true,
       },
       routers: [],
     }),
@@ -67,7 +71,7 @@ test.describe('User Menu Control-Plane Flows', () => {
   test.use({ viewport: { width: 1280, height: 1024 } })
 
   test.beforeEach(async ({ page }) => {
-    await stubCapabilities(page)
+    await stubAppBootstrap(page)
   })
 
   test('switch workspace navigates to canonical /w/{id}/ via submenu', async ({ page }) => {
@@ -282,7 +286,7 @@ test.describe('User Menu Control-Plane Flows', () => {
       return fulfillJson(route, 500, { detail: 'boom' })
     })
 
-    await page.goto('/')
+    await page.goto('/w/ws-1/')
     const userMenuButton = await waitForUserMenuButton(page)
     await userMenuButton.click()
 

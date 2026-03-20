@@ -45,7 +45,7 @@ def test_local_workspace_boundary_forwards_pi_requests_with_workspace_identity(
         config,
         client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    harness.ensure_started = lambda: asyncio.sleep(0)
+    harness.ensure_ready = lambda: asyncio.sleep(0)
 
     app = FastAPI()
     for router in harness.routes():

@@ -10,7 +10,7 @@ vi.mock('../utils/transport', () => ({
 
 // Mock apiBase
 vi.mock('../utils/apiBase', () => ({
-  buildApiUrl: (path, query) => path,
+  buildApiUrl: (path, _query) => path,
 }))
 
 // Mock ThemeToggle

@@ -72,7 +72,6 @@ export default function AuthPage({ authConfig }) {
   const isLocal = provider === 'local'
   const urlSearchParams = new URLSearchParams(window.location.search)
 
-  const callbackUrl = authConfig?.callbackUrl || `${window.location.origin}/auth/callback`
   const redirectUri = safeRedirectPath(authConfig?.redirectUri || urlSearchParams.get('redirect_uri'))
   const resetToken = String(urlSearchParams.get('token') || '').trim()
   const resetLinkError = String(urlSearchParams.get('error') || '').trim()

@@ -64,7 +64,6 @@ describe('useCapabilities', () => {
 
     // Refetch — loading should NOT flip to true
     const loadingStates = []
-    const originalLoading = result.current.loading
 
     await act(async () => {
       const refetchPromise = result.current.refetch()

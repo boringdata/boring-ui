@@ -7,8 +7,6 @@ import {
 import { fetchJsonUrl, fetchUrl } from '../../utils/transport'
 import { createPiRoutes } from './routes'
 
-const EMPTY_STATE = { currentSessionId: '', sessions: [] }
-
 const toDisplayMessage = (message) => {
   const role = message?.role === 'assistant' ? 'assistant' : 'user'
   const text = String(message?.text || '').trim()
