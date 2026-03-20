@@ -365,8 +365,8 @@ class PiHarness(AgentHarness):
                         status_code=200,
                         headers={"fly-replay": f"instance={target}"},
                     )
-            except Exception:
-                pass  # No DB pool (workspace Machine) — handle locally
+            except Exception as exc:
+                logger.warning("fly-replay lookup failed for workspace %s: %s", ctx.workspace_id, exc)
             return None
 
         async def _proxy_response(

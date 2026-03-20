@@ -22,7 +22,7 @@ This document intentionally merges the strongest parts of earlier drafts:
 
 Execution strategy:
 
-- Track A: `@boring/ui` extraction and host-app primitive migration
+- Track A: create real workspace package boundaries first, then migrate the host app onto them
 - Track B: runtime panel pipeline and `@boring/sdk`
 
 Tracks are independently releasable, keep separate feature flags, and may soak on different
@@ -53,8 +53,8 @@ generic CSS and repeated primitive implementations.
    avatars, tooltips, alerts, simple cards, separators) with shadcn/ui-backed primitives.
 2. Keep boring-ui's design tokens as the visual source of truth. This is a migration, not a redesign.
 3. Expose the shared primitive surface as a real workspace package `@boring/ui` with its own
-   source tree, build pipeline, CSS entrypoint, and semver policy for the host app, child apps,
-   and runtime panels.
+   source tree, build pipeline, explicit stylesheet contract, and semver policy for the host app,
+   child apps, and runtime panels.
 4. Expose the runtime authoring contract as a companion workspace package `@boring/sdk` whose
    public API is versioned independently from host-private frontend code.
 5. Replace the current Vite-only runtime panel loading path with a backend-bundled ESM pipeline
@@ -155,13 +155,14 @@ Use stable shim modules such as:
 - `/__bui/runtime/boring-ui.js`
 - `/__bui/runtime/boring-sdk.js`
 
-Those modules can be backed by a boot-time global such as `globalThis.__BORING_RUNTIME__`, but the
-runtime-panel import contract must point at stable module URLs, not directly at globals.
+Those modules may be backed by a boot-time runtime registry, but the public contract should expose
+versioned ESM modules and a host transport/provider boundary rather than raw host-private hooks.
 
-### 5. Runtime panel manifest/status contract
+### 5. Runtime panel manifest/status contract and compatibility negotiation
 
 Every discovered panel gets manifest metadata and a status:
 
+- `queued`
 - `ready`
 - `building`
 - `error`
@@ -180,12 +181,19 @@ Capabilities and/or a dedicated panel endpoint must expose:
 - `diagnostics`
 - `warnings`
 - `build_ms`
+- `queue_ms`
 - `artifact_bytes`
 - `last_successful_hash`
 - `last_successful_module_url`
 - `updated_at`
 - `placement`
 - `icon`
+- `sdk_range`
+- `ui_range`
+- `host_range`
+- `requested_capabilities`
+- `effective_capabilities`
+- `compatibility`
 - optional manifest-derived metadata
 
 ### 6. Tailwind v4 migration safety
@@ -224,6 +232,15 @@ Before committing to Tailwind v4 migration, confirm boring-ui's browser support 
 with Tailwind v4's platform requirements. Tailwind v4 is designed for Safari 16.4+, Chrome 111+,
 and Firefox 128+, and the Tailwind team recommends staying on v3.4 if older browsers must be
 supported. Also verify Node/tooling versions before migration work begins.
+
+Because this plan relies on Tailwind v4 CSS-first directives and generated shadcn code, pin exact
+toolchain versions during the migration window instead of open-ended `v4` / `@latest` ranges.
+
+Required pins:
+
+- `tailwindcss`, `@tailwindcss/vite`, and any Tailwind CLI tooling
+- `shadcn` CLI
+- `tailwind-merge`, `tw-animate-css`, and `lucide-react`
 
 Because this plan relies on `@source inline()` for the runtime utility allowlist, pin the minimum
 Tailwind version to `4.1.x` or later instead of a generic `v4`.
@@ -298,7 +315,12 @@ Capture interactive states separately:
 
 ### 0.2 Inventory the migration surface
 
-Produce a concrete inventory of all generic primitive usage:
+Produce a concrete inventory of all generic primitive usage and keep it machine-generated until the
+migration closes.
+
+Automate the inventory with an AST-based scan so the migration dashboard stays current as code moves.
+
+Inventory categories:
 
 - buttons
 - icon buttons
@@ -365,10 +387,13 @@ Rules:
 - no arbitrary CSS imports in v1
 - supported Tailwind utilities are limited to the documented allowlist
 
+Also define a first-party preview/testing path so panels can be authored without booting the full
+workspace runtime every time.
+
 ### 0.4 Define manifest schema and defaults
 
-Add a minimal `panel.json` schema up front so discovery, metadata, and loader logic are not
-invented ad hoc later.
+Add a real shared contract package and JSON Schemas up front so discovery, metadata, diagnostics,
+and docs are generated from the same source of truth.
 
 Suggested v1 fields:
 
@@ -383,18 +408,34 @@ Suggested v1 fields:
   "description": "Workspace git metrics and status",
   "minSize": { "width": 320, "height": 220 },
   "runtimeApiVersion": 1,
-  "sdkRange": "^1.0.0"
+  "sdkRange": "^1.0.0",
+  "uiRange": "^1.0.0",
+  "hostRange": ">=1.0.0 <2",
+  "requestedCapabilities": ["file.read", "git.read", "panel.storage", "theme.read"]
 }
 ```
 
 Validation rules:
 
 - unknown unprefixed fields fail validation
+- incompatible `runtimeApiVersion`, `sdkRange`, `uiRange`, or `hostRange` fail fast with a
+  dedicated compatibility diagnostic before build
+- unknown requested capabilities fail validation
+- compatibility/capability checks are contract enforcement and UX, not a security boundary
 - `x-*` fields are allowed for forward-compatible panel-local extensions
 - invalid `entry` paths fail that panel only
 - path traversal is rejected
 - missing file -> `error` status
 - omitted fields get sane defaults
+
+Store schemas in `schemas/` and generate:
+
+- backend validators / model code
+- `@boring/sdk` types and JSDoc
+- `.d.ts` declarations for public packages
+- `docs/agent-runtime-contract.json`
+- `docs/panel-diagnostic-codes.json`
+- contract snapshot tests
 
 ### 0.5 Exit criteria
 
@@ -406,7 +447,16 @@ Validation rules:
 
 ---
 
-## Phase 1: Build The shadcn / `@boring/ui` Foundation
+## Phase 1: Create The Real Package Boundaries First, Then Build The shadcn / `@boring/ui` Foundation
+
+### 1.0 Create `packages/ui` and `packages/sdk` before any generated component code lands
+
+Do not initialize shadcn inside `src/front` and move the results later.
+Create the real workspace packages first, wire the host app to consume them immediately, and
+generate shadcn components directly into `packages/ui`.
+
+This makes the public package boundary real from day one and removes one full round of file moves,
+import churn, and CSS rewiring.
 
 ### 1.1 Move the host app onto the approved Tailwind baseline
 
@@ -416,7 +466,7 @@ Before running `shadcn init`:
 - confirm Node 20+ in local dev and CI
 - confirm the approved browser matrix in automated smoke tests
 
-### 1.2 Initialize shadcn for Vite + Tailwind v4 mode
+### 1.2 Initialize shadcn against the monorepo/package layout
 
 shadcn's CLI supports initialization for Vite, supports Tailwind v4 projects, and uses
 `components.json` to control output paths, aliases, CSS variables, and whether generated
@@ -428,7 +478,7 @@ ownership boundaries matter.
 Suggested command:
 
 ```bash
-npx shadcn@latest init -t vite
+pnpm dlx shadcn@<PINNED_VERSION> init -t vite --monorepo
 ```
 
 Target `components.json`:
@@ -441,7 +491,7 @@ Target `components.json`:
   "tsx": false,
   "tailwind": {
     "config": "",
-    "css": "src/front/styles.css",
+    "css": "packages/ui/src/styles.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""
@@ -459,7 +509,7 @@ Target `components.json`:
 
 ### 1.3 Add `cn()` utility
 
-**File**: `src/front/lib/utils.js`
+**File**: `packages/ui/src/lib/utils.js`
 
 ```js
 import { clsx } from 'clsx'
@@ -470,7 +520,7 @@ export function cn(...inputs) {
 }
 ```
 
-### 1.4 Bridge shadcn semantic tokens to boring-ui tokens
+### 1.4 Bridge shadcn semantic tokens to boring-ui tokens in the host theme layer
 
 Tailwind v4 supports CSS-driven theme variables with `@theme`, and shadcn supports Tailwind v4
 and `@theme inline`. Keep boring-ui tokens as the source of truth and map shadcn semantics onto
@@ -526,7 +576,7 @@ Plan:
    - the runtime utility allowlist is in place
    - no remaining dependency on JS-only config behavior exists
 
-### 1.6 Add a runtime utility allowlist stylesheet
+### 1.6 Add a separate runtime-panel stylesheet and utility allowlist policy with generated CSS and build-time enforcement
 
 Because Tailwind generates CSS by scanning project sources, backend-served runtime panel files are
 not automatically part of that scan. Tailwind v4 provides `@source` and `@source inline()` for
@@ -534,9 +584,12 @@ explicit source registration and safelisting.
 
 To keep runtime panels practical without adding a full second Tailwind compiler in v1:
 
-- create `src/front/styles/runtime-panel-utilities.css`
-- import it from the main stylesheet
-- safelist a curated subset of common agent-authored layout classes using `@source inline()`
+- create `packages/ui/src/runtime-panel.css`
+- import it only where runtime panels are mounted
+- explicitly register package source paths with `@source` / `source()` so monorepo scanning is deterministic
+- define the allowlist once in `packages/ui/src/runtime-utilities.allowlist.json`
+- generate the runtime utility CSS from that source of truth using `@source inline()`
+- validate runtime-panel `className` usage against the same allowlist during build
 
 Recommended v1 allowlist:
 
@@ -553,6 +606,8 @@ Important rule:
 - runtime panels may use `@boring/ui` freely
 - runtime panels may use only the documented utility subset outside `@boring/ui`
 - arbitrary values and arbitrary utilities are unsupported in v1
+- dynamic class-name construction is unsupported in runtime panels in v1; use complete static
+  class strings so policy checks and CSS generation are deterministic
 
 Also add a standard runtime panel root contract:
 
@@ -567,19 +622,19 @@ Install components in batches.
 **Batch 1 — Primitives**
 
 ```bash
-npx shadcn@latest add button badge separator input textarea label switch avatar kbd
+pnpm dlx shadcn@<PINNED_VERSION> add button badge separator input textarea label switch avatar kbd
 ```
 
 **Batch 2 — Composite / form**
 
 ```bash
-npx shadcn@latest add card alert tabs toggle toggle-group select field native-select
+pnpm dlx shadcn@<PINNED_VERSION> add card alert tabs toggle toggle-group select field native-select
 ```
 
 **Batch 3 — Overlay**
 
 ```bash
-npx shadcn@latest add dialog alert-dialog dropdown-menu context-menu tooltip popover
+pnpm dlx shadcn@<PINNED_VERSION> add dialog alert-dialog dropdown-menu context-menu tooltip popover
 ```
 
 **Batch 4 — Data / panel-friendly**
@@ -615,6 +670,7 @@ For runtime panels, explicitly add:
 - `EmptyState`
 - `LoadingState`
 - `ErrorState`
+- `Icon` (curated icon surface for runtime panels)
 
 ### 1.9 Verify foundation before migration
 
@@ -630,6 +686,29 @@ Checklist:
 ---
 
 ## Phase 2: Migrate The Host App To The Shared Vocabulary
+
+### 2A. CSS contract and cascade layering
+
+`@boring/ui` must ship explicit public CSS entrypoints:
+
+- `@boring/ui/styles.css` for shared primitives
+- `@boring/ui/runtime-panel.css` for `.bui-runtime-panel-root` defaults and the runtime utility subset
+
+The host app remains the owner of:
+
+- design tokens
+- dark-mode selector
+- domain/layout CSS
+
+Required import/layer order:
+
+1. tokens and theme bridge
+2. `@boring/ui/styles.css`
+3. `@boring/ui/runtime-panel.css` (workspace surfaces only)
+4. domain-specific app CSS
+
+Use explicit cascade layers to prevent import-order drift, for example:
+`@layer theme, boring-ui, runtime-panels, app;`
 
 Migration principle: move generic primitives first, leave domain/layout CSS alone.
 
@@ -778,7 +857,13 @@ After all categories land:
 
 Add a CI guardrail:
 
-- create `scripts/check-no-legacy-generic-ui.mjs`
+- add codemods for the highest-confidence replacements
+- add ESLint/AST rules that ban:
+  - imports from host-private UI paths after public packages exist
+  - retired generic primitive classes
+  - new page-local primitive wrappers when an equivalent `@boring/ui` export exists
+  - runtime-panel dynamic class construction
+- keep `scripts/check-no-legacy-generic-ui.mjs` as a fast backstop scan
 - fail CI if banned legacy generic classes reappear in JSX or CSS:
   - `btn`
   - `btn-primary`
@@ -797,31 +882,11 @@ Add a CI guardrail:
 
 ---
 
-## Phase 3: Publish `@boring/ui` And `@boring/sdk` As Real Packages
+## Phase 3: Harden, Version, And Publish `@boring/ui` And `@boring/sdk`
 
-### 3.1 Create real workspace packages
+### 3.1 Add release tooling, semver policy enforcement, and child-app verification for the packages created in Phase 1
 
-Preferred structure:
-
-```text
-packages/
-  ui/
-    src/
-    components.json
-    package.json
-  sdk/
-    src/
-    package.json
-```
-
-Rules:
-
-- `react` and `react-dom` are `peerDependencies`, not bundled dependencies
-- the host app imports `@boring/ui` and `@boring/sdk` the same way child apps do
-- runtime shim modules are generated from the public export manifest so browser shims and package
-  exports cannot silently drift
-- Tailwind explicitly registers package source paths with `@source` where automatic detection is
-  not sufficient
+Add Changesets or equivalent before these packages are treated as public contracts.
 
 ### 3.2 Public package entrypoints
 
@@ -851,6 +916,8 @@ If compatibility aliases remain during migration, document them as temporary com
 
 - `@boring/ui` root exports are stable once documented
 - `@boring/sdk` root exports are stable once documented
+- `@boring/sdk/testing` is dev-only and provides mock transports/providers for preview and CI
+- `@boring/sdk/host` is host-only and not part of the runtime panel import contract
 - `@boring/sdk/experimental` may evolve faster and is never used by runtime panels in v1
 
 ### 3.5 Verify in at least one child app
@@ -877,6 +944,20 @@ Document:
 - allowed SDK imports
 - CSS import expectations
 - migration path from compatibility imports to `@boring/ui`
+
+### 3.6A Optional: publish a private shadcn-compatible registry for boring-specific blocks
+
+Use the registry for copy/paste compositions and agent-facing recipes that are too high-level or
+too fast-moving for the semver-stable `@boring/ui` package surface.
+
+Examples:
+
+- `PanelScaffold`
+- authenticated settings forms
+- diagnostics drawers
+- file-tree action bars
+
+Keep `@boring/ui` for stable runtime imports; use the private registry for accelerators.
 
 ---
 
@@ -905,6 +986,7 @@ Document:
 import * as React from 'react'
 import * as jsxRuntime from 'react/jsx-runtime'
 import * as boringUI from '../components/ui'
+import { createHostSdkTransport } from '@boring/sdk/host'
 import {
   useFileContent,
   useFileWrite,
@@ -918,17 +1000,31 @@ globalThis.__BORING_RUNTIME__ = Object.freeze({
   React,
   jsxRuntime,
   ui: boringUI,
-  sdk: {
+  sdkTransport: createHostSdkTransport({
     useFileContent,
     useFileWrite,
     useGitStatus,
     buildApiUrl,
     apiFetch,
-  },
+  }),
 })
 ```
 
 Import this before workspace panel loading.
+
+### 4A. SDK architecture: transport-backed and future-isolation-ready
+
+`@boring/sdk` must be a real runtime package, not a plain bag of host hook references exposed on
+`globalThis`.
+
+Design it with three layers:
+
+1. stable panel-facing exports from `@boring/sdk`
+2. a host-only adapter implementation (`@boring/sdk/host`)
+3. a provider that scopes `panelId`, negotiated capabilities, theme, and storage
+
+This keeps the v1 same-realm implementation simple while preserving a clean path to iframe/worker
+isolation later without rewriting panel code.
 
 ### 4.2 Stable runtime shim modules
 
@@ -964,6 +1060,12 @@ Initial recommended exports:
 - `usePanelStorage`
 - `useTheme`
 - `toast`
+- `RuntimePanelProvider`
+
+`toast` should be implemented through Sonner, not the deprecated shadcn toast surface.
+
+The frontend hot-loads those ESM bundles into DockView and wraps each runtime panel in
+`RuntimePanelProvider` with `panelId`, negotiated capabilities, and storage scope.
 
 Do not expose host internals casually. Every addition increases long-term compatibility burden.
 
@@ -985,9 +1087,15 @@ Recommended implementation details:
 
 - keep Python responsible for discovery and HTTP APIs
 - delegate compilation to a long-lived Node worker that uses esbuild's JavaScript API
-- keep one warm `context()` per active panel or per workspace and use `rebuild()` for incremental builds
-- use esbuild plugins for import-policy validation, local-asset rules, diagnostics normalization,
-  and robust watch dependency tracking
+- use a bounded queue with back-pressure and debounced rebuilds
+- keep a bounded LRU of warm `esbuild.context()` objects for recently active panels/workspaces and
+  use `rebuild()` for incremental builds
+- never block artifact/status requests on a synchronous cold build; expose `queued` / `building`
+  and serve last-known-good when available
+- garbage-collect stale artifacts and idle contexts on a retention policy while preserving current
+  and last-known-good artifacts
+- use esbuild plugins for import-policy validation, local-asset rules, runtime utility policy
+  enforcement, diagnostics normalization, and robust watch dependency tracking
 - use the project-local `esbuild` install, not a global binary
 - bundle as ESM
 - emit source maps
@@ -1029,6 +1137,7 @@ const ctx = await esbuild.context({
   },
   plugins: [
     runtimeImportPolicyPlugin(),
+    runtimeUtilityPolicyPlugin(),
     runtimeDiagnosticsPlugin(),
   ],
 })
@@ -1057,6 +1166,14 @@ Per panel, track:
 - `hash`
 - `status`
 - `error`
+- `queue_ms`
+- `build_ms`
+- `artifact_bytes`
+- `last_successful_hash`
+- `last_successful_module_url`
+- `requested_capabilities`
+- `effective_capabilities`
+- `compatibility`
 - `updated_at`
 - `placement`
 - `icon`
@@ -1084,6 +1201,7 @@ Discovery should:
 - validate safe paths
 - attach status/build metadata
 - return loader-friendly `module_url` instead of raw relative source paths
+- return immutable content-addressed artifact URLs and cache hints
 
 Suggested response shape:
 
@@ -1098,11 +1216,20 @@ Suggested response shape:
     "hash": "<hash>",
     "status": "ready",
     "error": None,
+    "requested_capabilities": ["file.read", "git.read", "panel.storage", "theme.read"],
+    "effective_capabilities": ["file.read", "git.read", "panel.storage", "theme.read"],
+    "compatibility": {"ok": True},
     "last_successful_hash": "<hash>",
     "last_successful_module_url": "/api/panel-artifacts/ws-git-insights/<hash>/module.js",
     "updated_at": "...",
 }
 ```
+
+Artifact-serving rules:
+
+- manifest/status endpoints use `Cache-Control: no-store`
+- content-addressed artifact URLs use strong `ETag` plus long-lived `immutable` caching
+- source maps follow stricter auth/debug rules than module artifacts
 
 ### 4.7 Update capabilities and app bootstrap
 
@@ -1113,8 +1240,11 @@ Make `workspace_panes` include runtime bundle metadata:
 - `status`
 - `error`
 - `diagnostics`
+- `requested_capabilities`
 - `last_successful_hash`
 - `last_successful_module_url`
+- `compatibility`
+- `effective_capabilities`
 
 The frontend should not have to reverse-engineer source paths anymore.
 
@@ -1127,6 +1257,7 @@ New behavior:
 - if `status === "ready"`, import `module_url`
 - import ready panels in parallel via `Promise.allSettled`
 - lazy-load panels on first activation when possible instead of eagerly importing every discovered panel
+- optionally prefetch likely-needed module URLs on hover, placement visibility, or idle time
 - if `status === "building"` and `last_successful_module_url` exists, keep rendering the last good
   panel with a rebuilding badge instead of blanking the tab
 - if `status === "error"` and `last_successful_module_url` exists, keep rendering the last good
@@ -1135,7 +1266,8 @@ New behavior:
 - if dynamic import itself fails, render a visible load error
 
 Do not assume Vite will automatically module-preload these backend-served artifacts. If preload is
-desired, own it explicitly rather than relying on HTML-entry behavior or library-mode defaults.
+desired, own it explicitly (`fetch` / `modulepreload`) rather than relying on HTML-entry behavior
+or library-mode defaults.
 
 Example direction:
 
@@ -1261,6 +1393,7 @@ Create fixture panels:
 2. `build-error-panel` -> invalid JSX/import to exercise compile error state
 3. `runtime-error-panel` -> throws during render to exercise error boundary
 4. `utility-allowlist-panel` -> uses supported runtime utility subset
+5. `unsupported-utility-panel` -> uses disallowed classes and fails with a clear policy diagnostic
 
 Verify:
 
@@ -1269,6 +1402,15 @@ Verify:
 - DockView renders the panel
 - editing the file updates the panel
 - bad panels fail visibly and locally
+
+### 5.5B Panel preview harness and doctor CLI
+
+Add a lightweight local preview route/app and a CLI (`panel:doctor`) that can:
+
+- validate `panel.json`
+- check import/capability/style policy
+- render the panel against mocked SDK data
+- display normalized diagnostics without booting a full workspace
 
 ### 5.5A Observability and inspector
 
@@ -1318,10 +1460,12 @@ Must document:
 - unsupported patterns
 - error-debugging workflow
 - compatibility alias deprecation plan
-- machine-readable agent contract artifacts:
+- generated machine-readable contract artifacts:
   - `docs/agent-ui-catalog.json`
   - `docs/agent-runtime-contract.json`
   - `docs/panel-diagnostic-codes.json`
+
+Generate those artifacts from the shared schemas instead of maintaining them by hand.
 
 ---
 
@@ -1398,21 +1542,32 @@ Mitigation:
 
 ### New Files
 
+- `schemas/panel-manifest.schema.json`
+- `schemas/panel-status.schema.json`
+- `schemas/panel-diagnostic.schema.json`
 - `packages/ui/src/*`
 - `packages/ui/components.json`
 - `packages/ui/package.json`
 - `packages/sdk/src/*`
 - `packages/sdk/package.json`
 - package-level `components.json` files where needed
-- `src/front/styles/runtime-panel-utilities.css`
+- `packages/ui/src/styles.css`
+- `packages/ui/src/runtime-panel.css`
+- `packages/ui/src/runtime-utilities.allowlist.json`
 - `src/front/workspace/hostBridge.js`
 - runtime placeholder/error components for panel states
 - `src/back/boring_ui/api/panel_bundler.py`
 - Node build worker files for esbuild contexts/plugins
+- runtime style-policy validation plugin / rule
 - runtime shim module files or route handlers
 - `tests/visual/capture-baseline.spec.ts`
 - backend and frontend tests for runtime panels
 - `scripts/check-no-legacy-generic-ui.mjs`
+- `packages/sdk/src/testing/*`
+- `scripts/panel-doctor.mjs`
+- preview route/app files
+- codemods for legacy generic UI replacements
+- ESLint rules / config for public-package boundary enforcement
 - `docs/UPSTREAM_SHADCN.md`
 - `docs/agent-ui-catalog.json`
 - `docs/agent-runtime-contract.json`
@@ -1456,27 +1611,28 @@ Mitigation:
 
 ```text
 1. chore: add deterministic visual baselines and migration inventory
-2. chore: move to the approved Tailwind 4.1+/Node 20+ baseline
-3. chore: initialize shadcn foundation and token bridge
-4. chore: add runtime utility allowlist stylesheet
-5. chore: add shadcn component primitives
-6. feat: extract `@boring/ui` workspace package
-7. refactor: migrate buttons and badges to @boring/ui
-8. refactor: migrate menus and context menus to @boring/ui
-9. refactor: migrate dialogs to @boring/ui
-10. refactor: migrate inputs, textareas, and selects to @boring/ui
+2. chore: pin the approved Tailwind/shadcn/tooling versions and Node baseline
+3. feat: create `packages/ui` and `packages/sdk` before generated code lands
+4. chore: initialize shadcn against the monorepo/package layout
+5. feat: define CSS contract, runtime-panel stylesheet, and utility allowlist policy
+6. chore: add shadcn component primitives and Sonner
+7. refactor: migrate buttons and badges to `@boring/ui`
+8. refactor: migrate menus and context menus to `@boring/ui`
+9. refactor: migrate dialogs to `@boring/ui`
+10. refactor: migrate inputs, textareas, and selects to `@boring/ui`
 11. refactor: migrate tooltip, tabs, switch, avatar, alert, card, separator
-12. chore: remove retired generic primitive CSS and add CI guardrail
-13. feat: publish `@boring/ui` workspace package and compatibility alias
+12. chore: add codemods, AST/ESLint guardrails, and remove retired generic primitive CSS
+13. feat: add release tooling and publish `@boring/ui` compatibility alias
 14. release: soak Track A independently
-15. feat: extract `@boring/sdk` workspace package
-16. feat: add runtime host bridge, shim modules, and machine-readable contracts
-17. feat: add Node-worker panel compiler, manifest state, diagnostics, and serving routes
-18. feat: switch frontend loader to backend ESM with last-known-good behavior
-19. test: add runtime panel integration fixtures, observability, and contract tests
-20. docs: update extension guide and SDK docs
-21. chore: remove old @workspace loader path after Track B soak
-22. chore: delete transition-only tailwind config if no longer needed
+15. feat: add transport-backed `@boring/sdk`, host adapter, and testing package
+16. feat: add schemas, generated contracts, and runtime host bridge
+17. feat: add queue-based Node-worker panel compiler, diagnostics, and cache/GC policy
+18. feat: switch frontend loader to backend ESM with last-known-good and prefetch behavior
+19. feat: add preview harness, `panel:doctor`, observability, and inspector
+20. test: add runtime panel integration fixtures, policy tests, and contract snapshots
+21. docs: update extension guide, SDK docs, and generated contract outputs
+22. chore: remove old `@workspace` loader path after Track B soak
+23. chore: delete transition-only tailwind config if no longer needed
 ```
 
 ---
@@ -1502,11 +1658,11 @@ This project is done when all of the following are true:
 ## Final Execution Summary
 
 ```text
-Track A  workspace-package extraction for `@boring/ui` + host primitive migration
-Track B  runtime panel pipeline + `@boring/sdk`
+Track A  package-first `@boring/ui` extraction + host primitive migration
+Track B  transport-backed `@boring/sdk` + runtime panel pipeline
 
 Phase 0  Baseline + inventory + contract lock
-Phase 1  Tailwind baseline + shadcn foundation + runtime utility allowlist
+Phase 1  package-first boundaries + Tailwind baseline + shadcn foundation
 Phase 2  host app migration by primitive category + CSS cleanup + CI guardrail
 Phase 3  publish/verify real workspace packages for child apps
 Phase 4  backend-bundled runtime panel pipeline + stable shim modules + visible statuses/errors

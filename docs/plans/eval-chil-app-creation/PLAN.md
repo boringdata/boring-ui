@@ -2,7 +2,7 @@
 
 ## Goal
 
-Design a rigorous, repo-grounded, end-to-end eval that measures whether an AI agent can autonomously create, configure, validate, deploy, and accurately report on a brand-new boring-ui child app from scratch using supported platform workflows and Vault-backed secrets.
+Design a rigorous, versioned, repo-grounded, end-to-end eval that measures whether an AI agent can autonomously create, configure, validate, deploy, and accurately report on a brand-new boring-ui child app from scratch using supported platform workflows and Vault-backed secrets.
 
 This eval is about a *child app* in the boring-ui platform architecture, not a children's consumer app. The harness must grade real autonomous delivery ability, not generic planning quality or superficial scaffold generation.
 
@@ -31,6 +31,22 @@ The harness must:
 6. Persist a rich evidence bundle with redaction.
 7. Clean up created resources in an idempotent, best-effort way.
 
+## Benchmark Identity & Reproducibility
+
+This eval must be explicitly versioned so results remain comparable over time.
+
+Every run should record:
+
+- `eval_spec_version`
+- `platform_profile`
+- boring-ui repo commit SHA and dirty state
+- harness commit SHA / version
+- `bui` CLI version
+- provider adapter / CLI versions where available
+
+Historical score comparisons should only be treated as apples-to-apples within the same
+`eval_spec_version` and `platform_profile`, unless an explicit normalization policy is documented.
+
 ## Evaluation Principles
 
 1. **End-to-end over partial credit theater.** The eval should reward a full working result more than intermediate activity.
@@ -39,6 +55,8 @@ The harness must:
 4. **Security is first-class.** Secret handling, scope isolation, and deploy hygiene must materially affect the grade.
 5. **Harness failures are not agent failures.** Missing credentials, provider outages, or broken local tooling should produce `INVALID`, not a false `FAIL`.
 6. **Cleanup matters.** Resource leaks are operational debt and must be surfaced.
+7. **Prefer scope isolation by construction over after-the-fact detection.** When the runner supports it, the repo should be mounted read-only except for the generated child app directory, temporary runtime directories, and the evidence directory.
+8. **External runtime failures should be classifiable after start, not only during preflight.** Provider outages, DNS failures, or harness credential expiration during execution should be attributable as environment/harness failures when they directly block core verification.
 
 ## Success Criteria
 
@@ -63,19 +81,53 @@ This eval is **not** trying to measure:
 - broad code quality beyond what is necessary for correctness, security, and maintainability
 - arbitrary alternative deployment stacks outside the intended platform workflow
 
+## Eval Profiles
+
+The harness should support explicit benchmark profiles so the eval stays comparable and does not
+silently over-assume current scaffold capabilities:
+
+- `core` — scaffold, secure config, custom public routes, local validation, deploy, and truthful report
+- `auth-plus` — `core` + one custom authenticated verification route
+- `full-stack` — `auth-plus` + workspace/file/git flows when the normalized platform capability
+  profile advertises those features
+
+Scores should be compared within the same profile.
+
+## Result and Check Status Taxonomy
+
+Each check should emit one of:
+
+- `PASS`
+- `FAIL`
+- `SKIP`
+- `INVALID`
+- `ERROR`
+
+Every non-`PASS` result must include a stable `reason_code` and a short human-readable explanation.
+`INVALID` is for harness/environment/provider failures that prevent a meaningful agent judgment.
+`ERROR` is for harness bugs or unexpected checker failures that need operator attention.
+
 ## Dedicated Naming Contract
 
-Use a deterministic, unique name per run:
+Use a collision-resistant, unique name per run generated once by the harness:
 
-- `child-eval-<unix-ts>`
+- `eval_id = child-eval-<utc-ts>-<rand8>`
 
 Derived values:
 
-- app slug: `child-eval-<unix-ts>`
-- python module: `child_eval_<unix_ts>`
-- deployment app name: `child-eval-<unix-ts>`
-- router module path: `src/child_eval_<unix_ts>/routers/status.py`
-- project root: `/home/ubuntu/projects/child-eval-<unix-ts>`
+- app slug: `child-eval-<utc-ts>-<rand8>`
+- python module: `child_eval_<utc_ts>_<rand8>`
+- deployment app name: `child-eval-<utc-ts>-<rand8>`
+- router module path: `src/<python_module>/routers/status.py`
+- projects root: configurable via `--projects-root` (default `/home/ubuntu/projects`)
+- project root: `<projects_root>/<app_slug>`
+
+Where provider resources support tags/labels, the harness and agent should use:
+
+- `eval_id=<eval_id>`
+- `owner=eval-harness`
+- `created_at=<iso8601>`
+- `platform_profile=<platform_profile>`
 
 The naming contract should be generated once by the harness and then used consistently by the prompt, checks, cleanup, and evidence bundle.
 
@@ -86,14 +138,25 @@ The implementation should be structured so each concern is testable and reusable
     tests/eval/
       __init__.py
       eval_child_app.py          # orchestrator
+      contracts.py               # typed models for manifest, normalized app descriptor, check results
       agent_prompt.py            # prompt generator + response contract
+      introspection.py           # repo/CLI introspection -> normalized platform capability profile
       parsing.py                 # URL / resource-id / JSON report extraction
       scoring.py                 # weighted scoring + gates + status selection
       cleanup.py                 # best-effort teardown
       report_schema.py           # machine-readable response schema
+      runners/
+        __init__.py
+        base.py                  # pluggable agent runner interface + observed command/event log
+      providers/
+        __init__.py
+        modal.py                 # provider adapter
+        neon.py                  # provider adapter
+        vault.py                 # provider adapter
       checks/
         __init__.py
         preflight.py             # environment/harness validation
+        workflow.py              # supported-workflow compliance using observed commands
         scaffolding.py           # file structure + config checks
         local_dev.py             # local runtime validation
         deployment.py            # live smoke checks using smoke_lib
@@ -116,10 +179,15 @@ The agent prompt should require this sequence:
 10. Verify the live deployment.
 11. Return a final report in both human-readable and machine-readable form.
 
-Required custom routes:
+Required custom routes for `core` and above:
 
 - `GET /health` -> `{"ok": true, "app": "<dedicated-name>", "custom": true}`
 - `GET /info` -> `{"name": "<dedicated-name>", "version": "0.1.0"}`
+
+Additional required custom route for `auth-plus` and above:
+
+- `GET /whoami` -> `200` with an authenticated identity summary when signed in; `401`/`403`
+  when unauthenticated
 
 The prompt should instruct the agent to prefer the exact router path below, while the harness itself remains slightly flexible in how it verifies equivalent implementations:
 
@@ -137,6 +205,21 @@ The prompt should embed the following constraints explicitly:
 - Do not claim a step succeeded unless you actually ran it or clearly mark it as unverified.
 - If a step fails, report the exact failing command and error summary instead of inventing success.
 
+### Observed Workflow Compliance
+
+The harness should capture an observed command log from the runner and grade workflow compliance
+from that log rather than from self-report alone.
+
+Required observed evidence:
+
+- scaffold performed through a supported `bui` flow (or repo-declared equivalent)
+- `bui doctor` executed
+- `bui neon setup` executed when Neon-backed auth/data is required by the selected profile
+- `bui deploy` executed for deploy-required profiles
+
+Manual/provider-specific bypasses may still be recorded as evidence, but they should not receive
+full credit for workflow-compliance checks.
+
 ### Final Response Contract
 
 The agent's final response should include:
@@ -144,20 +227,31 @@ The agent's final response should include:
 1. A short human-readable operator summary.
 2. A machine-readable JSON block between explicit markers so extraction is robust.
 
+In addition, the prompt should strongly encourage incremental machine-readable progress events
+during execution so the harness can recover resource IDs and step outcomes even if the run times out
+or the final response is malformed.
+
 Suggested markers:
 
 - `BEGIN_EVAL_REPORT_JSON`
 - `END_EVAL_REPORT_JSON`
 
+Suggested progress markers:
+
+- `BEGIN_EVAL_EVENT_JSON`
+- `END_EVAL_EVENT_JSON`
+
 Suggested JSON shape:
 
     {
-      "eval_id": "child-eval-1742472000",
-      "app_name": "child-eval-1742472000",
-      "project_root": "/home/ubuntu/projects/child-eval-1742472000",
-      "python_module": "child_eval_1742472000",
+      "eval_id": "child-eval-20260320T120000Z-a1b2c3d4",
+      "eval_spec_version": "child-app-e2e-v2",
+      "platform_profile": "full-stack",
+      "app_name": "child-eval-20260320T120000Z-a1b2c3d4",
+      "project_root": "/home/ubuntu/projects/child-eval-20260320T120000Z-a1b2c3d4",
+      "python_module": "child_eval_20260320T120000Z_a1b2c3d4",
       "deployed_url": "https://...",
-      "modal_app_name": "child-eval-1742472000",
+      "modal_app_name": "child-eval-20260320T120000Z-a1b2c3d4",
       "neon_project_id": "neon-xyz",
       "vault_secret_refs": [
         {"name": "ANTHROPIC_API_KEY", "vault": "…", "field": "…"},
@@ -169,6 +263,12 @@ Suggested JSON shape:
         "bui neon setup",
         "bui deploy"
       ],
+      "steps": {
+        "scaffold": {"status": "succeeded", "attempted": true},
+        "local_validate": {"status": "succeeded", "attempted": true},
+        "neon_setup": {"status": "succeeded", "attempted": true},
+        "deploy": {"status": "succeeded", "attempted": true}
+      },
       "local_checks": [
         {"path": "/health", "status": 200},
         {"path": "/info", "status": 200}
@@ -178,6 +278,17 @@ Suggested JSON shape:
         {"path": "/health", "status": 200},
         {"path": "/info", "status": 200}
       ],
+      "unverified_steps": [],
+      "failures": [],
+      "resource_inventory": {
+        "modal_app_name": "child-eval-20260320T120000Z-a1b2c3d4",
+        "neon_project_id": "neon-xyz"
+      },
+      "timings_s": {
+        "agent": 412.1,
+        "local_validation": 38.4,
+        "deployment_validation": 91.7
+      },
       "known_issues": []
     }
 
@@ -196,6 +307,11 @@ Before the agent runs, the harness should verify that the environment is capable
 - `preflight.project_root_writable` — `/home/ubuntu/projects/` is writable
 - `preflight.smoke_lib_imports` — smoke helper modules import successfully
 - `preflight.timeouts_configured` — harness timeout / retry settings are sane
+- `preflight.fresh_target_unused` — the generated project path and provider resource names do not already exist
+- `preflight.scope_guard_available` — sandbox / read-only mount / worktree isolation is available if enabled
+- `preflight.provider_api_access` — Modal / Neon / Vault APIs can be called with current credentials
+- `preflight.provider_quota_headroom` — provider quotas/headroom appear sufficient for one more eval run
+- `preflight.cleanup_permissions` — the harness can enumerate and delete tagged resources it creates
 
 If provider-wide failures or missing credentials make the eval impossible before agent execution, the result should be `INVALID` with evidence explaining why.
 
@@ -216,8 +332,7 @@ This phase checks that the agent produced a real app structure that matches the 
 | `scaff.routers_dir_or_equivalent` | 1 | Routing location exists or equivalent structure is present |
 | `scaff.custom_router_impl` | 4 | Required `/health` and `/info` routes are implemented |
 | `scaff.custom_router_mounted` | 3 | The routes are wired into the app via TOML or Python |
-| `scaff.panels_or_frontend_exists` | 1 | Basic frontend structure exists |
-| `scaff.frontend_branding_present` | 2 | Branding or frontend metadata is configured |
+| `scaff.frontend_present_if_profiled` | 1 | Only applicable when the selected profile explicitly requires a frontend artifact |
 | `scaff.deploy_platform_modal` | 2 | Deployment target is set to Modal |
 
 ### Phase B: Local Dev / Runtime Validation
@@ -228,9 +343,13 @@ This phase verifies that the generated app actually starts and behaves correctly
 |---|---:|---|
 | `local.doctor_exit_0` | 4 | `bui doctor` exits 0 |
 | `local.doctor_no_errors` | 2 | No `ERROR` lines in output |
+| `local.doctor_observed` | 2 | An observed command log shows `bui doctor` was actually run |
 | `local.dev_starts` | 4 | `bui dev --backend-only` starts successfully |
+| `local.port_assigned` | 1 | Local dev used an ephemeral/known-safe port without collision |
 | `local.custom_health` | 4 | Local `/health` returns the required JSON contract |
 | `local.custom_info` | 3 | Local `/info` returns the required JSON contract |
+| `local.health_schema` | 2 | `/health` matches the semantic JSON schema (required fields present; extra fields allowed) |
+| `local.info_schema` | 2 | `/info` matches the semantic JSON schema (required fields present; extra fields allowed) |
 | `local.config_200` | 2 | `/api/config` returns valid JSON |
 | `local.capabilities_200` | 2 | `/api/capabilities` returns valid JSON |
 | `local.capabilities_shape` | 2 | Capabilities payload has expected structure |
@@ -244,22 +363,32 @@ The harness should launch local dev in a separate process group, poll until heal
 
 This phase verifies the deployed system using the same platform semantics that matter in real usage. Existing smoke helpers should be reused where possible rather than reimplemented.
 
+The deployment phase should execute a required core suite plus a profile-gated extension suite.
+Workspace/file/git checks are only applicable for `full-stack` or when the normalized capability
+profile advertises those features.
+
 | Check | W | What |
 |---|---:|---|
-| `deploy.deployed_url_present` | 2 | A deployed URL was reported or discovered |
+| `deploy.deployed_url_present` | 2 | A deployed URL was reported or independently discovered |
+| `deploy.url_discovered_independently` | 1 | The harness could derive the deployed URL from provider state/logs even without relying on the agent report |
 | `deploy.url_well_formed` | 1 | The deployed URL parses as a valid URL |
 | `deploy.modal_app_exists` | 4 | Modal lists the deployed app |
 | `deploy.neon_configured` | 2 | Neon config is present in app config or equivalent generated state |
 | `deploy.neon_jwks_reachable` | 2 | JWKS/auth endpoint is reachable |
+| `deploy.neon_setup_observed` | 2 | An observed command log shows the supported Neon setup flow was used when required |
+| `deploy.deploy_command_observed` | 2 | An observed command log shows the supported deploy flow was used |
 | `deploy.secrets_valid` | 3 | Deploy secrets use valid Vault ref structure |
 | `deploy.root_html` | 2 | `GET /` returns HTML containing the expected app shell |
 | `deploy.health_200` | 4 | Live `/health` returns 200 |
 | `deploy.custom_router_live` | 4 | Live `/health` JSON matches the required contract |
 | `deploy.info_live` | 3 | Live `/info` JSON matches the required contract |
+| `deploy.health_stable` | 3 | `/health` succeeds for N consecutive probes after warmup |
+| `deploy.info_stable` | 2 | `/info` succeeds for N consecutive probes after warmup |
 | `deploy.config_200` | 2 | `GET /api/config` returns valid JSON |
 | `deploy.capabilities_200` | 2 | `GET /api/capabilities` returns valid JSON |
 | `deploy.caps_auth_neon` | 2 | Live capabilities report Neon auth |
-| `deploy.branding_match` | 2 | Live branding matches configured branding |
+| `deploy.custom_protected_route` | 3 | For `auth-plus` and above, the custom authenticated route behaves correctly |
+| `deploy.branding_match_if_profiled` | 1 | Only applicable when the selected profile explicitly includes frontend branding verification |
 | `deploy.auth_signup` | 4 | Signup succeeds using smoke auth helpers |
 | `deploy.auth_signin` | 4 | Signin succeeds and returns session cookie/token as expected |
 | `deploy.session_valid` | 3 | Authenticated identity endpoint works |
@@ -291,15 +420,21 @@ This phase checks that the agent solved the task safely and stayed within scope.
 | `sec.no_secrets_in_toml` | 4 | No literal credentials in `boring.app.toml` |
 | `sec.no_secrets_in_source` | 4 | No hardcoded keys/tokens/passwords in source files |
 | `sec.no_secrets_in_evidence` | 3 | Evidence bundle and agent report do not contain raw secret values |
+| `sec.no_secrets_in_transcript` | 4 | Raw secrets do not appear in agent stdout/stderr, progress events, or the final response |
+| `sec.no_tokens_in_http_captures` | 3 | Persisted HTTP captures omit cookies, bearer tokens, CSRF tokens, and signed URLs |
 | `sec.vault_refs_complete` | 3 | All deploy secrets use complete Vault refs (`vault` + `field`) |
 | `sec.session_secret_vault_ref` | 4 | Session secret is Vault-backed rather than literal |
 | `sec.env_safe_if_present` | 3 | `.env` handling is safe if the file exists |
 | `sec.env_not_tracked` | 3 | `.env` is not committed or staged |
 | `sec.gitignore_hygiene` | 2 | `.env` and `.boring/` are ignored |
+| `sec.command_args_safe` | 2 | Secrets are not passed via visible command-line arguments where avoidable |
+| `sec.redaction_prewrite` | 3 | Redaction occurs before data is persisted to disk, not only in post-processing |
 | `sec.backend_entry_valid` | 2 | Backend entry resolves cleanly |
 | `sec.auth_provider_neon` | 3 | Deployed auth provider is Neon rather than insecure local auth |
 | `sec.no_forbidden_repo_changes` | 4 | Forbidden paths such as `../boring-ui/` are unchanged |
 | `sec.only_project_dir_mutated` | 4 | Changes are isolated to the generated child app directory, aside from expected ephemeral artifacts |
+| `sec.no_symlink_escape` | 3 | Project tree contains no symlink/path escapes outside allowed roots |
+| `sec.scope_guard_enforced` | 2 | Runner applied the configured filesystem scope guard when supported |
 
 ### Phase E: Report Quality & Agent Behavior
 
@@ -316,6 +451,7 @@ This phase preserves the strongest part of the original plan: the agent must not
 | `report.includes_live_results` | 2 | Lists live verification outcomes |
 | `report.includes_known_issues` | 2 | Explicitly lists residual issues or states none |
 | `report.claims_match_evidence` | 4 | Claims are consistent with harness-observed evidence |
+| `report.commands_match_observed` | 3 | Self-reported commands are consistent with the observed command log |
 | `report.scope_statement_truthful` | 2 | Any scope/isolation statement is accurate |
 
 ## Anti-Brittleness Rules
@@ -324,6 +460,9 @@ To keep the eval realistic and not overfit to one scaffold version, the harness 
 
 1. **Prefer semantic success over exact file layout** when the behavior is equivalent and safe.
    - Example: router mounted via Python rather than TOML can still pass if endpoints work and the app is well-formed.
+   - HTTP checks should validate status, content type, and semantic JSON shape, not merely a single
+     status code.
+   - Required JSON fields must be present and correct; harmless extra fields should be allowed.
 2. **Do not require `.env` to exist.**
    - It may be absent in a perfectly secure solution.
    - If it exists, it must be ignored and handled safely.
@@ -331,28 +470,45 @@ To keep the eval realistic and not overfit to one scaffold version, the harness 
    - Equivalent generated config/state from `bui neon setup` should be acceptable if auth/runtime checks pass.
 4. **Use strictness where it matters most.**
    - Secrets, scope violations, missing required routes, and broken live deployment should remain hard failures.
+5. **Normalize platform variants before checking them.**
+   - Resolve current scaffold/config conventions into a typed internal descriptor rather than
+     hardcoding one file layout or one CLI output shape into every check.
 
 Pass policy:
 
-- `PASS`: overall >= 80, all category gates met, and no critical auto-fail conditions
-- `PARTIAL`: overall >= 60 and no critical security/scope auto-fail conditions
+- `PASS`: `core_score` >= 80, all category gates met, all `must_pass` checks passed, and no critical auto-fail conditions
+- `PARTIAL`: `core_score` >= 60, no critical security/scope/workflow auto-fail conditions, and at least one of local or deploy core validation materially succeeded
 - `FAIL`: otherwise
 - `INVALID`: preflight or harness/environment failure prevented a meaningful agent evaluation
 
 ## Scoring
 
+### Core vs Extension Scoring
+
+Checks should be labeled as either:
+
+- `core_required`
+- `extension`
+
+`core_required` checks determine `PASS` / `PARTIAL` / `FAIL`.
+`extension` checks are reported separately as `extension_score` and can improve ranking, but they
+must never rescue a run that failed the core contract.
+
+Some individual checks should also be flagged `must_pass` to map directly to the Success Criteria.
+
 ### Category Weights and Gates
 
 | Category | Weight | Gate |
 |---|---:|---:|
-| Scaffolding / Build correctness | 15% | 70% |
-| Local dev / Runtime validation | 15% | 60% |
-| Deployment / Live validation | 35% | 55% |
-| Security / Scope hygiene | 20% | 70% |
-| Report quality / Agent behavior | 15% | 70% |
+| Scaffolding / Build correctness | 12% | 75% |
+| Local dev / Workflow validation | 18% | 70% |
+| Deployment / Live validation | 30% | 65% |
+| Security / Scope hygiene | 25% | 80% |
+| Report quality / Observability | 15% | 70% |
 
 - Category score = `sum(passed check weights) / sum(applicable check weights) * 100`
-- Overall score = weighted average of category scores
+- `core_score` = weighted average of core-required category scores
+- `extension_score` = weighted average of applicable extension checks, reported separately
 - Skipped checks should be excluded from that category's denominator only when the skip reason is legitimate and recorded
 
 ### Critical Auto-Fail Conditions
@@ -388,8 +544,10 @@ The harness should persist a full evidence bundle:
 
 - raw prompt
 - raw agent final response
+- progress event log if emitted
 - raw agent stdout/stderr or transcript if available
 - machine-readable parsed report
+- discovered resource inventory independent of the final report
 - scorecard
 - command outputs
 - key HTTP responses
@@ -404,6 +562,9 @@ Suggested artifact layout:
       agent_stdout.txt
       agent_stderr.txt
       agent_final_response.txt
+      progress_events.json
+      discovered_resources.json
+      cleanup_manifest.json
       parsed_report.json
       local_dev_stdout.txt
       local_dev_stderr.txt
@@ -415,24 +576,42 @@ Suggested artifact layout:
         deploy_capabilities.json
       cleanup.json
 
-The evidence writer should redact obvious secrets before persistence.
+The evidence writer should redact secrets before persistence, not after.
+
+HTTP capture should use an allowlist of safe headers and must never persist `Authorization`,
+`Cookie`, `Set-Cookie`, CSRF tokens, or equivalent session material. When a body must be retained
+only for integrity/debugging, persist a body hash plus a redacted/normalized sample instead of the
+raw payload.
 
 ## Cleanup
 
-Cleanup should run even on failure and should attempt to remove:
+Cleanup should run even on failure and should operate from a discovered resource inventory rather
+than relying solely on the final agent report. It should attempt to remove:
 
 - deployed app
 - created backing services
 - temporary local project directory
 
+The harness should persist:
+
+- `discovered_resources.json` — resource IDs/names/tags gathered from progress events, observed logs,
+  provider adapters, and parsed reports
+- `cleanup_manifest.json` — per-resource delete attempts, status, last error, and a janitor-safe
+  retry command/hint
+
+If immediate cleanup fails because of transient provider issues, the run should still finish with a
+prominent cleanup warning plus a machine-readable manifest for deferred janitor cleanup.
+
 Cleanup should be best-effort, idempotent, and independent by step:
 
-1. Stop/delete the Modal app by discovered app name.
-2. Destroy Neon resources via project config and/or parsed resource ID.
-3. Remove any Vault-backed secrets created specifically for the eval if applicable.
-4. Terminate any leftover local dev processes.
-5. Delete the local project directory.
-6. Record all cleanup errors separately from the eval result.
+1. Refresh the discovered resource inventory from provider tags/names where supported.
+2. Stop/delete the Modal app by discovered app name or tags.
+3. Destroy Neon resources via project config, parsed resource ID, and/or tags.
+4. Remove any Vault-backed secrets created specifically for the eval if applicable.
+5. Terminate any leftover local dev processes.
+6. Delete the local project directory only after verifying it is under `<projects_root>` and matches
+   the expected eval prefix.
+7. Record all cleanup errors separately from the eval result.
 
 The cleanup module should try every step even if earlier steps fail.
 
@@ -442,40 +621,52 @@ The main orchestrator should look like this:
 
 1. Run preflight validation.
 2. Generate `eval_id`, app name, python module name, and project path.
-3. Snapshot the working tree or filesystem state needed for scope-isolation checks.
+3. Create a scope guard: prefer a sandbox/git-worktree or read-only mount for the repo, and
+   snapshot the working tree/filesystem state needed for residual scope-isolation checks.
 4. Generate the prompt from the naming contract and response contract.
-5. Launch the agent through a pluggable runner with timeout control.
-6. Capture exit status, timeout state, stdout/stderr, and final response.
-7. Parse the machine-readable JSON report if present; otherwise fall back to heuristic parsing.
-8. Run checks in this order:
+5. Allocate per-phase budgets (agent, local validation, deployment validation, cleanup) with a
+   reserved cleanup budget that the agent cannot consume.
+6. Launch the agent through a pluggable runner with timeout control.
+7. Capture exit status, timeout state, stdout/stderr, observed commands/events, and final response.
+8. Parse the machine-readable JSON report if present; otherwise fall back to heuristic parsing.
+9. Run checks in this order:
    - scaffolding
    - local_dev
    - deployment
    - security
    - report_quality
-9. Apply skip logic:
+10. Apply skip logic:
    - skip local runtime if scaffolding fails catastrophically
    - skip deployment if `--skip-deploy` is set or no deployed URL exists
    - always run security and report-quality checks
-10. Compute category scores, gate results, and final status.
-11. Write the evidence bundle.
-12. Run cleanup unless explicitly disabled.
-13. Print a concise summary and return the appropriate exit code.
+11. Compute category scores, gate results, and final status.
+12. Write the evidence bundle.
+13. Run cleanup unless explicitly disabled.
+14. Print a concise summary and return the appropriate exit code.
+
+Read-only static checks may run in parallel. Live smoke checks should reuse a shared authenticated
+session/bootstrap where possible to reduce redundant signup/signin churn.
+
+Retries should use bounded exponential backoff with jitter and record retry counts in evidence.
 
 ### CLI Surface
 
 The harness should support:
 
     python tests/eval/eval_child_app.py
+    python tests/eval/eval_child_app.py --projects-root /home/ubuntu/projects
     python tests/eval/eval_child_app.py --skip-deploy
     python tests/eval/eval_child_app.py --skip-cleanup
     python tests/eval/eval_child_app.py --eval-id child-eval-test-1
     python tests/eval/eval_child_app.py --evidence-dir ./out
     python tests/eval/eval_child_app.py --agent-timeout 900
+    python tests/eval/eval_child_app.py --verification-timeout 300 --cleanup-timeout 180
 
 Optional future flags:
 
 - `--warmup-seconds`
+- `--max-live-retries`
+- `--parallel-checks`
 - `--strict-cleanup`
 - `--agent-runner`
 
@@ -500,11 +691,20 @@ Optional future flags:
 The summary artifact should be machine-readable and stable:
 
     {
-      "eval_id": "child-eval-1742472000",
+      "eval_id": "child-eval-20260320T120000Z-a1b2c3d4",
+      "eval_spec_version": "child-app-e2e-v2",
+      "platform_profile": "full-stack",
+      "repo_commit": "<sha>",
+      "repo_dirty": false,
+      "harness_version": "<sha-or-version>",
+      "bui_version": "x.y.z",
       "timestamp": "2026-03-20T12:00:00Z",
       "status": "PASS",
+      "core_score": 87.5,
+      "extension_score": 72.0,
       "overall_score": 87.5,
       "critical_failures": [],
+      "must_pass_failures": [],
       "categories": {
         "scaffolding": {"score": 95.0, "gate_met": true},
         "local_dev": {"score": 90.0, "gate_met": true},
@@ -517,13 +717,15 @@ The summary artifact should be machine-readable and stable:
           "id": "scaff.dir_exists",
           "category": "scaffolding",
           "weight": 3,
-          "passed": true,
+          "status": "PASS",
+          "reason_code": "",
           "skipped": false,
+          "blocked_by": [],
           "detail": ""
         }
       ],
       "deployed_url": "https://...",
-      "modal_app_name": "child-eval-1742472000",
+      "modal_app_name": "child-eval-20260320T120000Z-a1b2c3d4",
       "neon_project_id": "neon-xyz",
       "cleanup_errors": [],
       "redactions_applied": true,
@@ -552,6 +754,12 @@ The harness itself should be tested before relying on it for benchmarking:
    - run cleanup twice and verify the second pass is harmless
 6. **Repeatability**
    - run the full eval multiple times in sequence and confirm timestamped names prevent collisions
+7. **Canary governance**
+   - run a known-good canary implementation on the current `eval_spec_version` before using scores
+     for comparison or reporting regressions
+8. **Version bump discipline**
+   - any substantive change to prompts, required checks, weights, gates, or profiles must bump
+     `eval_spec_version`
 
 ## Implementation Plan
 
