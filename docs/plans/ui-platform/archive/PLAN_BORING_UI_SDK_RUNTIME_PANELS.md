@@ -1,3 +1,12 @@
+# Archived: `PLAN_BORING_UI_SDK_RUNTIME_PANELS.md`
+
+This filename is archived. The canonical ui-platform plan is
+`docs/plans/ui-platform/PLAN.md`.
+
+The content below is preserved under the old filename for archive/history purposes.
+
+---
+
 # Deferred Follow-On: Runtime Panels And `@boring/sdk`
 
 ## Status
@@ -6,7 +15,7 @@ Deferred follow-on note for later phases of the UI-platform program.
 
 This document is not the active execution plan while Phase 1 is in progress. The
 authoritative plan is
-`docs/plans/ui-platform/PLAN_SHADCN_MIGRATION.md`.
+`docs/plans/ui-platform/PLAN.md`.
 
 Use this document only after Phase 1 has landed and the host app is already operating
 on a stable shadcn-native primitive system.

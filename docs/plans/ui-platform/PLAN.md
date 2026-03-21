@@ -8,8 +8,8 @@ This replaces the earlier track-first framing with a phased plan. Only Phase 1 i
 active right now. Later phases exist to preserve the route to runtime panels, not to
 authorize building that machinery now.
 
-`docs/plans/ui-platform/PLAN_BORING_UI_SDK_RUNTIME_PANELS.md` is no longer the active
-execution plan. It is a deferred follow-on note for later phases only.
+`docs/plans/ui-platform/archive/PLAN_BORING_UI_SDK_RUNTIME_PANELS.md` is no longer the
+active execution plan. It is a deferred follow-on note for later phases only.
 
 ---
 
