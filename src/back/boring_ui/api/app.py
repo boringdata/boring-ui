@@ -102,7 +102,7 @@ def create_app(
     if routers is not None:
         enabled_routers = set(routers)
     else:
-        enabled_routers = {'files', 'git', 'ui_state', 'exec'}  # Core routers always included
+        enabled_routers = {'files', 'git', 'ui_state', 'exec', 'messaging'}  # Core routers always included
         if config.control_plane_enabled:
             enabled_routers.add('control_plane')
         if include_pty:
@@ -130,6 +130,7 @@ def create_app(
         'files': 'files' in enabled_routers,
         'git': 'git' in enabled_routers,
         'exec': 'exec' in enabled_routers,
+        'messaging': 'messaging' in enabled_routers,
         'ui_state': 'ui_state' in enabled_routers,
         'control_plane': 'control_plane' in enabled_routers,
         'pty': 'pty' in enabled_routers,
@@ -323,6 +324,7 @@ def create_app(
         'files': (config, storage),
         'git': (config, git_backend),
         'exec': (config, storage),
+        'messaging': (config, storage, git_backend),
         'ui_state': (),
         'control_plane': (config,),
         'pty': (config,),

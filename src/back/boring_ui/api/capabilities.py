@@ -108,6 +108,7 @@ def create_default_registry() -> RouterRegistry:
     from .modules.files import create_file_router
     from .modules.git import create_git_router
     from .modules.exec import create_exec_router
+    from .modules.messaging import create_messaging_router
     from .modules.ui_state import create_ui_state_router
     from .modules.control_plane import create_control_plane_router
     from .modules.pty import create_pty_router
@@ -137,6 +138,13 @@ def create_default_registry() -> RouterRegistry:
         create_exec_router,
         description='Command execution',
         tags=['exec'],
+    )
+    registry.register(
+        'messaging',
+        '/api/v1/messaging',
+        create_messaging_router,
+        description='Messaging gateway (Telegram, Slack, etc.)',
+        tags=['messaging'],
     )
     registry.register(
         'ui_state',
