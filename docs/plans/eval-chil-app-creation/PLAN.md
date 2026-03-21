@@ -263,7 +263,7 @@ The agent prompt should require this sequence:
 5. Add the required custom verification router.
 6. Validate the project with `bui doctor`.
 7. Start local runtime validation and verify the required local endpoints. (This runs BEFORE neon setup, so local dev uses `auth.provider = "local"` and does not need DATABASE_URL.)
-8. Run `bui neon setup` to provision the hosted dependency path required for auth/data. (This changes `boring.app.toml` to `auth.provider = "neon"` and adds deploy secrets.)
+8. Run `bui neon setup --region aws-eu-central-1 --email-provider none` to provision the hosted dependency path required for auth/data. (This changes `boring.app.toml` to `auth.provider = "neon"` and adds deploy secrets. All flags must be specified to avoid interactive prompts.)
 9. Configure deployment for Fly.io.
 10. Run `bui deploy`.
 11. Verify the live deployment.
@@ -443,7 +443,7 @@ This phase checks that the agent produced a real app structure that matches the 
 | `scaff.backend_entry_exists` | 3 | Backend entry resolves to a real file/module |
 | `scaff.app_factory_or_entrypoint` | 2 | Backend factory/entrypoint exists (`create_app` or equivalent) |
 | `scaff.routers_dir_or_equivalent` | 1 | Routing location exists or equivalent structure is present |
-| `scaff.custom_router_impl` | 4 | Required `/health` and `/info` routes are implemented |
+| `scaff.custom_router_impl` | 4 | **must_pass** — Required `/health` and `/info` routes are implemented |
 | `scaff.custom_router_mounted` | 3 | The routes are wired into the app via TOML or Python |
 | `scaff.frontend_present_if_profiled` | 1 | Only applicable when the selected profile explicitly requires a frontend artifact |
 | `scaff.deploy_platform_fly` | 2 | Deployment target is set to Fly |
@@ -469,15 +469,15 @@ This phase verifies that the generated app actually starts and behaves correctly
 |---|---:|---|
 | `local.doctor_exit_0` | 4 | `bui doctor` exits 0 |
 | `local.doctor_no_errors` | 2 | No `ERROR` lines in output |
-| `local.clean_room_dev_starts` | 4 | Harness relaunches `bui dev --backend-only` from a clean-room environment and it starts successfully |
+| `local.clean_room_dev_starts` | 4 | **must_pass** — Harness relaunches `bui dev --backend-only` from a clean-room environment and it starts successfully |
 | `local.no_agent_process_dependency` | 2 | Local validation still passes after agent-owned background processes are terminated |
 | `local.port_assigned` | 1 | Local dev used an ephemeral/known-safe port without collision |
-| `local.custom_health` | 4 | Local `/health` returns valid JSON with required fields (`ok`, `app`, `eval_id`, `verification_nonce`) matching the manifest; extra fields allowed |
+| `local.custom_health` | 4 | **must_pass** — Local `/health` returns valid JSON with required fields (`ok`, `app`, `eval_id`, `verification_nonce`) matching the manifest; extra fields allowed |
 | `local.custom_info` | 3 | Local `/info` returns valid JSON with required fields (`name`, `version`, `eval_id`) matching the manifest; extra fields allowed |
 | `local.config_200` | 2 | `/__bui/config` returns valid JSON (runtime config from boring.app.toml) |
 | `local.capabilities_200` | 2 | `/api/capabilities` returns valid JSON |
 | `local.capabilities_shape` | 2 | Capabilities payload has expected structure |
-| `local.auth_provider_matches` | 2 | Reported auth provider is consistent with config |
+| `local.no_startup_import_errors` | 2 | No import errors or missing-module tracebacks during startup |
 | `local.clean_shutdown` | 2 | Dev server exits cleanly on termination |
 | `local.no_tracebacks` | 2 | No Python tracebacks or fatal stderr errors during run |
 
@@ -510,8 +510,8 @@ profile advertises those features.
 | `deploy.neon_jwks_reachable` | 2 | core | JWKS/auth endpoint is reachable |
 | `deploy.secrets_valid` | 3 | core | Deploy secrets use valid Vault ref structure |
 | `deploy.root_html` | 2 | core | `GET /` returns HTML containing the expected app shell |
-| `deploy.health_200` | 4 | core | Live `/health` returns 200 |
-| `deploy.custom_router_live` | 4 | core | Live `/health` JSON matches the required contract |
+| `deploy.health_200` | 4 | core | **must_pass** — Live `/health` returns 200 |
+| `deploy.custom_router_live` | 4 | core | **must_pass** — Live `/health` JSON matches the required contract |
 | `deploy.info_live` | 3 | core | Live `/info` JSON matches the required contract |
 | `deploy.health_stable` | 3 | core | `/health` succeeds for N consecutive probes after warmup |
 | `deploy.info_stable` | 2 | core | `/info` succeeds for N consecutive probes after warmup |
@@ -568,8 +568,8 @@ must never be persisted.
 
 | Check | W | What |
 |---|---:|---|
-| `sec.no_secrets_in_toml` | 4 | No literal credentials in `boring.app.toml` |
-| `sec.no_secrets_in_source` | 4 | No hardcoded keys/tokens/passwords in source files |
+| `sec.no_secrets_in_toml` | 4 | **must_pass** — No literal credentials in `boring.app.toml` |
+| `sec.no_secrets_in_source` | 4 | **must_pass** — No hardcoded keys/tokens/passwords in source files |
 | `sec.no_secrets_in_evidence` | 3 | Evidence bundle and agent report do not contain raw secret values |
 | `sec.no_secrets_in_transcript` | 4 | Raw secrets do not appear in agent stdout/stderr, progress events, or the final response |
 | `sec.no_secrets_in_git_metadata` | 3 | Raw secrets do not appear in staged diffs, local git metadata, or generated commit messages within the eval project |
@@ -602,7 +602,7 @@ This phase preserves the strongest part of the original plan: the agent must not
 | `report.includes_local_results` | 2 | Lists local verification outcomes |
 | `report.includes_live_results` | 2 | Lists live verification outcomes |
 | `report.includes_known_issues` | 2 | Explicitly lists residual issues or states none |
-| `report.claims_match_evidence` | 4 | Claims are consistent with harness-observed evidence |
+| `report.claims_match_evidence` | 4 | **must_pass** — Claims are consistent with harness-observed evidence |
 | `report.commands_match_observed` | 3 | Self-reported commands are consistent with the observed command log |
 | `report.scope_statement_truthful` | 2 | Any scope/isolation statement is accurate |
 
