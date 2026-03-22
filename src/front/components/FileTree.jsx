@@ -83,10 +83,7 @@ export default function FileTree({
     error: treeError,
     refetch: refetchEntries,
   } = useFileList('.', {
-    // Preserve the old startup behavior where empty trees retry aggressively.
-    refetchInterval: (query) => (
-      Array.isArray(query.state.data) && query.state.data.length === 0 ? 300 : 3000
-    ),
+    refetchInterval: 3000,
   })
 
   const { data: rawGitStatus } = useGitStatus({ refetchInterval: 5000 })

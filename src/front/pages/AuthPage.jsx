@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { getConfig } from '../config'
+import { routeHref, routes } from '../utils/routes'
 import ThemeToggle from '../components/ThemeToggle'
 import './auth.css'
 
@@ -540,7 +541,7 @@ export function AuthCallbackPage() {
       // through `/` that can cause duplicate-workspace races.
       let target = payload.redirect_uri || redirectUri || '/'
       if (payload.workspace_id && (target === '/' || target === '')) {
-        target = `/w/${payload.workspace_id}/setup`
+        target = routeHref(routes.controlPlane.workspaces.setup(payload.workspace_id))
         console.debug('[AuthCallback] navigating to eager-provisioned workspace %s', payload.workspace_id)
       }
       window.location.replace(target)

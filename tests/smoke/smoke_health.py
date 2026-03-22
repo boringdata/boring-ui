@@ -58,6 +58,31 @@ def main() -> int:
     else:
         print(f"[smoke] /api/capabilities FAIL: {resp.status_code}")
 
+    # Step 4: Verify data backend config (catches lightningfs vs http mismatch)
+    client.set_phase("data-backend")
+    bui_resp = client.get("/__bui/config", expect_status=(200,))
+    if bui_resp.status_code == 200:
+        bui_cfg = bui_resp.json()
+        data_backend = (bui_cfg.get("frontend", {}).get("data", {}).get("backend") or "").lower()
+        # Deployed backends with control_plane must use "http" — lightningfs only
+        # makes sense for local dev or the standalone Go core mode.
+        has_control_plane = isinstance(caps.get("features"), dict) and caps["features"].get("control_plane")
+        if has_control_plane and data_backend == "lightningfs":
+            client._record("GET", "/__bui/config [data.backend]",
+                           bui_resp, False, 0.0,
+                           f"data.backend={data_backend} but control_plane=true; should be 'http'")
+            print(f"[smoke] FAIL: data.backend=lightningfs with control_plane=true (filetree won't call server)")
+        else:
+            client._record("GET", "/__bui/config [data.backend]",
+                           bui_resp, True, 0.0,
+                           f"data.backend={data_backend}")
+            print(f"[smoke] data.backend={data_backend} OK")
+    else:
+        # /__bui/config is optional (Go backend doesn't have it)
+        client._record("GET", "/__bui/config [data.backend]",
+                       bui_resp, True, 0.0, "endpoint not available (Go backend)")
+        print(f"[smoke] /__bui/config not available (Go backend), skipping data.backend check")
+
     # Report
     report = client.report()
     if args.evidence_out:

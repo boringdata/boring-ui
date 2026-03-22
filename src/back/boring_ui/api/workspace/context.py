@@ -50,6 +50,9 @@ class WorkspaceContextResolver:
 
     def resolve(self, workspace_id: str | None) -> WorkspaceContext:
         root_path = self.resolve_root(workspace_id)
+        # Ensure workspace dir exists — it may have been lost after a
+        # container redeploy (ephemeral storage on Fly.io).
+        root_path.mkdir(parents=True, exist_ok=True)
         execution_backend = None
         if self._execution_backend_factory is not None:
             execution_backend = self._execution_backend_factory(root_path)

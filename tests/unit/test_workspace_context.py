@@ -68,6 +68,22 @@ def test_workspace_context_dependency_resolves_path_param_in_hosted_mode(tmp_pat
     }
 
 
+def test_workspace_context_resolver_creates_missing_workspace_dir(tmp_path: Path) -> None:
+    """Workspace dir may be lost after a container redeploy (ephemeral storage).
+
+    The resolver must auto-create it so file operations don't 500.
+    """
+    config = APIConfig(workspace_root=tmp_path, control_plane_provider="neon")
+    resolver = build_workspace_context_resolver(config)
+
+    ws_dir = tmp_path / "ws-new"
+    assert not ws_dir.exists()
+
+    ctx = resolver.resolve("ws-new")
+    assert ctx.root_path == ws_dir.resolve()
+    assert ws_dir.exists(), "Resolver must create workspace dir if missing"
+
+
 def test_workspace_context_resolver_execution_backend_is_none(
     tmp_path: Path,
 ) -> None:

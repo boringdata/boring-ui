@@ -59,6 +59,23 @@ def main() -> int:
     check_file_tree(client)
     cycle = full_file_cycle(client, prefix=args.prefix, include_search=args.include_search)
 
+    # Phase 2: Create a second workspace, write a file, then re-list from scratch.
+    # This catches the "workspace dir lost after redeploy" class of bugs — the
+    # workspace record exists in the DB but the on-disk directory is gone.
+    ws2_data = create_workspace(client, name=f"{args.prefix}-persist-check")
+    ws2 = ws2_data.get("workspace") or ws2_data
+    ws2_id = ws2.get("workspace_id") or ws2.get("id") or ""
+    if ws2_id:
+        client.switch_base(f"{args.base_url.rstrip('/')}/w/{ws2_id}")
+        print(f"[smoke] Persistence check workspace: /w/{ws2_id}")
+        check_file_tree(client)
+        from smoke_lib.files import create_and_read_file
+        create_and_read_file(client, path=f"{args.prefix}-persist.txt", content="persist-check")
+        # Re-scope to the FIRST workspace — verify it's still accessible
+        client.switch_base(f"{args.base_url.rstrip('/')}/w/{workspace_id}")
+        print(f"[smoke] Re-accessing first workspace: /w/{workspace_id}")
+        check_file_tree(client)
+
     report = client.report()
     if args.evidence_out:
         client.write_report(

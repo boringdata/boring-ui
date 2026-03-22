@@ -6,7 +6,7 @@ RUN npm ci
 COPY src/front ./src/front
 COPY src/pi_service ./src/pi_service
 COPY index.html vite.config.ts tailwind.config.js ./
-COPY boring.app.toml ./
+COPY deploy/shared/boring.app.toml ./boring.app.toml
 RUN npx vite build
 
 # Stage 2: Backend + frontend static
@@ -38,7 +38,7 @@ COPY pyproject.toml uv.lock ./
 COPY README.md ./
 COPY src/back ./src/back
 COPY scripts ./scripts
-COPY boring.app.toml ./
+COPY deploy/shared/boring.app.toml ./boring.app.toml
 
 RUN uv sync --frozen --no-dev
 
