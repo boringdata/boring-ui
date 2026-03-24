@@ -4,6 +4,14 @@ import { apiFetchJson } from '../utils/transport'
 import { routeHref, routes } from '../utils/routes'
 import PageShell, { SettingsSection, SettingsField } from './PageShell'
 import GitHubConnect from '../components/GitHubConnect'
+import { Input } from '../components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select'
 
 const centeredPageLoadingStyle = {
   display: 'flex',
@@ -262,7 +270,7 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
         <SettingsSection title="General" icon={Cog}>
           <SettingsField label="Workspace Name">
             <div className="settings-field-inline">
-              <input
+              <Input
                 type="text"
                 className="settings-input"
                 value={workspaceName}
@@ -286,7 +294,7 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
           </SettingsField>
           <SettingsField label="Workspace ID" description="Unique identifier for this workspace">
             <div className="settings-field-inline">
-              <input
+              <Input
                 type="text"
                 className="settings-input settings-input-mono"
                 value={workspaceId}
@@ -314,15 +322,16 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
         {capabilities?.features?.github && (
           <SettingsSection title="Auto-Sync" icon={RefreshCw} description="Automatically commit and push changes at a regular interval">
             <SettingsField label="Sync Frequency" description="How often to check for changes and sync">
-              <select
-                className="settings-input settings-select"
-                value={syncInterval}
-                onChange={(e) => handleSyncIntervalChange(e.target.value)}
-              >
-                {SYNC_INTERVAL_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
+              <Select value={String(syncInterval)} onValueChange={handleSyncIntervalChange}>
+                <SelectTrigger className="settings-input settings-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SYNC_INTERVAL_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </SettingsField>
           </SettingsSection>
         )}
@@ -352,7 +361,7 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
           )}
           {runtime?.sprite_url && (
             <SettingsField label="Sprite URL">
-              <input
+              <Input
                 type="text"
                 className="settings-input settings-input-mono"
                 value={runtime.sprite_url}

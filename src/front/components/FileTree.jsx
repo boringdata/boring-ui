@@ -17,6 +17,8 @@ import {
   queryKeys,
 } from '../providers/data'
 import { ICON_SIZE_INLINE } from '../utils/iconTokens'
+import { Button } from './ui/button'
+import { Badge } from './ui/badge'
 
 const configPath = import.meta.env.VITE_CONFIG_PATH || ''
 
@@ -528,9 +530,9 @@ export default function FileTree({
     if (!config) return null
 
     return (
-      <span className={`git-status-badge ${config.className}`} title={config.title}>
+      <Badge variant="outline" className={`git-status-badge ${config.className}`} title={config.title}>
         {config.label}
-      </span>
+      </Badge>
     )
   }
 
@@ -693,8 +695,10 @@ export default function FileTree({
             {renderStatusBadge(fileStatus)}
             {dirHasChanges && <span className="dir-changes-dot" title="Contains changes" aria-label="Contains changes" role="status" />}
             {e.is_dir && !isRenaming && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 className="folder-new-file-btn"
                 onClick={(event) => {
                   event.preventDefault()
@@ -705,7 +709,7 @@ export default function FileTree({
                 aria-label={`New file in ${e.name}`}
               >
                 <Plus size={11} />
-              </button>
+              </Button>
             )}
           </div>
           {e.is_dir && expandedDirs[e.path] && (

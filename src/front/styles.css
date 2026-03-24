@@ -6,6 +6,7 @@
 
 @import './styles/tokens.css';
 @import './styles/scrollbars.css';
+@import 'tw-animate-css';
 
 
 /* ==========================================================================
@@ -3716,6 +3717,16 @@ kbd {
   z-index: 50;
 }
 
+.editor-mode-content {
+  min-width: 200px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 50;
+}
+
 .editor-mode-option {
   display: flex;
   align-items: center;
@@ -3732,12 +3743,36 @@ kbd {
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
+.editor-mode-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 3px;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
 .editor-mode-option:hover {
   background: var(--color-bg-tertiary);
   color: var(--color-text-primary);
 }
 
+.editor-mode-item:hover,
+.editor-mode-item[data-highlighted] {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
 .editor-mode-option.active {
+  color: var(--color-text-primary);
+  background: var(--color-bg-active);
+}
+
+.editor-mode-item.active {
   color: var(--color-text-primary);
   background: var(--color-bg-active);
 }
@@ -6005,6 +6040,20 @@ kbd {
   width: 90%;
   max-width: 440px;
   animation: scaleIn 0.15s ease-out;
+}
+
+.create-workspace-dialog {
+  padding: 0;
+  gap: 0;
+}
+
+.create-workspace-dialog > button {
+  color: var(--color-text-secondary);
+}
+
+.create-workspace-dialog > button:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
 
 .modal-header {

@@ -1,43 +1,20 @@
-import { useState, useRef, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import { Label } from '../components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
 
 export default function CreateWorkspaceModal({ onClose, onCreate }) {
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef(null)
-  const dialogRef = useRef(null)
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  useEffect(() => {
-    const handleEscape = (e) => {
-      if (e.key === 'Escape') {
-        onClose()
-        return
-      }
-      if (e.key !== 'Tab') return
-      const dialog = dialogRef.current
-      if (!dialog) return
-      const focusables = Array.from(
-        dialog.querySelectorAll('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])')
-      ).filter((el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true')
-      if (focusables.length === 0) return
-      const first = focusables[0]
-      const last = focusables[focusables.length - 1]
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
-  }, [onClose])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -60,27 +37,29 @@ export default function CreateWorkspaceModal({ onClose, onCreate }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        ref={dialogRef}
-        className="modal-dialog"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-workspace-title"
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        className="modal-dialog create-workspace-dialog"
+        aria-describedby={undefined}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          inputRef.current?.focus()
+        }}
       >
-        <div className="modal-header">
-          <h2 id="create-workspace-title" className="modal-title">Create Workspace</h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
-            <X size={18} />
-          </button>
-        </div>
+        <DialogHeader className="modal-header">
+          <DialogTitle className="modal-title">Create Workspace</DialogTitle>
+        </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            <label className="settings-field-label" htmlFor="workspace-name">
+            <Label className="settings-field-label" htmlFor="workspace-name">
               Workspace Name
-            </label>
-            <input
+            </Label>
+            <Input
               id="workspace-name"
               ref={inputRef}
               type="text"
@@ -93,25 +72,27 @@ export default function CreateWorkspaceModal({ onClose, onCreate }) {
             />
             {error && <div className="modal-error">{error}</div>}
           </div>
-          <div className="modal-footer">
-            <button
+          <DialogFooter className="modal-footer">
+            <Button
               type="button"
+              variant="secondary"
               className="settings-btn settings-btn-secondary"
               onClick={onClose}
               disabled={creating}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
+              variant="default"
               className="settings-btn settings-btn-primary"
               disabled={creating || !name.trim()}
             >
               {creating ? 'Creating...' : 'Create'}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

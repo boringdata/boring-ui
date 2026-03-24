@@ -146,6 +146,26 @@ const createProviderWithExternalDiskChange = () => {
   return { provider }
 }
 
+const createProviderWithStableCodeRead = () => {
+  const provider = {
+    files: {
+      list: vi.fn(),
+      read: vi.fn(async () => 'print("hello")'),
+      write: vi.fn(async () => undefined),
+      delete: vi.fn(),
+      rename: vi.fn(),
+      move: vi.fn(),
+      search: vi.fn(),
+    },
+    git: {
+      status: vi.fn(async () => ({ available: true, files: [] })),
+      diff: vi.fn(async () => 'diff --git a/main.py b/main.py'),
+      show: vi.fn(async () => 'print("before")'),
+    },
+  }
+  return { provider }
+}
+
 describe('EditorPanel integration + cancellation', () => {
   // TODO: loading skeleton prevents editor render while read is in-flight; needs E2E approach
   it.skip('save cancels in-flight read poll before write completes', async () => {
@@ -266,5 +286,24 @@ describe('EditorPanel integration + cancellation', () => {
     }, { timeout: 5000 })
 
     expect(screen.queryByText('File changed on disk.')).not.toBeInTheDocument()
+  })
+
+  it('opens code mode dropdown menu and switches to patch mode for non-markdown files', async () => {
+    const { provider } = createProviderWithStableCodeRead()
+    renderWithProvider(provider, { path: 'main.py', initialContent: 'print("hello")', initialMode: 'rendered' })
+
+    const trigger = await screen.findByRole('button', { name: /Code/i })
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    const patchMenuItem = await screen.findByRole('menuitem', { name: /Patch/i })
+    fireEvent.click(patchMenuItem)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('git-diff-stub')).toBeInTheDocument()
+    })
   })
 })

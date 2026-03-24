@@ -1,5 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import ThemeToggle from '../components/ThemeToggle'
+import { Label } from '../components/ui/label'
 
 export default function PageShell({ title, children, backHref, backLabel = 'Back to workspace' }) {
   return (
@@ -46,7 +47,7 @@ export function SettingsField({ label, description, children }) {
   return (
     <div className="settings-field">
       <div className="settings-field-label-group">
-        <label className="settings-field-label">{label}</label>
+        <Label className="settings-field-label">{label}</Label>
         {description && <span className="settings-field-description">{description}</span>}
       </div>
       <div className="settings-field-control">

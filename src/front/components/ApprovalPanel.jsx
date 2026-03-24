@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import GitDiff from './GitDiff'
+import { Label } from './ui/label'
+import { Textarea } from './ui/textarea'
 
 export default function ApprovalPanel({ request, onFeedbackChange }) {
   const [feedback, setFeedback] = useState('')
@@ -17,8 +19,8 @@ export default function ApprovalPanel({ request, onFeedbackChange }) {
   return (
     <>
       <div className="approval-feedback">
-        <label htmlFor="approval-feedback-input">Feedback (optional)</label>
-        <textarea
+        <Label htmlFor="approval-feedback-input">Feedback (optional)</Label>
+        <Textarea
           id="approval-feedback-input"
           value={feedback}
           onChange={(event) => setFeedback(event.target.value)}

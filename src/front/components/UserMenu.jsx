@@ -4,6 +4,7 @@ import { Sun, Moon, ArrowLeftRight, ChevronRight, Plus, Settings, Wrench, LogOut
 import { useTheme } from '../hooks/useTheme'
 import { ICON_SIZE_INLINE, ICON_SIZE_COMPACT, ICON_STROKE_WIDTH } from '../utils/iconTokens'
 import { routes } from '../utils/routes'
+import { Button } from './ui/button'
 
 /**
  * UserMenu - Avatar with dropdown menu for user and workspace actions
@@ -310,8 +311,10 @@ export default function UserMenu({
         </div>
       ) : null}
       <div className="user-menu-divider" />
-      <button
-        className="btn btn-ghost user-menu-item user-menu-item-appearance"
+      <Button
+        type="button"
+        variant="ghost"
+        className="user-menu-item user-menu-item-appearance"
         onClick={toggleTheme}
         role="menuitem"
         aria-label={`Theme: ${themeLabel}`}
@@ -327,15 +330,17 @@ export default function UserMenu({
         <span className={`user-menu-theme-switch ${isDark ? 'is-dark' : 'is-light'}`} aria-hidden="true">
           <span className="user-menu-theme-knob" />
         </span>
-      </button>
+      </Button>
       <div className="user-menu-divider" />
       {actionItems.map((item) => {
         const disabled = typeof item.onClick !== 'function' || disabledActions.includes(item.key)
         const ItemIcon = item.icon
         return (
           <div key={item.key} ref={item.key === 'switch' ? switchItemRef : undefined}>
-            <button
-              className={`btn btn-ghost user-menu-item ${disabled ? 'user-menu-item-disabled' : ''} ${item.hasSubmenu ? 'user-menu-item-submenu' : ''}`}
+            <Button
+              type="button"
+              variant="ghost"
+              className={`user-menu-item ${disabled ? 'user-menu-item-disabled' : ''} ${item.hasSubmenu ? 'user-menu-item-submenu' : ''}`}
               onClick={() => item.noClose ? item.onClick() : runAction(item.onClick)}
               role="menuitem"
               disabled={disabled}
@@ -354,7 +359,7 @@ export default function UserMenu({
               {item.hasSubmenu && (
                 <ChevronRight size={12} className="user-menu-item-chevron" aria-hidden="true" />
               )}
-            </button>
+            </Button>
           </div>
         )
       })}

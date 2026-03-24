@@ -3,6 +3,13 @@ import { Code as CodeIcon, FileCode2, ChevronDown } from 'lucide-react'
 import Editor from '../components/Editor'
 import CodeEditor from '../components/CodeEditor'
 import GitDiff from '../components/GitDiff'
+import { Button } from '../components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu'
 import {
   useFileContent,
   useFileWrite,
@@ -19,16 +26,6 @@ const codeModeOptions = [
 
 function CodeModeDropdown({ editorMode, gitAvailable, onModeChange }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    if (!open) return
-    const close = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
 
   if (!gitAvailable) return null
 
@@ -36,35 +33,34 @@ function CodeModeDropdown({ editorMode, gitAvailable, onModeChange }) {
 
   return (
     <div className="code-viewer-toolbar">
-      <div className="editor-mode-dropdown" ref={ref}>
-        <button
-          type="button"
-          className="editor-mode-trigger"
-          onClick={() => setOpen(!open)}
-          title={current.desc}
-        >
-          <current.icon size={13} />
-          <span>{current.label}</span>
-          <ChevronDown size={10} className={`editor-mode-chevron${open ? ' open' : ''}`} />
-        </button>
-        {open && (
-          <div className="editor-mode-menu" role="menu">
-            {codeModeOptions.map((opt) => (
-              <button
-                key={opt.key}
-                type="button"
-                className={`editor-mode-option${editorMode === opt.key ? ' active' : ''}`}
-                role="menuitem"
-                onClick={() => { onModeChange(opt.key); setOpen(false) }}
-              >
-                <opt.icon size={13} />
-                <span className="editor-mode-option-label">{opt.label}</span>
-                <span className="editor-mode-option-desc">{opt.desc}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="editor-mode-trigger"
+            title={current.desc}
+          >
+            <current.icon size={13} />
+            <span>{current.label}</span>
+            <ChevronDown size={10} className={`editor-mode-chevron${open ? ' open' : ''}`} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={4} className="editor-mode-content">
+          {codeModeOptions.map((opt) => (
+            <DropdownMenuItem
+              key={opt.key}
+              className={`editor-mode-item${editorMode === opt.key ? ' active' : ''}`}
+              onSelect={() => onModeChange(opt.key)}
+            >
+              <opt.icon size={13} />
+              <span className="editor-mode-option-label">{opt.label}</span>
+              <span className="editor-mode-option-desc">{opt.desc}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

@@ -173,6 +173,28 @@
 
   --color-text-placeholder: var(--color-text-tertiary);
 
+  /* ---------- Shadcn semantic token bridge ---------- */
+  --background: var(--color-bg-primary);
+  --foreground: var(--color-text-primary);
+  --card: var(--color-bg-primary);
+  --card-foreground: var(--color-text-primary);
+  --popover: var(--color-bg-primary);
+  --popover-foreground: var(--color-text-primary);
+  --primary: var(--color-accent-default);
+  --primary-foreground: var(--color-text-on-accent);
+  --secondary: var(--color-bg-secondary);
+  --secondary-foreground: var(--color-text-primary);
+  --muted: var(--color-bg-secondary);
+  --muted-foreground: var(--color-text-secondary);
+  --accent: var(--color-accent-default);
+  --accent-foreground: var(--color-text-on-accent);
+  --destructive: var(--color-error);
+  --destructive-foreground: var(--color-text-on-accent);
+  --border: var(--color-border-primary);
+  --input: var(--color-border-primary);
+  --ring: var(--color-focus-ring);
+  --radius: var(--radius-md);
+
   --color-success-hover: color-mix(in srgb, var(--color-success) 86%, black);
   --color-success-light: var(--color-success-bg);
   --color-warning-light: var(--color-warning-bg);

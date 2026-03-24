@@ -3,6 +3,8 @@ import { Plus, X } from 'lucide-react'
 import Terminal from '../components/Terminal'
 import ClaudeStreamChat from '../components/chat/ClaudeStreamChat'
 import Tooltip from '../components/Tooltip'
+import { Button } from '../components/ui/button'
+import { Badge } from '../components/ui/badge'
 
 const SESSION_STORAGE_KEY = 'kurt-web-terminal-sessions'
 const ACTIVE_SESSION_KEY = 'kurt-web-terminal-active'
@@ -387,7 +389,7 @@ export default function TerminalPanel({ params }) {
       {Array.isArray(approvals) && approvals.length > 0 && (
         <div className="review-list">
           <div className="review-list-header">
-            <span className="review-list-badge">{approvals.length}</span>
+            <Badge variant="outline" className="review-list-badge">{approvals.length}</Badge>
             Pending Reviews
           </div>
           <div className="review-list-items">
@@ -413,8 +415,10 @@ export default function TerminalPanel({ params }) {
                   </div>
                   <div className="review-list-item-actions">
                     <Tooltip label="Deny">
-                      <button
+                      <Button
                         type="button"
+                        variant="destructive"
+                        size="icon"
                         className="review-list-deny"
                         onClick={(e) => {
                           e.stopPropagation()
@@ -423,11 +427,13 @@ export default function TerminalPanel({ params }) {
                         aria-label="Deny"
                       >
                         ✕
-                      </button>
+                      </Button>
                     </Tooltip>
                     <Tooltip label="Allow">
-                      <button
+                      <Button
                         type="button"
+                        variant="default"
+                        size="icon"
                         className="review-list-allow"
                         onClick={(e) => {
                           e.stopPropagation()
@@ -436,7 +442,7 @@ export default function TerminalPanel({ params }) {
                         aria-label="Allow"
                       >
                         ✓
-                      </button>
+                      </Button>
                     </Tooltip>
                   </div>
                 </div>

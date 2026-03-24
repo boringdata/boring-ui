@@ -7,6 +7,14 @@ Operational runbooks for common tasks.
 - [Neon Setup](./NEON_SETUP.md) — Neon Postgres + Neon Auth setup for boring-ui and child projects
 - [PI Agent API Keys](./PI_AGENT_API_KEYS.md) — Managing PI agent provider keys
 - [Smoke Test Suite](./SMOKE_TESTS.md) — focused and full-stack smokes for boring-ui and child apps
+- [UI Baseline and Inventory](./UI_BASELINE_INVENTORY.md) — AST primitive inventory + deterministic visual baseline artifacts
+- [Root Package Entrypoints](./ROOT_PACKAGE_ENTRYPOINTS.md) — import/export contract and build+resolution smoke proof
+- [Shared Style Runtime Contract](./SHARED_STYLE_RUNTIME_CONTRACT.md) — Phase 1 runtime-facing style assumptions and intentionally undecided boundaries
+- [Shadcn Baseline](./SHADCN_BASELINE.md) — pinned toolchain versions, checked-in bootstrap config, npm-only invocation contract
+- [Upstream Shadcn Ownership](./UPSTREAM_SHADCN.md) — generated-vs-customized ownership tracker for shadcn artifacts
+- [Phase 1 Buttons and Badges Migration](./PHASE1_BUTTON_BADGE_MIGRATION.md) — shared-primitive migration slice notes and wrapper exceptions
+- [Phase 1 Overlay and Menu Migration](./PHASE1_OVERLAY_MENU_MIGRATION.md) — dialog/dropdown migration notes and intentional custom overlays
+- [Phase 1 Form Primitive Migration](./PHASE1_FORM_PRIMITIVE_MIGRATION.md) — input/textarea/label/select migration notes and intentional native exceptions
 
 ## Ownership Migration
 

@@ -3,6 +3,8 @@ import { Loader2 } from 'lucide-react'
 import { getConfig } from '../config'
 import { routeHref, routes } from '../utils/routes'
 import ThemeToggle from '../components/ThemeToggle'
+import { Input } from '../components/ui/input'
+import { Label } from '../components/ui/label'
 import './auth.css'
 
 function safeRedirectPath(raw) {
@@ -385,8 +387,8 @@ export default function AuthPage({ authConfig }) {
           <form onSubmit={handleSubmit} autoComplete="on" noValidate>
             {!isResetPassword && (
               <>
-                <label className="auth-label" htmlFor="auth-email">Work email</label>
-                <input
+                <Label className="auth-label" htmlFor="auth-email">Work email</Label>
+                <Input
                   ref={emailRef}
                   id="auth-email"
                   className="auth-input"
@@ -407,10 +409,10 @@ export default function AuthPage({ authConfig }) {
               </>
             )}
 
-            <label className="auth-label" htmlFor="auth-password">
+            <Label className="auth-label" htmlFor="auth-password">
               {isResetPassword ? 'New password' : 'Password'}
-            </label>
-            <input
+            </Label>
+            <Input
               ref={passwordRef}
               id="auth-password"
               className="auth-input"
@@ -427,8 +429,8 @@ export default function AuthPage({ authConfig }) {
 
             {isResetPassword && (
               <>
-                <label className="auth-label" htmlFor="auth-confirm-password">Confirm new password</label>
-                <input
+                <Label className="auth-label" htmlFor="auth-confirm-password">Confirm new password</Label>
+                <Input
                   id="auth-confirm-password"
                   className="auth-input"
                   type="password"

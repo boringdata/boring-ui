@@ -4,6 +4,8 @@ import { useGitStatus } from '../providers/data'
 import { useGitHubConnection } from './GitHubConnect'
 import { useLightningFsGitBootstrap } from '../hooks/useLightningFsGitBootstrap'
 import { routes } from '../utils/routes'
+import { Button } from './ui/button'
+import { Badge } from './ui/badge'
 
 const centeredInlineLoadingStyle = {
   display: 'flex',
@@ -45,8 +47,9 @@ function ConnectGitHubButton({ workspaceId }) {
   }
 
   return (
-    <button
+    <Button
       type="button"
+      variant="secondary"
       className="github-connect-compact"
       onClick={handleClick}
       title={
@@ -73,7 +76,7 @@ function ConnectGitHubButton({ workspaceId }) {
             ? 'Link GitHub'
             : 'Install GitHub App'}
       </span>
-    </button>
+    </Button>
   )
 }
 
@@ -223,9 +226,9 @@ export default function GitChangesView({ onOpenDiff, activeDiffFile, workspaceId
           return (
             <div key={status} className="git-changes-group">
               <div className="git-changes-group-header">
-                <span className={`git-status-badge ${config.className}`}>
+                <Badge variant="outline" className={`git-status-badge ${config.className}`}>
                   {config.icon}
-                </span>
+                </Badge>
                 <span className="git-changes-group-label">
                   {config.label} ({files.length})
                 </span>

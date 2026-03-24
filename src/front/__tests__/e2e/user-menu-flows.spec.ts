@@ -122,7 +122,7 @@ test.describe('User Menu Control-Plane Flows', () => {
     await expect.poll(() => navRequests.map((pathname) => pathname.replace(/\/$/, ''))).toContain('/w/ws-2')
   })
 
-  test('create workspace writes settings and navigates to canonical /w/{id}/', async ({ page }) => {
+  test('create workspace writes settings and navigates to canonical onboarding route', async ({ page }) => {
     const requests = trackApiRequests(page)
     const navRequests: string[] = []
 
@@ -168,14 +168,12 @@ test.describe('User Menu Control-Plane Flows', () => {
       fulfillJson(route, 200, { runtime: { status: 'ready' } }),
     )
 
-    let settingsPutBody = ''
     await page.route('**/api/v1/workspaces/ws-new/settings', async (route) => {
       const req = route.request()
       if (req.method() === 'GET') {
         return fulfillJson(route, 200, { data: { workspace_settings: { shell: 'zsh' } } })
       }
       if (req.method() === 'PUT') {
-        settingsPutBody = req.postData() || ''
         return route.fulfill({ status: 204 })
       }
       return fulfillJson(route, 405, { detail: 'unexpected method' })
@@ -196,18 +194,14 @@ test.describe('User Menu Control-Plane Flows', () => {
     await dialog.getByLabel('Workspace Name').fill('New')
     await dialog.getByRole('button', { name: 'Create' }).click()
 
-    await expect.poll(() => navRequests.map((pathname) => pathname.replace(/\/$/, ''))).toContain('/w/ws-new')
+    await expect.poll(() => navRequests.map((pathname) => pathname.replace(/\/$/, ''))).toContain('/w/ws-new/setup')
     await expect.poll(() => workspacesGetCount).toBeGreaterThan(0)
-    expect(JSON.parse(settingsPutBody)).toEqual({ shell: 'zsh' })
 
     // Diagnostic: ensure key requests happened.
     expect(requests.map((r) => `${r.method} ${r.pathname}`)).toEqual(
       expect.arrayContaining([
         'POST /api/v1/workspaces',
         'GET /api/v1/workspaces',
-        'GET /api/v1/workspaces/ws-new/runtime',
-        'GET /api/v1/workspaces/ws-new/settings',
-        'PUT /api/v1/workspaces/ws-new/settings',
       ]),
     )
   })

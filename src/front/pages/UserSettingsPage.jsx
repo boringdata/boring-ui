@@ -10,6 +10,7 @@ import {
   resolvePiProviderKeyScope,
   setPiProviderKey,
 } from '../providers/pi/providerKeys'
+import { Input } from '../components/ui/input'
 import PageShell, { SettingsSection, SettingsField } from './PageShell'
 
 const centeredPageLoadingStyle = {
@@ -258,7 +259,7 @@ export default function UserSettingsPage({ workspaceId }) {
                       ? `Saved locally as ${provider.maskedKey}`
                       : 'No key saved yet'}
                   </div>
-                  <input
+                  <Input
                     type="password"
                     className="settings-input settings-input-mono"
                     value={providerKeyDrafts[provider.id] || ''}
@@ -306,7 +307,7 @@ export default function UserSettingsPage({ workspaceId }) {
         {isAuthenticated && (
           <SettingsSection title="Profile" icon={User}>
             <SettingsField label="Email" description="Your account email address">
-              <input
+              <Input
                 type="email"
                 className="settings-input"
                 value={email}
@@ -314,7 +315,7 @@ export default function UserSettingsPage({ workspaceId }) {
               />
             </SettingsField>
             <SettingsField label="Display Name">
-              <input
+              <Input
                 type="text"
                 className="settings-input"
                 value={displayName}

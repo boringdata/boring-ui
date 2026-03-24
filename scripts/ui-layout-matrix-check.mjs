@@ -7,6 +7,8 @@ import { chromium } from 'playwright'
 const DEFAULT_URL = process.env.UI_BASE_URL || 'http://127.0.0.1:5173/'
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
 const DEFAULT_OUT_DIR = process.env.OUT_DIR || path.join(process.cwd(), 'artifacts', `ui-matrix-${timestamp}`)
+const DEFAULT_VIEWPORT = process.env.UI_VIEWPORT || '1600x1000'
+const DEFAULT_REDUCED_MOTION = process.env.UI_REDUCED_MOTION || 'reduce'
 const OPEN_FILE_BRIDGE = '__BORING_UI_PI_OPEN_FILE__'
 const OPEN_PANEL_BRIDGE = '__BORING_UI_PI_OPEN_PANEL__'
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
@@ -23,7 +25,24 @@ const hasFlag = (name) => args.includes(name)
 
 const baseUrl = readArg('--url', DEFAULT_URL)
 const outDir = readArg('--out', DEFAULT_OUT_DIR)
+const viewportArg = readArg('--viewport', DEFAULT_VIEWPORT)
+const reducedMotionArg = readArg('--reduced-motion', DEFAULT_REDUCED_MOTION).toLowerCase()
 const headless = !hasFlag('--headed')
+const parseViewport = (value) => {
+  const normalized = String(value || '').trim()
+  const matched = normalized.match(/^(\d+)x(\d+)$/i)
+  if (!matched) {
+    throw new Error(`Invalid --viewport value "${value}". Expected WIDTHxHEIGHT, e.g. 1600x1000`)
+  }
+  const width = Number(matched[1])
+  const height = Number(matched[2])
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error(`Invalid viewport dimensions "${value}"`)
+  }
+  return { width, height }
+}
+const viewport = parseViewport(viewportArg)
+const reducedMotion = reducedMotionArg === 'no-preference' ? 'no-preference' : 'reduce'
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -36,7 +55,7 @@ const overlaps = (a, b) =>
   await fs.mkdir(outDir, { recursive: true })
 
   const browser = await chromium.launch({ headless })
-  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
+  const page = await browser.newPage({ viewport, reducedMotion })
 
   const checks = []
   const errors = []
@@ -1002,6 +1021,8 @@ const overlaps = (a, b) =>
     baseUrl,
     outDir,
     startedAt: timestamp,
+    viewport,
+    reducedMotion,
     checks,
     errors,
     passed: errors.length === 0,

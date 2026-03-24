@@ -7,6 +7,8 @@ import {
 import { fetchJsonUrl, fetchUrl } from '../../utils/transport'
 import { createPiRoutes } from './routes'
 import { renderToolPart } from '../../components/chat/toolRenderers'
+import { Button } from '../../components/ui/button'
+import { Textarea } from '../../components/ui/textarea'
 
 /**
  * Convert a server message (text-only or parts-based) into a display message.
@@ -43,6 +45,7 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
   const [streamText, setStreamText] = useState('')
   // In-flight tool cards: Map<toolCallId, { toolName, args, status, result }>
   const [activeTools, setActiveTools] = useState(new Map())
+  const activeToolsRef = useRef(new Map())
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState('')
@@ -57,6 +60,10 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId
   }, [currentSessionId])
+
+  useEffect(() => {
+    activeToolsRef.current = activeTools
+  }, [activeTools])
 
   const publishState = useCallback((nextSessions, nextSessionId) => {
     publishPiSessionState(panelId, {
@@ -322,12 +329,6 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
     }
   }, [currentSessionId, input, isSending, listSessions, piRoutes, publishState])
 
-  // Keep a ref to activeTools so the done handler can read the latest state
-  const activeToolsRef = useRef(new Map())
-  useEffect(() => {
-    activeToolsRef.current = activeTools
-  }, [activeTools])
-
   // Render active (in-flight) tool cards
   const activeToolCards = useMemo(() => {
     const cards = []
@@ -369,7 +370,7 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
           : null}
       </div>
       <div className="pi-backend-composer">
-        <textarea
+        <Textarea
           className="pi-backend-input"
           rows={2}
           placeholder="Type a message..."
@@ -382,15 +383,16 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
             }
           }}
         />
-        <button
+        <Button
           type="button"
-          className="btn btn-primary pi-backend-send"
+          variant="default"
+          className="pi-backend-send"
           disabled={!input.trim() || isSending || !currentSessionId}
           onClick={onSubmit}
         >
           <SendHorizontal size={14} aria-hidden="true" />
           <span>{isSending ? 'Sending…' : 'Send'}</span>
-        </button>
+        </Button>
       </div>
       {error
         ? <div className="pi-backend-error" data-testid="pi-backend-error">{error}</div>

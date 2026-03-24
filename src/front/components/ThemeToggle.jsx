@@ -1,13 +1,16 @@
 import { Sun, Moon } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
+import { Button } from './ui/button'
 
 export default function ThemeToggle() {
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon"
       onClick={toggleTheme}
       className="theme-toggle"
       title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -18,6 +21,6 @@ export default function ThemeToggle() {
       ) : (
         <Moon size={16} />
       )}
-    </button>
+    </Button>
   )
 }

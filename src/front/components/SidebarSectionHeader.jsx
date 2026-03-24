@@ -1,6 +1,7 @@
 import { Bot, ChevronDown, ChevronRight, PanelLeftClose } from 'lucide-react'
 import Tooltip from './Tooltip'
 import { ICON_SIZE_ACTIVITY, ICON_SIZE_INLINE } from '../utils/iconTokens'
+import { Button } from './ui/button'
 
 /**
  * LeftPaneHeader - Minimal header bar for the left sidebar with collapse toggle
@@ -16,25 +17,29 @@ export function LeftPaneHeader({ onToggleSidebar, appName, onOpenChatTab }) {
       <div className="left-pane-header-actions">
         {typeof onOpenChatTab === 'function' && (
           <Tooltip label="Open new chat pane">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               className="sidebar-action-btn"
               onClick={onOpenChatTab}
               aria-label="Open new chat pane"
             >
               <Bot size={14} />
-            </button>
+            </Button>
           </Tooltip>
         )}
         <Tooltip label="Collapse sidebar">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             className="sidebar-toggle-btn"
             onClick={onToggleSidebar}
             aria-label="Collapse sidebar"
           >
             <PanelLeftClose size={14} />
-          </button>
+          </Button>
         </Tooltip>
       </div>
     </div>
@@ -49,14 +54,16 @@ export function CollapsedSidebarActivityBar({
     <div className="sidebar-activity-bar" role="toolbar" aria-label="Sidebar activity">
       {typeof onExpandSidebar === 'function' && (
         <Tooltip label="Expand sidebar">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             className="sidebar-activity-btn sidebar-activity-expand"
             onClick={onExpandSidebar}
             aria-label="Expand sidebar"
           >
             <ChevronRight size={14} />
-          </button>
+          </Button>
         </Tooltip>
       )}
       <div className="sidebar-activity-group">
@@ -64,15 +71,17 @@ export function CollapsedSidebarActivityBar({
           const Icon = item.icon
           return (
             <Tooltip key={item.id} label={item.label}>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 className={`sidebar-activity-btn${item.active ? ' active' : ''}`}
                 onClick={item.onClick}
                 aria-label={item.label}
                 aria-pressed={item.active ? 'true' : 'false'}
               >
                 {Icon ? <Icon size={ICON_SIZE_ACTIVITY} /> : null}
-              </button>
+              </Button>
             </Tooltip>
           )
         })}
@@ -105,14 +114,16 @@ export default function SidebarSectionHeader({
   return (
     <div className="sidebar-section-header">
       <Tooltip label={sectionCollapsed ? `Expand ${title}` : `Collapse ${title}`}>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           className="sidebar-section-toggle"
           onClick={onToggleSection}
           aria-label={sectionCollapsed ? `Expand ${title}` : `Collapse ${title}`}
         >
           {sectionCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-        </button>
+        </Button>
       </Tooltip>
       {Icon && <span className="sidebar-section-icon"><Icon size={ICON_SIZE_INLINE} /></span>}
       <span className="sidebar-section-title">{title}</span>

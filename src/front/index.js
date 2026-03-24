@@ -101,6 +101,63 @@ export {
   addPiAgentTools,
   resetPiAgentConfig,
 } from './providers/pi/agentConfig'
+export { cn } from './lib/utils'
+export { Button, buttonVariants } from './components/ui/button'
+export { Badge, badgeVariants } from './components/ui/badge'
+export {
+  Dialog,
+  DialogTrigger,
+  DialogPortal,
+  DialogOverlay,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from './components/ui/dialog'
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuGroup,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from './components/ui/dropdown-menu'
+export { Input } from './components/ui/input'
+export { Textarea } from './components/ui/textarea'
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
+  SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
+} from './components/ui/select'
+export { Label } from './components/ui/label'
+export { Switch } from './components/ui/switch'
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from './components/ui/tooltip'
+export { Avatar, AvatarImage, AvatarFallback } from './components/ui/avatar'
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './components/ui/tabs'
+export { Separator } from './components/ui/separator'
 
 // =============================================================================
 // Main App

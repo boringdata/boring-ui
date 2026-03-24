@@ -6,6 +6,7 @@ import {
   requestPiSwitchSession,
   subscribePiSessionState,
 } from './sessionBus'
+import { Button } from '../../components/ui/button'
 
 const defaultState = {
   currentSessionId: '',
@@ -38,8 +39,10 @@ export default function PiSessionToolbar({ panelId, onSplitPanel }) {
           ? <option value="">No sessions</option>
           : sessions.map((session) => <option key={session.id} value={session.id}>{session.title}</option>)}
       </select>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         className="terminal-new-icon"
         onClick={() => {
           if (typeof onSplitPanel === 'function') {
@@ -53,7 +56,7 @@ export default function PiSessionToolbar({ panelId, onSplitPanel }) {
         data-testid="pi-session-new"
       >
         <Plus size={16} />
-      </button>
+      </Button>
     </div>
   )
 }

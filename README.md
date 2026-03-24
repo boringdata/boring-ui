@@ -85,6 +85,46 @@ For quick standalone backend testing without editing config:
 - `?data_backend=lightningfs`
 - `?data_backend=lightningfs&data_fs=myide-fs-alt`
 
+### Root Package CSS Contract
+
+Phase 1 styling contract (current package shape):
+
+- public CSS entrypoint remains `boring-ui/style.css`
+- Phase 1 exposes only one public CSS subpath export (`./style.css`)
+- host app imports shared UI CSS once at startup
+- `src/front/styles/tokens.css` is the canonical token + theme bridge (`:root` + `[data-theme="dark"]`)
+- root stylesheet import order is locked (`tokens.css` before `scrollbars.css`)
+- baseline resets/preflight ownership stay in root package CSS (not Tailwind base directives)
+- runtime panels are expected to rely on host-loaded shared UI CSS instead of self-importing arbitrary CSS
+
+Reference: `docs/runbooks/CSS_CONTRACT.md`
+
+### Root Package Entrypoints
+
+Phase 1 keeps the root-package shape and stable import paths:
+
+- ESM entrypoint: `./dist/boring-ui.js`
+- CJS entrypoint: `./dist/boring-ui.cjs`
+- CSS entrypoint: `./dist/style.css` (consumed as `boring-ui/style.css`)
+
+Public API boundaries are defined in `src/front/index.js` and validated via:
+
+- unit contract test: `npm run test:run -- src/front/__tests__/rootEntrypointContract.test.js`
+- build+resolution smoke: `npm run smoke:entrypoints`
+
+Reference: `docs/runbooks/ROOT_PACKAGE_ENTRYPOINTS.md`
+
+### Shared Style Runtime Contract
+
+Phase 1 runtime-facing assumptions are intentionally minimal and docs-level:
+
+- runtime/child panels rely on host-loaded shared UI CSS
+- theme state flows through document-root `data-theme`
+- token bridge remains host-owned and shared, not redefined per runtime panel
+- compiler policy and runtime CSS allowlists are explicitly deferred to later phases
+
+Reference: `docs/runbooks/SHARED_STYLE_RUNTIME_CONTRACT.md`
+
 ### Core/Edge Modes and UI Profiles
 
 Canonical contract:
