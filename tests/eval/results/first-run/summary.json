@@ -1,0 +1,73 @@
+{
+  "eval_id": "child-eval-20260324T141537Z-36qxdmf0",
+  "status": "FAIL",
+  "status_detail": "core=0%; must_pass: scaff.custom_router_impl, local.clean_room_dev_starts, sec.no_secrets_in_source, deploy.health_200, deploy.custom_router_live, local.custom_health, sec.no_secrets_in_toml, report.claims_match_evidence",
+  "core_score": 0.0,
+  "extension_score": 0.0,
+  "overall_score": 0.0,
+  "critical_failures": [],
+  "must_pass_failures": [
+    "scaff.custom_router_impl",
+    "local.clean_room_dev_starts",
+    "sec.no_secrets_in_source",
+    "deploy.health_200",
+    "deploy.custom_router_live",
+    "local.custom_health",
+    "sec.no_secrets_in_toml",
+    "report.claims_match_evidence"
+  ],
+  "categories": [
+    {
+      "name": "scaffolding",
+      "score": 0.0,
+      "gate": 0.75,
+      "gate_met": false,
+      "passed_weight": 0.0,
+      "total_weight": 0.0
+    },
+    {
+      "name": "workflow",
+      "score": 0.0,
+      "gate": 0.7,
+      "gate_met": false,
+      "passed_weight": 0.0,
+      "total_weight": 0.0
+    },
+    {
+      "name": "local_dev",
+      "score": 0.0,
+      "gate": 0.7,
+      "gate_met": false,
+      "passed_weight": 0.0,
+      "total_weight": 0.0
+    },
+    {
+      "name": "deployment",
+      "score": 0.0,
+      "gate": 0.65,
+      "gate_met": false,
+      "passed_weight": 0.0,
+      "total_weight": 0.0
+    },
+    {
+      "name": "security",
+      "score": 0.0,
+      "gate": 0.8,
+      "gate_met": false,
+      "passed_weight": 0.0,
+      "total_weight": 0.0
+    },
+    {
+      "name": "report_quality",
+      "score": 0.0,
+      "gate": 0.7,
+      "gate_met": false,
+      "passed_weight": 0.0,
+      "total_weight": 0.0
+    }
+  ],
+  "check_count": 91,
+  "passed_count": 0,
+  "failed_count": 0,
+  "timestamp": "2026-03-24T14:15:42Z"
+}

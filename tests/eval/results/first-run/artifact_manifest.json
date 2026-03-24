@@ -1,0 +1,48 @@
+{
+  "artifacts": [
+    {
+      "filename": "run_manifest.json",
+      "sha256": "4a4bcdf77a2ca5d0655c874e7993e245f8e21738545d0d37111027c7f9ce031f",
+      "size_bytes": 833,
+      "redacted": false,
+      "producer": "harness"
+    },
+    {
+      "filename": "agent_stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0,
+      "redacted": true,
+      "producer": "agent"
+    },
+    {
+      "filename": "agent_stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0,
+      "redacted": true,
+      "producer": "agent"
+    },
+    {
+      "filename": "agent_final_response.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0,
+      "redacted": true,
+      "producer": "agent"
+    },
+    {
+      "filename": "eval_result.json",
+      "sha256": "7be59773f6533de30a30b0ccfb6aa02ea45d5b519553b080aa2854e24ea306ab",
+      "size_bytes": 34822,
+      "redacted": true,
+      "producer": "harness"
+    },
+    {
+      "filename": "summary.json",
+      "sha256": "88ed1719b3fa614c94cc317538204973b99d8424d3bd360f0cec7a3690892cc5",
+      "size_bytes": 1776,
+      "redacted": false,
+      "producer": "harness"
+    }
+  ],
+  "total_bytes": 37431,
+  "artifact_count": 6
+}

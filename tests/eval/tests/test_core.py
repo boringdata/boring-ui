@@ -298,6 +298,27 @@ class TestRunners:
     def test_subprocess_runner_name(self):
         assert SubprocessRunner().name == "subprocess"
 
+    def test_subprocess_runner_preserves_zero_exit_code(self, sample_manifest):
+        runner = SubprocessRunner(command=["python3", "-c", "print('ok')"])
+        result = asyncio.run(runner.run(sample_manifest, "prompt", timeout_s=5))
+        assert result.exit_code == 0
+        assert "ok" in result.stdout
+
+    def test_subprocess_runner_creates_missing_project_root(self, tmp_path):
+        naming = NamingContract.from_eval_id(
+            "child-eval-20260324T141100Z-hijk9012",
+            projects_root=str(tmp_path / "missing-root-parent"),
+        )
+        manifest = RunManifest.from_naming(naming)
+        assert not Path(manifest.project_root).exists()
+
+        runner = SubprocessRunner(command=["python3", "-c", "print('ready')"])
+        result = asyncio.run(runner.run(manifest, "prompt", timeout_s=5))
+
+        assert result.exit_code == 0
+        assert Path(manifest.project_root).exists()
+        assert "ready" in result.stdout
+
     def test_run_result_to_dict(self):
         rr = RunResult(exit_code=0, stdout="x" * 100, elapsed_s=1.5)
         d = rr.to_dict()

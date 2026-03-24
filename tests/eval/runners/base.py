@@ -124,6 +124,8 @@ class SubprocessRunner(AgentRunner):
     ) -> RunResult:
         start = time.monotonic()
         timed_out = False
+        working_dir = Path(self._cwd or manifest.project_root)
+        working_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -131,7 +133,7 @@ class SubprocessRunner(AgentRunner):
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=self._cwd or manifest.project_root,
+                cwd=str(working_dir),
                 env=self._env,
             )
 
@@ -150,7 +152,7 @@ class SubprocessRunner(AgentRunner):
             stderr = stderr_bytes.decode(errors="replace")
 
             return RunResult(
-                exit_code=self._process.returncode or -1,
+                exit_code=self._process.returncode if self._process.returncode is not None else -1,
                 timed_out=timed_out,
                 stdout=stdout,
                 stderr=stderr,
