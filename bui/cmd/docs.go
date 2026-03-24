@@ -35,6 +35,7 @@ func init() {
 func printDocsIndex() {
 	fmt.Println(`bui docs — Available topics:
 
+  bui docs quickstart  Autonomous end-to-end: init → deploy (start here)
   bui docs init       Scaffold a new child app
   bui docs dev        Dev server setup and framework resolution
   bui docs deploy     Build, secrets, Fly/Modal/Docker deploy workflow
@@ -46,6 +47,113 @@ func printDocsIndex() {
 }
 
 var docTopics = map[string]string{
+	"quickstart": `
+=== Autonomous Child App: Init → Deploy ===
+
+Complete sequence for creating, validating, and deploying a new boring-ui
+child app. Every step uses bui CLI — no manual framework wiring needed.
+
+--- Prerequisites ---
+
+  - bui CLI on PATH (this binary)
+  - ../boring-ui/ exists (or BUI_FRAMEWORK_PATH set)
+  - Vault accessible: VAULT_ADDR + VAULT_TOKEN set
+  - Fly CLI on PATH + FLY_API_TOKEN set (or fly auth login)
+  - Node.js + npm for frontend build
+
+--- Step-by-step ---
+
+  1. Scaffold:
+     cd /home/ubuntu/projects
+     bui init <app-name>
+     cd <app-name>
+
+     This creates boring.app.toml, pyproject.toml, example router, and
+     .gitignore. The example router is already wired into [backend].routers.
+
+  2. Initialize git:
+     git init && git add -A && git commit -m "Initial scaffold"
+
+  3. Add custom routes (edit src/<module>/routers/example.py or add new files):
+     - Add your router file: src/<module>/routers/status.py
+     - Wire it in boring.app.toml under [backend].routers:
+       routers = ["<module>.routers.example:router", "<module>.routers.status:router"]
+     - The framework mounts each router at /api/x/<filename> automatically
+
+  4. Validate:
+     bui doctor
+
+  5. Local dev test:
+     bui dev --backend-only
+     # In another terminal:
+     curl http://localhost:8000/api/capabilities
+     curl http://localhost:8000/api/x/example/health
+
+  6. Provision Neon (auth + database for production):
+     bui neon setup --region aws-eu-central-1 --email-provider none
+     # This updates boring.app.toml, stores creds in Vault or .boring/
+
+  7. Deploy to Fly:
+     bui deploy
+     # Creates Fly app if needed, builds frontend, resolves secrets, deploys
+
+  8. Verify live:
+     curl https://<app-name>.fly.dev/health
+     curl https://<app-name>.fly.dev/api/capabilities
+
+--- How it works under the hood ---
+
+  boring-ui is a framework. Your child app is a config + custom routers.
+  bui dev installs the framework (pip install -e ../boring-ui) and your
+  app (pip install -e .), then runs boring_ui.app_config_loader:app which:
+    1. Reads your boring.app.toml
+    2. Creates the base FastAPI app from boring-ui framework
+    3. Mounts your [backend].routers at /api/x/<name>
+    4. Serves frontend if built
+
+  Your app does NOT need its own create_app() or app.py — the framework
+  provides it. You only write routers, panels, and config.
+
+--- Key config fields ---
+
+  [backend].entry     The ASGI entrypoint (default: boring_ui.app_config_loader:app)
+  [backend].routers   Your custom routers (dotted paths like "myapp.routers.foo:router")
+  [deploy].platform   "fly" (default), "modal", or "docker"
+  [auth].provider     "local" (dev) or "neon" (production, set by bui neon setup)
+
+--- Adding a custom router ---
+
+  # src/<module>/routers/status.py
+  from fastapi import APIRouter
+  router = APIRouter(tags=["status"])
+
+  @router.get("/health")
+  async def health():
+      return {"ok": True, "app": "<app-name>"}
+
+  @router.get("/info")
+  async def info():
+      return {"name": "<app-name>", "version": "0.1.0"}
+
+  # boring.app.toml
+  routers = ["<module>.routers.status:router"]
+  # → mounted at /api/x/status/health and /api/x/status/info
+
+--- Secrets (never hardcode) ---
+
+  [deploy.secrets]
+  ANTHROPIC_API_KEY = { vault = "secret/agent/anthropic", field = "api_key" }
+  MY_SECRET         = { vault = "secret/agent/app/<id>/prod", field = "my_secret" }
+
+  bui deploy resolves these from Vault at deploy time.
+  bui neon setup auto-stores database/auth creds in Vault.
+
+--- Cleanup ---
+
+  bui neon destroy    Delete Neon project + clean Vault
+  fly apps destroy <app-name> --yes
+`,
+
 	"init": `
 === bui init — Child App Scaffolding ===
 

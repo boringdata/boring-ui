@@ -76,9 +76,9 @@ id   = %q
 %s
 # ─── Backend ───────────────────────────────────────────────
 [backend]
-entry   = "%s.app:create_app"
+entry   = "boring_ui.app_config_loader:app"
 port    = 8000
-routers = []
+routers = ["%s.routers.example:router"]
 
 # ─── Frontend ──────────────────────────────────────────────
 [frontend]
