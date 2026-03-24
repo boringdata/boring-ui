@@ -179,18 +179,14 @@ function requireServerApiKey() {
 }
 
 function applySessionContext(session, nextContext = {}) {
-  if (nextContext.workspaceId) {
-    session.workspaceId = nextContext.workspaceId
+  let changed = false
+  for (const key of ['workspaceId', 'internalApiToken', 'backendUrl', 'workspaceRoot']) {
+    if (nextContext[key] && nextContext[key] !== session[key]) {
+      session[key] = nextContext[key]
+      changed = true
+    }
   }
-  if (nextContext.internalApiToken) {
-    session.internalApiToken = nextContext.internalApiToken
-  }
-  if (nextContext.backendUrl) {
-    session.backendUrl = nextContext.backendUrl
-  }
-  if (nextContext.workspaceRoot) {
-    session.workspaceRoot = nextContext.workspaceRoot
-  }
+  if (!changed) return
 
   const toolContext = {
     workspaceId: session.workspaceId,
@@ -246,7 +242,13 @@ function getOrCreateSession(sessionId, sessionContext = {}) {
     applySessionContext(session, sessionContext)
     return session
   }
-  return createSession(sessionContext)
+  const session = createSession(sessionContext)
+  if (sessionId) {
+    sessions.delete(session.id)
+    session.id = sessionId
+    sessions.set(sessionId, session)
+  }
+  return session
 }
 
 function sendSse(res, event, payload) {
@@ -258,6 +260,25 @@ function listSortedSessions() {
   return Array.from(sessions.values())
     .sort((a, b) => String(b.lastModified).localeCompare(String(a.lastModified)))
     .map(toSessionSummary)
+}
+
+async function runSessionPrompt(session, payload = {}) {
+  const message = String(payload?.message || '').trim()
+  if (!message) {
+    const err = new Error('message is required')
+    err.status = 400
+    throw err
+  }
+  if (session.agent.state.isStreaming) {
+    const err = new Error('session is busy')
+    err.status = 409
+    throw err
+  }
+  await session.agent.prompt(message)
+  session.lastModified = nowIso()
+  session.title = deriveTitle(session.agent.state.messages)
+  const last = session.agent.state.messages.findLast((m) => m.role === 'assistant')
+  return last ? textFromMessage(last) : ''
 }
 
 async function handleStream(_req, res, session, payload = {}) {
@@ -486,6 +507,31 @@ async function handleHttpRequest(req, res) {
       } else {
         res.end()
       }
+    }
+    return
+  }
+
+  // Synchronous prompt — send message, wait for final text response.
+  // Used by messaging channels (Telegram, Slack) that don't need SSE streaming.
+  const promptMatch = path.match(/^\/api\/v1\/agent\/pi\/sessions\/([^/]+)\/prompt$/)
+  if (req.method === 'POST' && promptMatch) {
+    const sessionId = safeDecodeURIComponent(promptMatch[1])
+    if (!sessionId) {
+      sendJson(res, 400, { error: 'invalid session id' })
+      return
+    }
+    try {
+      const payload = await readJsonBody(req)
+      const session = getOrCreateSession(sessionId, resolveSessionContext(payload, req.headers))
+      const responseText = await runSessionPrompt(session, payload)
+      sendJson(res, 200, {
+        text: responseText || '(no response)',
+        session: toSessionSummary(session),
+      })
+    } catch (error) {
+      console.error('[pi-service] prompt handler failed', error)
+      const status = error.status || 500
+      sendJson(res, status, { error: error instanceof Error ? error.message : 'internal server error' })
     }
     return
   }

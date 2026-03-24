@@ -237,6 +237,21 @@ class PiHarness(AgentHarness):
                 headers=self._proxy_headers(ctx, request_id="pi-harness-message"),
             )
 
+    async def prompt_session(
+        self,
+        ctx: WorkspaceContext,
+        session_id: str,
+        message: str,
+    ) -> str:
+        """Send a message and return final text. Used by messaging channels."""
+        response = await self._json_request(
+            "POST",
+            f"/api/v1/agent/pi/sessions/{session_id}/prompt",
+            ctx=ctx,
+            json={"message": message},
+        )
+        return response.get("text", "(no response)")
+
     async def terminate_session(self, ctx: WorkspaceContext, session_id: str) -> None:
         await self.ensure_ready()
         async with self._client_factory() as client:

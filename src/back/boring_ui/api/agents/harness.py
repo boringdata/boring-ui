@@ -73,3 +73,15 @@ class AgentHarness(Protocol):
 
     async def terminate_session(self, ctx: WorkspaceContext, session_id: str) -> None:
         """Terminate an existing session."""
+
+    async def prompt_session(
+        self,
+        ctx: WorkspaceContext,
+        session_id: str,
+        message: str,
+    ) -> str:
+        """Send a message and return the final assistant text synchronously.
+
+        Used by messaging channels (Telegram, Slack) that don't need SSE streaming.
+        Creates the session if it doesn't exist.
+        """

@@ -1,7 +1,7 @@
-"""Messaging gateway module — OpenClaw-style channel integrations.
+"""Messaging gateway module — routes external channels through PI agent service.
 
-Connects external messaging channels (Telegram, Slack, etc.) to
-workspace AI agents, using boring-ui's file/git/exec APIs as tools.
+Connects external messaging channels (Telegram, Slack, etc.) to the
+PI agent service for multi-turn conversations with workspace tools.
 """
 from .router import create_messaging_router
 

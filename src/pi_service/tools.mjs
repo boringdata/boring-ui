@@ -1,6 +1,7 @@
 import { Type } from '@sinclair/typebox'
 import { exec as execCb } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
+import { resolve as pathResolve } from 'node:path'
 import { promisify } from 'node:util'
 
 const execAsync = promisify(execCb)
@@ -41,15 +42,13 @@ export function resolveSessionContext(payload = {}, headers = {}, env = process.
     payload.workspace_id
     || payload.workspaceId
     || headers['x-workspace-id']
-    || headers['X-Workspace-Id']
     || '',
   )
   const internalApiToken = String(
     payload.internal_api_token
     || payload.internalApiToken
-    || bearerTokenFromHeader(headers.authorization || headers.Authorization)
+    || bearerTokenFromHeader(headers.authorization)
     || headers['x-boring-internal-token']
-    || headers['X-Boring-Internal-Token']
     || env.BORING_INTERNAL_TOKEN
     || env.BORING_INTERNAL_API_TOKEN
     || env.BORING_UI_INTERNAL_TOKEN
@@ -59,14 +58,12 @@ export function resolveSessionContext(payload = {}, headers = {}, env = process.
     payload.backend_url
     || payload.backendUrl
     || headers['x-boring-backend-url']
-    || headers['X-Boring-Backend-Url']
     || env.BORING_BACKEND_URL
   )
   const workspaceRoot = String(
     payload.workspace_root
     || payload.workspaceRoot
     || headers['x-boring-workspace-root']
-    || headers['X-Boring-Workspace-Root']
     || ''
   ).trim()
 
@@ -89,52 +86,187 @@ export function buildSessionSystemPrompt(basePrompt, context = {}) {
   ].filter(Boolean).join(' ')
 }
 
-// --- Single tool: exec_bash ---
+// --- Backend-agent mode tool: exec_bash ---
 
-export function createWorkspaceTools(context = {}) {
-  const wsRoot = getEffectiveWorkspaceRoot(context)
+function createExecBashTool(wsRoot) {
+  return {
+    name: 'exec_bash',
+    label: 'Execute Bash',
+    description: 'Execute a bash command in the workspace. Use this for ALL operations: file read/write, git, python, package install, etc.',
+    parameters: Type.Object({
+      command: Type.String({ description: 'Bash command to execute' }),
+      cwd: Type.Optional(Type.String({ description: 'Working directory relative to workspace root' })),
+    }),
+    execute: async (_toolCallId, params) => {
+      const command = String(params?.command || '').trim()
+      if (!command) throw new Error('command is required')
+      const cwd = params?.cwd
+        ? String(params.cwd).trim().replace(/^\/+/, '')
+        : '.'
+      const fullCwd = pathResolve(wsRoot, cwd)
+      if (!fullCwd.startsWith(wsRoot + '/') && fullCwd !== wsRoot) {
+        return textResult('Error: cwd resolves outside workspace root')
+      }
+      if (!existsSync(fullCwd)) {
+        try { mkdirSync(fullCwd, { recursive: true }) } catch { /* best effort */ }
+      }
+      const start = Date.now()
+      try {
+        const { stdout, stderr } = await execAsync(command, {
+          cwd: fullCwd,
+          timeout: 60_000,
+          maxBuffer: 512 * 1024,
+          env: { ...process.env, HOME: wsRoot },
+        })
+        return textResult(formatExecOutput({ stdout, stderr, exitCode: 0 }), {
+          stdout, stderr, exitCode: 0, duration_ms: Date.now() - start,
+        })
+      } catch (err) {
+        const result = {
+          stdout: err.stdout || '',
+          stderr: err.stderr || err.message || '',
+          exitCode: typeof err.code === 'number' ? err.code : 1,
+          duration_ms: Date.now() - start,
+        }
+        return textResult(formatExecOutput(result), result)
+      }
+    },
+  }
+}
+
+// --- Shared tools (all modes): UI state via backend API ---
+
+async function fetchBackendJson(backendUrl, apiPath, options = {}, authToken = '') {
+  const url = `${backendUrl}${apiPath}`
+  const headers = { ...options.headers }
+  if (options.body) {
+    headers['content-type'] = 'application/json'
+  }
+  if (authToken) {
+    headers.authorization = `Bearer ${authToken}`
+  }
+  try {
+    const res = await fetch(url, { headers, ...options })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      if (res.status === 404 && body.includes('No frontend state')) {
+        return { _error: true, status: 404, body: 'No browser client is connected' }
+      }
+      return { _error: true, status: res.status, body }
+    }
+    return await res.json()
+  } catch (err) {
+    return { _error: true, status: 0, body: err.message || 'Backend unavailable' }
+  }
+}
+
+function createSharedUiTools(backendUrl, authToken) {
   return [
     {
-      name: 'exec_bash',
-      label: 'Execute Bash',
-      description: 'Execute a bash command in the workspace. Use this for ALL operations: file read/write, git, python, package install, etc.',
+      name: 'list_panes',
+      label: 'List Panes',
+      description: 'List currently open UI panels and which one is active.',
+      parameters: Type.Object({}),
+      execute: async () => {
+        const data = await fetchBackendJson(backendUrl, '/api/v1/ui/panes', {}, authToken)
+        if (data._error) return textResult(`Error fetching panes: ${data.status} ${data.body}`)
+        const panels = data.open_panels || []
+        if (panels.length === 0) return textResult('No panels open')
+        const activeId = data.active_panel_id || ''
+        const lines = panels.map((p) => {
+          const id = p.id || ''
+          const component = p.component || ''
+          const title = p.title || ''
+          const marker = id === activeId ? ' (active)' : ''
+          return `${component}: ${title || id}${marker}`
+        })
+        return textResult(lines.join('\n'))
+      },
+    },
+
+    {
+      name: 'get_ui_state',
+      label: 'Get UI State',
+      description: 'Get full UI snapshot: open panels, active file, project root.',
+      parameters: Type.Object({}),
+      execute: async () => {
+        const data = await fetchBackendJson(backendUrl, '/api/v1/ui/state/latest', {}, authToken)
+        if (data._error) return textResult(`Error fetching UI state: ${data.status} ${data.body}`)
+        const state = data.state || {}
+        const parts = []
+        if (state.active_panel_id) parts.push(`Active panel: ${state.active_panel_id}`)
+        if (state.project_root) parts.push(`Project root: ${state.project_root}`)
+        const panels = state.open_panels || []
+        if (panels.length > 0) {
+          parts.push(`Open panels (${panels.length}):`)
+          for (const p of panels) {
+            const id = p.id || ''
+            const component = p.component || ''
+            const title = p.title || ''
+            parts.push(`  ${component}: ${title || id}`)
+          }
+        }
+        return textResult(parts.join('\n') || 'No UI state available')
+      },
+    },
+
+    {
+      name: 'open_file',
+      label: 'Open File',
+      description: 'Open a file in the editor panel.',
       parameters: Type.Object({
-        command: Type.String({ description: 'Bash command to execute' }),
-        cwd: Type.Optional(Type.String({ description: 'Working directory relative to workspace root' })),
+        path: Type.String({ description: 'File path relative to workspace root' }),
       }),
       execute: async (_toolCallId, params) => {
-        const command = String(params?.command || '').trim()
-        if (!command) throw new Error('command is required')
-        const cwd = params?.cwd
-          ? String(params.cwd).trim().replace(/^\/+/, '')
-          : '.'
-        const fullCwd = cwd === '.' ? wsRoot : `${wsRoot}/${cwd}`
-        // Ensure workspace directory exists — during provisioning the volume
-        // mount may not be ready yet, which causes ENOENT on exec.
-        if (!existsSync(fullCwd)) {
-          try { mkdirSync(fullCwd, { recursive: true }) } catch { /* best effort */ }
-        }
-        const start = Date.now()
-        try {
-          const { stdout, stderr } = await execAsync(command, {
-            cwd: fullCwd,
-            timeout: 60_000,
-            maxBuffer: 512 * 1024,
-            env: { ...process.env, HOME: wsRoot },
-          })
-          return textResult(formatExecOutput({ stdout, stderr, exitCode: 0 }), {
-            stdout, stderr, exitCode: 0, duration_ms: Date.now() - start,
-          })
-        } catch (err) {
-          const result = {
-            stdout: err.stdout || '',
-            stderr: err.stderr || err.message || '',
-            exitCode: typeof err.code === 'number' ? err.code : 1,
-            duration_ms: Date.now() - start,
-          }
-          return textResult(formatExecOutput(result), result)
-        }
+        const path = String(params?.path || '').trim().replace(/^\/+/, '')
+        if (!path) return textResult('Error: path is required')
+        const data = await fetchBackendJson(backendUrl, '/api/v1/ui/commands', {
+          method: 'POST',
+          body: JSON.stringify({
+            command: {
+              kind: 'open_panel',
+              component: 'editor',
+              title: path.split('/').pop() || path,
+              params: { path },
+              prefer_existing: true,
+            },
+          }),
+        }, authToken)
+        if (data._error) return textResult(`Error opening file: ${data.status} ${data.body}`)
+        return textResult(`Opening ${path} in editor`)
+      },
+    },
+
+    {
+      name: 'list_tabs',
+      label: 'List Tabs',
+      description: 'List currently open editor tabs and which file is active.',
+      parameters: Type.Object({}),
+      execute: async () => {
+        const data = await fetchBackendJson(backendUrl, '/api/v1/ui/panes', {}, authToken)
+        if (data._error) return textResult(`Error fetching tabs: ${data.status} ${data.body}`)
+        const panels = (data.open_panels || []).filter((p) => p.component === 'editor')
+        if (panels.length === 0) return textResult('No editor tabs open')
+        const activeId = data.active_panel_id || ''
+        const lines = panels.map((p) => {
+          const path = p.params?.path || p.title || p.id || ''
+          return p.id === activeId ? `* ${path}` : `  ${path}`
+        })
+        return textResult(lines.join('\n'))
       },
     },
   ]
+}
+
+// --- Tool assembly ---
+
+export function createWorkspaceTools(context = {}) {
+  const wsRoot = getEffectiveWorkspaceRoot(context)
+  const backendUrl = String(context.backendUrl || '').trim()
+  const authToken = String(context.internalApiToken || '').trim()
+  const tools = [createExecBashTool(wsRoot)]
+  if (backendUrl) {
+    tools.push(...createSharedUiTools(backendUrl, authToken))
+  }
+  return tools
 }
