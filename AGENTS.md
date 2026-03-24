@@ -22,25 +22,19 @@ boring-ui is a **composable, capability-gated web IDE framework**. Panel-based U
 - **CLI**: `bui` (Go) — dev orchestration, framework pinning, child app management
 - **Tests**: Vitest (unit), Playwright (e2e), pytest (backend)
 
-### Core vs Edge — Why Two Modes
+### Agent Modes — Three Deployment Variants
 
-The two modes exist because **where the agent runs** changes everything.
+The three modes differ in **where the agent runs** and **what's included**.
 
-**Core mode** (default): Agent runs **in the browser** (PI rail). Filesystem is LightningFS (IndexedDB-backed, git-compatible). No server-side sandbox needed. Simplest deployment — can even be pure static hosting.
+| Mode | Fly app | Agent | Filesystem | Key traits |
+|------|---------|-------|------------|------------|
+| **agent-lite** | `boring-ui-lite` | PI (browser) | Server FS via HTTP API | Minimal footprint, bubblewrap sandbox for exec, no Node.js runtime |
+| **agent-frontend** | `boring-ui-frontend-agent` | PI (browser) | Server FS via HTTP API | Full backend (FastAPI + Vite static), no server-side agent |
+| **agent-backend** | `boring-ui-backend-agent` | Companion (server) | Server FS via HTTP API | Full stack + Node.js pi_service sidecar, server-side agent execution |
 
-| Profile | Agent | Filesystem | Notes |
-|---------|-------|------------|-------|
-| `pi-lightningfs` (default) | PI (browser) | LightningFS (IndexedDB) | Everything in-browser, git via isomorphic-git |
-| `pi-cheerpx` | PI (browser) | CheerpX (Wasm Linux VM) | Full Linux userland in-browser |
-| `pi-httpfs` (dev) | PI (browser) | Backend HTTP APIs | For testing backend routers with PI |
+All three use `data.backend = "http"` (real filesystem) and Neon Auth. Deploy configs and smoke tests: see `deploy/README.md`.
 
-**Edge mode**: Agent runs **server-side** (Companion rail). File/git ops hit real server filesystems in provisioned sandbox containers. `boring-sandbox` sits at the edge as proxy/provisioner. For multi-user collab, heavy git, real shell access.
-
-| Profile | Agent | Filesystem | Notes |
-|---------|-------|------------|-------|
-| `companion-httpfs` | Companion (server) | Server FS via edge proxy | Real filesystem, real PTY, real git |
-
-Set via `VITE_UI_PROFILE` or `VITE_DEPLOY_MODE=edge`. Deep dive: `docs/runbooks/MODES_AND_PROFILES.md`.
+**Local dev** uses `data.backend = "lightningfs"` (browser IndexedDB) by default. Set `LOCAL_PARITY_MODE=http` to exercise the deployed code path locally.
 
 ### Child Apps
 
