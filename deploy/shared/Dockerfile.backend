@@ -45,7 +45,7 @@ RUN uv sync --frozen --no-dev
 # pi_service (Node.js sidecar for backend-agent mode)
 COPY src/pi_service ./src/pi_service
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Frontend static files from build stage
 COPY --from=frontend-build /build/dist ./dist
