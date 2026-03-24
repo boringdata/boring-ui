@@ -148,6 +148,28 @@ child app. Every step uses bui CLI — no manual framework wiring needed.
   bui deploy resolves these from Vault at deploy time.
   bui neon setup auto-stores database/auth creds in Vault.
 
+  IMPORTANT:
+  - Never put literal secret values in boring.app.toml or source files.
+  - Never print raw secrets in logs, reports, or commit messages.
+  - Always use { vault = "...", field = "..." } refs in [deploy.secrets].
+
+--- Adding a custom panel ---
+
+  # panels/NotesPanel.jsx
+  export default function NotesPanel() {
+    return <div>My custom panel</div>
+  }
+
+  # boring.app.toml
+  [frontend.panels]
+  notes = { component = "./panels/NotesPanel.jsx", title = "Notes", placement = "right" }
+
+--- Scope rules ---
+
+  - Keep all changes inside your child app directory.
+  - Do not modify ../boring-ui/ or other sibling project directories.
+  - The framework is read-only — your app extends it via config and routers.
+
 --- Cleanup ---
 
   bui neon destroy    Delete Neon project + clean Vault
