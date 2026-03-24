@@ -60,6 +60,15 @@ export default [
     },
   },
   {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.es2021,
+      },
+    },
+  },
+  {
     ignores: ['dist/**', 'node_modules/**', '**/*.ts', '**/*.tsx'],
   },
 ]

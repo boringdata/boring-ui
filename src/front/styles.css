@@ -156,77 +156,6 @@ html {
   box-shadow: var(--shadow-button-hover);
 }
 
-/* Shared 3-tier button system for controls across the app */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  min-height: var(--height-sm);
-  padding: 4px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--color-text-primary);
-  font-size: var(--text-sm);
-  font-weight: var(--font-medium);
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-in-out),
-    border-color var(--duration-fast) var(--ease-in-out),
-    color var(--duration-fast) var(--ease-in-out),
-    box-shadow var(--duration-fast) var(--ease-in-out),
-    transform var(--duration-fast) var(--ease-in-out),
-    opacity var(--duration-fast) var(--ease-in-out);
-}
-
-.btn-primary {
-  background: var(--color-bg-inverse);
-  color: var(--color-text-on-inverse-bg);
-  border-color: var(--color-bg-inverse);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-bg-inverse) 90%, var(--color-bg-primary));
-  border-color: color-mix(in srgb, var(--color-bg-inverse) 90%, var(--color-bg-primary));
-}
-
-.btn-secondary {
-  background: transparent;
-  color: var(--color-text-primary);
-  border-color: var(--color-border-strong);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-}
-
-.btn-ghost {
-  background: transparent;
-  color: var(--color-text-secondary);
-  border-color: transparent;
-}
-
-.btn-ghost:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
-.btn-icon {
-  width: var(--height-xs);
-  height: var(--height-xs);
-  padding: 0;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn:active:not(:disabled) {
-  box-shadow: var(--shadow-inset);
-}
-
 /* Card-like containers */
 .card,
 .panel-card {
@@ -6035,21 +5964,8 @@ kbd {
 }
 
 /* ==========================================================================
-   Modal - Create Workspace
+   Dialog - Create Workspace
    ========================================================================== */
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-overlay-muted);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-  animation: fadeIn 0.15s ease-out;
-}
 
 .modal-dialog {
   background: var(--color-background-elevated);
@@ -6218,7 +6134,6 @@ kbd {
   .section-collapse-icon,
   .ui-tooltip,
   .context-menu,
-  .modal-overlay,
   .modal-dialog,
   .workspace-loading {
     animation: none !important;

@@ -16,6 +16,7 @@ Operational runbooks for common tasks.
 - [Phase 1 Overlay and Menu Migration](./PHASE1_OVERLAY_MENU_MIGRATION.md) — dialog/dropdown migration notes and intentional custom overlays
 - [Phase 1 Form Primitive Migration](./PHASE1_FORM_PRIMITIVE_MIGRATION.md) — input/textarea/label/select migration notes and intentional native exceptions
 - [Phase 1 Low-Risk Primitive Migration](./PHASE1_LOW_RISK_PRIMITIVE_MIGRATION.md) — tooltip/avatar/tabs/separator migration notes and intentional custom exceptions
+- [Phase 1 Guardrails and CSS Retirement](./PHASE1_GUARDRAILS_CSS_RETIREMENT.md) — lint/backstop checks and phased retirement of replaced legacy primitive CSS
 
 ## Ownership Migration
 
