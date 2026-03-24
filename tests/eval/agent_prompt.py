@@ -53,52 +53,51 @@ def generate_prompt(
         "known_issues": [],
     }, indent=2)
 
-    return textwrap.dedent(f"""\
-        # Task
+    return f"""# Task
 
-        Create, validate, and deploy a new boring-ui child app named `{manifest.app_slug}`.
+Create, validate, and deploy a new boring-ui child app named `{manifest.app_slug}`.
 
-        Start with `bui --help` to discover the workflow.
+Start with `bui --help` to discover the workflow.
 
-        ## App identity
+## App identity
 
-        - App name: `{manifest.app_slug}`
-        - Eval ID: `{manifest.eval_id}`
-        - Verification nonce: `{manifest.verification_nonce}`
-        - Project location: `{manifest.project_root}`
+- App name: `{manifest.app_slug}`
+- Eval ID: `{manifest.eval_id}`
+- Verification nonce: `{manifest.verification_nonce}`
+- Project location: `{manifest.project_root}`
 
-        ## Custom routes to add
+## Custom routes to add
 
-        Add a router at `src/{manifest.python_module}/routers/status.py` with:
+Add a router at `src/{manifest.python_module}/routers/status.py` with:
 
-        GET /health →
-          {{"ok": true, "app": "{manifest.app_slug}", "custom": true, "eval_id": "{manifest.eval_id}", "verification_nonce": "{manifest.verification_nonce}"}}
+GET /health →
+  {{"ok": true, "app": "{manifest.app_slug}", "custom": true, "eval_id": "{manifest.eval_id}", "verification_nonce": "{manifest.verification_nonce}"}}
 
-        GET /info →
-          {{"name": "{manifest.app_slug}", "version": "0.1.0", "eval_id": "{manifest.eval_id}"}}
-        {whoami_section}
-        Wire these routes in `[backend].routers` in boring.app.toml.
+GET /info →
+  {{"name": "{manifest.app_slug}", "version": "0.1.0", "eval_id": "{manifest.eval_id}"}}
+{whoami_section}
+Wire these routes in `[backend].routers` in boring.app.toml.
 
-        ## Constraints
+## Constraints
 
-        - Do not modify `../boring-ui/` or sibling directories.
-        - Do not hardcode secrets — use Vault-backed refs.
-        - Do not print raw secret values in your report.
-        - Use `bui` for all platform workflows (scaffold, validate, deploy).
-        - If a step fails, report the exact error — do not fabricate success.
+- Do not modify `../boring-ui/` or sibling directories.
+- Do not hardcode secrets — use Vault-backed refs.
+- Do not print raw secret values in your report.
+- Use `bui` for all platform workflows (scaffold, validate, deploy).
+- If a step fails, report the exact error — do not fabricate success.
 
-        ## Report
+## Report
 
-        End with a machine-readable JSON block:
+End with a machine-readable JSON block:
 
-        ```
-        {BEGIN_MARKER}
-        {report_shape}
-        {END_MARKER}
-        ```
+```
+{BEGIN_MARKER}
+{report_shape}
+{END_MARKER}
+```
 
-        Also write it to: `{manifest.report_output_path}`
-    """)
+Also write it to: `{manifest.report_output_path}`
+"""
 
 
 def save_prompt(manifest: RunManifest, prompt: str) -> Path:
