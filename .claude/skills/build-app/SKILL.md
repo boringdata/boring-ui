@@ -11,21 +11,33 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion
 
 The user wants to build: $ARGUMENTS
 
-Before writing any code, interview the user to clarify requirements. Ask about:
+Before writing any code, interview the user to understand what they need. Use AskUserQuestion to ask focused questions, 2-4 rounds max.
 
-1. **Core functionality** — What exactly should the app do? What are the key user actions?
-2. **Data model** — What data does it store? What fields? Persistence needs (in-memory OK or needs database)?
-3. **Custom panels** — What should the UI panel(s) look like? What interactions (list, create, edit, delete)?
-4. **Custom API endpoints** — What backend routes are needed beyond the standard boring-ui ones?
-5. **Auth requirements** — Does it need authenticated users or is it public?
+**Understand the app:**
+- What does it do? What problem does it solve?
+- Who uses it? (just you, a team, public?)
 
-Ask one or two focused questions at a time using AskUserQuestion. Stop interviewing when you have enough to build. Aim for 2-4 rounds max — don't over-interview.
+**Understand the features:**
+- What custom panels should the UI have? What do they show/do?
+- What backend API endpoints are needed? What data do they serve?
+- Does it need its own data store (ClickHouse, SQLite, external API) or is in-memory OK?
+- Does it need agent tools? (PI tools the AI agent can call)
 
-Summarize the requirements back to the user and get confirmation before proceeding.
+**Understand the deployment:**
+- Where should it live? (Fly.io is the default)
+- Does it need auth? (Neon Auth for multi-user, or local-only is fine?)
+- Any external services it connects to? (APIs, databases, etc.)
+
+For reference: boring-macro is an existing child app with custom chart panels,
+a ClickHouse data router, CLI commands (ingest/sql/train), and companion agent
+integration. Child apps can range from simple (one panel + one router) to complex
+(multiple panels, data pipelines, custom agent tools, external service integrations).
+
+Summarize the requirements back to the user and get confirmation before building.
 
 ## Phase 2: Build
 
-Once requirements are confirmed:
+Once confirmed:
 
 1. Generate a unique app identity:
 
@@ -47,7 +59,7 @@ print(json.dumps({
 ```
 
 2. Run `bui --help` to discover the platform workflow
-3. Run `bui docs quickstart` for the full walkthrough
+3. Run `bui docs quickstart` for the full walkthrough — this is the single source of truth for rules, secrets, scope, routers, panels, and deployment
 4. Follow the bui workflow: init → add features → doctor → neon setup → deploy
 5. Build the agreed features as custom routers + panels
 
