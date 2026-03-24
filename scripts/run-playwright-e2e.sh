@@ -44,6 +44,8 @@ mkdir -p "$ARTIFACT_DIR"
 {
   echo "[playwright-e2e] started_at=$(timestamp_utc)"
   echo "[playwright-e2e] artifact_dir=${ARTIFACT_DIR}"
+  echo "[playwright-e2e] pwd=$(pwd)"
+  echo "[playwright-e2e] git_head=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "[playwright-e2e] node=$(command -v node)"
   echo "[playwright-e2e] workers=${PW_E2E_WORKERS:-1}"
   echo "[playwright-e2e] reuse_server=${PW_E2E_REUSE_SERVER:-auto}"

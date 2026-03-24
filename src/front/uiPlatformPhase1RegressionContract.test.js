@@ -29,6 +29,9 @@ describe('ui-platform phase 1 regression contract', () => {
     const { default: playwrightConfig } = await import(configUrl)
 
     expect(playwrightConfig.outputDir).toBe('test-results/playwright-artifacts')
+    expect(playwrightConfig.expect?.toHaveScreenshot?.animations).toBe('disabled')
+    expect(playwrightConfig.expect?.toHaveScreenshot?.caret).toBe('hide')
+    expect(playwrightConfig.expect?.toHaveScreenshot?.scale).toBe('css')
     expect(playwrightConfig.use?.screenshot).toBe('only-on-failure')
     expect(playwrightConfig.use?.trace).toBe('retain-on-failure')
     expect(playwrightConfig.use?.video).toBe('retain-on-failure')
@@ -40,5 +43,13 @@ describe('ui-platform phase 1 regression contract', () => {
     expect(playwrightWrapper).toContain('run.log')
     expect(playwrightWrapper).toContain('started_at=')
     expect(playwrightWrapper).toContain('finished_at=')
+    expect(playwrightWrapper).toContain('git_head=')
+    expect(playwrightWrapper).toContain('pwd=')
+  })
+
+  it('documents regression-specific browser and visual artifact expectations', () => {
+    expect(runbook).toContain('browser-events.ndjson')
+    expect(runbook).toContain('step-log.json')
+    expect(runbook).toContain('phase1-regression-logging.spec.ts-snapshots')
   })
 })

@@ -50,6 +50,11 @@ The canonical Playwright artifact surface for Phase 1 is:
 - `test-results/results.json` for machine-readable summary output
 - `test-results/junit.xml` for CI-oriented summary output
 - `playwright-report/` for HTML review output
+- `browser-events.ndjson` and `step-log.json` attachments for regression-focused
+  browser console, HTTP failure, and step-transition diagnostics
+- `src/front/__tests__/e2e/phase1-regression-logging.spec.ts-snapshots/` for
+  checked-in visual baselines that anchor stable host flows across light/dark
+  theme and error-state coverage
 
 If a bead adds custom baselines or supporting evidence, it must also link those
 artifacts from the bead evidence record so reviewers can diagnose regressions.

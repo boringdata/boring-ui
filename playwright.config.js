@@ -54,6 +54,13 @@ export default defineConfig({
   testDir: './src/front/__tests__/e2e',
   testMatch: '**/*.spec.ts',
   outputDir: artifactOutputDir,
+  expect: {
+    toHaveScreenshot: {
+      animations: 'disabled',
+      caret: 'hide',
+      scale: 'css',
+    },
+  },
 
   // Timeout for each test
   timeout: 30000,
