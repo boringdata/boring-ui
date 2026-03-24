@@ -9,7 +9,20 @@ var rootCmd = &cobra.Command{
 	Short: "boring-ui framework CLI",
 	Long: `bui manages boring-ui child apps from a single boring.app.toml config.
 
-Run 'bui docs' for detailed guides on setup, deploy, and auth.`,
+Quick start (create → deploy a new app):
+  bui docs quickstart         Full autonomous walkthrough
+
+Common workflow:
+  bui init <name>             Scaffold a new child app
+  bui dev                     Start dev server (auto-detects framework)
+  bui doctor                  Validate project config
+  bui neon setup              Provision database + auth (production)
+  bui deploy                  Build + resolve secrets + deploy to Fly
+
+All guides:
+  bui docs                    List all documentation topics
+  bui docs quickstart         End-to-end: init → deploy (start here)
+  bui docs config             boring.app.toml reference`,
 }
 
 func Execute() error {
