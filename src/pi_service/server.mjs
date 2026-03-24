@@ -246,6 +246,7 @@ function getOrCreateSession(sessionId, sessionContext = {}) {
   if (sessionId) {
     sessions.delete(session.id)
     session.id = sessionId
+    session.agent.sessionId = sessionId
     sessions.set(sessionId, session)
   }
   return session
