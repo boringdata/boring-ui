@@ -11,6 +11,7 @@ const workers =
   Number.isFinite(configuredWorkers) && configuredWorkers > 0
     ? configuredWorkers
     : 1
+const artifactOutputDir = process.env.PW_E2E_ARTIFACT_DIR || 'test-results/playwright-artifacts'
 const reuseExistingServer = process.env.PW_E2E_REUSE_SERVER
   ? process.env.PW_E2E_REUSE_SERVER === '1'
   : !process.env.CI
@@ -52,6 +53,7 @@ if (runCrossBrowser) {
 export default defineConfig({
   testDir: './src/front/__tests__/e2e',
   testMatch: '**/*.spec.ts',
+  outputDir: artifactOutputDir,
 
   // Timeout for each test
   timeout: 30000,
@@ -89,7 +91,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
 
     // Record traces for debugging
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
 
     // Video on failure
     video: 'retain-on-failure',

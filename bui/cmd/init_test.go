@@ -59,6 +59,18 @@ func TestRunInitGoScaffoldsBuildableChildApp(t *testing.T) {
 	}
 	assertGoldenFile(t, goldenRoot, filepath.Join(root, "myapp", "boring.app.toml"), normalizeGoldenText(string(appToml)))
 
+	flyToml, err := os.ReadFile(filepath.Join(root, "myapp", "deploy", "fly", "fly.toml"))
+	if err != nil {
+		t.Fatalf("read deploy/fly/fly.toml: %v", err)
+	}
+	assertGoldenFile(t, goldenRoot, filepath.Join(root, "myapp", "deploy", "fly", "fly.toml"), string(flyToml))
+
+	dockerfile, err := os.ReadFile(filepath.Join(root, "myapp", "deploy", "fly", "Dockerfile"))
+	if err != nil {
+		t.Fatalf("read deploy/fly/Dockerfile: %v", err)
+	}
+	assertGoldenFile(t, goldenRoot, filepath.Join(root, "myapp", "deploy", "fly", "Dockerfile"), string(dockerfile))
+
 	helloModule, err := os.ReadFile(filepath.Join(root, "myapp", "hello", "module.go"))
 	if err != nil {
 		t.Fatalf("read hello/module.go: %v", err)
@@ -69,7 +81,7 @@ func TestRunInitGoScaffoldsBuildableChildApp(t *testing.T) {
 		t.Fatalf("expected go.sum to be generated: %v", err)
 	}
 
-	build := exec.Command("go", "build", "./...")
+	build := exec.Command("go", "build", "-buildvcs=false", "./...")
 	build.Dir = filepath.Join(root, "myapp")
 	output, err := build.CombinedOutput()
 	if err != nil {
@@ -115,6 +127,34 @@ func TestRunInitPythonScaffoldsAppEntrypoint(t *testing.T) {
 	}
 	if !strings.Contains(string(appToml), `entry   = "pyapp.app:create_app"`) {
 		t.Fatalf("expected backend entry to match generated app.py, got %s", string(appToml))
+	}
+	if !strings.Contains(string(appToml), `platform = "fly"`) {
+		t.Fatalf("expected boring.app.toml to default to Fly deploys, got %s", string(appToml))
+	}
+	if !strings.Contains(string(appToml), `[deploy.fly]`) {
+		t.Fatalf("expected boring.app.toml to include deploy.fly config, got %s", string(appToml))
+	}
+
+	flyToml, err := os.ReadFile(filepath.Join(root, "pyapp", "deploy", "fly", "fly.toml"))
+	if err != nil {
+		t.Fatalf("read deploy/fly/fly.toml: %v", err)
+	}
+	if !strings.Contains(string(flyToml), `app = "pyapp"`) {
+		t.Fatalf("expected fly.toml app to match scaffolded app id, got %s", string(flyToml))
+	}
+	if !strings.Contains(string(flyToml), `dockerfile = "deploy/fly/Dockerfile"`) {
+		t.Fatalf("expected fly.toml to point at the generated Dockerfile, got %s", string(flyToml))
+	}
+
+	dockerfile, err := os.ReadFile(filepath.Join(root, "pyapp", "deploy", "fly", "Dockerfile"))
+	if err != nil {
+		t.Fatalf("read deploy/fly/Dockerfile: %v", err)
+	}
+	if !strings.Contains(string(dockerfile), `BUI_APP_TOML=/workspace/app/boring.app.toml`) {
+		t.Fatalf("expected Dockerfile to build with the generated boring.app.toml, got %s", string(dockerfile))
+	}
+	if !strings.Contains(string(dockerfile), `CMD ["uvicorn", "pyapp.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]`) {
+		t.Fatalf("expected Dockerfile to run the scaffolded app factory via uvicorn, got %s", string(dockerfile))
 	}
 }
 
@@ -165,6 +205,10 @@ func assertGoldenFile(t *testing.T, goldenRoot string, path string, actual strin
 		parts = append(parts, "go.mod.golden")
 	case "boring.app.toml":
 		parts = append(parts, "boring.app.toml.golden")
+	case "fly.toml":
+		parts = append(parts, "deploy_fly_fly.toml.golden")
+	case "Dockerfile":
+		parts = append(parts, "deploy_fly_Dockerfile.golden")
 	case "module.go":
 		parts = append(parts, "hello_module.go.golden")
 	default:

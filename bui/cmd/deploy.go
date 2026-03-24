@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/boringdata/boring-ui/bui/config"
@@ -81,11 +82,19 @@ func deployFly(cfg *config.AppConfig, root string) error {
 	// 3. Resolve secrets from Vault
 	fmt.Println("[bui] resolving secrets from Vault...")
 	secrets, failed := vaultpkg.ResolveSecrets(cfg.Deploy.Secrets)
-	for k := range secrets {
-		fmt.Printf("  ✓ %s\n", k)
+	fallbackSources, failed, err := applyNeonFallbackSecrets(root, cfg.Deploy.Secrets, secrets, failed)
+	if err != nil {
+		return err
 	}
-	for _, k := range failed {
-		fmt.Printf("  ✗ %s (Vault failed)\n", k)
+	for _, name := range sortedKeys(secrets) {
+		if source, ok := fallbackSources[name]; ok {
+			fmt.Printf("  ✓ %s (fallback: %s)\n", name, source)
+			continue
+		}
+		fmt.Printf("  ✓ %s\n", name)
+	}
+	for _, name := range failed {
+		fmt.Printf("  ✗ %s (Vault failed)\n", name)
 	}
 
 	// 4. Inject Neon config values
@@ -101,7 +110,20 @@ func deployFly(cfg *config.AppConfig, root string) error {
 		return err
 	}
 
-	// 5. Set secrets via fly CLI
+	// 5. Ensure the Fly app exists before setting secrets or deploying.
+	if !deployDryRun {
+		if err := ensureFlyAppExists(flyBin, appName, fly.Org); err != nil {
+			return err
+		}
+	} else {
+		if strings.TrimSpace(fly.Org) != "" {
+			fmt.Printf("[bui] DRY RUN: would ensure Fly app %s exists in org %s\n", appName, fly.Org)
+		} else {
+			fmt.Printf("[bui] DRY RUN: would ensure Fly app %s exists\n", appName)
+		}
+	}
+
+	// 6. Set secrets via fly CLI
 	if !deployDryRun {
 		fmt.Printf("[bui] setting secrets for %s...\n", appName)
 		flySecretArgs := []string{"secrets", "set", "--app", appName}
@@ -118,14 +140,14 @@ func deployFly(cfg *config.AppConfig, root string) error {
 		fmt.Printf("[bui] DRY RUN: would set %d secrets for %s\n", len(secrets), appName)
 	}
 
-	// 6. Find fly.toml — prefer deploy/fly/fly.toml, then deploy/fly/fly.control-plane.toml
+	// 7. Find fly.toml — prefer deploy/fly/fly.toml, then deploy/fly/fly.control-plane.toml
 	flyToml := findFlyToml(root)
 	if flyToml == "" {
 		return fmt.Errorf("no fly.toml found in deploy/fly/")
 	}
 	fmt.Printf("[bui] using %s\n", flyToml)
 
-	// 7. Deploy
+	// 8. Deploy
 	if !deployDryRun {
 		fmt.Printf("[bui] deploying %s...\n", appName)
 		deployCmd := exec.Command(flyBin, "deploy", "-c", flyToml)
@@ -140,6 +162,32 @@ func deployFly(cfg *config.AppConfig, root string) error {
 		fmt.Printf("[bui] DRY RUN: would run fly deploy -c %s\n", flyToml)
 	}
 
+	return nil
+}
+
+func ensureFlyAppExists(flyBin, appName, org string) error {
+	statusCmd := exec.Command(flyBin, "status", "--app", appName)
+	statusCmd.Stdout = os.Stdout
+	statusCmd.Stderr = os.Stderr
+	if err := statusCmd.Run(); err == nil {
+		fmt.Printf("[bui] Fly app %s already exists\n", appName)
+		return nil
+	}
+
+	createArgs := []string{"apps", "create", appName}
+	if strings.TrimSpace(org) != "" {
+		createArgs = append(createArgs, "--org", org)
+	}
+	fmt.Printf("[bui] Fly app %s not found; creating it...\n", appName)
+
+	createCmd := exec.Command(flyBin, createArgs...)
+	createCmd.Stdout = os.Stdout
+	createCmd.Stderr = os.Stderr
+	if err := createCmd.Run(); err != nil {
+		return fmt.Errorf("fly apps create: %w", err)
+	}
+
+	fmt.Printf("[bui] Fly app %s created\n", appName)
 	return nil
 }
 
@@ -373,4 +421,117 @@ func findModalFile(root string) string {
 		}
 	}
 	return ""
+}
+
+func applyNeonFallbackSecrets(root string, refs map[string]config.SecretRef, resolved map[string]string, failed []string) (map[string]string, []string, error) {
+	fallbackSources := make(map[string]string, len(failed))
+	unresolved := make([]string, 0, len(failed))
+
+	for _, name := range failed {
+		ref, ok := refs[name]
+		if !ok {
+			unresolved = append(unresolved, name)
+			continue
+		}
+
+		value, source, ok, err := fallbackSecretValue(root, ref.Field)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !ok {
+			unresolved = append(unresolved, name)
+			continue
+		}
+
+		resolved[name] = value
+		fallbackSources[name] = source
+	}
+
+	sort.Strings(unresolved)
+	return fallbackSources, unresolved, nil
+}
+
+func fallbackSecretValue(root, field string) (string, string, bool, error) {
+	switch strings.TrimSpace(field) {
+	case "database_url":
+		return loadFallbackEnv(root, "DATABASE_POOLER_URL", "DATABASE_URL")
+	case "database_direct_url":
+		return loadFallbackEnv(root, "DATABASE_URL")
+	case "session_secret":
+		return loadFallbackEnv(root, "BORING_UI_SESSION_SECRET")
+	case "settings_key":
+		if value, source, ok, err := loadFallbackEnv(root, "BORING_SETTINGS_KEY"); ok || err != nil {
+			return value, source, ok, err
+		}
+		value, err := ensureSettingsKey(root)
+		if err != nil {
+			return "", "", false, fmt.Errorf("ensure settings key fallback: %w", err)
+		}
+		return value, ".boring/settings-key", true, nil
+	case "neon_project_id":
+		return loadFallbackEnv(root, "NEON_PROJECT_ID")
+	case "neon_branch_id":
+		return loadFallbackEnv(root, "NEON_BRANCH_ID")
+	default:
+		return "", "", false, nil
+	}
+}
+
+func loadFallbackEnv(root string, keys ...string) (string, string, bool, error) {
+	for _, key := range keys {
+		if value := loadNeonEnvField(root, key); value != "" {
+			return value, ".boring/neon-config.env:" + key, true, nil
+		}
+	}
+	return "", "", false, nil
+}
+
+func buildDockerImageRef(registry, appName, env string) string {
+	base := strings.TrimRight(strings.TrimSpace(registry), "/")
+	tag := strings.TrimSpace(env)
+	if tag == "" || tag == "prod" {
+		tag = "latest"
+	}
+	return fmt.Sprintf("%s/%s:%s", base, appName, tag)
+}
+
+func renderEnvFile(env map[string]string) string {
+	keys := sortedKeys(env)
+	var builder strings.Builder
+	for _, key := range keys {
+		builder.WriteString(key)
+		builder.WriteByte('=')
+		builder.WriteString(strings.ReplaceAll(env[key], "\n", `\n`))
+		builder.WriteByte('\n')
+	}
+	return builder.String()
+}
+
+func shellEnvPrefix(env map[string]string) string {
+	keys := sortedKeys(env)
+	var builder strings.Builder
+	for _, key := range keys {
+		value := env[key]
+		if value == "" {
+			continue
+		}
+		builder.WriteString(key)
+		builder.WriteByte('=')
+		builder.WriteString(shellQuote(value))
+		builder.WriteByte(' ')
+	}
+	return builder.String()
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
+func sortedKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

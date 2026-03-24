@@ -30,3 +30,23 @@ backend = "http"
 provider       = "local"
 session_cookie = "boring_session"
 session_ttl    = 86400
+
+# ─── Deploy ──────────────────────────────────────────────
+[deploy]
+platform = "fly"
+env      = "prod"
+
+[deploy.secrets]
+ANTHROPIC_API_KEY = { vault = "secret/agent/anthropic", field = "api_key" }
+
+# [deploy.env_vars]
+# App-specific static env vars (non-secret, baked into container)
+# MY_SETTING = "value"
+
+[deploy.neon]
+# Populated by 'bui neon setup'
+
+[deploy.fly]
+org               = ""
+control_plane_app = "myapp"
+region            = "cdg"

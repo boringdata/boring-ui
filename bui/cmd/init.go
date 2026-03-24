@@ -56,6 +56,7 @@ func scaffoldPythonApp(name, fwCommit string) error {
 
 	dirs := []string{
 		name,
+		filepath.Join(name, "deploy", "fly"),
 		filepath.Join(name, "src", pyName, "routers"),
 		filepath.Join(name, "panels"),
 	}
@@ -111,7 +112,7 @@ session_ttl    = 86400
 
 # ─── Deploy ──────────────────────────────────────────────
 [deploy]
-platform = "modal"
+platform = "fly"
 env      = "prod"
 
 [deploy.secrets]
@@ -124,9 +125,10 @@ ANTHROPIC_API_KEY = { vault = "secret/agent/anthropic", field = "api_key" }
 [deploy.neon]
 # Populated by 'bui neon setup'
 
-[deploy.modal]
-app_name       = %q
-min_containers = 0
+[deploy.fly]
+org               = ""
+control_plane_app = %q
+region            = "cdg"
 `, name, name, strings.ToUpper(name[:1]), name, fwSection, pyName, name, name, fmt.Sprintf("%s hello", name), name)
 
 	writeFile(filepath.Join(name, "boring.app.toml"), toml)
@@ -173,6 +175,7 @@ async def health():
 `, name, pyName, name, name)
 	writeFile(filepath.Join(name, "src", pyName, "routers", "example.py"), exampleRouter)
 
+	writeFlyPythonFiles(name, pyName)
 	writeCommonFiles(name)
 	printInitNextSteps(name)
 	return nil
@@ -181,6 +184,7 @@ async def health():
 func scaffoldGoApp(name, siblingBUI, fwCommit string) error {
 	dirs := []string{
 		name,
+		filepath.Join(name, "deploy", "fly"),
 		filepath.Join(name, "hello"),
 	}
 	for _, d := range dirs {
@@ -218,7 +222,27 @@ backend = "http"
 provider       = "local"
 session_cookie = "boring_session"
 session_ttl    = 86400
-`, name, name, strings.ToUpper(name[:1]), name, fwSection, name)
+
+# ─── Deploy ──────────────────────────────────────────────
+[deploy]
+platform = "fly"
+env      = "prod"
+
+[deploy.secrets]
+ANTHROPIC_API_KEY = { vault = "secret/agent/anthropic", field = "api_key" }
+
+# [deploy.env_vars]
+# App-specific static env vars (non-secret, baked into container)
+# MY_SETTING = "value"
+
+[deploy.neon]
+# Populated by 'bui neon setup'
+
+[deploy.fly]
+org               = ""
+control_plane_app = %q
+region            = "cdg"
+`, name, name, strings.ToUpper(name[:1]), name, fwSection, name, name)
 	writeFile(filepath.Join(name, "boring.app.toml"), toml)
 
 	goMod := fmt.Sprintf(`module %s
@@ -330,6 +354,7 @@ func (m *Module) RegisterRoutes(router boringui.Router) {
 `
 	writeFile(filepath.Join(name, "hello", "module.go"), helloModule)
 
+	writeFlyGoFiles(name)
 	writeCommonFiles(name)
 	if siblingBUI == "" {
 		fmt.Println("[bui] warn: no local boring-ui sibling detected; skipping go mod tidy.")
@@ -414,6 +439,162 @@ BORING_UI_SESSION_SECRET=dev-only-local-secret
 	writeFile(filepath.Join(name, ".env.example"), envExample)
 }
 
+func writeFlyPythonFiles(name, pyName string) {
+	writeFile(filepath.Join(name, "deploy", "fly", "fly.toml"), flyTomlTemplate(name))
+	writeFile(filepath.Join(name, "deploy", "fly", "Dockerfile"), pythonFlyDockerfileTemplate(pyName))
+}
+
+func writeFlyGoFiles(name string) {
+	writeFile(filepath.Join(name, "deploy", "fly", "fly.toml"), flyTomlTemplate(name))
+	writeFile(filepath.Join(name, "deploy", "fly", "Dockerfile"), goFlyDockerfileTemplate())
+}
+
+func flyTomlTemplate(name string) string {
+	return fmt.Sprintf(`app = %q
+primary_region = "cdg"
+
+[build]
+  dockerfile = "deploy/fly/Dockerfile"
+
+[env]
+  APP_ENV = "production"
+  AUTH_SESSION_SECURE_COOKIE = "true"
+  BORING_UI_STATIC_DIR = "/app/dist/web"
+  BUI_APP_TOML = "/app/boring.app.toml"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_start_machines = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[vm]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"
+`, name)
+}
+
+func pythonFlyDockerfileTemplate(pyName string) string {
+	return fmt.Sprintf(`# syntax=docker/dockerfile:1
+
+FROM node:20-bookworm-slim AS frontend-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/app
+COPY . .
+
+RUN set -eux; \
+    FRAMEWORK_REPO="$(awk -F'"' '/^repo[[:space:]]*=/{print $2; exit}' boring.app.toml)"; \
+    FRAMEWORK_COMMIT="$(awk -F'"' '/^commit[[:space:]]*=/{print $2; exit}' boring.app.toml)"; \
+    if [ -z "$FRAMEWORK_REPO" ]; then FRAMEWORK_REPO="github.com/boringdata/boring-ui"; fi; \
+    git clone "https://${FRAMEWORK_REPO}.git" /opt/boring-ui; \
+    if [ -n "$FRAMEWORK_COMMIT" ]; then git -C /opt/boring-ui checkout "$FRAMEWORK_COMMIT"; fi; \
+    cd /opt/boring-ui; \
+    npm ci; \
+    BUI_APP_TOML=/workspace/app/boring.app.toml npx vite build --outDir /workspace/app/dist/web
+
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    BORING_UI_STATIC_DIR=/app/dist/web \
+    BUI_APP_TOML=/app/boring.app.toml
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+COPY --from=frontend-build /opt/boring-ui /opt/boring-ui
+COPY --from=frontend-build /workspace/app/dist ./dist
+
+RUN pip install --no-cache-dir /opt/boring-ui && \
+    pip install --no-cache-dir .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "%s.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+`, pyName)
+}
+
+func goFlyDockerfileTemplate() string {
+	return `# syntax=docker/dockerfile:1
+
+FROM node:20-bookworm-slim AS frontend-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/app
+COPY . .
+
+RUN set -eux; \
+    FRAMEWORK_REPO="$(awk -F'"' '/^repo[[:space:]]*=/{print $2; exit}' boring.app.toml)"; \
+    FRAMEWORK_COMMIT="$(awk -F'"' '/^commit[[:space:]]*=/{print $2; exit}' boring.app.toml)"; \
+    if [ -z "$FRAMEWORK_REPO" ]; then FRAMEWORK_REPO="github.com/boringdata/boring-ui"; fi; \
+    git clone "https://${FRAMEWORK_REPO}.git" /opt/boring-ui; \
+    if [ -n "$FRAMEWORK_COMMIT" ]; then git -C /opt/boring-ui checkout "$FRAMEWORK_COMMIT"; fi; \
+    cd /opt/boring-ui; \
+    npm ci; \
+    BUI_APP_TOML=/workspace/app/boring.app.toml npx vite build --outDir /workspace/app/dist/web
+
+FROM golang:1.24-bookworm AS app-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/app
+COPY . .
+COPY --from=frontend-build /opt/boring-ui /opt/boring-ui
+
+RUN set -eux; \
+    go mod edit -replace github.com/boringdata/boring-ui=/opt/boring-ui; \
+    go mod tidy; \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/app .
+
+FROM debian:bookworm-slim
+
+ENV BORING_UI_STATIC_DIR=/app/dist/web \
+    BUI_APP_TOML=/app/boring.app.toml
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=app-build /out/app ./app
+COPY --from=frontend-build /workspace/app/dist ./dist
+COPY boring.app.toml ./boring.app.toml
+
+EXPOSE 8000
+
+CMD ["/app/app"]
+`
+}
+
 func printInitNextSteps(name string) {
 	fmt.Println()
 	fmt.Printf("[bui] %s created!\n\n", name)
@@ -424,7 +605,7 @@ func printInitNextSteps(name string) {
 	fmt.Println()
 	fmt.Println("For production:")
 	fmt.Println("  bui neon setup             # provision database + auth")
-	fmt.Println("  bui deploy                 # build + deploy to Modal")
+	fmt.Println("  bui deploy                 # build + deploy to Fly.io")
 }
 
 func writeFile(path, content string) {

@@ -37,7 +37,7 @@ func printDocsIndex() {
 
   bui docs init       Scaffold a new child app
   bui docs dev        Dev server setup and framework resolution
-  bui docs deploy     Build, secrets, Modal or Docker deploy workflow
+  bui docs deploy     Build, secrets, Fly/Modal/Docker deploy workflow
   bui docs neon       Neon Postgres + Auth setup, teardown, troubleshooting
   bui docs config     boring.app.toml schema reference
   bui docs auth       Auth provider architecture and session cookies
@@ -77,7 +77,7 @@ After init:
   cp .env.example .env          # add your API keys
   bui dev                       # auto-detects ../boring-ui
   bui neon setup                # provision database + auth
-  bui deploy                    # build + deploy to Modal
+  bui deploy                    # build + deploy to Fly.io
 
 Name must be lowercase alphanumeric with hyphens (e.g. boring-macro).
 `,
@@ -130,16 +130,18 @@ Steps:
   6. Deploy using [deploy].platform
 
 Platforms:
+  fly      Run 'fly deploy -c deploy/fly/fly.toml' with resolved env vars
   modal    Run 'modal deploy' with resolved env vars
   docker   Build + push image, copy compose/Caddy assets, restart remote Docker Compose over SSH
 
 Environment isolation (--env flag):
-  --env prod      Vault: secret/agent/app/{id}/prod     Modal: {app_name}
-  --env staging   Vault: secret/agent/app/{id}/staging  Modal: {app_name}-staging
-  --env dev       Vault: secret/agent/app/{id}/dev      Modal: {app_name}-dev
+  --env prod      Vault: secret/agent/app/{id}/prod
+  --env staging   Vault: secret/agent/app/{id}/staging
+  --env dev       Vault: secret/agent/app/{id}/dev
 
 Prerequisites:
   - Vault accessible (VAULT_ADDR + VAULT_TOKEN)
+  - flyctl (or fly) installed and authenticated for Fly deploys
   - modal CLI installed and authenticated for modal deploys
   - docker buildx + registry login for docker deploys
   - SSH access to the target host for docker deploys
@@ -245,7 +247,7 @@ Commands:
 [app]
   name       App display name
   logo       Single character or emoji
-  id         URL-safe identifier (used in Vault paths, Modal app names)
+  id         URL-safe identifier (used in Vault paths and deploy app names)
 
 [framework]
   repo       GitHub repo (e.g. "github.com/boringdata/boring-ui")
@@ -280,12 +282,14 @@ Commands:
   session_ttl     TTL in seconds (default: 86400)
 
 [deploy]
-  platform   "modal" | "docker"
-  env        "prod" | "staging" | "dev" (isolates Vault path + Modal app name)
+  platform   "fly" | "modal" | "docker"
+  env        "prod" | "staging" | "dev" (isolates Vault path and deploy target)
   [deploy.secrets]
     KEY = { vault = "secret/path", field = "field_name" }
   [deploy.neon]
     project, database, auth_url, jwks_url (populated by 'bui neon setup')
+  [deploy.fly]
+    org, control_plane_app, region
   [deploy.modal]
     app_name, min_containers, gpu
 `,

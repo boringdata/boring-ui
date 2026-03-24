@@ -257,6 +257,26 @@ curl -s https://<your-app>.modal.run/api/capabilities | python3 -c "import json,
 
 **Important**: Use the `-pooler` hostname in `DATABASE_URL` for Modal (connection pooling). The free tier has 100 connection limit.
 
+## Fly Frontend-Agent Deployment
+
+For the hosted frontend-agent app (`deploy/fly/fly.frontend-agent.toml`), keep the
+deploy-time auth contract explicit instead of relying on local-dev defaults:
+
+```bash
+# Push the shared Neon/Auth/GitHub secret bundle to the frontend-agent app
+bash deploy/fly/fly.secrets.sh boring-ui-frontend-agent
+
+# Deploy the hosted frontend-agent app config
+fly deploy -c deploy/fly/fly.frontend-agent.toml
+```
+
+Before cutover:
+
+- Keep `AUTH_DEV_LOGIN_ENABLED=false` and `AUTH_DEV_AUTO_LOGIN=false` in the Fly app env.
+- Keep `AUTH_SESSION_SECURE_COOKIE=true` for the hosted HTTPS origin.
+- Ensure Neon Auth `trusted_origins` includes `https://boring-ui-frontend-agent.fly.dev`.
+- Verify a real signup on the deployed hostname sends a verification email whose callback points back to `https://boring-ui-frontend-agent.fly.dev/auth/callback`.
+
 ## Session Persistence Across Deploys
 
 By default, if `BORING_UI_SESSION_SECRET` is not set, boring-ui generates an ephemeral random secret on startup. This means **every redeploy invalidates all existing session cookies**, forcing users to re-login.

@@ -5,6 +5,10 @@ set -euo pipefail
 # Node warns when both NO_COLOR and FORCE_COLOR are set (common in CI / transcript tooling).
 unset NO_COLOR FORCE_COLOR
 
+timestamp_utc() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
 is_bun_node() {
   node -e "process.exit(process.versions?.bun ? 0 : 1)" >/dev/null 2>&1
 }
@@ -33,4 +37,23 @@ if is_bun_node; then
   fi
 fi
 
-env -u NO_COLOR -u FORCE_COLOR npx playwright test "$@"
+ARTIFACT_DIR="${PW_E2E_ARTIFACT_DIR:-test-results/playwright-artifacts}"
+RUN_LOG="${PW_E2E_RUN_LOG:-${ARTIFACT_DIR%/}/run.log}"
+mkdir -p "$ARTIFACT_DIR"
+
+{
+  echo "[playwright-e2e] started_at=$(timestamp_utc)"
+  echo "[playwright-e2e] artifact_dir=${ARTIFACT_DIR}"
+  echo "[playwright-e2e] node=$(command -v node)"
+  echo "[playwright-e2e] workers=${PW_E2E_WORKERS:-1}"
+  echo "[playwright-e2e] reuse_server=${PW_E2E_REUSE_SERVER:-auto}"
+  echo "[playwright-e2e] args=$*"
+} | tee "$RUN_LOG"
+
+set +e
+env -u NO_COLOR -u FORCE_COLOR PW_E2E_ARTIFACT_DIR="$ARTIFACT_DIR" npx playwright test "$@" 2>&1 | tee -a "$RUN_LOG"
+status=${PIPESTATUS[0]}
+set -e
+
+echo "[playwright-e2e] finished_at=$(timestamp_utc) exit_code=${status}" | tee -a "$RUN_LOG"
+exit "$status"

@@ -286,7 +286,7 @@ def test_neon_sign_up_requires_email_verification_instead_of_auto_login(
     assert params["pending_login"]
 
 
-def test_neon_sign_up_auto_verification_uses_public_origin_for_relative_callback(
+def test_neon_sign_up_auto_verification_uses_https_same_origin_for_fly_frontend_agent(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -298,10 +298,10 @@ def test_neon_sign_up_auto_verification_uses_public_origin_for_relative_callback
         database_url="postgresql://example.invalid/neondb",
         neon_auth_base_url="https://example.neonauth.test/neondb/auth",
         neon_auth_jwks_url="https://example.neonauth.test/neondb/auth/.well-known/jwks.json",
-        cors_origins=["https://boring-ui-frontend-agent.fly.dev", "http://127.0.0.1:5176"],
+        cors_origins=["http://127.0.0.1:5176"],
     )
     app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://boring-ui-frontend-agent.fly.dev")
     _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
     _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
     _FakeAsyncClient.last_post = None
@@ -312,15 +312,20 @@ def test_neon_sign_up_auto_verification_uses_public_origin_for_relative_callback
 
     response = client.post(
         "/auth/sign-up",
-        headers={"Origin": "https://boring-ui-frontend-agent.fly.dev"},
+        headers={
+            "Origin": "https://boring-ui-frontend-agent.fly.dev",
+            "X-Forwarded-Proto": "https",
+        },
         json={"email": "new@example.com", "password": "password123", "redirect_uri": "/"},
     )
 
     assert response.status_code == 200
     assert len(_FakeAsyncClient.post_headers) == 2
     assert _FakeAsyncClient.post_headers[1]["Origin"] == "https://boring-ui-frontend-agent.fly.dev"
-    callback_path = _FakeAsyncClient.posts[1][1]["callbackURL"]
-    parsed = urlparse(callback_path)
+    callback_url = _FakeAsyncClient.posts[1][1]["callbackURL"]
+    parsed = urlparse(callback_url)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "boring-ui-frontend-agent.fly.dev"
     assert parsed.path == "/auth/callback"
     params = parse_qs(parsed.query)
     assert params["redirect_uri"] == ["/"]

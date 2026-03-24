@@ -101,11 +101,11 @@ type neonBranch struct {
 }
 
 type neonCreateResponse struct {
-	Project    neonProject    `json:"project"`
-	Endpoints  []neonEndpoint `json:"endpoints"`
-	Databases  []neonDatabase `json:"databases"`
-	Roles      []neonRole     `json:"roles"`
-	Branch     neonBranch     `json:"branch"`
+	Project        neonProject    `json:"project"`
+	Endpoints      []neonEndpoint `json:"endpoints"`
+	Databases      []neonDatabase `json:"databases"`
+	Roles          []neonRole     `json:"roles"`
+	Branch         neonBranch     `json:"branch"`
 	ConnectionURIs []struct {
 		ConnectionURI string `json:"connection_uri"`
 	} `json:"connection_uris"`
@@ -258,8 +258,8 @@ func runNeonSetup(cmd *cobra.Command, args []string) error {
 		boringDir := filepath.Join(root, ".boring")
 		os.MkdirAll(boringDir, 0o700)
 		envContent := fmt.Sprintf(
-			"NEON_PROJECT_ID=%s\nNEON_BRANCH_ID=%s\nDATABASE_URL=%s\nDATABASE_POOLER_URL=%s\nNEON_AUTH_BASE_URL=%s\nNEON_AUTH_JWKS_URL=%s\nBORING_UI_SESSION_SECRET=%s\n",
-			projectID, branchID, directURL, poolerURL, authResp.BaseURL, authResp.JWKSURL, sessionSecret,
+			"NEON_PROJECT_ID=%s\nNEON_BRANCH_ID=%s\nDATABASE_URL=%s\nDATABASE_POOLER_URL=%s\nNEON_AUTH_BASE_URL=%s\nNEON_AUTH_JWKS_URL=%s\nBORING_UI_SESSION_SECRET=%s\nBORING_SETTINGS_KEY=%s\n",
+			projectID, branchID, directURL, poolerURL, authResp.BaseURL, authResp.JWKSURL, sessionSecret, settingsKey,
 		)
 		envFile := filepath.Join(boringDir, "neon-config.env")
 		if err := os.WriteFile(envFile, []byte(envContent), 0o600); err != nil {
@@ -272,6 +272,7 @@ func runNeonSetup(cmd *cobra.Command, args []string) error {
 		fmt.Printf("      database_url=%q \\\n", maskPassword(poolerURL))
 		fmt.Printf("      database_direct_url=%q \\\n", maskPassword(directURL))
 		fmt.Printf("      session_secret=%q \\\n", sessionSecret)
+		fmt.Printf("      settings_key=%q \\\n", settingsKey)
 		fmt.Printf("      neon_project_id=%q \\\n", projectID)
 		fmt.Printf("      neon_branch_id=%q\n", branchID)
 	} else {

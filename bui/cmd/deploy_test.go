@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/boringdata/boring-ui/bui/config"
 )
 
 func TestBuildDockerImageRefUsesLatestForProd(t *testing.T) {
@@ -49,4 +53,183 @@ func TestShellEnvPrefixSortsAndQuotesValues(t *testing.T) {
 	if !strings.Contains(got, "QUOTE='can'\"'\"'t-break' ") {
 		t.Fatalf("expected shell-escaped quote, got %q", got)
 	}
+}
+
+func TestEnsureFlyAppExistsSkipsCreateWhenStatusSucceeds(t *testing.T) {
+	flyBin, logPath := writeFakeFlyScript(t)
+	t.Setenv("FAKE_FLY_LOG", logPath)
+	t.Setenv("FAKE_FLY_STATUS_EXIT", "0")
+	t.Setenv("FAKE_FLY_CREATE_EXIT", "0")
+
+	if err := ensureFlyAppExists(flyBin, "demo-app", ""); err != nil {
+		t.Fatalf("ensureFlyAppExists returned error: %v", err)
+	}
+
+	calls := readFlyLog(t, logPath)
+	if len(calls) != 1 {
+		t.Fatalf("expected one fly command, got %v", calls)
+	}
+	if calls[0] != "status --app demo-app" {
+		t.Fatalf("expected status check only, got %v", calls)
+	}
+}
+
+func TestEnsureFlyAppExistsCreatesMissingApp(t *testing.T) {
+	flyBin, logPath := writeFakeFlyScript(t)
+	t.Setenv("FAKE_FLY_LOG", logPath)
+	t.Setenv("FAKE_FLY_STATUS_EXIT", "1")
+	t.Setenv("FAKE_FLY_CREATE_EXIT", "0")
+
+	if err := ensureFlyAppExists(flyBin, "demo-app", "acme"); err != nil {
+		t.Fatalf("ensureFlyAppExists returned error: %v", err)
+	}
+
+	calls := readFlyLog(t, logPath)
+	if len(calls) != 2 {
+		t.Fatalf("expected status + create calls, got %v", calls)
+	}
+	if calls[0] != "status --app demo-app" {
+		t.Fatalf("expected status command first, got %v", calls)
+	}
+	if calls[1] != "apps create demo-app --org acme" {
+		t.Fatalf("expected create command with org, got %v", calls)
+	}
+}
+
+func TestEnsureFlyAppExistsReturnsCreateFailure(t *testing.T) {
+	flyBin, logPath := writeFakeFlyScript(t)
+	t.Setenv("FAKE_FLY_LOG", logPath)
+	t.Setenv("FAKE_FLY_STATUS_EXIT", "1")
+	t.Setenv("FAKE_FLY_CREATE_EXIT", "2")
+
+	err := ensureFlyAppExists(flyBin, "demo-app", "")
+	if err == nil {
+		t.Fatalf("expected create failure")
+	}
+	if !strings.Contains(err.Error(), "fly apps create") {
+		t.Fatalf("expected fly apps create error, got %v", err)
+	}
+}
+
+func TestApplyNeonFallbackSecretsUsesEnvFile(t *testing.T) {
+	root := t.TempDir()
+	boringDir := filepath.Join(root, ".boring")
+	if err := os.MkdirAll(boringDir, 0o700); err != nil {
+		t.Fatalf("mkdir .boring: %v", err)
+	}
+	envFile := filepath.Join(boringDir, "neon-config.env")
+	envContent := strings.Join([]string{
+		"DATABASE_POOLER_URL=postgres://pooler",
+		"BORING_UI_SESSION_SECRET=session-from-file",
+		"BORING_SETTINGS_KEY=settings-from-file",
+		"NEON_PROJECT_ID=project-123",
+		"",
+	}, "\n")
+	if err := os.WriteFile(envFile, []byte(envContent), 0o600); err != nil {
+		t.Fatalf("write neon-config.env: %v", err)
+	}
+
+	resolved := map[string]string{}
+	refs := map[string]config.SecretRef{
+		"DATABASE_URL":             {Field: "database_url"},
+		"BORING_UI_SESSION_SECRET": {Field: "session_secret"},
+		"BORING_SETTINGS_KEY":      {Field: "settings_key"},
+		"NEON_PROJECT_ID":          {Field: "neon_project_id"},
+	}
+
+	fallbackSources, failed, err := applyNeonFallbackSecrets(
+		root,
+		refs,
+		resolved,
+		[]string{"DATABASE_URL", "BORING_UI_SESSION_SECRET", "BORING_SETTINGS_KEY", "NEON_PROJECT_ID"},
+	)
+	if err != nil {
+		t.Fatalf("applyNeonFallbackSecrets returned error: %v", err)
+	}
+	if len(failed) != 0 {
+		t.Fatalf("expected no failed secrets, got %v", failed)
+	}
+	if got := resolved["DATABASE_URL"]; got != "postgres://pooler" {
+		t.Fatalf("expected pooler URL fallback, got %q", got)
+	}
+	if got := resolved["BORING_UI_SESSION_SECRET"]; got != "session-from-file" {
+		t.Fatalf("expected session secret fallback, got %q", got)
+	}
+	if got := resolved["BORING_SETTINGS_KEY"]; got != "settings-from-file" {
+		t.Fatalf("expected settings key fallback, got %q", got)
+	}
+	if got := fallbackSources["DATABASE_URL"]; got != ".boring/neon-config.env:DATABASE_POOLER_URL" {
+		t.Fatalf("expected DATABASE_URL fallback source, got %q", got)
+	}
+}
+
+func TestApplyNeonFallbackSecretsCreatesSettingsKeyFile(t *testing.T) {
+	root := t.TempDir()
+	resolved := map[string]string{}
+	refs := map[string]config.SecretRef{
+		"BORING_SETTINGS_KEY": {Field: "settings_key"},
+	}
+
+	fallbackSources, failed, err := applyNeonFallbackSecrets(root, refs, resolved, []string{"BORING_SETTINGS_KEY"})
+	if err != nil {
+		t.Fatalf("applyNeonFallbackSecrets returned error: %v", err)
+	}
+	if len(failed) != 0 {
+		t.Fatalf("expected no failed secrets, got %v", failed)
+	}
+	if got := fallbackSources["BORING_SETTINGS_KEY"]; got != ".boring/settings-key" {
+		t.Fatalf("expected settings key file fallback, got %q", got)
+	}
+	if resolved["BORING_SETTINGS_KEY"] == "" {
+		t.Fatalf("expected settings key fallback value")
+	}
+	keyFile := filepath.Join(root, ".boring", "settings-key")
+	data, err := os.ReadFile(keyFile)
+	if err != nil {
+		t.Fatalf("read settings-key: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != resolved["BORING_SETTINGS_KEY"] {
+		t.Fatalf("expected persisted settings key to match resolved value")
+	}
+}
+
+func writeFakeFlyScript(t *testing.T) (string, string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "fly.log")
+	scriptPath := filepath.Join(dir, "fake-fly.sh")
+	script := `#!/bin/sh
+printf '%s\n' "$*" >> "$FAKE_FLY_LOG"
+case "$1" in
+  status)
+    exit "${FAKE_FLY_STATUS_EXIT:-0}"
+    ;;
+  apps)
+    if [ "$2" = "create" ]; then
+      exit "${FAKE_FLY_CREATE_EXIT:-0}"
+    fi
+    ;;
+esac
+exit 0
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake fly script: %v", err)
+	}
+
+	return scriptPath, logPath
+}
+
+func readFlyLog(t *testing.T, path string) []string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fly log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return nil
+	}
+	return lines
 }

@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1
+
+FROM node:20-bookworm-slim AS frontend-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/app
+COPY . .
+
+RUN set -eux; \
+    FRAMEWORK_REPO="$(awk -F'"' '/^repo[[:space:]]*=/{print $2; exit}' boring.app.toml)"; \
+    FRAMEWORK_COMMIT="$(awk -F'"' '/^commit[[:space:]]*=/{print $2; exit}' boring.app.toml)"; \
+    if [ -z "$FRAMEWORK_REPO" ]; then FRAMEWORK_REPO="github.com/boringdata/boring-ui"; fi; \
+    git clone "https://${FRAMEWORK_REPO}.git" /opt/boring-ui; \
+    if [ -n "$FRAMEWORK_COMMIT" ]; then git -C /opt/boring-ui checkout "$FRAMEWORK_COMMIT"; fi; \
+    cd /opt/boring-ui; \
+    npm ci; \
+    BUI_APP_TOML=/workspace/app/boring.app.toml npx vite build --outDir /workspace/app/dist/web
+
+FROM golang:1.24-bookworm AS app-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/app
+COPY . .
+COPY --from=frontend-build /opt/boring-ui /opt/boring-ui
+
+RUN set -eux; \
+    go mod edit -replace github.com/boringdata/boring-ui=/opt/boring-ui; \
+    go mod tidy; \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/app .
+
+FROM debian:bookworm-slim
+
+ENV BORING_UI_STATIC_DIR=/app/dist/web \
+    BUI_APP_TOML=/app/boring.app.toml
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=app-build /out/app ./app
+COPY --from=frontend-build /workspace/app/dist ./dist
+COPY boring.app.toml ./boring.app.toml
+
+EXPOSE 8000
+
+CMD ["/app/app"]

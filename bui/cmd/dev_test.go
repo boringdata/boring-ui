@@ -21,7 +21,7 @@ func TestBuildBackendCommandGoUsesAirAndWritesConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildBackendCommand returned error: %v", err)
 	}
-	if cmd.Path != "air" {
+	if filepath.Base(cmd.Path) != "air" {
 		t.Fatalf("expected air command, got %q", cmd.Path)
 	}
 	if len(cmd.Args) != 3 || cmd.Args[1] != "-c" || filepath.Base(cmd.Args[2]) != ".air.toml" {
