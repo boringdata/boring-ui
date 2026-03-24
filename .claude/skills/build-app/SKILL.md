@@ -7,39 +7,20 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion
 
 # Build a boring-ui child app
 
-## Phase 1: Requirements gathering
+## Phase 1: Requirements
 
-The user wants to build: $ARGUMENTS
+The user wants: $ARGUMENTS
 
-Before writing any code, interview the user to understand what they need. Use AskUserQuestion to ask focused questions, 2-4 rounds max.
+Interview the user (2-4 rounds with AskUserQuestion) to clarify:
+- What custom panels and backend endpoints to build
+- Data storage needs (in-memory, database, external API)
+- Auth requirements (multi-user with Neon, or single-user)
 
-**Understand the app:**
-- What does it do? What problem does it solve?
-- Who uses it? (just you, a team, public?)
-
-**Understand the features:**
-- What custom panels should the UI have? What do they show/do?
-- What backend API endpoints are needed? What data do they serve?
-- Does it need its own data store (ClickHouse, SQLite, external API) or is in-memory OK?
-- Does it need agent tools? (PI tools the AI agent can call)
-
-**Understand the deployment:**
-- Where should it live? (Fly.io is the default)
-- Does it need auth? (Neon Auth for multi-user, or local-only is fine?)
-- Any external services it connects to? (APIs, databases, etc.)
-
-For reference: boring-macro is an existing child app with custom chart panels,
-a ClickHouse data router, CLI commands (ingest/sql/train), and companion agent
-integration. Child apps can range from simple (one panel + one router) to complex
-(multiple panels, data pipelines, custom agent tools, external service integrations).
-
-Summarize the requirements back to the user and get confirmation before building.
+Summarize and get confirmation before building.
 
 ## Phase 2: Build
 
-Once confirmed:
-
-1. Generate a unique app identity:
+Generate app identity, then use `bui --help` and `bui docs quickstart` to discover the workflow.
 
 ```python
 python3 -c "
@@ -48,65 +29,76 @@ import json
 nc = NamingContract.from_eval_id()
 m = RunManifest.from_naming(nc, platform_profile='core')
 print(json.dumps({
-    'app_slug': nc.app_slug,
-    'eval_id': nc.eval_id,
-    'python_module': nc.python_module,
-    'project_root': nc.project_root,
+    'app_slug': nc.app_slug, 'eval_id': nc.eval_id,
+    'python_module': nc.python_module, 'project_root': nc.project_root,
     'verification_nonce': m.verification_nonce,
     'report_output_path': m.report_output_path,
 }, indent=2))
 "
 ```
 
-2. Run `bui --help` to discover the platform workflow
-3. Run `bui docs quickstart` for the full walkthrough — this is the single source of truth for rules, secrets, scope, routers, panels, and deployment
-4. Follow the bui workflow: init → add features → doctor → neon setup → deploy
-5. Build the agreed features as custom routers + panels
+Build the app following `bui docs quickstart`. Include a status router with:
+- `GET /health` → `{"ok": true, "app": "<slug>", "custom": true, "eval_id": "<id>", "verification_nonce": "<nonce>"}`
+- `GET /info` → `{"name": "<slug>", "version": "0.1.0", "eval_id": "<id>"}`
 
-## Phase 3: Verification
+## Phase 3: Acceptance criteria
 
-Every app must include a status router with verification endpoints:
+The app is NOT done until ALL of these pass. Run each check and report pass/fail.
 
-- `GET /health` → `{"ok": true, "app": "<app_slug>", "custom": true, "eval_id": "<eval_id>", "verification_nonce": "<nonce>"}`
-- `GET /info` → `{"name": "<app_slug>", "version": "0.1.0", "eval_id": "<eval_id>"}`
+### Local (before deploy)
+- [ ] `bui doctor` exits 0
+- [ ] `GET /health` returns JSON with correct verification_nonce
+- [ ] `GET /info` returns JSON with correct eval_id
+- [ ] All custom endpoints return correct responses
+- [ ] No secrets hardcoded in source files
 
-After deploying, run smoke tests. Use the existing smoke test suite:
+### Deploy
+- [ ] `bui neon setup` completes (auth + email auto-configured)
+- [ ] `bui deploy` completes with healthy machines
+- [ ] App reachable at `https://<slug>.fly.dev`
 
-```bash
-cd /home/ubuntu/projects/boring-ui
-python3 tests/smoke/smoke_neon_auth.py --base-url https://<app_slug>.fly.dev
-```
+### Live smoke (after deploy)
+- [ ] `GET https://<slug>.fly.dev/health` returns JSON with verification_nonce
+- [ ] `GET https://<slug>.fly.dev/info` returns JSON with eval_id
+- [ ] `GET https://<slug>.fly.dev/api/capabilities` shows `auth.provider = "neon"`
+- [ ] All custom endpoints work live
+- [ ] Signup returns 200: `curl -X POST https://<slug>.fly.dev/auth/sign-up -H "Content-Type: application/json" -H "Origin: https://<slug>.fly.dev" -d '{"email":"eval@test.local","password":"eval-2026","name":"Test"}'`
+- [ ] Signin returns 200: `curl -X POST https://<slug>.fly.dev/auth/sign-in -H "Content-Type: application/json" -H "Origin: https://<slug>.fly.dev" -d '{"email":"eval@test.local","password":"eval-2026"}'`
 
-If the smoke suite is not available, manually verify:
-
-1. `curl https://<app_slug>.fly.dev/health` — must return JSON with verification_nonce
-2. `curl https://<app_slug>.fly.dev/info` — must return JSON with eval_id
-3. `curl https://<app_slug>.fly.dev/api/capabilities` — must return `"auth":{"provider":"neon"}`
-4. Test all custom endpoints (notes CRUD, etc.)
-5. Test auth: sign up with a test email, then sign in — both must return 200
-
-If any check fails, diagnose and fix before writing the report.
+If any check fails, fix and re-check. Do not write the report until all pass.
 
 ## Phase 4: Report
-
-When done, emit a structured report:
 
 ```
 BEGIN_EVAL_REPORT_JSON
 {
   "eval_id": "<eval_id>",
   "verification_nonce": "<nonce>",
-  "app_slug": "<app_slug>",
-  "project_root": "<project_root>",
-  "deployed_url": "https://<app_slug>.fly.dev",
-  "fly_app_name": "<app_slug>",
+  "app_slug": "<slug>",
+  "project_root": "<root>",
+  "deployed_url": "https://<slug>.fly.dev",
+  "fly_app_name": "<slug>",
   "neon_project_id": "...",
-  "commands_run": ["bui init ...", "bui doctor", "bui deploy"],
-  "steps": {},
-  "local_checks": [],
-  "live_checks": [],
+  "commands_run": ["..."],
+  "acceptance_criteria": {
+    "doctor_pass": true,
+    "local_health": true,
+    "local_info": true,
+    "local_custom_endpoints": true,
+    "no_hardcoded_secrets": true,
+    "neon_setup": true,
+    "deploy_healthy": true,
+    "live_health": true,
+    "live_info": true,
+    "live_capabilities_neon": true,
+    "live_custom_endpoints": true,
+    "live_signup": true,
+    "live_signin": true
+  },
   "failures": [],
   "known_issues": []
 }
 END_EVAL_REPORT_JSON
 ```
+
+Write to: `<report_output_path>`
