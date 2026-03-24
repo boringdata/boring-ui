@@ -600,19 +600,11 @@ func printInitNextSteps(name string) {
 	fmt.Printf("[bui] %s created!\n\n", name)
 	fmt.Println("Next steps:")
 	fmt.Printf("  cd %s\n", name)
-	fmt.Println("  cp .env.example .env       # add your API keys")
+	fmt.Println("  bui docs quickstart        # full walkthrough (read this first)")
 	fmt.Println("  bui dev                    # start dev server")
-	fmt.Println()
-	fmt.Println("For production:")
-	fmt.Println("  bui neon setup             # provision database + auth")
+	fmt.Println("  bui doctor                 # validate config")
+	fmt.Println("  bui neon setup             # provision auth + database")
 	fmt.Println("  bui deploy                 # build + deploy to Fly.io")
-	fmt.Println()
-	fmt.Println("Full walkthrough:  bui docs quickstart")
-	fmt.Println()
-	fmt.Println("Rules:")
-	fmt.Println("  - Keep all changes inside this directory")
-	fmt.Println("  - Never hardcode secrets — use Vault refs in [deploy.secrets]")
-	fmt.Println("  - Do not modify ../boring-ui/ (the framework is read-only)")
 }
 
 func writeFile(path, content string) {
