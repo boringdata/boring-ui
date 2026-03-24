@@ -90,7 +90,8 @@ child app. Every step uses bui CLI — no manual framework wiring needed.
      curl http://localhost:8000/api/x/example/health
 
   6. Provision Neon (auth + database for production):
-     bui neon setup --region aws-eu-central-1 --email-provider none
+     bui neon setup --region aws-eu-central-1
+     # Defaults to --email-provider resend (verification emails via Resend)
      # This updates boring.app.toml, stores creds in Vault or .boring/
 
   7. Deploy to Fly:
