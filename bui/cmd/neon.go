@@ -64,7 +64,8 @@ func init() {
 	neonSetupCmd.Flags().StringVar(&neonRegion, "region", "aws-eu-central-1", "Neon region")
 	neonSetupCmd.Flags().StringVar(&neonProjectName, "name", "", "Project name (defaults to app name)")
 	neonSetupCmd.Flags().StringVar(&neonEnv, "env", "", "Override deploy environment (default from config)")
-	neonSetupCmd.Flags().StringVar(&neonEmailProvider, "email-provider", "resend", "Email provider for auth verification (resend, smtp, or none)")
+	neonSetupCmd.Flags().StringVar(&neonEmailProvider, "email-provider", "", "Override email provider (default: auto-detect from Vault)")
+	neonSetupCmd.Flags().MarkHidden("email-provider")
 	neonDestroyCmd.Flags().BoolVar(&neonDestroyForce, "force", false, "Skip confirmation prompt")
 	neonDestroyCmd.Flags().StringVar(&neonEnv, "env", "", "Override deploy environment (default from config)")
 	neonCmd.AddCommand(neonSetupCmd)
@@ -229,9 +230,23 @@ func runNeonSetup(cmd *cobra.Command, args []string) error {
 		fmt.Println("  ✓ trusted origin added")
 	}
 
-	// 5. Configure email provider (if specified)
-	if neonEmailProvider != "" {
-		configureEmailProvider(apiKey, projectID, neonEmailProvider, cfg.App.Name)
+	// 5. Configure email provider.
+	// Auto-detect: if Resend API key is in Vault, use it. Override with --email-provider flag.
+	emailProvider := neonEmailProvider
+	if emailProvider == "" {
+		// Auto-detect from Vault
+		_, resendErr := vaultpkg.Get("secret/agent/services/resend", "api_key")
+		if resendErr == nil {
+			emailProvider = "resend"
+			fmt.Println("[bui] auto-detected Resend API key in Vault")
+		} else {
+			fmt.Println("[bui] no email provider detected (Resend key not in Vault)")
+			fmt.Println("  Verification emails will not be sent.")
+			fmt.Println("  To enable: vault kv put secret/agent/services/resend api_key=re_...")
+		}
+	}
+	if emailProvider != "" && emailProvider != "none" {
+		configureEmailProvider(apiKey, projectID, emailProvider, cfg.App.Name)
 	}
 
 	// 5b. Set email verification to link mode (requires custom email provider).
