@@ -135,7 +135,7 @@ region            = "cdg"
 
 	pyproject := fmt.Sprintf(`[build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = %q
@@ -454,7 +454,7 @@ func flyTomlTemplate(name string) string {
 primary_region = "cdg"
 
 [build]
-  dockerfile = "deploy/fly/Dockerfile"
+  dockerfile = "Dockerfile"
 
 [env]
   APP_ENV = "production"
@@ -504,7 +504,7 @@ RUN set -eux; \
     git clone "https://${FRAMEWORK_REPO}.git" /opt/boring-ui; \
     if [ -n "$FRAMEWORK_COMMIT" ]; then git -C /opt/boring-ui checkout "$FRAMEWORK_COMMIT"; fi; \
     cd /opt/boring-ui; \
-    npm ci; \
+    npm install --no-audit --no-fund; \
     BUI_APP_TOML=/workspace/app/boring.app.toml npx vite build --outDir /workspace/app/dist/web
 
 FROM python:3.13-slim
@@ -555,7 +555,7 @@ RUN set -eux; \
     git clone "https://${FRAMEWORK_REPO}.git" /opt/boring-ui; \
     if [ -n "$FRAMEWORK_COMMIT" ]; then git -C /opt/boring-ui checkout "$FRAMEWORK_COMMIT"; fi; \
     cd /opt/boring-ui; \
-    npm ci; \
+    npm install --no-audit --no-fund; \
     BUI_APP_TOML=/workspace/app/boring.app.toml npx vite build --outDir /workspace/app/dist/web
 
 FROM golang:1.24-bookworm AS app-build

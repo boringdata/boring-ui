@@ -139,6 +139,45 @@ child app. Every step uses bui CLI — no manual framework wiring needed.
   routers = ["<module>.routers.status:router"]
   # → mounted at /api/x/status/health and /api/x/status/info
 
+--- Root-level routes (overriding framework defaults) ---
+
+  By default, routers mount at /api/x/<name>. If you need routes at the
+  root level (e.g. /health instead of /api/x/status/health), create a
+  custom app entry point:
+
+  # src/<module>/app.py
+  from boring_ui.app_config_loader import create_app_from_toml
+  from <module>.routers import status, notes
+
+  app = create_app_from_toml()
+
+  # Mount custom routers at root BEFORE the SPA catch-all
+  # (the framework's static mount uses /{path:path} which catches everything)
+  app.include_router(status.router)
+  app.include_router(notes.router)
+
+  # boring.app.toml
+  [backend]
+  entry = "<module>.app:app"
+
+  IMPORTANT: When BORING_UI_STATIC_DIR is set (production), the framework
+  adds a catch-all route that serves index.html for all paths. Your custom
+  routes must be included BEFORE this catch-all or they'll return HTML
+  instead of JSON. The pattern above handles this correctly.
+
+--- Local dev testing ---
+
+  bui dev --backend-only           # uses entry from boring.app.toml
+  # Test in another terminal:
+  curl http://localhost:8000/health
+  curl http://localhost:8000/api/capabilities
+
+  If you need a specific port:
+  bui dev --backend-only --port 8321
+
+  To kill leftover dev servers:
+  pkill -f "uvicorn.*<module>" 2>/dev/null
+
 --- Secrets (never hardcode) ---
 
   [deploy.secrets]
