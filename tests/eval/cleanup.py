@@ -24,6 +24,7 @@ from typing import Any
 
 from tests.eval.contracts import CleanupResult, RunManifest
 from tests.eval.eval_logger import EvalLogger
+from tests.eval.parsing import extract_neon_project_id
 from tests.eval.providers.fly import FlyAdapter
 from tests.eval.providers.neon import NeonAdapter
 
@@ -113,7 +114,30 @@ def run_cleanup(
             duration_seconds=time.monotonic() - start,
         ))
 
-    # 2. Kill local dev processes
+    # 2. Destroy Neon project if the generated app recorded one.
+    neon_project_id = extract_neon_project_id(manifest.project_root)
+    if neon_project_id:
+        _log(f"Cleanup: destroying Neon project {neon_project_id}")
+        start = time.monotonic()
+        try:
+            success = neon.destroy_project(neon_project_id)
+            cleanup.results.append(CleanupResult(
+                resource_type="neon_project",
+                resource_id=neon_project_id,
+                success=success,
+                error="" if success else "destroy_project returned False",
+                duration_seconds=time.monotonic() - start,
+            ))
+        except Exception as e:
+            cleanup.results.append(CleanupResult(
+                resource_type="neon_project",
+                resource_id=neon_project_id,
+                success=False,
+                error=str(e),
+                duration_seconds=time.monotonic() - start,
+            ))
+
+    # 3. Kill local dev processes
     if kill_local_processes:
         _log("Cleanup: killing local dev processes")
         start = time.monotonic()
@@ -135,7 +159,7 @@ def run_cleanup(
                 duration_seconds=time.monotonic() - start,
             ))
 
-    # 3. Delete project directory
+    # 4. Delete project directory
     if delete_project_dir:
         _log(f"Cleanup: removing project dir {manifest.project_root}")
         start = time.monotonic()
@@ -214,21 +238,25 @@ def _safe_delete_project(
     - Must match eval prefix (ce-* or child-eval-*)
     - Must not be a symlink
     """
-    path = Path(project_root).resolve()
+    raw_path = Path(project_root)
     parent = Path(projects_root).resolve()
 
+    # Safety: must not be a symlink
+    if raw_path.is_symlink():
+        return False, f"SAFETY: {project_root} is a symlink"
+
+    path = raw_path.resolve()
+
     # Safety: must be under projects_root
-    if not str(path).startswith(str(parent)):
+    try:
+        path.relative_to(parent)
+    except ValueError:
         return False, f"SAFETY: {path} is not under {parent}"
 
     # Safety: directory name must match eval prefix
     dirname = path.name
     if not (dirname.startswith("ce-") or dirname.startswith("child-eval-")):
         return False, f"SAFETY: {dirname} does not match eval prefix (ce-* or child-eval-*)"
-
-    # Safety: must not be a symlink
-    if Path(project_root).is_symlink():
-        return False, f"SAFETY: {project_root} is a symlink"
 
     if not path.exists():
         return True, "already deleted"

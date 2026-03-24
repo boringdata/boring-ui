@@ -78,5 +78,10 @@ class FlyAdapter:
 
     def delete_app(self, app_name: str) -> bool:
         """Delete a Fly app permanently."""
-        rc, _, _ = self._run(["apps", "destroy", app_name, "--yes"])
-        return rc == 0
+        rc, _, err = self._run(["apps", "destroy", app_name, "--yes"])
+        if rc == 0:
+            return True
+
+        # Treat an already-missing app as a no-op for idempotent cleanup.
+        err_lower = err.lower()
+        return "not found" in err_lower or "could not find" in err_lower
