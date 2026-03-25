@@ -182,6 +182,9 @@ export function cancelJob(jobId: string): boolean {
   const job = jobs.get(jobId)
   if (!job) return false
 
+  // Only cancel jobs that are still running
+  if (job.state !== 'running' && job.state !== 'pending') return true
+
   // Set state FIRST to prevent race with 'close' handler
   job.state = 'cancelled'
   job.endedAt = Date.now()

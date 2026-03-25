@@ -149,6 +149,13 @@ export async function registerExecRoutes(app: FastifyInstance): Promise<void> {
       const { jobId } = request.params
       const afterStr = (request.query as any).after
       const after = afterStr ? parseInt(afterStr, 10) : undefined
+      if (after !== undefined && !Number.isFinite(after)) {
+        return reply.code(400).send({
+          error: 'validation',
+          code: 'INVALID_CURSOR',
+          message: 'after must be a valid integer',
+        })
+      }
 
       const result = readJob(jobId, after)
       if (!result) {
