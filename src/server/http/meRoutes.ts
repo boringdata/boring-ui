@@ -3,53 +3,11 @@
  * Mirrors Python's me_router_neon.py.
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import {
-  parseSessionCookie,
-  appCookieName,
-  SessionExpiredError,
-} from '../auth/session.js'
-
-async function requireSession(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
-  const cookieName = appCookieName()
-  const token = request.cookies[cookieName]
-  const secret = request.server.config.sessionSecret
-
-  if (!token) {
-    reply.code(401).send({
-      error: 'unauthorized',
-      code: 'SESSION_REQUIRED',
-      message: 'Authentication required',
-    })
-    return
-  }
-
-  try {
-    const session = await parseSessionCookie(token, secret)
-    request.sessionUserId = session.user_id
-    request.sessionEmail = session.email
-  } catch (err) {
-    if (err instanceof SessionExpiredError) {
-      reply.code(401).send({
-        error: 'unauthorized',
-        code: 'SESSION_EXPIRED',
-        message: 'Session has expired',
-      })
-      return
-    }
-    reply.code(401).send({
-      error: 'unauthorized',
-      code: 'INVALID_SESSION',
-      message: 'Invalid session',
-    })
-  }
-}
+import { createAuthHook } from '../auth/middleware.js'
 
 export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
   // Auth hook for all routes in this plugin
-  app.addHook('onRequest', requireSession)
+  app.addHook('onRequest', createAuthHook(app))
 
   // GET /me — current user info
   app.get('/me', async (request) => {

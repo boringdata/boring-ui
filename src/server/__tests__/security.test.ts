@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createApp } from '../app.js'
 import { loadConfig } from '../config.js'
+import { testSessionCookie, TEST_SECRET } from './helpers.js'
 
 const TEST_WORKSPACE = join(tmpdir(), `security-test-${Date.now()}`)
 const OUTSIDE_DIR = join(tmpdir(), `security-outside-${Date.now()}`)
@@ -21,16 +22,17 @@ afterAll(() => {
 })
 
 function getApp() {
-  const config = { ...loadConfig(), workspaceRoot: TEST_WORKSPACE }
-  return createApp({ config })
+  const config = { ...loadConfig(), workspaceRoot: TEST_WORKSPACE, sessionSecret: TEST_SECRET }
+  return createApp({ config, skipValidation: true })
 }
 
 describe('Path traversal prevention (files)', () => {
   it('rejects ../etc/passwd', async () => {
     const app = getApp()
+    const token = await testSessionCookie()
     const res = await app.inject({
-      method: 'GET',
-      url: '/api/v1/files/read?path=../etc/passwd',
+      method: 'GET', url: '/api/v1/files/read?path=../etc/passwd',
+      cookies: { boring_session: token },
     })
     expect(res.statusCode).toBe(400)
     await app.close()
@@ -38,35 +40,35 @@ describe('Path traversal prevention (files)', () => {
 
   it('rejects ../../outside path', async () => {
     const app = getApp()
+    const token = await testSessionCookie()
     const res = await app.inject({
-      method: 'GET',
-      url: `/api/v1/files/read?path=../../${OUTSIDE_DIR}/secret.txt`,
+      method: 'GET', url: `/api/v1/files/read?path=../../${OUTSIDE_DIR}/secret.txt`,
+      cookies: { boring_session: token },
     })
-    // Should either be 400 (traversal detected) or 404 (not found within workspace)
     expect([400, 404]).toContain(res.statusCode)
-    // Must NOT return the secret content
     expect(res.payload).not.toContain('SECRET DATA')
     await app.close()
   })
 
   it('rejects path traversal in write', async () => {
     const app = getApp()
+    const token = await testSessionCookie()
     const res = await app.inject({
-      method: 'PUT',
-      url: '/api/v1/files/write',
+      method: 'PUT', url: '/api/v1/files/write',
+      cookies: { boring_session: token },
       payload: { path: '../outside.txt', content: 'malicious' },
     })
     expect(res.statusCode).toBe(400)
-    // File should NOT exist outside workspace
     expect(existsSync(join(TEST_WORKSPACE, '..', 'outside.txt'))).toBe(false)
     await app.close()
   })
 
   it('rejects path traversal in delete', async () => {
     const app = getApp()
+    const token = await testSessionCookie()
     const res = await app.inject({
-      method: 'DELETE',
-      url: '/api/v1/files/delete?path=../etc/passwd',
+      method: 'DELETE', url: '/api/v1/files/delete?path=../etc/passwd',
+      cookies: { boring_session: token },
     })
     expect(res.statusCode).toBe(400)
     await app.close()
@@ -74,9 +76,11 @@ describe('Path traversal prevention (files)', () => {
 
   it('allows reading files within workspace', async () => {
     const app = getApp()
+    const token = await testSessionCookie()
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/files/read?path=safe.txt',
+      cookies: { boring_session: token },
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.payload)

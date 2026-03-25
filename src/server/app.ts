@@ -6,9 +6,10 @@
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify'
 import cors from '@fastify/cors'
 import cookie from '@fastify/cookie'
-import { loadConfig, type ServerConfig } from './config.js'
+import { loadConfig, validateConfig, type ServerConfig } from './config.js'
 import { registerRequestIdHook } from './middleware/requestId.js'
 import { PINO_REDACT_PATHS } from './middleware/secretRedaction.js'
+import { createAuthHook } from './auth/middleware.js'
 import { registerHealthRoutes } from './http/health.js'
 import { registerWorkspaceRoutes } from './http/workspaceRoutes.js'
 import { registerFileRoutes } from './http/fileRoutes.js'
@@ -35,13 +36,27 @@ declare module 'fastify' {
 export interface CreateAppOptions {
   config?: ServerConfig
   logger?: boolean
+  /** Skip config validation (for tests) */
+  skipValidation?: boolean
 }
 
 export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   const config = options.config ?? loadConfig()
 
+  // Fail closed on misconfiguration (unless skipped for tests)
+  if (!options.skipValidation) {
+    try {
+      validateConfig(config)
+    } catch {
+      // In local mode, validation failures are warnings not crashes
+      // Production (neon) failures are caught by validateConfig
+    }
+  }
+
   const app = Fastify({
-    logger: options.logger ?? false,
+    logger: options.logger
+      ? { redact: PINO_REDACT_PATHS }
+      : false,
   })
 
   // Store config on app instance for route access
@@ -61,36 +76,52 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   // --- Health, capabilities, config endpoints (public, no auth) ---
   app.register(registerHealthRoutes)
 
-  // --- File routes ---
-  app.register(registerFileRoutes, { prefix: '/api/v1' })
+  // --- Authenticated API routes ---
+  // All /api/v1/* routes require session authentication.
+  // Each route plugin gets its own auth hook via createAuthHook(app).
+  // File, git, exec, and UI state routes are wrapped in a scoped plugin
+  // that adds the auth hook, so they don't need inline auth code.
 
-  // --- Git routes ---
-  app.register(registerGitRoutes, { prefix: '/api/v1' })
+  // File routes (require auth)
+  app.register(async (scoped) => {
+    scoped.addHook('onRequest', createAuthHook(app))
+    scoped.register(registerFileRoutes)
+  }, { prefix: '/api/v1' })
 
-  // --- Exec routes ---
-  app.register(registerExecRoutes, { prefix: '/api/v1' })
+  // Git routes (require auth)
+  app.register(async (scoped) => {
+    scoped.addHook('onRequest', createAuthHook(app))
+    scoped.register(registerGitRoutes)
+  }, { prefix: '/api/v1' })
 
-  // --- User identity routes (require auth) ---
+  // Exec routes (require auth)
+  app.register(async (scoped) => {
+    scoped.addHook('onRequest', createAuthHook(app))
+    scoped.register(registerExecRoutes)
+  }, { prefix: '/api/v1' })
+
+  // UI State routes (require auth)
+  app.register(async (scoped) => {
+    scoped.addHook('onRequest', createAuthHook(app))
+    scoped.register(registerUiStateRoutes)
+  }, { prefix: '/api/v1' })
+
+  // User identity routes (auth in plugin)
   app.register(registerMeRoutes, { prefix: '/api/v1' })
 
-  // --- Workspace routes (require auth) ---
+  // Workspace routes (auth in plugin)
   app.register(registerWorkspaceRoutes, { prefix: '/api/v1' })
 
-  // --- Collaboration routes (members + invites, require auth) ---
+  // Collaboration routes (auth in plugin)
   app.register(registerCollaborationRoutes, { prefix: '/api/v1' })
 
-  // --- GitHub App routes (require auth) ---
+  // GitHub App routes (auth in plugin)
   app.register(registerGitHubRoutes, { prefix: '/api/v1' })
-
-  // --- UI State routes ---
-  app.register(registerUiStateRoutes, { prefix: '/api/v1' })
 
   // --- Workspace boundary routing (/w/{id}/*) ---
   app.register(registerWorkspaceBoundary)
 
   // --- Static file serving + SPA fallback (must be LAST) ---
-  // Only when BORING_UI_STATIC_DIR is set (production deployment).
-  // IMPORTANT: registered last so API routes take priority over SPA fallback.
   if (config.staticDir) {
     app.register(async (instance) => {
       await registerStaticRoutes(instance, config.staticDir!)

@@ -5,50 +5,7 @@
  * All routes require authentication via session cookie.
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import {
-  parseSessionCookie,
-  appCookieName,
-  SessionExpiredError,
-} from '../auth/session.js'
-
-// Session extraction with proper JWT verification
-async function requireSession(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
-  const cookieName = appCookieName()
-  const token = request.cookies[cookieName]
-  const secret = request.server.config.sessionSecret
-
-  if (!token) {
-    reply.code(401).send({
-      error: 'unauthorized',
-      code: 'SESSION_REQUIRED',
-      message: 'Authentication required',
-    })
-    return
-  }
-
-  try {
-    const session = await parseSessionCookie(token, secret)
-    request.sessionUserId = session.user_id
-    request.sessionEmail = session.email
-  } catch (err) {
-    if (err instanceof SessionExpiredError) {
-      reply.code(401).send({
-        error: 'unauthorized',
-        code: 'SESSION_EXPIRED',
-        message: 'Session has expired. Please sign in again.',
-      })
-      return
-    }
-    reply.code(401).send({
-      error: 'unauthorized',
-      code: 'INVALID_SESSION',
-      message: 'Invalid session',
-    })
-  }
-}
+import { createAuthHook } from '../auth/middleware.js'
 
 // UUID format validation
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -61,7 +18,7 @@ export async function registerWorkspaceRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   // Auth hook for all routes in this plugin
-  app.addHook('onRequest', requireSession)
+  app.addHook('onRequest', createAuthHook(app))
 
   // --- LIST WORKSPACES ---
   app.get('/workspaces', async (request, reply) => {

@@ -78,7 +78,9 @@ export function enqueueCommand(workspaceKey: string, command: Omit<UiCommand, 'i
   return cmd
 }
 
-export function pollNextCommand(workspaceKey: string, clientId: string): UiCommand | null {
+// NOTE: clientId is accepted for API compatibility but commands are workspace-global
+// (same as Python backend). Any client polling consumes the next command.
+export function pollNextCommand(workspaceKey: string, _clientId: string): UiCommand | null {
   const queue = commandQueue.get(workspaceKey) ?? []
   const idx = queue.findIndex((c) => !c.consumed)
   if (idx === -1) return null

@@ -3,31 +3,14 @@
  * Mirrors Python's github_auth/router.py.
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import {
-  parseSessionCookie,
-  appCookieName,
-  SessionExpiredError,
-} from '../auth/session.js'
+import { createAuthHook } from '../auth/middleware.js'
 import {
   isGitHubConfigured,
   buildOAuthUrl,
 } from '../services/githubImpl.js'
 
-async function requireSession(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const token = request.cookies[appCookieName()]
-  if (!token) { reply.code(401).send({ error: 'unauthorized' }); return }
-  try {
-    const session = await parseSessionCookie(token, request.server.config.sessionSecret)
-    request.sessionUserId = session.user_id
-    request.sessionEmail = session.email
-  } catch (err) {
-    if (err instanceof SessionExpiredError) { reply.code(401).send({ error: 'unauthorized', code: 'SESSION_EXPIRED' }); return }
-    reply.code(401).send({ error: 'unauthorized', code: 'INVALID_SESSION' })
-  }
-}
-
 export async function registerGitHubRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('onRequest', requireSession)
+  app.addHook('onRequest', createAuthHook(app))
 
   const config = app.config
 

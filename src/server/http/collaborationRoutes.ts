@@ -3,32 +3,14 @@
  * Mirrors Python's collaboration_router_hosted.py.
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import {
-  parseSessionCookie,
-  appCookieName,
-  SessionExpiredError,
-} from '../auth/session.js'
+import { createAuthHook } from '../auth/middleware.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const VALID_ROLES = ['owner', 'editor', 'viewer']
 
-async function requireSession(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const token = request.cookies[appCookieName()]
-  const secret = request.server.config.sessionSecret
-  if (!token) { reply.code(401).send({ error: 'unauthorized', code: 'SESSION_REQUIRED' }); return }
-  try {
-    const session = await parseSessionCookie(token, secret)
-    request.sessionUserId = session.user_id
-    request.sessionEmail = session.email
-  } catch (err) {
-    if (err instanceof SessionExpiredError) { reply.code(401).send({ error: 'unauthorized', code: 'SESSION_EXPIRED' }); return }
-    reply.code(401).send({ error: 'unauthorized', code: 'INVALID_SESSION' })
-  }
-}
-
 export async function registerCollaborationRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('onRequest', requireSession)
+  app.addHook('onRequest', createAuthHook(app))
 
   // GET /workspaces/:id/members
   app.get<{ Params: { id: string } }>('/workspaces/:id/members', async (request, reply) => {
