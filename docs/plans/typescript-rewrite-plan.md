@@ -1,10 +1,73 @@
-# boring-ui TypeScript Rewrite Plan
+# boring-ui TypeScript Migration Plan
 
 ## Overview
 
-Rewrite the boring-ui backend from Python/FastAPI to TypeScript/Fastify+tRPC.
-Collapse 3 deployment modes into 1 server with a plug-and-play architecture:
-pick a workspace backend, pick an agent runtime. Two config fields, that's it.
+Migrate the boring-ui backend from Python/FastAPI to TypeScript/Fastify+tRPC using a
+risk-minimized strangler pattern. The existing Python codebase is the behavioral spec.
+The existing smoke tests are the parity gate. The migration proceeds by route family,
+not as a big-bang rewrite.
+
+Collapse three divergent codepaths into one TypeScript codebase and one deployable image.
+The launch target is one canonical hosted profile:
+  - workspace backend: bwrap
+  - agent runtime: PI
+  - placement: browser
+  - transport: existing /api/v1/* contract preserved alongside tRPC
+  - frontend: existing React app, incrementally typed
+
+Browser workspaces remain supported as local/dev profiles only. AI SDK remains a future
+post-parity track.
+
+## Decision Summary
+
+### What changes now
+1. Backend moves to TypeScript/Fastify + tRPC.
+2. Public HTTP contract (`/api/v1/*`) remains stable during and after migration.
+3. Domain services become the center; both legacy HTTP and tRPC are transport adapters.
+4. PI remains the only launch runtime.
+5. bwrap remains the only hosted production execution backend.
+6. Long-running exec becomes job-based and streamable (start/read/cancel).
+7. Agent tools become hybrid: structured file/git tools plus shell, not shell-only.
+8. One codebase and one image; split runtime roles remain possible later.
+
+### What stays the same
+- Neon Auth remains the auth/database platform.
+- Smoke tests remain the parity gate.
+- Existing frontend workflows and layout remain recognizable.
+- Existing bwrap sandbox semantics remain the foundation for hosted exec.
+
+### What is deferred
+- AI SDK as a launch runtime
+- Server-side PI as the default hosted mode
+- Hosted production support for JustBash execution
+- Arbitrary hosted server-side child-app plugins
+- Any unrelated frontend-major-upgrade track
+
+## Goals
+
+1. Preserve user-visible behavior where behavior matters.
+2. Reduce long-term integration friction by aligning with the TypeScript agent ecosystem.
+3. Keep the hosted production path boring and reliable.
+4. Avoid support-matrix explosion.
+5. Improve security and operability during the migration itself.
+6. Create a real typed extension story with an explicit trust model.
+
+## Non-Goals
+
+- Rebuilding the entire frontend from scratch.
+- Shipping every backend/runtime combination at launch.
+- Replacing the proven bwrap exec path with a brand-new server exec engine.
+- Turning tRPC into the only public product contract.
+- Presenting experimental browser modes as hosted production promises.
+
+## Success Metrics
+
+- Existing critical-path smoke suites pass unchanged against the TS server.
+- Legacy `/api/v1/*` contract remains stable through cutover.
+- No Sev1/Sev2 migration-related incidents during canary or cutover.
+- Rollback to Python remains possible for at least one full release after cutover.
+- P95 read-path and short-exec latency do not materially regress.
+- Structured logs with request IDs, workspace IDs, and user IDs on every critical path.
 
 ## Why TypeScript (Not "Keep Python and Bolt On Node")
 
@@ -222,8 +285,10 @@ interface WorkspaceBackend {
   // Exec (agent tools)
   bash(command: string, opts?: { cwd?: string }): Promise<ExecResult>
   python(code: string): Promise<ExecResult>
+}
 
-  // Git
+interface GitBackend {
+  // Git operations — separate interface because not all backends support git
   gitStatus(): Promise<GitStatus>
   gitDiff(path: string): Promise<string>
   gitAdd(paths: string[]): Promise<void>
@@ -237,10 +302,14 @@ interface WorkspaceBackend {
 }
 ```
 
+> **Note:** `BwrapBackend` implements both `WorkspaceBackend` and `GitBackend` (full git via
+> real git CLI in sandbox). `LightningBackend` implements both (isomorphic-git in browser).
+> `JustBashBrowserBackend` implements only `WorkspaceBackend` — no real git support.
+
 Implementations:
-- `BwrapBackend` — port of existing `exec/service.py` (bwrap sandbox, already proven)
-- `LightningBackend` — wraps existing LightningFS + isomorphic-git + Pyodide (kept as-is)
-- `JustBashBrowserBackend` — JustBash WASM with InMemoryFs (new, lightweight)
+- `BwrapBackend` — port of existing `exec/service.py` (bwrap sandbox, already proven). Implements `WorkspaceBackend` + `GitBackend`.
+- `LightningBackend` — wraps existing LightningFS + isomorphic-git + Pyodide (kept as-is). Implements `WorkspaceBackend` + `GitBackend`.
+- `JustBashBrowserBackend` — JustBash WASM with InMemoryFs (new, lightweight). Implements `WorkspaceBackend` only (no git).
 
 ### How It Wires Up
 
@@ -287,23 +356,39 @@ function AgentPanel({ workspaceId }) {
 }
 ```
 
-### Agent Tools: 2 Tools Only
+### Agent Tools: Hybrid Bundle
 
-The LLM gets two tools. Bash covers everything — files, git, system ops.
-UI endpoints (files, git) are separate HTTP/JSON routes for the React panels.
+The LLM gets structured file/git tools by default and falls back to shell when needed.
+Shell remains essential, but it is not the only interface — structured tools give better
+permissions, observability, and eval-ability.
 
 ```
-Agent tools (what the LLM calls):
-  exec_bash({ command, cwd? })  → { stdout, stderr, exitCode }
-  exec_python({ code })         → { output, error? }
+Agent tools (launch default, `coding-default` bundle):
+  Structured:
+    read_file({ path })
+    write_file({ path, content })
+    list_dir({ path })
+    search_files({ query, path? })
+    git_status()
+    git_diff({ path? })
 
-UI endpoints (what React panels call, tRPC):
+  Shell:
+    run_command({ command, cwd? })            // short, bounded (60s timeout)
+    start_command({ command, cwd? })          // long-running (npm install, etc.)
+    read_command_output({ jobId, after? })    // stream output chunks
+    cancel_command({ jobId })                 // cancel long-running job
+
+  UI bridge:
+    open_file({ path })
+    list_tabs()
+    open_panel({ panelId })
+```
+
+Experimental `minimal-shell` bundle (shell + UI bridge only, no structured tools).
+
+UI endpoints (React panels call via tRPC, NOT agent tools):
   files.list / files.read / files.write / files.delete / files.rename / files.search
   git.status / git.diff / git.add / git.commit / git.push / git.pull / git.log
-```
-
-Tool schemas live in `src/shared/toolSchemas.ts` — shared by both PI and AI SDK runtimes.
-Same interface, different executors depending on which backend is active.
 
 ### Stack (Foundation Scope)
 
@@ -323,7 +408,7 @@ Future (not foundation scope):
            + AI SDK (@ai-sdk/anthropic, @ai-sdk/react) — second agent runtime
 ```
 
-#### Why tRPC IS the product contract
+#### Why tRPC is the typed app contract — not the only product contract
 
 tRPC is not just an internal optimization — it's the framework's extension mechanism:
 
@@ -337,6 +422,45 @@ tRPC is not just an internal optimization — it's the framework's extension mec
 - **The current Python pattern is worse.** Child apps add routers via string
   paths (`"myapp.routers.foo:router"`) with zero type safety. tRPC is strictly
   better for framework composability.
+
+Both transports coexist:
+- `/api/v1/*` — legacy HTTP contract for smoke tests, scripts, external tooling, migration safety
+- `/trpc/*` — typed internal contract for the React frontend and trusted TS extensions
+
+Service-layer handlers are shared: both HTTP routes and tRPC procedures call the same functions.
+
+#### HTTP Compatibility Layer
+
+tRPC routes live at `/trpc/*`. For backward compatibility with existing smoke tests
+(which use raw `httpx`/`fetch` against `/api/v1/*`), the server also registers raw
+Fastify routes at `/api/v1/*` that delegate to the same handler functions.
+
+```typescript
+// Shared handler — used by both tRPC procedure and raw Fastify route
+async function listFiles(workspaceId: string, path: string): Promise<Entry[]> {
+  const backend = resolveWorkspaceBackend(config, workspaceId)
+  return backend.listDir(path)
+}
+
+// tRPC (typed client, frontend panels)
+export const filesRouter = router({
+  list: workspaceProcedure
+    .input(z.object({ path: z.string().default('.') }))
+    .query(({ input, ctx }) => listFiles(ctx.workspaceId, input.path)),
+})
+
+// Raw Fastify (backward compat, smoke tests, curl)
+app.get('/api/v1/files/list', async (req, reply) => {
+  const workspaceId = req.headers['x-workspace-id']
+  return listFiles(workspaceId, req.query.path ?? '.')
+})
+```
+
+This means:
+- **New frontend code** uses `trpc.files.list.useQuery()` (typed, autocomplete)
+- **Smoke tests** keep using `GET /api/v1/files/list` (unchanged, no migration needed)
+- **curl / external tools** use `/api/v1/*` (standard REST)
+- **Both hit the same handler** — no behavior divergence
 
 #### Child App Extension Pattern (tRPC)
 
@@ -370,6 +494,18 @@ export default function AnalyticsPanel() {
   const { data } = trpc.analytics.dashboards.useQuery()  // fully typed
 }
 ```
+
+#### Extension Trust Model
+
+```toml
+[extensions]
+api_version = 1
+mode = "trusted-local"   # "trusted-local" | "allowlist"
+```
+
+- `trusted-local` (self-hosted): dynamic server plugins allowed
+- `allowlist` (hosted managed): server plugins must be admin-enabled
+- Browser-only panel extensions require no server trust
 
 ### What Gets Deleted
 
@@ -648,15 +784,25 @@ It needs to be updated or replaced as part of the rewrite.
 2. **Replace with Node.js scripts** — `package.json` scripts replace the Go binary
 3. **Replace with TypeScript CLI** — a small `src/cli/` using Commander or similar
 
-**Recommended: Option 2 (package.json scripts)**. The Go CLI adds a build step and a second language.
-Most of what bui does can be npm scripts:
+**Recommended: Option 1 (keep Go CLI, update commands)**. The Go CLI already handles
+framework pinning, child app scaffolding, Vault secret injection, and deploy orchestration.
+These are non-trivial to rewrite. Update the commands to target Node.js instead of Python:
+
+- `bui dev` — change from `uvicorn` to `tsx watch src/server/index.ts` + `vite`
+- `bui build` — change from `pip install` to `npm ci && vite build && tsc`
+- `bui deploy` — already uses fly CLI; update Dockerfile reference
+- `bui scaffold` — already works; update templates for TypeScript backend
+- `bui neon` — unchanged (DB setup is language-agnostic)
+
+Add convenience npm scripts that delegate to bui for developers who prefer `npm run`:
 
 ```json
 {
   "scripts": {
-    "dev": "concurrently \"tsx watch src/server/index.ts\" \"vite\"",
-    "build": "vite build && tsc -p tsconfig.server.json",
-    "deploy": "bash deploy/fly/deploy.sh",
+    "dev": "bui dev",
+    "build": "bui build",
+    "deploy": "bui deploy",
+    "db:pull": "drizzle-kit pull",
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
     "test": "vitest run",
@@ -666,8 +812,8 @@ Most of what bui does can be npm scripts:
 }
 ```
 
-The `bui deploy` command (Vault secret injection + fly deploy) stays as a bash script.
-The `bui scaffold` command for child apps gets ported to a small Node script or kept as Go if it's stable.
+This keeps the Go CLI as the source of truth for complex orchestration (framework pinning,
+Vault secrets, child app init) while giving npm-familiar developers a familiar interface.
 
 ---
 
@@ -675,58 +821,74 @@ The `bui scaffold` command for child apps gets ported to a small Node script or 
 
 ```
 src/
-├── server/                              # NEW: TypeScript backend
-│   ├── index.ts                         # Entry point: start Fastify
+├── server/
+│   ├── index.ts                         # Entry point
 │   ├── app.ts                           # Fastify app factory
-│   ├── trpc.ts                          # tRPC init, context, procedures
+│   ├── config.ts                        # Config (boring.app.toml + env vars)
 │   │
-│   ├── routers/                         # tRPC routers
-│   │   ├── _app.ts                      # Root router (merges all)
-│   │   ├── auth.ts                      # Neon auth: sign-up, sign-in, callback, logout, session, token-exchange
-│   │   ├── files.ts                     # list, read, write, delete, rename, move, search
-│   │   ├── git.ts                       # status, diff, add, commit, push, pull, clone, branches, remotes
-│   │   ├── exec.ts                      # bash (JustBash), python (Monty)
-│   │   ├── agent.ts                     # AI SDK chat endpoint (raw Fastify route, not tRPC)
-│   │   ├── workspaces.ts               # CRUD, settings, runtime, boundary routing
-│   │   ├── users.ts                     # me, settings
-│   │   ├── collaboration.ts             # members, invites
-│   │   ├── uiState.ts                   # state snapshots, commands, panes
-│   │   ├── capabilities.ts              # feature discovery
-│   │   ├── approval.ts                  # approval workflow (if kept)
-│   │   ├── github.ts                    # GitHub App OAuth, git credentials
-│   │   └── health.ts                    # health, healthz, metrics
+│   ├── services/                        # Domain logic (transport-independent)
+│   │   ├── auth.ts                      # Auth service (session, Neon client, validation)
+│   │   ├── files.ts                     # File operations
+│   │   ├── git.ts                       # Git operations (simple-git)
+│   │   ├── exec.ts                      # Exec service (bwrap sandbox)
+│   │   ├── workspaces.ts               # Workspace CRUD, membership, settings
+│   │   ├── users.ts                     # User profile, settings
+│   │   ├── uiState.ts                   # UI state persistence
+│   │   ├── github.ts                    # GitHub App OAuth, credentials
+│   │   └── capabilities.ts              # Feature discovery
 │   │
-│   ├── exec/                            # Execution engines
-│   │   ├── justbash.ts                  # JustBash workspace runner pool
-│   │   └── monty.ts                     # Monty workspace runner pool
+│   ├── http/                            # Legacy /api/v1/* routes (same handlers as tRPC)
+│   │   ├── auth.ts                      # /auth/* HTML pages + API routes
+│   │   ├── files.ts                     # /api/v1/files/*
+│   │   ├── git.ts                       # /api/v1/git/*
+│   │   ├── exec.ts                      # /api/v1/exec/*
+│   │   ├── workspaces.ts               # /api/v1/workspaces/*
+│   │   └── health.ts                    # /health, /healthz, /metrics
 │   │
-│   ├── agent/                           # AI SDK agent
-│   │   ├── chat.ts                      # streamText handler
-│   │   ├── tools.ts                     # Tool definitions (server-side)
-│   │   └── browserTools.ts              # Tool schemas (client-side, no execute)
+│   ├── trpc/                            # Typed internal transport
+│   │   ├── router.ts                    # Root router (merges all)
+│   │   ├── context.ts                   # tRPC context, procedures
+│   │   ├── files.ts                     # tRPC files router
+│   │   ├── git.ts                       # tRPC git router
+│   │   └── ...                          # mirrors services
+│   │
+│   ├── adapters/                        # Backend implementations
+│   │   ├── bwrap.ts                     # BwrapBackend (production)
+│   │   ├── lightning.ts                 # LightningBackend (browser, kept as-is)
+│   │   └── justbash.ts                  # JustBashBackend (browser, experimental)
+│   │
+│   ├── jobs/                            # Long-running exec lifecycle
+│   │   └── execJob.ts                   # start/read/cancel for long commands
 │   │
 │   ├── auth/                            # Auth utilities
-│   │   ├── session.ts                   # JWT session create/parse (jose)
-│   │   ├── neonAuth.ts                  # Neon Auth API client
-│   │   └── middleware.ts                # Fastify auth hooks
-│   │
-│   ├── db/                              # Database
-│   │   ├── client.ts                    # Drizzle + postgres.js connection
-│   │   ├── schema.ts                    # Drizzle schema (all tables)
-│   │   └── migrate.ts                   # Migration runner
+│   │   ├── session.ts                   # JWT create/parse (jose)
+│   │   ├── neonClient.ts               # Neon Auth API client
+│   │   ├── callback.ts                  # OAuth callback handling
+│   │   ├── tokenExchange.ts             # Neon JWT → boring_session
+│   │   ├── validation.ts               # Redirect allowlisting, startup checks
+│   │   ├── pages.ts                     # HTML form templates
+│   │   └── middleware.ts                # Fastify cookie validation hook
 │   │
 │   ├── workspace/                       # Workspace resolution
 │   │   ├── context.ts                   # Per-request workspace resolution
 │   │   ├── paths.ts                     # Path traversal prevention
-│   │   └── boundary.ts                  # /w/{id}/* proxy logic
+│   │   ├── resolver.ts                  # Config → WorkspaceBackend
+│   │   └── boundary.ts                  # /w/{id}/* routing
 │   │
-│   └── config.ts                        # App config (env vars, boring.app.toml)
+│   ├── db/                              # Database
+│   │   ├── client.ts                    # Drizzle + postgres.js
+│   │   ├── schema.ts                    # Drizzle schema
+│   │   └── migrate.ts                   # Migration runner
+│   │
+│   └── observability/                   # Logging, metrics, redaction
+│       ├── logger.ts
+│       └── metrics.ts
 │
 ├── front/                               # Frontend (React — mostly kept)
 │   ├── App.jsx → App.tsx                # Split into hooks
 │   ├── components/
 │   │   ├── chat/
-│   │   │   └── AiChat.tsx               # NEW: useChat() wrapper (replaces ClaudeStreamChat)
+│   │   │   └── AiChat.tsx               # FUTURE: useChat() wrapper (when AI SDK runtime added)
 │   │   ├── ui/                          # shadcn (unchanged)
 │   │   ├── GitChangesView.jsx           # kept
 │   │   ├── GitDiff.jsx                  # kept
@@ -748,7 +910,7 @@ src/
 │   │   │   ├── trpcProvider.ts          # NEW: tRPC-based data provider (replaces httpProvider)
 │   │   │   ├── lightningProvider.js     # KEPT: browser isolation mode
 │   │   │   └── ...
-│   │   └── pi/                          # DELETED (replaced by AI SDK)
+│   │   └── pi/                          # KEPT: PI browser agent runtime (foundation scope)
 │   ├── panels/                          # kept minus terminal/shell
 │   ├── registry/panes.tsx              # updated: remove terminal/shell
 │   └── ...
@@ -888,13 +1050,14 @@ export const execRouter = router({
 })
 ```
 
-### Agent Chat (1 route — NEW: AI SDK)
-No Python ref (new endpoint).
+### Agent Chat (FUTURE — not foundation scope)
+
+AI SDK agent endpoint is a future extension. PI runs in-browser at launch.
 
 ```typescript
-// src/server/agent/chat.ts — raw Fastify route (not tRPC, needs streaming)
+// FUTURE: src/server/agent/chat.ts — raw Fastify route (not tRPC, needs streaming)
 // POST /api/v1/agent/chat → streamText + tools (server isolation)
-//                         → streamText + tool schemas only (browser isolation)
+// Not implemented in initial migration. PI is the only agent runtime at launch.
 ```
 
 ### Auth (12+ routes)
@@ -961,164 +1124,154 @@ Python ref: `src/back/boring_ui/api/capabilities.py` + `app.py` health/config en
 
 ## Implementation Phases
 
-### Phase 1: Scaffold + Config + Resolvers (days 1-2)
+### Phase 0: Baseline and Inventory
+
+Before writing any TypeScript:
+- Inventory all routes, cookies, redirects, headers in the Python backend
+- Record baseline smoke test results against current Python server
+- Verify current metrics/logging coverage
+- Classify every surface as preserve/improve/delete
+- Freeze decisions: canonical launch profile, deferred tracks
+
+### Phase 1: TS Scaffold + Auth Foundation
+
+Milestone: health endpoint + full auth passes smoke_neon_auth.py
 
 ```
 1. Initialize TypeScript project
    - package.json with Fastify, tRPC, Drizzle, jose, simple-git, zod
-   - tsconfig.json
-   - Drizzle config pointing at existing Neon DB
+   - tsconfig.json, Drizzle config pointing at existing Neon DB
 
-2. Config loader + normalization
-   - src/server/config.ts — read boring.app.toml + env vars
-   - Normalize legacy fields (agents.mode, frontend.data.backend) to canonical fields
-   - Emit canonical payload for /__bui/config
-   - TEST FIRST: config normalization tests (legacy → canonical mapping)
+2. Service-layer skeleton
+   - src/server/services/ — empty service files for each domain
+   - src/server/http/ — legacy route stubs
+   - src/server/trpc/ — tRPC router stubs
 
-3. Resolver layer
-   - src/server/workspace/resolver.ts — resolveWorkspaceBackend()
-   - src/front/workspace/resolver.ts — resolveWorkspaceBackend() (browser side)
-   - src/front/agent/resolver.ts — resolveAgentRuntime()
-   - TEST FIRST: resolver tests (config → correct implementation class)
+3. Config loader + startup validation
+   - Read boring.app.toml + env vars
+   - Fail closed on missing Neon auth config
+   - TEST FIRST: config validation tests
 
-4. Set up Fastify app with tRPC
-   - src/server/app.ts — Fastify factory with tRPC plugin
-   - src/server/trpc.ts — context, publicProcedure, protectedProcedure, workspaceProcedure
+4. Full auth system port (highest risk, do first)
+   - Split 80KB auth_router_neon.py into 7 focused files
+   - Session cookie format unchanged (HS256 JWT, boring_session)
+   - Both HTTP routes (/auth/*) and tRPC procedures
+   - PARITY GATE: smoke_neon_auth.py passes against TS server
 
-5. Auth middleware
-   - src/server/auth/session.ts — JWT create/parse with jose (port auth_session.py)
-   - src/server/auth/middleware.ts — cookie validation hook
+5. Users router
+   - GET /me, GET /me/settings, PUT /me/settings
+   - PARITY GATE: smoke_settings.py passes
 
-6. Workspace context
-   - src/server/workspace/context.ts — resolve workspace dir from ID
-   - src/server/workspace/paths.ts — path traversal prevention (port paths.py)
-
-7. Database
-   - src/server/db/schema.ts — Drizzle schema matching existing tables
-   - src/server/db/client.ts — postgres.js connection to Neon
-
-6. Health endpoint
-   - GET /health → { ok: true }
-   - Deploy to Fly alongside Python (dual-stack, proxy splits traffic)
+6. Health + capabilities
+   - GET /health, GET /api/capabilities, GET /__bui/config
+   - PARITY GATE: smoke_health.py passes
 ```
 
 Python reference files:
 - `src/back/boring_ui/api/config.py` → `src/server/config.ts`
 - `src/back/boring_ui/api/modules/control_plane/auth_session.py` → `src/server/auth/session.ts`
+- `src/back/boring_ui/api/modules/control_plane/auth_router_neon.py` → `src/server/http/auth.ts` + `src/server/trpc/auth.ts` (80KB → ~15KB total)
+- `src/back/boring_ui/api/modules/control_plane/token_verify.py` → jose JWKS verification
+- `src/back/boring_ui/api/modules/control_plane/me_router_neon.py` → `src/server/services/users.ts`
 - `src/back/boring_ui/api/workspace/paths.py` → `src/server/workspace/paths.ts`
 - `src/back/boring_ui/api/workspace/context.py` → `src/server/workspace/context.ts`
 
-### Phase 2: BwrapBackend — Wrap Existing (days 3-5)
+### Phase 2: BwrapBackend + File/Git/Exec Routes
 
-Implement the canonical hosted profile first: `backend = "bwrap"`.
-This wraps the existing proven Python behavior in TypeScript.
-Do NOT add justbash yet — wrap what exists, prove parity, then add new backends.
+Milestone: filesystem + git + exec smoke suites pass
 
 ```
 1. BwrapBackend implementation
-   - Port bwrap sandbox from exec/service.py (exact same flags, bootstrap, env)
-   - This is the WorkspaceBackend implementation for production
-   - TEST FIRST: bwrap isolation tests (can't escape workspace dir)
+   - Port bwrap sandbox from exec/service.py
+   - Exact same flags, bootstrap sequence, env construction
+   - TEST FIRST: workspace isolation tests
 
-2. Files router (7 routes)
-   - Port file operations from FileService (service.py) to fs/promises
-   - Delegates to BwrapBackend for path-scoped file ops
-   - Same path validation, same response shapes
-   - PARITY GATE: smoke_filesystem.py passes against new server
+2. Files service + routes (7 endpoints)
+   - Service function shared by HTTP and tRPC
+   - PARITY GATE: smoke_filesystem.py passes
 
-3. Git router (16 routes)
-   - Port from subprocess_git.py to simple-git library
-   - Same response shapes
+3. Git service + routes (16 endpoints)
+   - simple-git library wrapping subprocess git
    - PARITY GATE: smoke_git_sync.py passes
 
-4. Exec router (2 routes)
-   - bash → BwrapBackend.bash() (bwrap subprocess)
-   - python → BwrapBackend.python() (python3 in bwrap)
-   - Same timeout handling, output truncation, bootstrap sequence
+4. Exec service + routes
+   - exec.run — short, bounded (port existing POST /api/v1/exec)
+   - exec.start / exec.read / exec.cancel — long-running (NEW)
+   - SSE streaming for long-running output
+   - PARITY GATE: existing exec smoke coverage passes
 
 5. Static file serving
-   - Serve Vite build output (dist/) from Fastify
+   - Serve Vite build output from Fastify
    - SPA fallback for client-side routing
 ```
 
 Python reference files:
-- `src/back/boring_ui/api/modules/files/service.py` → `src/server/routers/files.ts`
-- `src/back/boring_ui/api/modules/git/service.py` → `src/server/routers/git.ts`
-- `src/back/boring_ui/api/modules/exec/router.py` → `src/server/routers/exec.ts`
-- `src/back/boring_ui/api/storage.py` → inline in files.ts (LocalStorage is trivial in Node)
+- `src/back/boring_ui/api/modules/files/service.py` → `src/server/services/files.ts`
+- `src/back/boring_ui/api/modules/git/service.py` → `src/server/services/git.ts`
+- `src/back/boring_ui/api/modules/exec/router.py` → `src/server/services/exec.ts`
+- `src/back/boring_ui/api/storage.py` → inline in files service (LocalStorage is trivial in Node)
 - `src/back/boring_ui/api/subprocess_git.py` → replaced by simple-git
-- `src/back/boring_ui/runtime.py` → static serving in app.ts
+- `src/back/boring_ui/api/runtime.py` → static serving in app.ts
 
-### Phase 3: Auth + Users + Workspaces (days 6-9)
+### Phase 3: Workspaces + Collaboration + GitHub
+
+Milestone: workspace lifecycle + GitHub connect smoke suites pass
 
 ```
-1. Neon Auth integration (12+ routes)
-   - Port sign-up, sign-in, callback, logout, session, token-exchange
-   - Port HTML form rendering for /auth/login, /auth/signup
-   - Port JWKS verification (token_verify.py → jose)
-   - Test: smoke_neon_auth.py should pass
+1. Workspaces service + routes
+   - CRUD, settings (pgp_sym_encrypt via raw SQL), runtime state
+   - Workspace boundary routing (/w/{id}/*)
+   - Membership checks
+   - PARITY GATE: smoke_workspace_lifecycle.py passes
 
-2. Users router (3 routes)
-   - Port me, settings from me_router_neon.py
-   - Already uses Neon DB (user_settings table)
-   - Test: smoke_settings.py should pass
+2. Collaboration routes
+   - Members, invites
 
-3. Workspaces router (6+ routes)
-   - Port workspace CRUD from workspace_router_hosted.py
-   - Port boundary routing from workspace_boundary_router_hosted.py
-   - Test: smoke_workspace_lifecycle.py should pass
+3. GitHub App integration
+   - OAuth, JWT signing, installation tokens, credential provisioning
+   - PARITY GATE: smoke_github_connect.py passes
 
-4. Collaboration router (5 routes)
-   - Port members, invites from collaboration_router_hosted.py
+4. UI State service + routes
+   - State snapshots, commands, panes
+   - PARITY GATE: smoke_ui_state.py passes
 ```
 
 Python reference files:
-- `src/back/boring_ui/api/modules/control_plane/auth_router_neon.py` → `src/server/routers/auth.ts` (80KB → ~15KB total)
-- `src/back/boring_ui/api/modules/control_plane/token_verify.py` → jose JWKS verification
-- `src/back/boring_ui/api/modules/control_plane/me_router_neon.py` → `src/server/routers/users.ts`
-- `src/back/boring_ui/api/modules/control_plane/workspace_router_hosted.py` → `src/server/routers/workspaces.ts`
+- `src/back/boring_ui/api/modules/control_plane/workspace_router_hosted.py` → `src/server/services/workspaces.ts`
 - `src/back/boring_ui/api/modules/control_plane/workspace_boundary_router_hosted.py` → `src/server/workspace/boundary.ts`
-- `src/back/boring_ui/api/modules/control_plane/collaboration_router_hosted.py` → `src/server/routers/collaboration.ts`
-- `src/back/boring_ui/api/modules/control_plane/membership.py` → inline in workspaces.ts
-- `src/back/boring_ui/api/modules/control_plane/common.py` → inline in trpc.ts
+- `src/back/boring_ui/api/modules/control_plane/collaboration_router_hosted.py` → `src/server/http/collaboration.ts`
+- `src/back/boring_ui/api/modules/control_plane/membership.py` → inline in workspaces service
+- `src/back/boring_ui/api/modules/control_plane/common.py` → inline in trpc context
+- `src/back/boring_ui/api/modules/github_auth/router.py` → `src/server/services/github.ts`
+- `src/back/boring_ui/api/modules/github_auth/service.py` → inline in github service
+- `src/back/boring_ui/api/modules/ui_state/router.py` → `src/server/services/uiState.ts`
 
-### Phase 4: Agent Chat + Capabilities (days 10-11)
+### Phase 4: Capabilities + Remaining Routes
+
+Milestone: ALL smoke suites pass against TS server
 
 ```
-1. AI SDK agent endpoint
-   - POST /api/v1/agent/chat → streamText with tools
-   - Server isolation: tools execute via JustBash/Monty/fs/simple-git
-   - Browser isolation: tool schemas only, execution bounced to client
-   - Test: manual chat interaction
+1. Capabilities endpoint
+   - Abstract capability vocabulary (workspace.files, workspace.exec, agent.chat)
+   - Remove legacy names (pty, chat_claude_code, stream)
+   - PARITY GATE: smoke_capabilities.py passes
 
-2. Capabilities endpoint
-   - Port from capabilities.py
-   - New contract: agent, workspace, features, auth sections
-   - Remove legacy capability names (pty, chat_claude_code, stream)
+2. Approval (if kept, mark experimental)
+   - Move from in-memory to DB-backed if staying
 
-3. Runtime config endpoint (/__bui/config)
-   - Port from runtime_config.py
-
-4. UI State router (10 routes)
-   - Port from ui_state router
-   - Test: smoke_ui_state.py should pass
-
-5. Approval router (5 routes, if kept)
-   - Port from approval.py
-
-6. GitHub Auth router (10 routes)
-   - Port from github_auth/router.py + service.py
+3. Remaining route families
+   - Any routes not yet ported
+   - PARITY GATE: ALL smoke suites green
 ```
 
 Python reference files:
-- `src/back/boring_ui/api/capabilities.py` → `src/server/routers/capabilities.ts`
-- `src/back/boring_ui/runtime_config.py` → inline in capabilities.ts
-- `src/back/boring_ui/api/modules/ui_state/router.py` → `src/server/routers/uiState.ts`
-- `src/back/boring_ui/api/approval.py` → `src/server/routers/approval.ts`
-- `src/back/boring_ui/api/modules/github_auth/router.py` → `src/server/routers/github.ts`
-- `src/back/boring_ui/api/modules/github_auth/service.py` → inline in github.ts
+- `src/back/boring_ui/api/capabilities.py` → `src/server/services/capabilities.ts`
+- `src/back/boring_ui/runtime_config.py` → inline in capabilities service
+- `src/back/boring_ui/api/approval.py` → `src/server/services/approval.ts`
 
-### Phase 5: Legacy Surface Cleanup (days 12-13)
+### Phase 5: Legacy Surface Cleanup
+
+Milestone: deleted surfaces return 404, negative tests pass
 
 Delete PTY, Claude streaming, terminal/shell surfaces. This phase is a pure deletion —
 no new code, just removing files and references.
@@ -1162,66 +1315,58 @@ DOCS — update:
   docs/runbooks/MODES_AND_PROFILES.md — simplify to isolation + runtime matrix
 ```
 
-### Phase 6: Frontend Migration (days 14-16)
+### Phase 6: Frontend Migration
+
+Milestone: React app works against TS backend, App.jsx split complete
 
 ```
-1. tRPC client setup
-   - src/front/utils/trpc.ts — createTRPCReact, httpBatchLink
-   - Replace httpProvider.js calls with tRPC hooks
-   - Keep httpProvider.js as fallback for PI mode (PI tools call httpProvider directly)
+1. tRPC client setup alongside httpProvider
+   - Panels migrate one at a time
+   - httpProvider stays until all panels use tRPC
 
-2. AiChat component (AI SDK runtime)
-   - src/front/components/chat/AiChat.tsx — useChat() wrapper
-   - Handle both isolation modes (onToolCall for browser isolation)
-   - Only rendered when config.agent.runtime === "ai-sdk"
+2. AgentPanel cleanup
+   - PI only at launch, pluggable interface for future
 
-3. AgentPanel pluggable
-   - src/front/panels/AgentPanel.jsx — reads runtime config
-   - Renders PI nativeAdapter when runtime = "pi"
-   - Renders AiChat when runtime = "ai-sdk"
-
-4. App.jsx split (7 hooks)
+3. App.jsx split (7 hooks)
    - useWorkspaceAuth, useWorkspaceRouter, useDockLayout
    - usePanelActions, useApprovalPolling, useFrontendStatePersist
    - useDataProviderScope
 
-5. Pane registry update
-   - terminal and shell already deleted in Phase 5
-   - Update agent pane capability requirements to new contract
-   - Update capability gating from router-name-based to logical feature-based
+4. Pane registry update
+   - Remove terminal/shell
+   - Abstract capability gating
 ```
 
-### Phase 7: Cutover (days 17-18)
+### Phase 7: Canary, Cutover, Rollback Rehearsal
+
+Milestone: production traffic on TS, rollback tested
 
 ```
-1. Run full smoke suite against TypeScript server
-   - All 7 suites must pass (health, capabilities, neon-auth,
-     workspace-lifecycle, filesystem, settings, ui-state, git-sync)
+1. Full smoke suite against TS server
+   - ALL suites: health, capabilities, neon-auth, workspace-lifecycle,
+     filesystem, settings, ui-state, git-sync, child-app, github-connect
 
-2. Deploy TypeScript server as primary
-   - Single Dockerfile: Node.js + Vite build
-   - Single fly.toml (no more 3 variants)
+2. Canary deployment
+   - Route 10% traffic to TS for 48 hours
+   - Monitor error rates, latency p99, auth failures
+   - If clean: route 100% to TS
 
-3. Delete Python backend
-   - rm -rf src/back/ (already not ported — TypeScript replacements in src/server/)
+3. Rollback rehearsal
+   - Verify Python backend still builds and passes smoke
+   - Keep Python Dockerfile buildable for 2 weeks after cutover
+
+4. Delete Python backend (after bake period)
+   - rm -rf src/back/ src/pi_service/ src/companion_service/ src/test/
    - rm pyproject.toml uv.lock
-   - Update AGENTS.md, deploy/README.md
 ```
 
-### Phase 8: Add New Backends + Final Polish (days 19-20)
+### Phase 8: Post-Parity Tracks
 
 ```
-1. Add JustBash browser backend (if desired)
-   - Implement JustBashBrowserBackend behind WorkspaceBackend interface
-   - Add justbash npm dependency
-   - Test: config resolver returns JustBashBrowserBackend when backend = "justbash"
-   - This is an ADD, not a migration — existing backends unaffected
-
-3. Update docs and examples
-   - boring.app.toml examples use canonical fields only
-   - deploy/README.md describes the two-field config model
-   - AGENTS.md updated for new architecture
-   - Child app extension docs show tRPC router pattern
+1. Add JustBash browser backend (Tier 3, experimental)
+2. Start AI SDK runtime track (separate, not foundation)
+3. Start server-side PI track
+4. Update all docs for new architecture
 ```
 
 ---
@@ -1250,6 +1395,14 @@ These principles carry over from the improvement roadmap and apply to the rewrit
 
 7. **Approval is experimental until classified otherwise.** Port approval.py but mark it experimental. Don't lean on it in the shell until the semantics are durable (currently in-memory store, lost on restart).
 
+8. **Structured tools plus shell beat shell-only dogma.**
+
+9. **Hosted plugin trust must be explicit.**
+
+10. **Backup, restore, rollout, and rollback are architecture, not afterthoughts.**
+
+11. **Do not force unrelated major dependency upgrades during the rewrite.**
+
 ---
 
 ## Testing Strategy
@@ -1268,6 +1421,8 @@ tests/smoke/smoke_filesystem.py — same
 tests/smoke/smoke_settings.py   — same
 tests/smoke/smoke_ui_state.py   — same
 tests/smoke/smoke_git_sync.py   — same
+tests/smoke/smoke_child_app.py  — same (child app router merging)
+tests/smoke/smoke_github_connect.py — same (GitHub App OAuth flow)
 ```
 
 The smoke tests hit HTTP endpoints. They don't care if the backend is Python or TypeScript. Same routes, same response shapes → same tests.
@@ -1326,7 +1481,7 @@ WORKDIR /app
 
 # Install system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git jq ripgrep tree curl && rm -rf /var/lib/apt/lists/*
+    git jq ripgrep tree curl bubblewrap python3 python3-venv && rm -rf /var/lib/apt/lists/*
 
 # Install deps
 COPY package.json package-lock.json ./
@@ -1373,14 +1528,17 @@ session_ttl = 86400
 platform = "fly"
 ```
 
-### Foundation Profile
+### Supported Profiles
 
-| Use case | `backend` | `placement` | Description |
-|----------|-----------|-------------|-------------|
-| **Canonical production** | **`bwrap`** | **`browser`** | **PI in browser + bwrap sandbox on server. Reference profile.** |
-| Server-side agent | `bwrap` | `server` | PI runs in-process on server. No sidecar. |
-| Offline dev | `lightningfs` | `browser` | Everything in browser. IndexedDB. Dev-only. |
-| Quick preview | `justbash` | `browser` | JustBash WASM in browser. Experimental. |
+| Profile | Backend | Placement | Support tier |
+|---------|---------|-----------|-------------|
+| **hosted-prod** | **bwrap** | **browser** | **Tier 1: launch default, docs, smoke, evals** |
+| hosted-prod-server-agent | bwrap | server | Tier 1b: later production rollout |
+| local-browser | lightningfs | browser | Tier 2: local dev/offline only |
+| local-justbash | justbash | browser | Tier 3: experimental only |
+| hosted-ai-sdk | bwrap | server | Future: post-parity track |
+
+The cross-product matrix is not the support matrix.
 
 ---
 
@@ -1395,6 +1553,9 @@ The migration is an opportunity to start fresh with a clean, well-structured cod
 - **Consistent patterns.** Every route: Zod input → tRPC procedure (auth + workspace context) → handler → typed response.
 - **Typed end-to-end.** tRPC gives full type safety from server to client. Child apps get autocomplete.
 - **TDD from day one.** Every route is written test-first using the existing smoke tests as the spec.
+- **Service layer first.** HTTP and tRPC call the same service functions. No logic in transport.
+- **Explicit support tiers.** Experimental/local modes are labeled, not marketed as production.
+- **No experimental path marketed as production.**
 
 ### TDD Methodology
 
@@ -1498,6 +1659,140 @@ Requirements:
 - OAuth popup flow (authorize → callback → postMessage to opener)
 - Per-workspace GitHub connection (installation_id + repo stored in workspace_settings)
 - TDD: port GitHub status/connect/disconnect smoke coverage
+
+---
+
+## Concurrency Model
+
+The TypeScript backend runs single-threaded (Node.js event loop) but must handle
+concurrent requests to the same workspace safely.
+
+### Per-Workspace Git Mutex
+
+Git operations (add, commit, push, pull, checkout, merge) must be serialized
+per workspace. Two concurrent commits to the same workspace corrupt the index.
+
+```typescript
+// src/server/workspace/mutex.ts
+import { Mutex } from 'async-mutex'
+
+const gitMutexes = new Map<string, Mutex>()
+
+export function getGitMutex(workspaceId: string): Mutex {
+  let mutex = gitMutexes.get(workspaceId)
+  if (!mutex) {
+    mutex = new Mutex()
+    gitMutexes.set(workspaceId, mutex)
+  }
+  return mutex
+}
+
+// Usage in git router:
+const release = await getGitMutex(ctx.workspaceId).acquire()
+try {
+  await git.add(paths)
+  await git.commit(message)
+} finally {
+  release()
+}
+```
+
+Read-only git operations (status, diff, log, branches) do NOT need the mutex.
+
+### Subprocess Limit
+
+bwrap subprocesses are expensive. Use `p-limit` to cap concurrent subprocesses
+across all workspaces:
+
+```typescript
+import pLimit from 'p-limit'
+
+// Max 10 concurrent bwrap subprocesses server-wide
+const subprocessLimit = pLimit(10)
+
+export function execInSandbox(cmd: string, opts: ExecOpts): Promise<ExecResult> {
+  return subprocessLimit(() => _rawExec(cmd, opts))
+}
+```
+
+### Timeout Enforcement
+
+All subprocess calls must enforce timeouts. The bwrap sandbox uses 60s timeout
+with 5s grace period (matching Python behavior). Use `AbortController` + `setTimeout`:
+
+```typescript
+const controller = new AbortController()
+const timeout = setTimeout(() => controller.abort(), 60_000)
+try {
+  const result = await execFile('bwrap', args, { signal: controller.signal })
+  return result
+} catch (err) {
+  if (err.name === 'AbortError') return { stdout: '', stderr: 'Timeout', exitCode: -1 }
+  throw err
+} finally {
+  clearTimeout(timeout)
+}
+```
+
+---
+
+## Encrypted Settings
+
+Workspace settings use `pgp_sym_encrypt`/`pgp_sym_decrypt` in PostgreSQL (pgcrypto extension).
+Drizzle ORM's query builder does not support raw SQL functions in select/insert expressions.
+
+**Use raw SQL through Drizzle's `sql` template tag:**
+
+```typescript
+import { sql } from 'drizzle-orm'
+
+// Write encrypted setting
+await db.execute(sql`
+  INSERT INTO workspace_settings (workspace_id, key, value, updated_at)
+  VALUES (${workspaceId}, ${key}, pgp_sym_encrypt(${value}, ${encryptionKey}), now())
+  ON CONFLICT (workspace_id, key)
+  DO UPDATE SET value = pgp_sym_encrypt(${value}, ${encryptionKey}), updated_at = now()
+`)
+
+// Read decrypted setting
+const result = await db.execute(sql`
+  SELECT key, pgp_sym_decrypt(value::bytea, ${encryptionKey}) as value
+  FROM workspace_settings
+  WHERE workspace_id = ${workspaceId} AND key = ${key}
+`)
+```
+
+Do NOT try to use `db.insert(...).values(...)` with pgp_sym_encrypt — it will
+pass the value as a plain string. The encryption MUST happen in the SQL expression.
+
+The encryption key comes from `BORING_SETTINGS_KEY` env var (same as Python backend).
+
+---
+
+## Database Migration Strategy
+
+During dual-stack (Python + TypeScript running side by side), do NOT make schema changes.
+Both servers must work against the same schema.
+
+**Phase 1-7 (dual-stack):**
+- Use `drizzle-kit pull` to introspect the existing Neon schema into Drizzle format
+- This generates `src/server/db/schema.ts` that matches the live database exactly
+- Zero schema migrations during this period
+- Both Python (SQLAlchemy/raw SQL) and TypeScript (Drizzle) read/write the same tables
+
+**After Python deletion (Phase 7 bake period complete):**
+- Drizzle becomes the sole schema owner
+- New migrations use `drizzle-kit generate` + `drizzle-kit migrate`
+- Schema changes go through Drizzle migration files in `drizzle/` directory
+
+```bash
+# During dual-stack: pull existing schema
+npx drizzle-kit pull
+
+# After Python removal: generate migrations for new changes
+npx drizzle-kit generate
+npx drizzle-kit migrate
+```
 
 ---
 
