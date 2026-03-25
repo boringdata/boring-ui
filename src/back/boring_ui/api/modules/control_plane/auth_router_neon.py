@@ -107,6 +107,9 @@ def _normalize_origin(raw: str) -> str:
 
 
 def _public_origin(request: Request, *, config: APIConfig) -> str:
+    if config.public_app_origin:
+        return config.public_app_origin
+
     origin = str(request.headers.get("origin", "")).strip()
     normalized_origin = _normalize_origin(origin)
     # Fly.io terminates TLS — request.base_url is http://. Use X-Forwarded-Proto.
@@ -635,17 +638,9 @@ async def _auto_send_verification_email(
     try:
         payload: dict[str, str] = {"email": email}
         if callback_url:
-            # Neon Auth validates callbackURL against trusted_origins.
-            # Send a relative path instead of an absolute URL — Neon Auth
-            # resolves it against the Origin header, which avoids the
-            # INVALID_CALLBACKURL error when the absolute URL doesn't
-            # exactly match the trusted_origins list.
-            from urllib.parse import urlparse
-            parsed = urlparse(callback_url)
-            relative_callback = parsed.path
-            if parsed.query:
-                relative_callback += "?" + parsed.query
-            payload["callbackURL"] = relative_callback
+            # Keep the full app callback URL so the verification email links
+            # back to boring-ui rather than Neon Auth's host.
+            payload["callbackURL"] = callback_url
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             resp = await client.post(
                 f"{neon_base}/send-verification-email",
