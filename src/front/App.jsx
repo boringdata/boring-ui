@@ -6,27 +6,15 @@ import { ThemeProvider, useCapabilities, useKeyboardShortcuts, UNKNOWN_CAPABILIT
 import useApprovalPolling from './hooks/useApprovalPolling'
 import useDataProviderScope from './hooks/useDataProviderScope'
 import useFrontendStatePersist from './hooks/useFrontendStatePersist'
+import useDockLayout from './hooks/useDockLayout'
+import usePanelActions from './hooks/usePanelActions'
 import useWorkspaceAuth from './hooks/useWorkspaceAuth'
+import useWorkspaceRouter from './hooks/useWorkspaceRouter'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
-import { apiFetch, apiFetchJson } from './utils/transport'
+import { apiFetchJson } from './utils/transport'
 import { routeHref, routes } from './utils/routes'
-import {
-  extractWorkspaceId,
-  getWorkspaceIdFromPathname,
-  getWorkspacePathSuffix,
-  runWithPreflightFallback,
-} from './utils/controlPlane'
-import {
-  resolveWorkspaceNavigationRouteFromPathname,
-  syncWorkspaceRuntimeAndSettings,
-} from './utils/workspaceNavigation'
-import {
-  getWorkspaceSwitchCandidates,
-  buildSwitchPrompt,
-  resolveWorkspaceSwitchTarget,
-} from './utils/workspaceSwitch'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -49,9 +37,6 @@ import {
   countAllAgentPanels,
 } from './utils/dockHelpers'
 import {
-  getFrontendStateClientId,
-} from './utils/frontendState'
-import {
   arePlainObjectsEqual,
   getPanelSizeConfigValue,
   readPersistedCollapsedState,
@@ -73,11 +58,8 @@ import paneRegistry, {
   getUnavailableEssentialPanes,
 } from './registry/panes'
 import { QueryClientProvider } from '@tanstack/react-query'
-import {
-  queryKeys,
-} from './providers/data'
 import DataContext from './providers/data/DataContext'
-import { PI_LIST_TABS_BRIDGE, PI_OPEN_FILE_BRIDGE, PI_OPEN_PANEL_BRIDGE } from './providers/pi/uiBridge'
+import { PI_OPEN_FILE_BRIDGE } from './providers/pi/uiBridge'
 import UserSettingsPage from './pages/UserSettingsPage'
 import WorkspaceSettingsPage from './pages/WorkspaceSettingsPage'
 import WorkspaceSetupPage from './pages/WorkspaceSetupPage'
@@ -85,9 +67,6 @@ import AuthPage, { AuthCallbackPage } from './pages/AuthPage'
 import CreateWorkspaceModal from './pages/CreateWorkspaceModal'
 import { UnifiedDockTab, tabComponents } from './components/DockTab'
 import {
-  isMarkdownFile,
-  getEditorPanelComponent,
-  getMarkdownEditorParam,
   normalizeMarkdownEditorPanels,
   normalizeMarkdownPane,
 } from './utils/editorFiles'
@@ -268,28 +247,39 @@ export default function App() {
     workspaces: workspaceOptions,
     workspaceListStatus,
     storagePrefix,
-    refreshData: refreshUserMenuData,
     fetchWorkspaces: fetchWorkspaceList,
     retryData: handleUserMenuRetry,
     logout: handleLogout,
   } = useWorkspaceAuth({ baseStoragePrefix })
-  const [currentWorkspaceId, setCurrentWorkspaceId] = useState(() =>
-    getWorkspaceIdFromPathname(window.location.pathname),
-  )
-  const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = useState(false)
-
-  // Detect full-page views from URL path
-  const pagePathname = window.location.pathname
-  const pageSearchParams = new URLSearchParams(window.location.search)
-  const workspaceSubpath = getWorkspacePathSuffix(pagePathname)
-  const isUserSettingsPage = pagePathname === '/auth/settings'
-  const isAuthLoginPage = pagePathname === '/auth/login'
-    || pagePathname === '/auth/signup'
-    || pagePathname === '/auth/reset-password'
-  const isAuthCallbackPage = pagePathname === '/auth/callback'
-  const isWorkspaceSettingsPage = currentWorkspaceId && workspaceSubpath === 'settings'
-  const userSettingsWorkspaceId = String(pageSearchParams.get('workspace_id') || '').trim()
-  const isWorkspaceSetupPage = currentWorkspaceId && workspaceSubpath === 'setup'
+  const {
+    currentWorkspaceId,
+    pagePathname,
+    isUserSettingsPage,
+    isAuthLoginPage,
+    isAuthCallbackPage,
+    isWorkspaceSettingsPage,
+    userSettingsWorkspaceId,
+    isWorkspaceSetupPage,
+    activeWorkspaceName,
+    userMenuCanSwitchWorkspace,
+    showCreateWorkspaceModal,
+    setShowCreateWorkspaceModal,
+    handleSwitchWorkspace,
+    handleCreateWorkspace,
+    handleCreateWorkspaceSubmit,
+    handleOpenUserSettings,
+    handleOpenWorkspaceSettings,
+  } = useWorkspaceRouter({
+    workspaceOptions,
+    workspaceListStatus,
+    fetchWorkspaceList,
+    userMenuAuthStatus,
+    storagePrefix,
+    projectRoot,
+    controlPlaneOnboardingEnabled,
+    backendWorkspaceRuntimeEnabled,
+    controlPlaneEnabled: capabilities?.features?.control_plane === true,
+  })
   const [collapsed, setCollapsed] = useState(() => (
     readPersistedCollapsedState(storagePrefix, baseStoragePrefix)
   ))
@@ -395,23 +385,8 @@ export default function App() {
   panelCollapsedRef.current = { ...panelCollapsed, agent: rightRailDefaults.agentCollapsed }
   const panelMinRef = useRef({ ...panelMin, agent: rightRailDefaults.agentMin })
   panelMinRef.current = { ...panelMin, agent: rightRailDefaults.agentMin }
-  const activeWorkspaceName = useMemo(() => {
-    const match = workspaceOptions.find((workspace) => workspace.id === currentWorkspaceId)
-    if (match?.name) return match.name
-    if (!currentWorkspaceId && projectRoot) {
-      return projectRoot.split('/').filter(Boolean).pop() || ''
-    }
-    return ''
-  }, [workspaceOptions, currentWorkspaceId, projectRoot])
-
   const userMenuStatusMessage = userMenuIdentityError || userMenuWorkspaceError
   const userMenuStatusTone = userMenuStatusMessage ? 'error' : ''
-  const userMenuCanSwitchWorkspace = useMemo(() => {
-    if (!currentWorkspaceId) return false
-    return workspaceOptions.some(
-      (workspace) => workspace?.id && workspace.id !== currentWorkspaceId,
-    )
-  }, [workspaceOptions, currentWorkspaceId])
   const userMenuDisabledActions = useMemo(() => {
     if (userMenuAuthStatus === 'unauthenticated') {
       return ['switch', 'create', 'logout']
@@ -496,72 +471,29 @@ export default function App() {
     })
   }
 
-  const getLeftSidebarGroups = useCallback((api) => {
-    if (!api) return []
-    const groups = []
-    const seen = new Set()
-    leftSidebarPanelIds.forEach((panelId) => {
-      const group = api.getPanel(panelId)?.group
-      if (!group || seen.has(group.id)) return
-      seen.add(group.id)
-      groups.push(group)
-    })
-    return groups
-  }, [leftSidebarPanelIds])
-
-  const getLeftSidebarAnchorPanelId = useCallback((api) => {
-    if (!api) return 'filetree'
-    for (const panelId of leftSidebarPanelIds) {
-      if (api.getPanel(panelId)) return panelId
-    }
-    return 'filetree'
-  }, [leftSidebarPanelIds])
-
-  const getLeftSidebarAnchorPosition = useCallback((api) => {
-    if (!api) return undefined
-    const anchorId = getLeftSidebarAnchorPanelId(api)
-    return api.getPanel(anchorId)
-      ? { direction: 'right', referencePanel: anchorId }
-      : undefined
-  }, [getLeftSidebarAnchorPanelId])
-
-  // Toggle sidebar collapse - capture size before collapsing
-  const toggleFiletree = useCallback(() => {
-    if (!collapsed.filetree && dockApi) {
-      // Capture current left-column size before collapsing.
-      const leftGroups = getLeftSidebarGroups(dockApi)
-      const currentWidth = leftGroups[0]?.api?.width
-      const collapsedWidth = leftSidebarCollapsedWidth
-      if (Number.isFinite(currentWidth) && currentWidth > collapsedWidth) {
-          panelSizesRef.current = { ...panelSizesRef.current, filetree: currentWidth }
-          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
-      }
-    }
-    setCollapsed((prev) => {
-      const next = { ...prev, filetree: !prev.filetree }
-      saveCollapsedState(next, storagePrefixRef.current)
-      return next
-    })
-  }, [collapsed.filetree, dockApi, getLeftSidebarGroups, leftSidebarCollapsedWidth])
-
-  const toggleAgent = useCallback(() => {
-    if (!collapsed.agent && dockApi) {
-      const agentPanel = dockApi.getPanel('agent')
-      const agentGroup = agentPanel?.group
-      if (agentGroup) {
-        const currentWidth = agentGroup.api.width
-        if (currentWidth > panelCollapsedRef.current.agent) {
-          panelSizesRef.current = { ...panelSizesRef.current, agent: currentWidth }
-          savePanelSizes(panelSizesRef.current, storagePrefixRef.current)
-        }
-      }
-    }
-    setCollapsed((prev) => {
-      const next = { ...prev, agent: !prev.agent }
-      saveCollapsedState(next, storagePrefixRef.current)
-      return next
-    })
-  }, [collapsed.agent, dockApi])
+  // DockView layout helpers (extracted to hook)
+  const {
+    getLeftSidebarGroups,
+    getLeftSidebarAnchorPanelId,
+    getLeftSidebarAnchorPosition,
+    isLeftSidebarGroup,
+    findCenterAnchorPanel,
+    getLiveCenterGroup,
+    toggleFiletree,
+    toggleAgent,
+  } = useDockLayout({
+    dockApi,
+    leftSidebarPanelIds,
+    collapsed,
+    setCollapsed,
+    panelSizesRef,
+    storagePrefixRef,
+    centerGroupRef,
+    leftSidebarCollapsedWidth,
+    panelCollapsedRef,
+    saveCollapsedState,
+    savePanelSizes,
+  })
 
   const SECTION_HEADER_HEIGHT = 30
   const LEFT_PANE_HEADER_HEIGHT = 42
@@ -767,131 +699,6 @@ export default function App() {
     window.dispatchEvent(new CustomEvent('theme-toggle-request'))
   }, [])
 
-  const syncWorkspacePathContext = useCallback(() => {
-    setCurrentWorkspaceId(getWorkspaceIdFromPathname(window.location.pathname))
-  }, [])
-
-  useEffect(() => {
-    syncWorkspacePathContext()
-    window.addEventListener('popstate', syncWorkspacePathContext)
-    return () => {
-      window.removeEventListener('popstate', syncWorkspacePathContext)
-    }
-  }, [syncWorkspacePathContext])
-
-  const handleSwitchWorkspace = useCallback(async () => {
-    const workspaces = await fetchWorkspaceList()
-    const candidateWorkspaces = getWorkspaceSwitchCandidates(workspaces, currentWorkspaceId)
-    if (candidateWorkspaces.length === 0) return
-
-    const prompt = buildSwitchPrompt(candidateWorkspaces)
-    if (!prompt) return
-    const promptValue = window.prompt(prompt.message, prompt.defaultValue)
-
-    const selectedWorkspace = resolveWorkspaceSwitchTarget(candidateWorkspaces, currentWorkspaceId, promptValue)
-    if (!selectedWorkspace) return
-    const targetWorkspaceId = selectedWorkspace.id
-
-    if (!controlPlaneOnboardingEnabled) {
-      const route = routes.controlPlane.workspaces.scope(
-        targetWorkspaceId,
-        getWorkspacePathSuffix(window.location.pathname),
-      )
-      window.location.assign(routeHref(route))
-      return
-    }
-
-    const route = await runWithPreflightFallback({
-      run: async () => {
-        const { runtimePayload } = await syncWorkspaceRuntimeAndSettings({
-          workspaceId: targetWorkspaceId,
-          writeSettings: false,
-          apiFetchJson,
-          apiFetch,
-        })
-        return resolveWorkspaceNavigationRouteFromPathname({
-          workspaceId: targetWorkspaceId,
-          runtimePayload,
-          pathname: window.location.pathname,
-        })
-      },
-      fallbackRoute: routes.controlPlane.workspaces.scope(
-        targetWorkspaceId,
-        getWorkspacePathSuffix(window.location.pathname),
-      ),
-      warningMessage: '[UserMenu] Switch workspace preflight failed:',
-    })
-    window.location.assign(routeHref(route))
-  }, [controlPlaneOnboardingEnabled, currentWorkspaceId, fetchWorkspaceList])
-
-  const handleCreateWorkspace = useCallback(() => {
-    setShowCreateWorkspaceModal(true)
-  }, [])
-
-  const handleCreateWorkspaceSubmit = useCallback(async (name) => {
-    const createRoute = routes.controlPlane.workspaces.create()
-    const { response, data } = await apiFetchJson(createRoute.path, {
-      query: createRoute.query,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    })
-    if (!response.ok) {
-      throw new Error(data?.message || 'Failed to create workspace')
-    }
-
-    const createdWorkspaceId = extractWorkspaceId(data)
-    if (!createdWorkspaceId) {
-      throw new Error('No workspace ID returned')
-    }
-
-    await fetchWorkspaceList()
-    setShowCreateWorkspaceModal(false)
-
-    if (!controlPlaneOnboardingEnabled && !backendWorkspaceRuntimeEnabled) {
-      const route = routes.controlPlane.workspaces.scope(
-        createdWorkspaceId,
-        getWorkspacePathSuffix(window.location.pathname),
-      )
-      window.location.assign(routeHref(route))
-      return
-    }
-
-    const route = routes.controlPlane.workspaces.setup(createdWorkspaceId)
-    window.location.assign(routeHref(route))
-  }, [backendWorkspaceRuntimeEnabled, controlPlaneOnboardingEnabled, fetchWorkspaceList])
-
-  const handleOpenUserSettings = useCallback(() => {
-    if (userMenuAuthStatus === 'unauthenticated') {
-      const route = routes.controlPlane.auth.login(
-        `${window.location.pathname}${window.location.search || ''}`,
-      )
-      window.location.assign(routeHref(route))
-      return
-    }
-
-    const key = getStorageKey(storagePrefix, projectRoot, 'user-settings-intent')
-    const detail = {
-      source: 'sidebar-user-menu',
-      workspace_id: currentWorkspaceId || null,
-      timestamp: Date.now(),
-    }
-    try {
-      localStorage.setItem(key, JSON.stringify(detail))
-    } catch {
-      // ignore storage errors for local-only settings intent
-    }
-    window.dispatchEvent(new CustomEvent('boring-ui:user-settings-open', { detail }))
-    const route = routes.controlPlane.auth.settings(currentWorkspaceId || undefined)
-    window.location.assign(routeHref(route))
-  }, [userMenuAuthStatus, storagePrefix, projectRoot, currentWorkspaceId])
-
-  const handleOpenWorkspaceSettings = useCallback(() => {
-    if (!currentWorkspaceId) return
-    const route = routes.controlPlane.workspaces.scope(currentWorkspaceId, 'settings')
-    window.location.assign(route.path)
-  }, [currentWorkspaceId])
-
   // Keyboard shortcuts
   const searchFiles = useCallback(() => {
     activateSidebarPanel('filetree', { mode: 'search' })
@@ -1079,565 +886,38 @@ export default function App() {
     [handleApprovalDecision, dockApi],
   )
 
-  const isLeftSidebarGroup = useCallback((group) => {
-    if (!group) return false
-    const groupPanels = Array.isArray(group.panels) ? group.panels : []
-    return groupPanels.some((panel) => {
-      const panelId = typeof panel?.id === 'string' ? panel.id : ''
-      return leftSidebarPanelIds.includes(panelId)
-    })
-  }, [leftSidebarPanelIds])
-
-  const findCenterAnchorPanel = useCallback((api) => {
-    if (!api) return null
-    const allPanels = Array.isArray(api.panels) ? api.panels : []
-    return allPanels.find((panel) => {
-      if (!panel?.group || isLeftSidebarGroup(panel.group)) return false
-      const panelId = typeof panel?.id === 'string' ? panel.id : ''
-      return (
-        panelId.startsWith('editor-')
-        || panelId.startsWith('review-')
-        || panelId.startsWith('deck-')
-        || panelId.startsWith('chart-')
-      )
-    }) || null
-  }, [isLeftSidebarGroup])
-
-  const getLiveCenterGroup = useCallback((api) => {
-    if (!api) return null
-    const candidate = centerGroupRef.current
-    if (!candidate) return null
-
-    const groups = Array.isArray(api.groups) ? api.groups : []
-    if (groups.includes(candidate) && !isLeftSidebarGroup(candidate)) {
-      return candidate
-    }
-    if (candidate.id) {
-      const matchingGroup = groups.find((group) => group?.id === candidate.id)
-      if (matchingGroup && !isLeftSidebarGroup(matchingGroup)) {
-        centerGroupRef.current = matchingGroup
-        return matchingGroup
-      }
-    }
-    centerGroupRef.current = null
-    return null
-  }, [isLeftSidebarGroup])
-
-  // Open file in a specific position (used for drag-drop)
-  const openFileAtPosition = useCallback(
-    (path, position, extraParams = {}) => {
-      if (!dockApi) return
-
-      const panelId = `editor-${path}`
-      const existingPanel = dockApi.getPanel(panelId)
-      const markdownEditor = getMarkdownEditorParam(path, markdownPane)
-
-      if (existingPanel) {
-        const nextParams = isMarkdownFile(path)
-          ? { ...extraParams, markdownEditor }
-          : { ...extraParams }
-        if (Object.keys(nextParams).length > 0) {
-          existingPanel.api.updateParameters(nextParams)
-        }
-        existingPanel.api.setActive()
-        return
-      }
-
-      const addEditorPanel = (content) => {
-        const panelComponent = getEditorPanelComponent(path, markdownPane)
-        const centerGroup = getLiveCenterGroup(dockApi)
-        if (centerGroup) {
-          centerGroup.header.hidden = false
-        }
-
-        const resolveRetryPosition = () => {
-          const liveCenterGroup = getLiveCenterGroup(dockApi)
-          if (liveCenterGroup) return { referenceGroup: liveCenterGroup }
-
-          const centerAnchorPanel = findCenterAnchorPanel(dockApi)
-          if (centerAnchorPanel?.group) {
-            return { referenceGroup: centerAnchorPanel.group }
-          }
-
-          const liveEmptyPanel = dockApi.getPanel('empty-center')
-          if (liveEmptyPanel?.group) {
-            return { referenceGroup: liveEmptyPanel.group }
-          }
-
-          return getLeftSidebarAnchorPosition(dockApi)
-        }
-
-        const panelParams = {
-          path,
-          initialContent: content,
-          contentVersion: 1,
-          ...extraParams,
-          onContentChange: (p, newContent) => {
-            setTabs((prev) => ({
-              ...prev,
-              [p]: { ...prev[p], content: newContent },
-            }))
-          },
-          onDirtyChange: (p, dirty) => {
-            setTabs((prev) => ({
-              ...prev,
-              [p]: { ...prev[p], isDirty: dirty },
-            }))
-            const panel = dockApi.getPanel(`editor-${p}`)
-            if (panel) {
-              panel.api.setTitle(getFileName(p) + (dirty ? ' *' : ''))
-            }
-          },
-        }
-        if (isMarkdownFile(path)) {
-          panelParams.markdownEditor = markdownEditor
-        }
-
-        let panel = dockApi.addPanel({
-          id: panelId,
-          component: panelComponent,
-          title: getFileName(path),
-          position,
-          params: panelParams,
-        })
-
-        if (!panel) {
-          const retryPosition = resolveRetryPosition()
-          panel = dockApi.addPanel({
-            id: panelId,
-            component: panelComponent,
-            title: getFileName(path),
-            position: retryPosition,
-            params: panelParams,
-          })
-        }
-
-        if (!panel) {
-          panel = dockApi.addPanel({
-            id: panelId,
-            component: panelComponent,
-            title: getFileName(path),
-            params: panelParams,
-          })
-        }
-
-        if (!panel) {
-          console.warn('[App] Failed to open editor panel', { path, requestedPosition: position })
-          return
-        }
-
-        setTabs((prev) => ({
-          ...prev,
-          [path]: { content, isDirty: false },
-        }))
-
-        const emptyPanel = dockApi.getPanel('empty-center')
-        if (emptyPanel) {
-          emptyPanel.api.close()
-        }
-        if (panel?.group) {
-          panel.group.header.hidden = false
-          centerGroupRef.current = panel.group
-          // Apply minimum height constraint to center group (use Number.MAX_SAFE_INTEGER to allow resize)
-          panel.group.api.setConstraints({
-            minimumHeight: panelMinRef.current.center,
-            maximumHeight: Number.MAX_SAFE_INTEGER,
-          })
-        }
-        panel.api.setActive()
-      }
-
-      queryClient.fetchQuery({
-        queryKey: queryKeys.files.read(path),
-        queryFn: ({ signal }) => dataProvider.files.read(path, { signal }),
-      })
-        .then((content) => {
-          addEditorPanel(typeof content === 'string' ? content : '')
-        })
-        .catch(() => {
-          addEditorPanel('')
-        })
-    },
-    [
-      dataProvider,
-      dockApi,
-      findCenterAnchorPanel,
-      getLeftSidebarAnchorPosition,
-      getLiveCenterGroup,
-      markdownPane,
-      queryClient,
-    ]
-  )
-
-  const openFile = useCallback(
-    (path) => {
-      if (!dockApi) return false
-
-      const panelId = `editor-${path}`
-      const existingPanel = dockApi.getPanel(panelId)
-      const markdownEditor = getMarkdownEditorParam(path, markdownPane)
-
-      if (existingPanel) {
-        if (isMarkdownFile(path)) {
-          existingPanel.api.updateParameters({ markdownEditor })
-        }
-        existingPanel.api.setActive()
-        return true
-      }
-
-      // Priority: existing editor group > centerGroupRef > empty panel > fallback
-      const emptyPanel = dockApi.getPanel('empty-center')
-      const centerGroup = getLiveCenterGroup(dockApi)
-      const existingCenterPanel = findCenterAnchorPanel(dockApi)
-
-      let position
-      if (centerGroup) {
-        position = { referenceGroup: centerGroup }
-      } else if (existingCenterPanel?.group) {
-        // Add as tab next to existing center editors/charts/reviews.
-        position = { referenceGroup: existingCenterPanel.group }
-      } else if (emptyPanel?.group) {
-        position = { referenceGroup: emptyPanel.group }
-      } else {
-        position = getLeftSidebarAnchorPosition(dockApi)
-      }
-
-      openFileAtPosition(path, position)
-      return true
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- markdownPane is derived from config and stable; adding it would trigger unnecessary re-creations
-    [dockApi, findCenterAnchorPanel, getLiveCenterGroup, getLeftSidebarAnchorPosition, openFileAtPosition]
-  )
-
-  const openPanel = useCallback(
-    (rawPayload) => {
-      if (!dockApi) return false
-      const payload = rawPayload && typeof rawPayload === 'object' ? rawPayload : {}
-
-      const id = String(payload.id || '').trim()
-      const component = String(payload.component || '').trim()
-      if (!id || !component) return false
-
-      const title = String(payload.title || id)
-      const panelParams = payload.params && typeof payload.params === 'object'
-        ? payload.params
-        : {}
-
-      const existingPanel = dockApi.getPanel(id)
-      if (existingPanel) {
-        if (Object.keys(panelParams).length > 0) {
-          existingPanel.api.updateParameters(panelParams)
-        }
-        existingPanel.api.setActive()
-        return true
-      }
-
-      const emptyPanel = dockApi.getPanel('empty-center')
-      const agentPanel = dockApi.getPanel('agent')
-      const centerGroup = getLiveCenterGroup(dockApi)
-      const existingCenterPanel = findCenterAnchorPanel(dockApi)
-
-      let position = payload.position && typeof payload.position === 'object'
-        ? payload.position
-        : null
-
-      if (!position) {
-        if (centerGroup) {
-          position = { referenceGroup: centerGroup }
-        } else if (existingCenterPanel?.group) {
-          position = { referenceGroup: existingCenterPanel.group }
-        } else if (emptyPanel?.group) {
-          position = { referenceGroup: emptyPanel.group }
-        } else if (agentPanel) {
-          position = { direction: 'left', referencePanel: agentPanel.id }
-        } else {
-          position = getLeftSidebarAnchorPosition(dockApi)
-        }
-      }
-
-      const panel = dockApi.addPanel({
-        id,
-        component,
-        title,
-        position,
-        params: panelParams,
-      })
-
-      if (panel?.group) {
-        panel.group.locked = false
-        panel.group.header.hidden = false
-        centerGroupRef.current = panel.group
-        panel.group.api?.setConstraints({
-          minimumHeight: panelMinRef.current.center,
-          maximumHeight: Number.MAX_SAFE_INTEGER,
-        })
-      }
-      panel?.api?.setActive()
-
-      if (emptyPanel) {
-        requestAnimationFrame(() => {
-          const staleEmpty = dockApi.getPanel('empty-center')
-          if (staleEmpty) staleEmpty.api.close()
-        })
-      }
-
-      return true
-    },
-    [dockApi, findCenterAnchorPanel, getLiveCenterGroup, getLeftSidebarAnchorPosition],
-  )
-
-  useEffect(() => {
-    const openFileBridge = (path) => openFile(String(path || '').trim())
-    const openPanelBridge = (payload) => openPanel(payload)
-    const listTabsBridge = () => ({
-      activeFile: activeFile || '',
-      tabs: Object.keys(tabs),
-    })
-
-    window[PI_OPEN_FILE_BRIDGE] = openFileBridge
-    window[PI_OPEN_PANEL_BRIDGE] = openPanelBridge
-    window[PI_LIST_TABS_BRIDGE] = listTabsBridge
-
-    return () => {
-      if (window[PI_OPEN_FILE_BRIDGE] === openFileBridge) {
-        delete window[PI_OPEN_FILE_BRIDGE]
-      }
-      if (window[PI_OPEN_PANEL_BRIDGE] === openPanelBridge) {
-        delete window[PI_OPEN_PANEL_BRIDGE]
-      }
-      if (window[PI_LIST_TABS_BRIDGE] === listTabsBridge) {
-        delete window[PI_LIST_TABS_BRIDGE]
-      }
-    }
-  }, [activeFile, openFile, openPanel, tabs])
-
-  const openFileToSide = useCallback(
-    (path) => {
-      if (!dockApi) return
-
-      const panelId = `editor-${path}`
-      const existingPanel = dockApi.getPanel(panelId)
-
-      if (existingPanel) {
-        existingPanel.api.setActive()
-        return
-      }
-
-      // Find the active editor panel to split from (not terminal/filetree)
-      const activePanel = dockApi.activePanel
-      const centerGroup = getLiveCenterGroup(dockApi)
-      let position
-
-      if (activePanel && activePanel.id.startsWith('editor-') && !isLeftSidebarGroup(activePanel.group)) {
-        // Split to the right of the current editor
-        position = { direction: 'right', referencePanel: activePanel.id }
-      } else if (centerGroup) {
-        // Split against a concrete center panel id to avoid docking drift.
-        const anchorPanelId = centerGroup.activePanel?.id || centerGroup.panels?.[0]?.id
-        if (anchorPanelId) {
-          position = { direction: 'right', referencePanel: anchorPanelId }
-        } else {
-          position = { referenceGroup: centerGroup }
-        }
-      } else {
-        // Fallback: to the right of filetree (but will be left of terminal)
-        position = getLeftSidebarAnchorPosition(dockApi)
-      }
-
-      openFileAtPosition(path, position)
-    },
-    [dockApi, getLeftSidebarAnchorPosition, getLiveCenterGroup, isLeftSidebarGroup, openFileAtPosition]
-  )
-
-  const openDiff = useCallback(
-    (path, _status) => {
-      if (!dockApi) return
-
-      const panelId = `editor-${path}`
-      const existingPanel = dockApi.getPanel(panelId)
-
-      if (existingPanel) {
-        // Update to diff mode and activate
-        existingPanel.api.updateParameters({ initialMode: 'git-diff' })
-        existingPanel.api.setActive()
-        setActiveDiffFile(path)
-        return
-      }
-
-      // Use empty panel's group first to maintain layout hierarchy.
-      const emptyPanel = dockApi.getPanel('empty-center')
-      const centerGroup = getLiveCenterGroup(dockApi)
-
-      let position
-      if (emptyPanel?.group) {
-        position = { referenceGroup: emptyPanel.group }
-      } else if (centerGroup) {
-        position = { referenceGroup: centerGroup }
-      } else {
-        position = getLeftSidebarAnchorPosition(dockApi)
-      }
-
-      // Open regular editor with diff mode enabled
-      openFileAtPosition(path, position, { initialMode: 'git-diff' })
-      setActiveDiffFile(path)
-    },
-    [dockApi, getLeftSidebarAnchorPosition, getLiveCenterGroup, openFileAtPosition]
-  )
-
-  const getCommandPanelPosition = useCallback((api) => {
-    const emptyPanel = api.getPanel('empty-center')
-    if (emptyPanel?.group) {
-      return { referenceGroup: emptyPanel.group }
-    }
-
-    const centerGroup = getLiveCenterGroup(api)
-    if (centerGroup) {
-      return { referenceGroup: centerGroup }
-    }
-
-    return getLeftSidebarAnchorPosition(api)
-  }, [getLeftSidebarAnchorPosition, getLiveCenterGroup])
-
-  const openGenericPanelFromCommand = useCallback(
-    (api, command) => {
-      const component = typeof command?.component === 'string' ? command.component.trim() : ''
-      if (!component) return false
-
-      const requestedId = typeof command?.panel_id === 'string' ? command.panel_id.trim() : ''
-      const requestedTitle = typeof command?.title === 'string' ? command.title.trim() : ''
-      const panelTitle = requestedTitle || component
-      const params = command?.params && typeof command.params === 'object' && !Array.isArray(command.params)
-        ? command.params
-        : {}
-      const preferExisting = command?.prefer_existing !== false
-
-      const baseId = requestedId || `cmd-${component}-${Date.now().toString(36)}`
-      const existingPanel = preferExisting ? api.getPanel(baseId) : null
-      if (existingPanel) {
-        if (Object.keys(params).length > 0) {
-          existingPanel.api.updateParameters(params)
-        }
-        existingPanel.api.setActive()
-        return true
-      }
-
-      const panelId = api.getPanel(baseId) ? `${baseId}-${Date.now().toString(36)}` : baseId
-      const position = getCommandPanelPosition(api)
-      const panel = api.addPanel({
-        id: panelId,
-        component,
-        title: panelTitle,
-        position,
-        params,
-      })
-      if (!panel) return false
-
-      const emptyPanel = api.getPanel('empty-center')
-      if (emptyPanel && emptyPanel.id !== panelId) {
-        emptyPanel.api.close()
-      }
-
-      if (panel?.group) {
-        panel.group.header.hidden = false
-        centerGroupRef.current = panel.group
-        panel.group.api.setConstraints({
-          minimumHeight: panelMinRef.current.center,
-          maximumHeight: Number.MAX_SAFE_INTEGER,
-        })
-      }
-      panel.api.setActive()
-      return true
-    },
-    [getCommandPanelPosition],
-  )
-
-  const executeFrontendCommand = useCallback(
-    async (api, commandEnvelope) => {
-      if (!api || !commandEnvelope || typeof commandEnvelope !== 'object') return false
-      const command = commandEnvelope.command && typeof commandEnvelope.command === 'object'
-        ? commandEnvelope.command
-        : commandEnvelope
-      const kind = typeof command?.kind === 'string' ? command.kind.trim() : ''
-      if (!kind) return false
-
-      if (kind === 'focus_panel') {
-        const panelId = typeof command?.panel_id === 'string' ? command.panel_id.trim() : ''
-        if (!panelId) return false
-        const panel = api.getPanel(panelId)
-        if (!panel) return false
-        panel.api.setActive()
-        await publishFrontendState(api)
-        return true
-      }
-
-      if (kind === 'open_panel') {
-        const opened = openGenericPanelFromCommand(api, command)
-        if (opened) {
-          await publishFrontendState(api)
-        }
-        return opened
-      }
-
-      return false
-    },
-    [openGenericPanelFromCommand, publishFrontendState],
-  )
-
-  const consumeNextFrontendCommand = useCallback(
-    async (api) => {
-      const targetApi = api || dockApi
-      if (!targetApi) return false
-      if (!uiStateFeatureEnabled) return false
-      if (frontendStateUnavailableRef.current || frontendCommandUnavailableRef.current) {
-        return false
-      }
-      if (!frontendStateClientIdRef.current) {
-        frontendStateClientIdRef.current = getFrontendStateClientId(storagePrefixRef.current)
-      }
-
-      const route = routes.uiState.commands.next(frontendStateClientIdRef.current)
-      try {
-        const { response, data } = await apiFetchJson(route.path, { query: route.query })
-        if (!response.ok) {
-          if (response.status === 404 || response.status === 405) {
-            frontendCommandUnavailableRef.current = true
-          }
-          return false
-        }
-        if (!data?.command) return false
-        return executeFrontendCommand(targetApi, data.command)
-      } catch {
-        return false
-      }
-    },
-    [dockApi, executeFrontendCommand, uiStateFeatureEnabled],
-  )
-
-  useEffect(() => {
-    if (!dockApi || !uiStateFeatureEnabled) return
-
-    let isDisposed = false
-    let timeoutId = null
-    const pollLoop = async () => {
-      while (!isDisposed) {
-        await consumeNextFrontendCommand(dockApi)
-        if (isDisposed) break
-        await new Promise((resolve) => {
-          timeoutId = window.setTimeout(resolve, 750)
-        })
-        timeoutId = null
-      }
-    }
-
-    void pollLoop()
-
-    return () => {
-      isDisposed = true
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId)
-      }
-    }
-  }, [dockApi, consumeNextFrontendCommand, uiStateFeatureEnabled])
+  // isLeftSidebarGroup, findCenterAnchorPanel, getLiveCenterGroup
+  // are now provided by useDockLayout hook above.
+
+  const {
+    openFileAtPosition,
+    openFile,
+    openPanel,
+    openFileToSide,
+    openDiff,
+  } = usePanelActions({
+    dockApi,
+    centerGroupRef,
+    panelMinRef,
+    markdownPane,
+    queryClient,
+    dataProvider,
+    tabs,
+    activeFile,
+    setTabs,
+    setActiveDiffFile,
+    uiStateFeatureEnabled,
+    frontendStateUnavailableRef,
+    frontendCommandUnavailableRef,
+    frontendStateClientIdRef,
+    storagePrefixRef,
+    publishFrontendState,
+    frontendCommandPollIntervalMs: 750,
+    getLeftSidebarAnchorPosition,
+    getLiveCenterGroup,
+    findCenterAnchorPanel,
+    isLeftSidebarGroup,
+  })
 
   useEffect(() => {
     if (!dockApi || !approvalsLoaded) return
@@ -3617,47 +2897,6 @@ export default function App() {
       dockRoot.removeEventListener('drop', onDropCapture, true)
     }
   }, [dockApi, readDroppedSeriesId, routeSeriesDropToPanel])
-
-  // Workspace redirect: authenticated user on `/` with no workspace → redirect to first workspace
-  // (Hook must be before any early returns to satisfy rules-of-hooks)
-  const needsWorkspaceRedirect =
-    capabilities?.features?.control_plane &&
-    userMenuAuthStatus === 'authenticated' &&
-    !currentWorkspaceId &&
-    pagePathname === '/'
-
-  const autoCreateAttempted = useRef(false)
-  useEffect(() => {
-    if (!needsWorkspaceRedirect) return
-    // Wait for the first workspace list fetch to resolve before deciding.
-    // workspaceOptions starts as [], so acting on length before the fetch
-    // completes causes a duplicate-create race in hosted signup.
-    if (workspaceListStatus !== 'success' && workspaceListStatus !== 'error') {
-      console.debug('[WorkspaceRedirect] waiting for workspace list fetch (status=%s)', workspaceListStatus)
-      return
-    }
-    if (workspaceListStatus === 'error') {
-      // List fetch failed — do not auto-create speculatively; surface existing error state
-      console.debug('[WorkspaceRedirect] list fetch failed, skipping auto-create')
-      return
-    }
-    if (workspaceOptions.length > 0) {
-      const firstWs = workspaceOptions[0]
-      console.debug('[WorkspaceRedirect] redirecting to workspace %s', firstWs.id)
-      const route = routes.controlPlane.workspaces.scope(firstWs.id)
-      // Use client-side navigation to avoid a full page reload bounce
-      window.history.replaceState(null, '', route.path)
-      setCurrentWorkspaceId(firstWs.id)
-    } else if (!autoCreateAttempted.current) {
-      // List resolved empty — auto-create a default workspace
-      console.debug('[WorkspaceRedirect] list resolved empty, auto-creating workspace')
-      autoCreateAttempted.current = true
-      handleCreateWorkspaceSubmit('My Workspace').catch(() => {
-        // Fall back to modal if auto-create fails
-        setShowCreateWorkspaceModal(true)
-      })
-    }
-  }, [needsWorkspaceRedirect, workspaceOptions, workspaceListStatus, handleCreateWorkspaceSubmit])
 
   // Full-page auth views
   if (isAuthLoginPage) {
