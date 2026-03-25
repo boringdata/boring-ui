@@ -283,6 +283,22 @@ def _issue_session_response(
             message="Session did not return user_id or email",
         )
 
+    # Ensure the user exists in the local users table.
+    # Neon Auth manages identity externally; this syncs the local record
+    # so workspace FK constraints and membership queries work.
+    pool = getattr(request.app.state, "db_pool", None)
+    if pool:
+        try:
+            await pool.execute(
+                """INSERT INTO users (id, email)
+                   VALUES ($1::uuid, $2)
+                   ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email""",
+                user_id,
+                email,
+            )
+        except Exception:
+            _logger.warning("Failed to sync user %s to local users table", user_id, exc_info=True)
+
     session_value = create_session_cookie(
         user_id,
         email,
