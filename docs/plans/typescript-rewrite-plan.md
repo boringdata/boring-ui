@@ -6,6 +6,26 @@ Rewrite the boring-ui backend from Python/FastAPI to TypeScript/Fastify+tRPC.
 Collapse 3 deployment modes into 1 server with a plug-and-play architecture:
 pick a workspace backend, pick an agent runtime. Two config fields, that's it.
 
+## Why TypeScript (Not "Keep Python and Bolt On Node")
+
+The agent runtime ecosystem is TypeScript-native. Keeping Python means fighting this at every integration point:
+
+- **Vercel AI SDK** (`streamText`, `useChat`, tool calling protocol) — TypeScript only. No Python port.
+  Using it from Python means a Node.js sidecar just for `/api/chat`, reverse-engineering the
+  UIMessageStream wire format, or maintaining a fragile proxy layer.
+- **JustBash** — TypeScript library. Runs in-process in Node.js. From Python it's a subprocess or FFI bridge.
+- **PI agent** (`pi-agent-core`, `pi-ai`) — TypeScript. The current pi_service sidecar exists solely
+  because the Python backend can't run PI natively. A Node.js backend absorbs it — no sidecar needed.
+- **Future agent frameworks** (LangGraph.js, CrewAI.js, Mastra, AutoGen.js) — all ship TypeScript SDKs
+  first. Every new agent integration in a Python backend means another sidecar or bridge.
+
+With Python, every agent runtime needs its own sidecar process. With TypeScript, they all run
+in-process. One language, one process, zero agent-framework integration friction.
+
+The bwrap sandbox (production exec) is a subprocess call — language-agnostic. The workspace backend
+interface, the auth system, the file/git/workspace APIs — all straightforward to port. The agent
+runtime integration is the part that **requires** TypeScript to do cleanly.
+
 ## Architecture
 
 ### Two Config Fields
