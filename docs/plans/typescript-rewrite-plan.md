@@ -217,28 +217,41 @@ src/shared/toolSchemas.ts         ← Zod schemas for ALL tools (shared by serve
         git_status → provider.gitStatus() (isomorphic-git or HTTP)
 ```
 
-**Tool catalog** (same in all modes):
+**Two layers: Agent tools (LLM) + UI endpoints (frontend panels)**
 
-| Tool | Parameters | Returns |
-|------|-----------|---------|
-| `exec_bash` | `{ command, cwd? }` | `{ stdout, stderr, exitCode }` |
-| `exec_python` | `{ code }` | `{ output, error? }` |
-| `read_file` | `{ path }` | `{ content, path }` |
-| `write_file` | `{ path, content }` | `{ success, path }` |
-| `list_files` | `{ path }` | `{ entries: [{ name, path, isDir }] }` |
-| `search_files` | `{ query, path? }` | `{ matches: [{ path }] }` |
-| `git_status` | `{}` | `{ isRepo, files: [...] }` |
-| `git_add` | `{ paths }` | `{ staged: [...] }` |
-| `git_commit` | `{ message }` | `{ hash, message }` |
-| `git_diff` | `{ path }` | `{ diff, path }` |
-| `git_push` | `{ remote?, branch? }` | `{ pushed }` |
-| `git_pull` | `{ remote?, branch? }` | `{ pulled }` |
-| `git_log` | `{ limit? }` | `{ commits: [...] }` |
-| `git_branch` | `{ name }` | `{ created }` |
-| `git_checkout` | `{ name }` | `{ checkedOut }` |
+Agent tools — what the LLM calls (minimal, 2 tools):
 
-The Zod schemas in `toolSchemas.ts` validate inputs on both server and client.
-This guarantees the LLM sees one consistent tool surface regardless of deployment config.
+| Tool | Parameters | Returns | Execution |
+|------|-----------|---------|-----------|
+| `exec_bash` | `{ command, cwd? }` | `{ stdout, stderr, exitCode }` | JustBash (covers files, git, system) |
+| `exec_python` | `{ code }` | `{ output, error? }` | Monty |
+
+The LLM uses bash for everything: `cat`, `ls`, `grep`, `git status`, `git commit`, `npm install`, etc.
+No need for structured file/git tools — bash is the universal interface.
+
+UI endpoints — what the frontend panels call (structured JSON, tRPC):
+
+| Endpoint | Used by | Parameters | Returns |
+|----------|---------|-----------|---------|
+| `files.list` | FileTreePanel | `{ path }` | `{ entries: [{ name, path, isDir }] }` |
+| `files.read` | EditorPanel | `{ path }` | `{ content, path }` |
+| `files.write` | EditorPanel | `{ path, content }` | `{ success, path }` |
+| `files.search` | Search modal | `{ query, path? }` | `{ matches: [{ path }] }` |
+| `files.rename` | FileTreePanel | `{ oldPath, newPath }` | `{ success }` |
+| `files.delete` | FileTreePanel | `{ path }` | `{ success }` |
+| `git.status` | GitChangesView | `{}` | `{ isRepo, files: [...] }` |
+| `git.diff` | GitDiff | `{ path }` | `{ diff, path }` |
+| `git.add` | GitChangesView | `{ paths }` | `{ staged: [...] }` |
+| `git.commit` | GitChangesView | `{ message }` | `{ hash, message }` |
+| `git.push` | GitChangesView | `{ remote?, branch? }` | `{ pushed }` |
+| `git.pull` | GitChangesView | `{ remote?, branch? }` | `{ pulled }` |
+
+UI endpoints are NOT agent tools. They exist to power the React panels with structured JSON.
+The LLM never calls `files.read` — it calls `exec_bash("cat src/main.js")` instead.
+
+The Zod schemas in `toolSchemas.ts` define the 2 agent tools.
+The tRPC router schemas define the UI endpoints separately.
+Both share the same workspace context and isolation boundary.
 
 ### bui CLI Cleanup
 
