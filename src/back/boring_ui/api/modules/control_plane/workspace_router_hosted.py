@@ -16,7 +16,7 @@ from ...policy import enforce_delegated_policy_or_none
 from .common import ensure_pool, error_response, load_session, normalize_workspace_payload
 from .membership import NotAMember, WorkspaceNotFound, require_membership
 from .service import ensure_workspace_root_dir
-from .user_settings_state import read_user_github_link, user_state_service
+from .user_settings_state import GITHUB_DEFAULT_INSTALLATION_ID_KEY, GITHUB_ACCOUNT_LINKED_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -218,9 +218,32 @@ def _runtime_state_payload(row) -> dict:
     return payload
 
 
+async def _read_user_github_link_db(pool, user_id: str, app_id: str) -> dict:
+    """Read GitHub link settings from user_settings DB table."""
+    row = await pool.fetchrow(
+        "SELECT settings FROM user_settings WHERE user_id = $1 AND app_id = $2",
+        uuid.UUID(str(user_id)),
+        app_id,
+    )
+    if not row or not row["settings"]:
+        return {"account_linked": False, "default_installation_id": None}
+    import json as _json
+    settings = _json.loads(row["settings"]) if isinstance(row["settings"], str) else row["settings"]
+    raw_installation_id = settings.get(GITHUB_DEFAULT_INSTALLATION_ID_KEY)
+    default_installation_id = None
+    if raw_installation_id not in (None, ""):
+        try:
+            default_installation_id = int(raw_installation_id)
+        except (TypeError, ValueError):
+            pass
+    return {
+        "account_linked": bool(settings.get(GITHUB_ACCOUNT_LINKED_KEY)),
+        "default_installation_id": default_installation_id,
+    }
+
+
 def create_workspace_router_hosted(config: APIConfig) -> APIRouter:
     router = APIRouter(tags=["workspaces"])
-    user_service = user_state_service(config)
 
     async def _require_membership_or_error(request: Request, pool, ws_uuid: uuid.UUID, user_id: str):
         try:
@@ -301,7 +324,7 @@ def create_workspace_router_hosted(config: APIConfig) -> APIRouter:
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
 
-        github_link = read_user_github_link(user_service, str(session.user_id))
+        github_link = await _read_user_github_link_db(pool, str(session.user_id), config.control_plane_app_id)
         default_installation_id = github_link.get("default_installation_id")
         settings_key = config.settings_encryption_key or os.environ.get("BORING_SETTINGS_KEY", "")
         if default_installation_id and settings_key:

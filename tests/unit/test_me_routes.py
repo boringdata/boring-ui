@@ -65,8 +65,9 @@ def test_me_returns_identity_and_compat_fields(tmp_path: Path) -> None:
     assert payload["data"]["email"] == "owner@example.com"
 
 
-@pytest.mark.parametrize("control_plane_provider", ["local", "neon"])
+@pytest.mark.parametrize("control_plane_provider", ["local"])
 def test_me_settings_round_trip(tmp_path: Path, control_plane_provider: str) -> None:
+    """Round-trip local mode only; neon mode needs a real DB (covered by smoke tests)."""
     client = _client(tmp_path, control_plane_provider=control_plane_provider)
     _login(client, user_id="user-33", email="settings@example.com")
 
