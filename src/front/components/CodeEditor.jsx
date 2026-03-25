@@ -76,10 +76,12 @@ export default function CodeEditor({
   const [localContent, setLocalContent] = useState(content || '')
   const autoSaveTimerRef = useRef(null)
 
-  // Sync local content when external content changes
+  // Sync local content only on external reloads (contentVersion bump).
+  // Intentionally omitting `content` — local typing already updates localContent
+  // directly; re-syncing from the parent prop would reset the cursor position.
   useEffect(() => {
     setLocalContent(content || '')
-  }, [content, contentVersion])
+  }, [contentVersion]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChange = useCallback(
     (newContent) => {
