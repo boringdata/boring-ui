@@ -220,19 +220,67 @@ Same interface, different executors depending on which backend is active.
 ### Stack (Foundation Scope)
 
 ```
-Backend:   Fastify + Zod (typed HTTP/JSON routes) + Drizzle + jose + simple-git
+Backend:   Fastify + tRPC + Drizzle + jose + simple-git + Zod
            + bwrap (system package, already in Dockerfile)
-Frontend:  React + Vite + TailwindCSS + shadcn + DockView
+Frontend:  React + Vite + TailwindCSS + shadcn + DockView + @trpc/react-query
            + LightningFS + isomorphic-git + Pyodide (when backend = "lightningfs")
            + JustBash (when backend = "justbash")
            + PI (@mariozechner/pi-*) — only agent runtime
 Database:  Neon PostgreSQL (same as today)
 Auth:      Neon Auth (same as today) + jose for JWT
 CLI:       bui (adapted for Node.js backend, not replaced)
+Testing:   Vitest (TDD, red/green cycle)
 
 Future (not foundation scope):
            + AI SDK (@ai-sdk/anthropic, @ai-sdk/react) — second agent runtime
-           + tRPC — internal optimization (NOT the public contract)
+```
+
+#### Why tRPC IS the product contract
+
+tRPC is not just an internal optimization — it's the framework's extension mechanism:
+
+- **Child apps define tRPC routers** that boring-ui merges at startup.
+  They get `workspaceProcedure` (auth + workspace context) for free.
+- **Child app panels get full type safety** — `trpc.analytics.query.useMutation()`
+  with autocomplete, input validation, and typed responses.
+- **tRPC is still HTTP/JSON.** Every route is a real HTTP endpoint. Smoke tests
+  use raw `httpx`/`fetch` and keep working. `curl` works. The typed client
+  is a convenience layer, not a lock-in.
+- **The current Python pattern is worse.** Child apps add routers via string
+  paths (`"myapp.routers.foo:router"`) with zero type safety. tRPC is strictly
+  better for framework composability.
+
+#### Child App Extension Pattern (tRPC)
+
+```toml
+# Child app boring.app.toml
+[backend]
+routers = ["src/server/routers/analytics:analyticsRouter"]
+
+[frontend.panels]
+analytics = { title = "Analytics", placement = "center" }
+```
+
+```typescript
+// Child app router — imports framework procedures, gets full type safety
+import { router, workspaceProcedure } from 'boring-ui/trpc'
+
+export const analyticsRouter = router({
+  query: workspaceProcedure
+    .input(z.object({ sql: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      return ctx.backend.bash(`sqlite3 data.db "${input.sql}"`)
+    }),
+})
+```
+
+```tsx
+// Child app panel — typed client, autocomplete, zero manual interface matching
+import { trpc } from 'boring-ui/trpc-client'
+
+export default function AnalyticsPanel() {
+  const { data } = trpc.analytics.dashboards.useQuery()  // fully typed
+}
 ```
 
 ### What Gets Deleted
@@ -1201,8 +1249,112 @@ The migration is an opportunity to start fresh with a clean, well-structured cod
 - **No parallel implementations.** One router per domain (no `*_neon.py` + `*_local.py` duplication).
 - **No god files.** auth_router_neon.py (80KB) becomes ~10 focused files. App.jsx (4,452 lines) becomes 7 hooks + thin shell.
 - **Clear module boundaries.** auth/, users/, workspaces/, files/, git/, exec/ — each owns one domain.
-- **Consistent patterns.** Every route: Zod input validation → auth check → workspace scope → handler → typed response.
-- **Typed end-to-end.** Zod schemas shared between server validation and client type generation. No hand-typed fetch responses.
+- **Consistent patterns.** Every route: Zod input → tRPC procedure (auth + workspace context) → handler → typed response.
+- **Typed end-to-end.** tRPC gives full type safety from server to client. Child apps get autocomplete.
+- **TDD from day one.** Every route is written test-first using the existing smoke tests as the spec.
+
+### TDD Methodology
+
+The existing smoke tests define the contract. The migration follows red/green/refactor:
+
+```
+For each route family (files, git, auth, workspaces, ...):
+
+  1. RED:   Port the smoke test assertions as Vitest unit tests against the new TS server.
+            Tests call the Fastify app directly (no network, using inject()).
+            Run → all fail (route doesn't exist yet).
+
+  2. GREEN: Implement the tRPC router. Use the Python code as reference for behavior.
+            Run → tests pass. Smoke tests also pass against the running server.
+
+  3. REFACTOR: Clean up. No Python-isms. Consistent patterns. Type everything.
+               Run → still green.
+```
+
+The smoke tests (`tests/smoke/`) are the **parity gate**. A route family is not done until
+the existing Python smoke tests pass against the TypeScript server with zero changes to the
+test code. The smoke tests use raw HTTP — they don't know or care about tRPC.
+
+### Rock-Solid Subsystems
+
+These subsystems must be the most reliable parts of the framework. Each gets extra
+attention during migration:
+
+#### Auth (Neon Auth integration)
+
+The current `auth_router_neon.py` (80KB) is the highest-risk port. Split into focused units:
+
+```
+src/server/auth/
+  session.ts        — JWT create/parse/validate (jose). Port of auth_session.py.
+  neonClient.ts     — Neon Auth API calls (sign-up, sign-in, get-session, send-verification).
+  callback.ts       — OAuth callback + pending-login token completion.
+  tokenExchange.ts  — Neon JWT → boring_session cookie exchange.
+  validation.ts     — redirect URL allowlisting, startup config checks.
+  pages.ts          — HTML form rendering (proper templates, not string literals).
+  middleware.ts     — Fastify cookie validation hook.
+```
+
+Requirements:
+- Fail closed on missing config (NEON_AUTH_BASE_URL, NEON_AUTH_JWKS_URL, session secret)
+- Startup validation: crash if required env vars are absent (no silent fallback to local mode)
+- Session cookie format unchanged (HS256 JWT, `boring_session` cookie name) so existing
+  sessions survive the migration
+- Redirect allowlisting: only paths on the same origin, no open redirect
+- TDD: port every assertion from `smoke_neon_auth.py` as unit tests FIRST
+
+#### Workspace Management
+
+```
+src/server/workspaces/
+  router.ts         — CRUD: create, list, get, update, delete
+  boundary.ts       — /w/{workspace_id}/* routing (replaces workspace_boundary_router_hosted.py)
+  members.ts        — membership checks, role enforcement
+  settings.ts       — per-workspace encrypted settings (pgp_sym_encrypt)
+  runtime.ts        — workspace runtime state (pending/provisioning/ready/error)
+  context.ts        — per-request workspace resolution (workspace_id → dir path)
+  paths.ts          — path traversal prevention (port of workspace/paths.py)
+```
+
+Requirements:
+- Workspace isolation: each workspace has its own directory, enforced by path validation
+- Membership: every workspace-scoped operation checks user is a member (owner/editor/viewer)
+- Settings encryption: workspace settings stay encrypted in DB (BORING_SETTINGS_KEY)
+- Boundary routing: /w/{id}/api/v1/files/* → files router with workspace context injected
+- No fly-replay: removed (no dedicated workspace machines)
+- TDD: port every assertion from `smoke_workspace_lifecycle.py` as unit tests FIRST
+
+#### User Settings
+
+```
+src/server/users/
+  router.ts         — GET /me, GET /me/settings, PUT /me/settings
+  service.ts        — user profile touch, settings merge
+```
+
+Requirements:
+- Settings stored in Neon DB `user_settings` table (already migrated from local JSON)
+- display_name stored both in DB column AND in settings JSONB (for backward compat)
+- JSONDecodeError handling on corrupt JSONB
+- TDD: port every assertion from `smoke_settings.py` as unit tests FIRST
+
+#### GitHub App Integration
+
+```
+src/server/github/
+  router.ts         — OAuth authorize, callback, connect, disconnect, status, repos
+  service.ts        — GitHub App JWT signing, installation token exchange
+  credentials.ts    — Git credential provisioning for push/pull
+  proxy.ts          — Git proxy for clone/fetch through GitHub App
+```
+
+Requirements:
+- GitHub App JWT signing (RS256 with private key)
+- Installation token exchange (app token → installation access token)
+- Git credential injection for push/pull (token-based HTTPS auth)
+- OAuth popup flow (authorize → callback → postMessage to opener)
+- Per-workspace GitHub connection (installation_id + repo stored in workspace_settings)
+- TDD: port GitHub status/connect/disconnect smoke coverage
 
 ---
 
@@ -1212,6 +1364,9 @@ The migration is an opportunity to start fresh with a clean, well-structured cod
 {
   "dependencies": {
     "fastify": "^5.x",
+    "@trpc/server": "^11.x",
+    "@trpc/client": "^11.x",
+    "@trpc/react-query": "^11.x",
     "drizzle-orm": "^0.38.x",
     "postgres": "^3.x",
     "jose": "^5.x",
@@ -1229,6 +1384,10 @@ The migration is an opportunity to start fresh with a clean, well-structured cod
     "class-variance-authority": "^0.7.x",
     "clsx": "^2.x",
     "lucide-react": "^0.x"
+  },
+  "devDependencies": {
+    "vitest": "^3.x",
+    "typescript": "^5.x"
   }
 }
 ```
