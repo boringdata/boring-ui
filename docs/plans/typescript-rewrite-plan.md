@@ -35,10 +35,19 @@ runtime integration is the part that **requires** TypeScript to do cleanly.
 backend = "bwrap"         # "lightningfs" | "justbash" | "bwrap"
 
 [agent]
-runtime = "ai-sdk"        # "pi" | "ai-sdk"
+runtime = "pi"            # "pi" (default, foundation scope)
+                          # "ai-sdk" planned as future extension (not foundation scope)
+placement = "browser"     # "browser" | "server"
 ```
 
 One deployment. One server. Everything else derives from these two fields.
+
+> **AI SDK is a future extension, not foundation scope.**
+> The `runtime = "ai-sdk"` option is architecturally planned (the interface supports it)
+> but not implemented in the initial migration. PI is the only agent runtime at launch.
+> AI SDK can be added later without architectural changes — the pluggable runtime
+> interface is designed for it, but shipping it is a separate track after the
+> backend migration stabilizes.
 
 ### Workspace Backends (3 options, pluggable)
 
@@ -86,23 +95,27 @@ Capability comparison:
   server needed   ✗ (auth only)  ✗ (auth only)  ✓
 ```
 
-### Agent Runtimes (2 options, pluggable)
+### Agent Runtime
 
-| Runtime | LLM runs | API key | Frontend component |
-|---------|----------|---------|-------------------|
-| `pi` | In browser (PI agent) | User provides in browser | `PiNativeAdapter` (existing) |
-| `ai-sdk` | On server (AI SDK streamText) | Server env var | `AiChat` (new, useChat hook) |
+PI is the only agent runtime at launch. The interface is pluggable — a second runtime
+(AI SDK) can be added later without architectural changes.
 
-### The Full Matrix (6 valid combinations)
+| Runtime | LLM runs | API key | Placement | Frontend component |
+|---------|----------|---------|-----------|-------------------|
+| `pi` | Browser or server | User provides | `browser` (default) or `server` | `PiNativeAdapter` (existing) |
+| `ai-sdk` | Server | Server env var | `server` only | `AiChat` (future, useChat hook) |
 
-| `backend` | `runtime` | What happens | Best for |
-|-----------|-----------|-------------|----------|
-| `lightningfs` | `pi` | Everything in browser. Zero server exec. | Offline dev, demos |
-| `lightningfs` | `ai-sdk` | Files in browser, LLM on server. | Managed demo |
-| `justbash` | `pi` | JustBash WASM in browser. User's API key. | Quick sandboxed previews |
-| `justbash` | `ai-sdk` | JustBash WASM in browser, LLM on server. | Lightweight managed preview |
-| `bwrap` | `pi` | Real sandbox on server. User's API key. | Self-serve production |
-| `bwrap` | `ai-sdk` | Real sandbox + LLM on server. Full managed. | Production, headless agents |
+### Foundation Profile (what ships first)
+
+| `backend` | `runtime` | `placement` | What happens | Target |
+|-----------|-----------|-------------|-------------|--------|
+| **`bwrap`** | **`pi`** | **`browser`** | **PI in browser + bwrap sandbox on server. Canonical hosted profile.** | **Production** |
+| `bwrap` | `pi` | `server` | PI on server (absorbs pi_service sidecar). Bwrap exec. | Production (server-side agent) |
+| `lightningfs` | `pi` | `browser` | Everything in browser. Zero server exec. | Dev-only |
+| `justbash` | `pi` | `browser` | JustBash WASM in browser. Lightweight. | Experimental |
+
+Only the **bold** row is the canonical reference profile for testing, smoke, eval, and docs.
+Other combinations are compatibility paths — they should work, but they don't drive decisions.
 
 ### WorkspaceBackend Interface
 
@@ -174,14 +187,14 @@ function FileTreePanel() {
 }
 ```
 
-### Agent Panel: Pluggable
+### Agent Panel
+
+PI only at launch. The panel interface is pluggable for future runtimes:
 
 ```tsx
 function AgentPanel({ workspaceId }) {
-  const config = useRuntimeConfig()
-  if (config.agent.runtime === 'ai-sdk') {
-    return <AiChat workspaceId={workspaceId} />
-  }
+  // PI is the only runtime in foundation scope.
+  // Future: check config.agent.runtime and render AiChat for "ai-sdk".
   return <PiNativeAdapter workspaceId={workspaceId} />
 }
 ```
@@ -189,7 +202,7 @@ function AgentPanel({ workspaceId }) {
 ### Agent Tools: 2 Tools Only
 
 The LLM gets two tools. Bash covers everything — files, git, system ops.
-UI endpoints (files, git) are separate tRPC routes for the React panels.
+UI endpoints (files, git) are separate HTTP/JSON routes for the React panels.
 
 ```
 Agent tools (what the LLM calls):
@@ -204,19 +217,22 @@ UI endpoints (what React panels call, tRPC):
 Tool schemas live in `src/shared/toolSchemas.ts` — shared by both PI and AI SDK runtimes.
 Same interface, different executors depending on which backend is active.
 
-### Stack
+### Stack (Foundation Scope)
 
 ```
-Backend:   Fastify + tRPC + Drizzle + jose
+Backend:   Fastify + Zod (typed HTTP/JSON routes) + Drizzle + jose + simple-git
            + bwrap (system package, already in Dockerfile)
-           + AI SDK (when runtime = "ai-sdk")
 Frontend:  React + Vite + TailwindCSS + shadcn + DockView
            + LightningFS + isomorphic-git + Pyodide (when backend = "lightningfs")
            + JustBash (when backend = "justbash")
-           + PI (@mariozechner/pi-*) (when runtime = "pi")
-           + useChat (@ai-sdk/react) (when runtime = "ai-sdk")
+           + PI (@mariozechner/pi-*) — only agent runtime
 Database:  Neon PostgreSQL (same as today)
 Auth:      Neon Auth (same as today) + jose for JWT
+CLI:       bui (adapted for Node.js backend, not replaced)
+
+Future (not foundation scope):
+           + AI SDK (@ai-sdk/anthropic, @ai-sdk/react) — second agent runtime
+           + tRPC — internal optimization (NOT the public contract)
 ```
 
 ### What Gets Deleted
@@ -224,11 +240,11 @@ Auth:      Neon Auth (same as today) + jose for JWT
 ```
 DELETED (Python backend):
   src/back/                          # entire Python backend
-  src/pi_service/                    # Node.js sidecar (PI backend mode no longer needs separate process)
+  src/pi_service/                    # Node.js sidecar (PI runs in-process in Node backend)
   src/companion_service/             # orphan
   src/test/                          # orphan (tests/ is the real test dir)
   pyproject.toml, uv.lock           # Python packaging
-  deploy/fly/fly.backend-agent.toml  # no backend mode
+  deploy/fly/fly.backend-agent.toml  # single deploy config replaces 3 variants
   deploy/fly/fly.workspaces.toml     # no workspace machines
   deploy/fly/fly.control-plane.toml  # no control plane split
 
@@ -236,8 +252,8 @@ DELETED (legacy surfaces):
   src/front/panels/TerminalPanel.jsx          # Claude terminal pane
   src/front/panels/ShellTerminalPanel.jsx     # shell pane
   src/front/components/Terminal.jsx           # terminal component
-  src/front/components/chat/ClaudeStreamChat.jsx  # Claude streaming chat (replaced by AiChat)
-  src/front/providers/pi/backendAdapter.jsx   # PI backend adapter (server-side PI via sidecar)
+  src/front/components/chat/ClaudeStreamChat.jsx  # Claude streaming chat
+  src/front/providers/pi/backendAdapter.jsx   # PI backend adapter (PI runs in-process now)
 ```
 
 ### What Stays (frontend, mostly unchanged)
@@ -245,10 +261,10 @@ DELETED (legacy surfaces):
 ```
 KEPT:
   src/front/App.jsx                    # split into hooks
-  src/front/panels/FileTreePanel.jsx   # same, switches from httpProvider to tRPC
+  src/front/panels/FileTreePanel.jsx   # same, typed fetch replaces httpProvider
   src/front/panels/EditorPanel.jsx     # same
   src/front/panels/ReviewPanel.jsx     # same (if approval stays)
-  src/front/panels/AgentPanel.jsx      # pluggable: renders PI or AiChat based on config
+  src/front/panels/AgentPanel.jsx      # PI only (pluggable interface for future runtimes)
   src/front/panels/DataCatalogPanel.jsx # same
   src/front/components/GitChangesView.jsx  # same
   src/front/components/GitDiff.jsx     # same
@@ -269,22 +285,26 @@ KEPT (PI — browser agent runtime):
   src/front/providers/pi/sessionBus.js        # PI session bus
   src/front/providers/pi/toolCallXmlTransform.js  # PI tool call XML
 
-ADDED (AI SDK — server agent runtime):
-  src/front/components/chat/AiChat.tsx        # useChat() wrapper (used when runtime = "ai-sdk")
-  src/server/agent/chat.ts                    # streamText endpoint
-  src/server/agent/tools.ts                   # server-side tool definitions
+ADDED (foundation scope):
+  src/server/agent/tools.ts                   # shared tool schemas (Zod)
+  src/server/agent/registry.ts                # tool registry (standard + child app tools)
+
+FUTURE (not foundation scope):
+  src/front/components/chat/AiChat.tsx        # useChat() wrapper (when AI SDK runtime is added)
+  src/server/agent/chat.ts                    # streamText endpoint (when AI SDK runtime is added)
 ```
 
 ### Pluggable Subsystems
 
-Two config fields, two pluggable axes:
+Two pluggable axes:
 
 ```
 [workspace]
 backend = "lightningfs" | "justbash" | "bwrap"   # workspace backend (3 options)
 
 [agent]
-runtime = "pi" | "ai-sdk"                        # agent runtime (2 options)
+runtime = "pi"                                   # foundation: PI only
+         # "ai-sdk" reserved for future          # future: AI SDK extension
 ```
 
 #### Axis 1: Workspace Backend
@@ -311,12 +331,11 @@ class JustBashBrowserBackend implements WorkspaceBackend
 
 #### Axis 2: Agent Runtime
 
-Pluggable at the panel level — one component renders, the other is tree-shaken out:
+PI is the only runtime in foundation scope. The interface is pluggable for future runtimes:
 
 ```tsx
 function AgentPanel({ workspaceId }) {
-  const { runtime } = useRuntimeConfig().agent
-  if (runtime === 'ai-sdk') return <AiChat workspaceId={workspaceId} />
+  // Foundation: PI only. Interface supports future runtimes via config.agent.runtime.
   return <PiNativeAdapter workspaceId={workspaceId} />
 }
 ```
@@ -1151,8 +1170,8 @@ id = "boring-ui"
 backend = "bwrap"       # "lightningfs" | "justbash" | "bwrap"
 
 [agent]
-runtime = "ai-sdk"      # "pi" | "ai-sdk"
-model = "claude-sonnet-4-5-20250929"  # only used when runtime = "ai-sdk"
+runtime = "pi"          # "pi" (foundation scope)
+placement = "browser"   # "browser" | "server"
 
 [auth]
 provider = "neon"
@@ -1163,39 +1182,41 @@ session_ttl = 86400
 platform = "fly"
 ```
 
-### Config Combinations
+### Foundation Profile
 
-| Use case | `backend` | `runtime` | Description |
-|----------|-----------|-----------|-------------|
-| **Offline dev** | `lightningfs` | `pi` | Everything in browser. IndexedDB + isomorphic-git. User brings API key. |
-| **Quick preview** | `justbash` | `pi` | JustBash WASM in browser. Instant, lightweight, no persistence. |
-| **Managed preview** | `justbash` | `ai-sdk` | JustBash in browser, LLM on server. Platform provides API key. |
-| **Self-serve production** | `bwrap` | `pi` | Real sandbox on server. User brings API key. Cheapest hosted. |
-| **Full managed production** | `bwrap` | `ai-sdk` | Real sandbox + LLM on server. Most capable. Headless agents possible. |
-| **Headless / webhooks** | `bwrap` | `ai-sdk` | Required for Telegram/Slack bots, scheduled tasks, headless API. |
+| Use case | `backend` | `placement` | Description |
+|----------|-----------|-------------|-------------|
+| **Canonical production** | **`bwrap`** | **`browser`** | **PI in browser + bwrap sandbox on server. Reference profile.** |
+| Server-side agent | `bwrap` | `server` | PI runs in-process on server. No sidecar. |
+| Offline dev | `lightningfs` | `browser` | Everything in browser. IndexedDB. Dev-only. |
+| Quick preview | `justbash` | `browser` | JustBash WASM in browser. Experimental. |
 
 ---
 
-## Key Dependencies
+## Clean Codebase Goals
+
+The migration is an opportunity to start fresh with a clean, well-structured codebase:
+
+- **No dead code.** Every file has a purpose. No orphan modules, no compatibility shims.
+- **No parallel implementations.** One router per domain (no `*_neon.py` + `*_local.py` duplication).
+- **No god files.** auth_router_neon.py (80KB) becomes ~10 focused files. App.jsx (4,452 lines) becomes 7 hooks + thin shell.
+- **Clear module boundaries.** auth/, users/, workspaces/, files/, git/, exec/ — each owns one domain.
+- **Consistent patterns.** Every route: Zod input validation → auth check → workspace scope → handler → typed response.
+- **Typed end-to-end.** Zod schemas shared between server validation and client type generation. No hand-typed fetch responses.
+
+---
+
+## Key Dependencies (Foundation)
 
 ```json
 {
   "dependencies": {
     "fastify": "^5.x",
-    "@trpc/server": "^11.x",
-    "@trpc/client": "^11.x",
-    "@trpc/react-query": "^11.x",
     "drizzle-orm": "^0.38.x",
     "postgres": "^3.x",
-    "justbash": "^0.x",
     "jose": "^5.x",
     "simple-git": "^3.x",
     "zod": "^3.x",
-
-    "ai": "^4.x",
-    "@ai-sdk/anthropic": "^1.x",
-    "@ai-sdk/openai": "^1.x",
-    "@ai-sdk/react": "^1.x",
 
     "@mariozechner/pi-agent-core": "existing",
     "@mariozechner/pi-ai": "existing",
@@ -1212,7 +1233,5 @@ platform = "fly"
 }
 ```
 
-PI packages are kept for `runtime = "pi"`. AI SDK packages are added for `runtime = "ai-sdk"`.
-Both are always installed — the runtime config determines which path is active.
-Tree-shaking in the Vite build ensures only the active runtime's code ships to the browser.
-```
+AI SDK packages (`ai`, `@ai-sdk/anthropic`, `@ai-sdk/react`) are added in a future track
+when the second agent runtime is implemented. Not part of foundation dependencies.
