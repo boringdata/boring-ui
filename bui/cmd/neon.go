@@ -196,12 +196,12 @@ func runNeonSetup(cmd *cobra.Command, args []string) error {
 	}
 	sqlDir := filepath.Join(root, "deploy", "sql")
 	sqlFiles := []string{
-		filepath.Join(sqlDir, "control_plane_supabase_schema.sql"),
+		filepath.Join(root, "internal", "db", "testdata", "control_plane_schema.sql"),
 	}
 	// Add numbered migrations (002_*.sql, 003_*.sql, etc.)
 	if entries, err := os.ReadDir(sqlDir); err == nil {
 		for _, e := range entries {
-			if !e.IsDir() && e.Name() != "control_plane_supabase_schema.sql" && filepath.Ext(e.Name()) == ".sql" {
+			if !e.IsDir() && filepath.Ext(e.Name()) == ".sql" {
 				sqlFiles = append(sqlFiles, filepath.Join(sqlDir, e.Name()))
 			}
 		}

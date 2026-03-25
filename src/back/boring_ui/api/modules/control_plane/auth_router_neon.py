@@ -476,7 +476,6 @@ async def _neon_password_auth(
                     redirect_uri=redirect_uri,
                     pending_login=verification_pending_login,
                 )
-                from urllib.parse import urlparse
                 parsed_cb = urlparse(full_callback)
                 relative_callback = parsed_cb.path
                 if parsed_cb.query:
