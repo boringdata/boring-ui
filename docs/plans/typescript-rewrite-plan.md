@@ -28,7 +28,7 @@ runtime integration is the part that **requires** TypeScript to do cleanly.
 
 ## Architecture
 
-### Two Config Fields
+### Two Canonical Config Fields
 
 ```toml
 [workspace]
@@ -48,6 +48,111 @@ One deployment. One server. Everything else derives from these two fields.
 > AI SDK can be added later without architectural changes — the pluggable runtime
 > interface is designed for it, but shipping it is a separate track after the
 > backend migration stabilizes.
+
+### Config Migration: Compatibility Aliases
+
+During migration, legacy config fields are accepted as inputs and normalized
+to the canonical fields. Old configs keep working without changes.
+
+```
+Legacy field                    → Canonical field
+frontend.data.backend = "http"  → workspace.backend = "bwrap"
+frontend.data.backend = "lightningfs" → workspace.backend = "lightningfs"
+agents.mode = "frontend"        → agent.placement = "browser"
+agents.mode = "backend"         → agent.placement = "server"
+agents.default = "pi"           → agent.runtime = "pi"
+```
+
+The config loader normalizes everything into one canonical payload served from `/__bui/config`.
+Legacy fields are removed in the final cleanup phase AFTER all consumers use canonical fields.
+
+### Resolver Layer
+
+Instead of scattered `if (config.backend === ...)` checks, two resolver functions
+create the right implementations. Panels and tools never see raw config strings:
+
+```typescript
+// src/server/workspace/resolver.ts
+function resolveWorkspaceBackend(config: AppConfig, workspaceId: string): WorkspaceBackend {
+  switch (config.workspace.backend) {
+    case 'bwrap':       return new BwrapBackend(workspaceId)
+    case 'lightningfs': throw new Error('lightningfs runs in browser, not server')
+    case 'justbash':    throw new Error('justbash runs in browser, not server')
+  }
+}
+
+// src/front/workspace/resolver.ts
+function resolveWorkspaceBackend(config: RuntimeConfig, workspaceId: string): WorkspaceBackend {
+  switch (config.workspace.backend) {
+    case 'bwrap':       return createTrpcBackend(trpcClient, workspaceId)
+    case 'lightningfs': return createLightningBackend(workspaceId)
+    case 'justbash':    return createJustBashBrowserBackend()
+  }
+}
+
+// src/front/agent/resolver.ts
+function resolveAgentRuntime(config: RuntimeConfig): AgentRuntime {
+  switch (config.agent.runtime) {
+    case 'pi':     return createPiRuntime(config)
+    case 'ai-sdk': return createAiSdkRuntime(config)  // future
+  }
+}
+```
+
+Panels consume resolved interfaces, not raw config strings:
+
+```tsx
+const backend = resolveWorkspaceBackend(config, workspaceId)
+const agent = resolveAgentRuntime(config)
+return (
+  <WorkspaceProvider backend={backend}>
+    <AgentProvider runtime={agent}>
+      {children}
+    </AgentProvider>
+  </WorkspaceProvider>
+)
+```
+
+### Abstract Capability Gating
+
+Panes gate on abstract capabilities, not implementation-specific flags:
+
+```typescript
+// Old (implementation-coupled):
+requiresFeatures: ['pi']
+requiresRouters: ['chat_claude_code']
+
+// New (abstract):
+requiresCapabilities: ['agent.chat']         // any agent runtime that supports chat
+requiresCapabilities: ['workspace.files']    // any backend that supports file ops
+requiresCapabilities: ['workspace.exec']     // any backend that supports bash/python
+```
+
+The capabilities endpoint reports what the active backend+runtime support:
+
+```json
+{
+  "capabilities": {
+    "workspace.files": true,
+    "workspace.exec": true,
+    "workspace.git": true,
+    "workspace.python": true,
+    "agent.chat": true,
+    "agent.tools": true
+  }
+}
+```
+
+Each `WorkspaceBackend` implementation declares its capabilities:
+
+```typescript
+class BwrapBackend implements WorkspaceBackend {
+  capabilities = ['workspace.files', 'workspace.exec', 'workspace.git', 'workspace.python']
+}
+class JustBashBrowserBackend implements WorkspaceBackend {
+  capabilities = ['workspace.files', 'workspace.exec']  // no real git, limited python
+}
+```
 
 ### Workspace Backends (3 options, pluggable)
 
@@ -873,28 +978,39 @@ Python ref: `src/back/boring_ui/api/capabilities.py` + `app.py` health/config en
 
 ## Implementation Phases
 
-### Phase 1: Scaffold + Core Infrastructure (days 1-2)
+### Phase 1: Scaffold + Config + Resolvers (days 1-2)
 
 ```
 1. Initialize TypeScript project
-   - package.json with Fastify, tRPC, Drizzle, AI SDK, JustBash, jose, simple-git, zod
+   - package.json with Fastify, tRPC, Drizzle, jose, simple-git, zod
    - tsconfig.json
    - Drizzle config pointing at existing Neon DB
 
-2. Set up Fastify app with tRPC
+2. Config loader + normalization
+   - src/server/config.ts — read boring.app.toml + env vars
+   - Normalize legacy fields (agents.mode, frontend.data.backend) to canonical fields
+   - Emit canonical payload for /__bui/config
+   - TEST FIRST: config normalization tests (legacy → canonical mapping)
+
+3. Resolver layer
+   - src/server/workspace/resolver.ts — resolveWorkspaceBackend()
+   - src/front/workspace/resolver.ts — resolveWorkspaceBackend() (browser side)
+   - src/front/agent/resolver.ts — resolveAgentRuntime()
+   - TEST FIRST: resolver tests (config → correct implementation class)
+
+4. Set up Fastify app with tRPC
    - src/server/app.ts — Fastify factory with tRPC plugin
    - src/server/trpc.ts — context, publicProcedure, protectedProcedure, workspaceProcedure
-   - src/server/config.ts — read boring.app.toml + env vars
 
-3. Auth middleware
+5. Auth middleware
    - src/server/auth/session.ts — JWT create/parse with jose (port auth_session.py)
    - src/server/auth/middleware.ts — cookie validation hook
 
-4. Workspace context
+6. Workspace context
    - src/server/workspace/context.ts — resolve workspace dir from ID
    - src/server/workspace/paths.ts — path traversal prevention (port paths.py)
 
-5. Database
+7. Database
    - src/server/db/schema.ts — Drizzle schema matching existing tables
    - src/server/db/client.ts — postgres.js connection to Neon
 
@@ -909,26 +1025,35 @@ Python reference files:
 - `src/back/boring_ui/api/workspace/paths.py` → `src/server/workspace/paths.ts`
 - `src/back/boring_ui/api/workspace/context.py` → `src/server/workspace/context.ts`
 
-### Phase 2: Files + Git + Exec (days 3-5)
+### Phase 2: BwrapBackend — Wrap Existing (days 3-5)
+
+Implement the canonical hosted profile first: `backend = "bwrap"`.
+This wraps the existing proven Python behavior in TypeScript.
+Do NOT add justbash yet — wrap what exists, prove parity, then add new backends.
 
 ```
-1. Files router (7 routes)
-   - Port file operations from FileService (service.py) to fs/promises
-   - Same path validation, same response shapes
-   - Test: smoke_filesystem.py should pass against new server
+1. BwrapBackend implementation
+   - Port bwrap sandbox from exec/service.py (exact same flags, bootstrap, env)
+   - This is the WorkspaceBackend implementation for production
+   - TEST FIRST: bwrap isolation tests (can't escape workspace dir)
 
-2. Git router (16 routes)
+2. Files router (7 routes)
+   - Port file operations from FileService (service.py) to fs/promises
+   - Delegates to BwrapBackend for path-scoped file ops
+   - Same path validation, same response shapes
+   - PARITY GATE: smoke_filesystem.py passes against new server
+
+3. Git router (16 routes)
    - Port from subprocess_git.py to simple-git library
    - Same response shapes
-   - Test: smoke_git_sync.py should pass
+   - PARITY GATE: smoke_git_sync.py passes
 
-3. Exec router (2 routes — JustBash + Monty)
-   - NEW: JustBash workspace runner pool
-   - NEW: Monty workspace runner pool
-   - Per-workspace instances with ReadWriteFs scoped to workspace dir
-   - Test: exec_bash tool calls from smoke tests
+4. Exec router (2 routes)
+   - bash → BwrapBackend.bash() (bwrap subprocess)
+   - python → BwrapBackend.python() (python3 in bwrap)
+   - Same timeout handling, output truncation, bootstrap sequence
 
-4. Static file serving
+5. Static file serving
    - Serve Vite build output (dist/) from Fastify
    - SPA fallback for client-side routing
 ```
@@ -1083,7 +1208,7 @@ DOCS — update:
    - Update capability gating from router-name-based to logical feature-based
 ```
 
-### Phase 7: Cutover + Cleanup (days 17-18)
+### Phase 7: Cutover (days 17-18)
 
 ```
 1. Run full smoke suite against TypeScript server
@@ -1098,11 +1223,30 @@ DOCS — update:
    - rm -rf src/back/ (already not ported — TypeScript replacements in src/server/)
    - rm pyproject.toml uv.lock
    - Update AGENTS.md, deploy/README.md
+```
 
-4. Update boring.app.toml
-   - New [workspace] isolation field
-   - New [agent] runtime field (pi | ai-sdk)
-   - Remove legacy agents.mode, agents.pi
+### Phase 8: Remove Legacy Config + Add New Backends (days 19-20)
+
+Only AFTER all consumers use canonical config and cutover is stable:
+
+```
+1. Remove legacy config aliases
+   - Delete normalization for agents.mode, frontend.data.backend
+   - Config loader rejects unknown fields instead of silently normalizing
+   - Update all boring.app.toml files to use canonical [workspace] + [agent] fields
+   - Update child app boring.app.toml configs
+
+2. Add JustBash browser backend (if desired)
+   - Implement JustBashBrowserBackend behind WorkspaceBackend interface
+   - Add justbash npm dependency
+   - Test: config resolver returns JustBashBrowserBackend when backend = "justbash"
+   - This is an ADD, not a migration — existing backends unaffected
+
+3. Update docs and examples
+   - boring.app.toml examples use canonical fields only
+   - deploy/README.md describes the two-field config model
+   - AGENTS.md updated for new architecture
+   - Child app extension docs show tRPC router pattern
 ```
 
 ---
@@ -1153,15 +1297,39 @@ tests/smoke/smoke_git_sync.py   — same
 
 The smoke tests hit HTTP endpoints. They don't care if the backend is Python or TypeScript. Same routes, same response shapes → same tests.
 
-### New Tests
+### New Tests (ordered by implementation phase)
+
+Phase 1 tests — build FIRST, before any route implementation:
 ```
-tests/unit/exec.test.ts         — JustBash isolation (can't escape workspace dir)
-tests/unit/monty.test.ts        — Monty isolation (can't access host filesystem)
+tests/unit/config.test.ts       — config normalization (legacy → canonical field mapping)
+                                  startup validation (missing env vars fail fast)
+                                  boring.app.toml parsing
+tests/unit/resolver.test.ts     — workspace backend resolution (config → correct class)
+                                  agent runtime resolution (config → correct class)
+                                  invalid combinations rejected
 tests/unit/auth.test.ts         — JWT session round-trip, cookie parsing, JWKS verification
+```
+
+Phase 2 tests — one per route family, written BEFORE implementation (TDD):
+```
+tests/unit/bwrap.test.ts        — bwrap sandbox isolation (can't escape workspace dir)
+tests/unit/files.test.ts        — file operations via BwrapBackend
+tests/unit/git.test.ts          — git operations via simple-git
+tests/unit/exec.test.ts         — exec via bwrap (timeout, output truncation, bootstrap)
 tests/unit/workspace.test.ts    — path traversal prevention, workspace dir creation
+```
+
+Phase 3+ tests:
+```
 tests/unit/trpc.test.ts         — tRPC router integration tests (with test DB)
-tests/unit/config.test.ts       — startup validation (missing env vars fail fast)
-tests/unit/capabilities.test.ts — contract shape (no legacy names, logical sections)
+tests/unit/capabilities.test.ts — contract shape (abstract capabilities, no legacy names)
+```
+
+Integration combos (tested after each backend/runtime is wired):
+```
+tests/integration/bwrap-pi.test.ts        — canonical profile: bwrap backend + PI runtime
+tests/integration/lightningfs-pi.test.ts  — browser profile: lightningfs + PI
+tests/integration/justbash-pi.test.ts     — experimental: justbash + PI (added in Phase 8)
 ```
 
 ### Negative Tests (from improvement-roadmap.md)
