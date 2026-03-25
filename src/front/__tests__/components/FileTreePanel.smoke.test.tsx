@@ -110,7 +110,7 @@ describe('FileTreePanel smoke', () => {
       id: 'filetree',
       essential: true,
       placement: 'left',
-      requiresFeatures: ['files'],
+      requiresCapabilities: ['workspace.files'],
     })
   })
 
