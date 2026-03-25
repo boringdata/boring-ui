@@ -2,43 +2,47 @@
 
 ## Status
 
-Draft execution plan based on the March 25, 2026 repo review.
+Revised execution plan based on the March 25, 2026 repo review plus current worktree verification.
 
 This plan assumes the recent Neon auth fixes are already landed:
 
 - truthful verification-email messaging
 - explicit public-origin support for hosted auth callbacks
 
-Those fixes reduced immediate auth correctness risk. The next work should focus on maintainability, deploy confidence, and restoring trustworthy quality gates.
+Those fixes reduced immediate auth correctness risk. The remaining work should focus on deploy confidence, crash isolation, and shrinking the largest frontend/backend hotspots in the order that minimizes regression risk.
+
+Phase 0 is complete in the current worktree as of 2026-03-25: `.stylelintrc.json` exists and `npm run lint` now passes cleanly across all five tracked subcommands. The remaining tooling gap is enforcement, not correctness: this checkout still has no active `.git/hooks/pre-commit`, so `npm run lint` is authoritative but not automatically run by Git in this clone.
 
 Related beads:
 
 - `bd-znpbo` Tooling: restore tracked lint/style gate and style-guideline enforcement
-- `bd-om29` Frontend: break App.jsx workspace shell into focused state/hooks modules
-- `bd-b2fof` Backend: decompose Neon/stream auth flows into smaller contract-tested units
 - `bd-3bs4j` Smoke: cover `AUTH_EMAIL_PROVIDER=none` and `BORING_UI_PUBLIC_ORIGIN` auth flows
-- `bd-rm17p` Backend: split stream bridge/runtime paths into focused modules
+- `bd-3mdry` Frontend: add `PanelErrorBoundary` and lazy panel wrapper tests
+- `bd-om29` Frontend: break `App.jsx` workspace shell into focused state/hooks modules
 - `bd-il78w` Auth UI: move server-rendered auth page out of embedded Python string templates
+- `bd-b2fof` Backend: decompose Neon/stream auth flows into smaller contract-tested units
+- `bd-rm17p` Backend: split stream bridge/runtime paths into focused modules
 
 ---
 
 ## Executive Summary
 
-The highest-leverage improvements are:
+The highest-leverage remaining improvements are:
 
-1. restore a reliable lint gate
-2. add deploy-shaped smoke coverage for auth edge cases
-3. split the frontend shell out of `App.jsx`
-4. decompose the largest hosted auth/backend files into smaller units
-5. move server-rendered auth UI out of embedded Python string templates
+1. add deploy-shaped smoke coverage for hosted auth edge cases
+2. add crash-isolation tests for `PanelErrorBoundary` and lazy panel wrappers
+3. extract embedded auth HTML templates before deeper backend refactors
+4. continue shrinking `src/front/App.jsx` by extracting the largest remaining stateful seams
+5. split `stream_bridge.py` starting with the zero-coupling permission persistence and argument builder blocks
 
-The order matters. A large refactor without working gates is sloppy, and auth/deploy issues should be protected by smoke coverage before deeper code motion starts.
+The order matters. The repo now has a working lint gate in the current worktree. The next priority is protecting behavior with tests, then reducing file size where the safest mechanical extractions exist.
 
 ---
 
 ## Goals
 
 - reduce regression risk in hosted auth flows
+- protect crash isolation for lazy-loaded panels
 - reduce maintenance cost of oversized frontend/backend files
 - make deploy-time failures easier to catch before production
 - improve code ownership boundaries without broad rewrites
@@ -56,20 +60,21 @@ The order matters. A large refactor without working gates is sloppy, and auth/de
 
 ### Frontend
 
-- `src/front/App.jsx` is still a large workspace shell with too many responsibilities
-- auth behavior now depends on capabilities/config contract that should stay stable
-- lint is not a trustworthy gate yet
+- `src/front/App.jsx` is still 4452 lines in the current worktree, even after recent utility/component extraction work
+- the remaining complexity is concentrated in stateful blocks: sidebar state, identity/workspace boot, approvals, layout restoration, and panel positioning
+- `PanelErrorBoundary` and the `withSuspense` wrapper exist but currently have no direct test coverage
 
 ### Backend
 
-- `auth_router_neon.py` and stream-related backend paths still hold too much logic per file
-- deploy behavior is shaped by real proxy/origin conditions, not just unit tests
+- `src/back/boring_ui/api/modules/control_plane/auth_router_neon.py` is 2286 lines
+- the embedded auth templates start at lines 851 and 1526; the login template alone is 673 lines, and the callback template adds another 107 lines before the render helpers
+- `src/back/boring_ui/api/stream_bridge.py` is 1513 lines and still mixes permission persistence, process argument construction, websocket/session orchestration, and message dispatch
 
 ### Tooling
 
-- smoke coverage does not yet protect the new `AUTH_EMAIL_PROVIDER=none` and `BORING_UI_PUBLIC_ORIGIN` paths
-- `npm run lint` is not reliable enough to be treated as a hard quality gate
-- this checkout has no active `.git/hooks/pre-commit`; only tracked repo lint/style commands can be relied on consistently
+- `.stylelintrc.json` is now present and `npm run lint` passes in the current worktree
+- there is no active `.git/hooks/pre-commit` in this checkout; only stock sample hooks are present
+- smoke coverage still does not protect the new `AUTH_EMAIL_PROVIDER=none` and `BORING_UI_PUBLIC_ORIGIN` paths
 
 ---
 
@@ -77,51 +82,46 @@ The order matters. A large refactor without working gates is sloppy, and auth/de
 
 ### Phase 0: Restore Reliable Quality Gates
 
-Target:
+Status:
 
-- make `npm run lint` a meaningful pass/fail gate
-- make the repo's tracked lint/style commands the authoritative style-guidelines gate
+- **Complete in the current worktree** (2026-03-25)
 
 Tracked bead:
 
 - `bd-znpbo`
 
-Files likely involved:
+Completed work:
 
-- `src/front/styles.css`
-- stylelint config files
-- `src/front/components/chat/ClaudeStreamChat.jsx`
-- `src/front/__tests__/components/toolRenderers.test.jsx`
+- added `.stylelintrc.json` with Tailwind-compatible allowances for the current CSS stack
+- fixed a real CSS issue in `src/front/components/chat/styles.css` by removing a dead duplicate `width: 100%` declaration
+- removed unused imports from `src/front/components/chat/ClaudeStreamChat.jsx`
+- removed the unused `screen` import from `src/front/__tests__/components/toolRenderers.test.jsx`
+- fixed the flaky `FileTree` retry test in `src/front/__tests__/components/FileTree.test.tsx` by aligning timeouts with the real `refetchInterval`
+- verified `npm run lint` passes cleanly across all tracked subcommands: `eslint`, `lint:css`, `lint:tokens`, `lint:shadcn`, `lint:phase1`
 
-Work:
+Remaining gap:
 
-- add a valid Stylelint config to the repo
-- fix or intentionally suppress the current known frontend lint warnings
-- document the current enforcement path: this checkout has no active pre-commit hook, only stock sample hooks
-- confirm the intended style-guideline checks are represented in tracked repo config/scripts
-- if any expected style-guideline checks exist only in developer-local setup, move them into tracked repo config/scripts so every contributor runs the same gate
-- keep the scope narrow: do not refactor unrelated feature logic during lint cleanup
+- no active pre-commit hook runs `npm run lint` automatically in this checkout
+- keep `bd-znpbo` open until the lint/style work is fully landed and contributor enforcement is explicitly decided
+- preferred resolution: either add a tracked hook mechanism or document the expected contributor/CI enforcement path clearly
 
-Done when:
+Why this matters:
 
-- `npm run lint` passes without configuration failures
-- the style-guideline checks are defined in tracked repo files rather than relying on one local hook copy
-
-Why first:
-
-- every later frontend refactor depends on having a trustworthy static gate
+- the repo now has a trustworthy tracked lint command; the remaining question is how strictly to enforce it for every contributor
 
 ---
 
-### Phase 1: Add Hosted-Auth Smoke Coverage
+### Phase 1: Add Deploy And Crash-Isolation Test Coverage
 
 Target:
 
-- protect the recently fixed hosted auth behaviors with smoke tests
+- protect the recently fixed hosted auth behaviors with smoke coverage
+- protect the new lazy-panel crash isolation behavior with targeted frontend tests
 
-Tracked bead:
+Tracked beads:
 
 - `bd-3bs4j`
+- `bd-3mdry`
 
 Files likely involved:
 
@@ -129,6 +129,9 @@ Files likely involved:
 - `tests/smoke/smoke_capabilities.py`
 - `tests/smoke/smoke_lib/auth.py`
 - `tests/smoke/smoke_lib/resend.py`
+- `src/front/components/PanelErrorBoundary.jsx`
+- `src/front/registry/panes.jsx`
+- new frontend unit tests under `src/front/__tests__/`
 
 Work:
 
@@ -137,14 +140,18 @@ Work:
 - assert capabilities expose `auth.verificationEmailEnabled`
 - add a smoke scenario for `BORING_UI_PUBLIC_ORIGIN`
 - assert delivered verification callbacks point back to the configured public app origin
+- add a unit test proving `PanelErrorBoundary` renders recovery UI when a child throws
+- add a unit test proving `withSuspense` wraps lazy panels with both `Suspense` and `PanelErrorBoundary`
 
 Done when:
 
-- smoke tests fail on the old behavior and pass on the new one
+- auth smoke tests fail on the old behavior and pass on the new one
+- a throwing lazy panel renders fallback UI instead of taking down the panel tree
+- the lazy panel registration path has explicit regression coverage
 
 Why now:
 
-- this is the fastest way to stop deploy-specific auth regressions from returning
+- this is the fastest way to lock in two recent behavioral improvements before deeper code motion starts
 
 ---
 
@@ -152,39 +159,54 @@ Why now:
 
 Target:
 
-- reduce `src/front/App.jsx` to a composition layer
+- reduce `src/front/App.jsx` to a composition layer by extracting the largest remaining stateful seams
+
+Status:
+
+- **Partially complete** (2026-03-25)
 
 Tracked bead:
 
 - `bd-om29`
 
-Files likely involved:
+Completed work:
 
-- `src/front/App.jsx`
-- new modules under `src/front/hooks/` or `src/front/app-shell/`
+- extracted shared utilities into `src/front/utils/debounce.js`, `src/front/utils/dockHelpers.js`, `src/front/utils/frontendState.js`, and `src/front/utils/panelConfig.js`
+- extracted shared dock tab rendering into `src/front/components/DockTab.jsx`
+- added `src/front/components/PanelErrorBoundary.jsx` and wrapped lazy-loaded panels in `src/front/registry/panes.jsx`
+- deduplicated `UNKNOWN_CAPABILITIES` into `src/front/hooks/useCapabilities.js`
+- reduced `src/front/App.jsx` from 4823 lines at `HEAD` to 4452 lines in the current worktree
+
+Remaining work should target the stateful blocks that still dominate the file.
 
 Recommended extraction sequence:
 
-1. `useAuthBoot`
-2. `useDataProviderScope`
-3. `useWorkspaceRouting`
-4. `useDockviewPersistence`
-5. `useWorkspaceShell`
+1. `useSidebarLayout` — sidebar collapse/expand state machine, section collapse toggling, panel constraints, and persisted sidebar sizing
+2. `useCenterPanelPositioning` — center-group resolution, fallback anchors, and file-open placement rules
+3. `useApprovalSync` — approval polling, review panel lifecycle, decision submission, and stale-panel cleanup
+4. `useFrontendCommandPoller` — server command polling and UI dispatch
+5. `useUserIdentity` — identity resolution, workspace list loading, auth status, and storage-prefix scoping
+6. `useDataProviderScope` — LightningFS namespace, query cache scoping, and data-provider resolution
 
 Suggested target shape:
 
 ```jsx
 export default function App() {
-  const auth = useAuthBoot()
-  const workspace = useWorkspaceShell(auth)
-  const layout = useDockviewPersistence(workspace)
-  const dataProvider = useDataProviderScope(workspace)
+  const config = useConfig()
+  const identity = useUserIdentity(config)
+  const sidebar = useSidebarLayout(config)
+  const center = useCenterPanelPositioning(dockApi)
+  const approvals = useApprovalSync(capabilities)
+  const commands = useFrontendCommandPoller(dockApi)
+  const dataProvider = useDataProviderScope(config, identity)
 
   return (
-    <AppFrame
-      auth={auth}
-      workspace={workspace}
-      layout={layout}
+    <WorkspaceShell
+      identity={identity}
+      sidebar={sidebar}
+      center={center}
+      approvals={approvals}
+      commands={commands}
       dataProvider={dataProvider}
     />
   )
@@ -196,68 +218,82 @@ Work rules:
 - do not rewrite behavior while extracting ownership boundaries
 - land this in small commits, not one broad refactor
 - preserve the current auth/capabilities contract while moving code
+- extract the stateful seams above before inventing new abstraction layers
 
 Done when:
 
-- `App.jsx` is materially smaller
-- existing auth/workspace tests still pass
-- extracted hooks have clear inputs/outputs
+- `src/front/App.jsx` is below 2500 lines
+- each extracted hook has clear inputs/outputs and focused tests
+- auth, workspace boot, and layout behavior remain unchanged
 
 Why this is high leverage:
 
-- this is the largest frontend maintainability hotspot in the repo
+- the remaining complexity is no longer “miscellaneous utility code”; it is concentrated in a few large stateful blocks with clearer seams than the original hook list suggested
 
 ---
 
-### Phase 3: Decompose Hosted Auth Backend
+### Phase 3: Extract Auth HTML Templates, Then Decompose Backend
 
 Target:
 
-- turn the Neon auth backend into smaller contract-tested units
+- move the embedded auth HTML/CSS/JS out of `auth_router_neon.py`
+- then decompose the remaining Python auth logic into smaller contract-tested units
 
-Tracked bead:
+Tracked beads:
 
+- `bd-il78w`
 - `bd-b2fof`
 
 Files likely involved:
 
 - `src/back/boring_ui/api/modules/control_plane/auth_router_neon.py`
+- new template files under `src/back/boring_ui/api/modules/control_plane/templates/`
 - new support modules under `src/back/boring_ui/api/modules/control_plane/`
 
-Recommended split:
+Step 1: HTML extraction (low-risk, mechanical)
 
-- `neon_client.py`
-- `callback_urls.py`
-- `signup_flow.py`
-- `verification_flow.py`
-- `password_reset_flow.py`
-- `session_exchange.py`
-- `responses.py`
+- move `_NEON_LOGIN_HTML_TEMPLATE` out of Python into `templates/login.html`
+- move `_NEON_CALLBACK_HTML` out of Python into `templates/callback.html`
+- keep Python-side rendering thin: load file contents, replace the existing `/*AUTH_CONFIG_JSON*/` placeholder, and return HTML
+- add a render test that proves the generated HTML still injects the same auth config payload
 
-Suggested interface direction:
+This step alone removes the largest non-Python block from the file and makes the remaining logic much easier to review.
+
+Step 2: Extract well-isolated helpers (medium-risk)
+
+- `auth_urls.py` — `_public_origin()`, `_build_callback_url()`, `_normalize_origin()`, `_safe_redirect_path()`
+- `auth_crypto.py` — `_pending_login_fernet()`, `_encode_pending_login()`, `_decode_pending_login()`
+- `neon_client.py` — HTTP calls to Neon auth endpoints for sign-up, sign-in, token exchange, verification email, and password reset
+
+Suggested `neon_client.py` interface:
 
 ```python
 class NeonAuthClient:
+    def __init__(self, base_url: str, http_client: httpx.AsyncClient): ...
     async def sign_up_email(self, *, email: str, password: str, name: str) -> dict: ...
     async def sign_in_email(self, *, email: str, password: str) -> dict: ...
-    async def send_verification_email(self, *, email: str, origin: str, callback_url: str) -> dict: ...
+    async def fetch_jwt(self, *, cookies: dict) -> str: ...
+    async def send_verification_email(self, *, email: str, callback_url: str) -> dict: ...
+    async def request_password_reset(self, *, email: str, redirect_url: str) -> dict: ...
+    async def reset_password(self, *, new_password: str, token: str) -> dict: ...
 ```
 
-Work rules:
+Step 3: Thin the router (higher-risk, last)
 
-- keep the router as a thin wiring layer
-- move origin/callback logic into a dedicated helper module
-- add tests around each extracted boundary instead of relying on one giant file
+- keep `create_auth_session_router_neon()` as a wiring layer
+- reduce each route handler to a thin request/response coordinator that delegates to extracted helpers or client methods
 
 Done when:
 
-- the auth router mainly composes smaller units
-- callback/origin logic is independently testable
-- signup, resend, reset, and callback-completion flows have crisp ownership
+- auth HTML no longer lives in Python string blobs
+- `auth_router_neon.py` is below 800 lines
+- URL helpers, crypto helpers, and the Neon client have focused tests
+- route handlers read as composition rather than implementation details
 
-Why this matters:
+Why this order is better:
 
-- auth correctness changes are currently too expensive because too much context lives in one file
+- the HTML extraction is mechanical and low-risk
+- removing 700+ lines of embedded template content first makes every later backend refactor cheaper and easier to review
 
 ---
 
@@ -265,7 +301,7 @@ Why this matters:
 
 Target:
 
-- split large stream/runtime files using the same approach as hosted auth
+- split `src/back/boring_ui/api/stream_bridge.py` by starting with the lowest-coupling blocks first
 
 Tracked bead:
 
@@ -274,52 +310,24 @@ Tracked bead:
 Files likely involved:
 
 - `src/back/boring_ui/api/stream_bridge.py`
-- stream-related backend modules
+- new stream support modules under `src/back/boring_ui/api/`
 
-Recommended split:
+Recommended extraction sequence:
 
-- transport/session lifecycle
-- message normalization
-- tool-event translation
-- provider-facing bridge logic
+1. `permission_settings.py` — extract `_persist_permission_suggestions()` and its helper functions from the block that starts at line 43; this is pure settings file I/O and has no websocket/session coupling
+2. `stream_args.py` — extract `build_stream_args()` from the block that starts at line 693; argument construction is pure logic and easy to test independently
+3. split `handle_stream_websocket()` from the block that starts at line 843 into focused message handlers for user messages, control messages, control responses, and restart flows
+4. split `StreamSession.start_read_loop()` from the block that starts at line 489 into smaller stdout/stderr and message-dispatch helpers
 
 Done when:
 
-- stream runtime changes no longer require loading one large backend file into working memory
+- `stream_bridge.py` is below 800 lines
+- permission persistence and argument construction have independent tests
+- websocket/session orchestration is no longer interleaved with every helper concern
 
 Why later:
 
-- auth has more immediate correctness/deploy impact than stream cleanup
-
----
-
-### Phase 5: Move Server-Rendered Auth UI Out of Python String Templates
-
-Target:
-
-- stop editing large HTML/JS string blobs inside Python
-
-Tracked bead:
-
-- `bd-il78w`
-
-Files likely involved:
-
-- `src/back/boring_ui/api/modules/control_plane/auth_router_neon.py`
-- new template/static asset files
-
-Work:
-
-- move auth HTML/JS into a template or static asset
-- keep Python responsible for routing plus runtime config injection only
-
-Done when:
-
-- auth UI changes no longer require editing long embedded string templates
-
-Why last:
-
-- first stabilize behavior and backend boundaries, then improve presentation packaging
+- auth still has more immediate correctness/deploy impact than stream cleanup, but the first two stream extractions are low-risk and should lead the work once this phase starts
 
 ---
 
@@ -327,21 +335,31 @@ Why last:
 
 The roadmap is succeeding if the repo reaches this state:
 
-- `npm run lint` is a real gate
+- `npm run lint` remains a real tracked gate and the contributor enforcement path is explicit
 - hosted-auth smoke tests protect the new deploy-sensitive paths
-- `src/front/App.jsx` is no longer the primary frontend complexity sink
+- `PanelErrorBoundary` and lazy panel wrappers have direct regression coverage
+- `src/front/App.jsx` is below 2500 lines and its extracted hooks are independently testable
+- `src/back/boring_ui/api/modules/control_plane/auth_router_neon.py` is below 800 lines with HTML in separate template files
+- `src/back/boring_ui/api/stream_bridge.py` is below 800 lines with permission persistence and argument building extracted
 - hosted auth and stream logic are broken into smaller contract-tested modules
-- auth page delivery is easier to change without touching large Python string blobs
 
 ---
 
 ## Risks And Mitigations
 
+### Risk: HTML template extraction changes rendering behavior
+
+Mitigation:
+
+- keep the existing `/*AUTH_CONFIG_JSON*/` placeholder contract
+- use simple file loading plus `.replace()` rather than introducing a full template engine during the first extraction
+- add a render test that compares known config injection output against expected HTML
+
 ### Risk: frontend refactor creates subtle boot regressions
 
 Mitigation:
 
-- extract one concern at a time
+- extract one stateful seam at a time
 - keep tests green after each extraction
 - avoid behavioral changes during mechanical moves
 
@@ -349,8 +367,8 @@ Mitigation:
 
 Mitigation:
 
-- split by concrete flows, not abstract architecture
-- keep the router surface unchanged while moving logic inward
+- split by concrete flows and helper boundaries, not abstract architecture
+- extract HTML and pure helpers first, then thin the router last
 
 ### Risk: smoke coverage becomes too environment-specific
 
@@ -363,10 +381,11 @@ Mitigation:
 
 ## Recommended First Move
 
-If work starts immediately, the next best sequence is:
+Phase 0 is complete in the current worktree. The next best sequence is:
 
-1. fix the lint gate
-2. land `bd-3bs4j`
-3. start `bd-om29`
+1. land `bd-3bs4j` for hosted-auth smoke coverage
+2. land `bd-3mdry` for `PanelErrorBoundary` and lazy wrapper tests
+3. start `bd-il78w` by extracting the auth HTML templates out of `auth_router_neon.py`
+4. continue `bd-om29` with `useSidebarLayout`, which is the cleanest next stateful seam to pull out of `App.jsx`
 
-That path improves correctness, safety, and maintainability in the right order.
+This sequence adds safety nets first, then reduces the two largest files using the least risky extractions available.
