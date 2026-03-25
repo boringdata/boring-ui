@@ -196,6 +196,50 @@ The rewrite is the opportunity to clean up the auth system properly.
 - **Startup validation**: all required env vars checked before first request
 - **HTML out of Python strings**: auth pages use proper template files
 
+### Unified Tool Interface
+
+The LLM tool interface must be **identical** regardless of runtime mode or isolation mode.
+Same tool names, same parameters, same response shapes. The difference is only WHERE execution happens.
+
+**Single source of truth**: `src/shared/toolSchemas.ts`
+
+```
+src/shared/toolSchemas.ts         ← Zod schemas for ALL tools (shared by server + browser)
+  │
+  ├── src/server/agent/tools.ts   ← AI SDK mode: bind schemas to server executors
+  │     exec_bash → ctx.bash.exec() (JustBash on server)
+  │     read_file → fs.readFile() (real filesystem)
+  │     git_status → simpleGit.status() (subprocess git)
+  │
+  └── src/front/providers/pi/tools.ts  ← PI mode: bind schemas to browser executors
+        exec_bash → provider.runCommand() (JustBash WASM or HTTP to server)
+        read_file → provider.readFile() (LightningFS or HTTP)
+        git_status → provider.gitStatus() (isomorphic-git or HTTP)
+```
+
+**Tool catalog** (same in all modes):
+
+| Tool | Parameters | Returns |
+|------|-----------|---------|
+| `exec_bash` | `{ command, cwd? }` | `{ stdout, stderr, exitCode }` |
+| `exec_python` | `{ code }` | `{ output, error? }` |
+| `read_file` | `{ path }` | `{ content, path }` |
+| `write_file` | `{ path, content }` | `{ success, path }` |
+| `list_files` | `{ path }` | `{ entries: [{ name, path, isDir }] }` |
+| `search_files` | `{ query, path? }` | `{ matches: [{ path }] }` |
+| `git_status` | `{}` | `{ isRepo, files: [...] }` |
+| `git_add` | `{ paths }` | `{ staged: [...] }` |
+| `git_commit` | `{ message }` | `{ hash, message }` |
+| `git_diff` | `{ path }` | `{ diff, path }` |
+| `git_push` | `{ remote?, branch? }` | `{ pushed }` |
+| `git_pull` | `{ remote?, branch? }` | `{ pulled }` |
+| `git_log` | `{ limit? }` | `{ commits: [...] }` |
+| `git_branch` | `{ name }` | `{ created }` |
+| `git_checkout` | `{ name }` | `{ checkedOut }` |
+
+The Zod schemas in `toolSchemas.ts` validate inputs on both server and client.
+This guarantees the LLM sees one consistent tool surface regardless of deployment config.
+
 ### bui CLI Cleanup
 
 The `bui/` directory contains a Go CLI tool for dev orchestration, framework pinning, and child app management.
