@@ -23,6 +23,39 @@ const MOCK_CAPABILITIES = {
   routers: [],
 }
 
+const NORMALIZED_LEGACY_CAPABILITIES = {
+  ...MOCK_CAPABILITIES,
+  capabilities: {
+    'workspace.files': true,
+    'workspace.git': true,
+    'workspace.exec': false,
+    'workspace.python': false,
+    'agent.chat': false,
+    'agent.tools': false,
+  },
+}
+
+const MOCK_ABSTRACT_CAPABILITIES = {
+  version: '1.0.0',
+  capabilities: {
+    'workspace.files': true,
+    'workspace.git': true,
+    'workspace.exec': false,
+    'agent.chat': true,
+    'agent.tools': true,
+  },
+  auth: {
+    provider: 'neon',
+  },
+  workspace: {
+    backend: 'lightningfs',
+  },
+  agent: {
+    runtime: 'pi',
+    placement: 'browser',
+  },
+}
+
 describe('useCapabilities', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -47,7 +80,7 @@ describe('useCapabilities', () => {
       query: {},
       rootScoped: true,
     })
-    expect(result.current.capabilities).toEqual(MOCK_CAPABILITIES)
+    expect(result.current.capabilities).toEqual(NORMALIZED_LEGACY_CAPABILITIES)
   })
 
   it('does NOT set loading=true on refetch (prevents workspace bounce)', async () => {
@@ -76,7 +109,7 @@ describe('useCapabilities', () => {
     // Loading should never have been true during refetch
     expect(loadingStates.every((s) => s === false)).toBe(true)
     expect(result.current.loading).toBe(false)
-    expect(result.current.capabilities).toEqual(MOCK_CAPABILITIES)
+    expect(result.current.capabilities).toEqual(NORMALIZED_LEGACY_CAPABILITIES)
   })
 
   it('preserves capabilities on refetch error', async () => {
@@ -99,7 +132,29 @@ describe('useCapabilities', () => {
     })
 
     // Capabilities preserved from first successful fetch
-    expect(result.current.capabilities).toEqual(MOCK_CAPABILITIES)
+    expect(result.current.capabilities).toEqual(NORMALIZED_LEGACY_CAPABILITIES)
     expect(result.current.error).toBeTruthy()
+  })
+
+  it('normalizes abstract TS capability payloads while preserving the abstract map', async () => {
+    apiFetchJson.mockResolvedValue({
+      response: { ok: true },
+      data: MOCK_ABSTRACT_CAPABILITIES,
+    })
+
+    const { result } = renderHook(() => useCapabilities({ rootScoped: true }))
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+    })
+
+    expect(result.current.capabilities.capabilities).toEqual(MOCK_ABSTRACT_CAPABILITIES.capabilities)
+    expect(result.current.capabilities.features).toMatchObject({
+      files: true,
+      git: true,
+      pty: false,
+      pi: true,
+      approval: true,
+    })
   })
 })

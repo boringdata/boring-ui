@@ -143,18 +143,18 @@ describe('PaneRegistry', () => {
     })
   })
 
-  describe('requiresFeatures / requiresRouters', () => {
+  describe('requiresCapabilities / legacy requirements', () => {
     beforeEach(() => {
       registry.register({
-        id: 'feature-pane',
+        id: 'capability-pane',
         component: MockComponent,
-        title: 'Feature Pane',
-        requiresFeatures: ['files', 'git'],
+        title: 'Capability Pane',
+        requiresCapabilities: ['workspace.files', 'workspace.git'],
       })
       registry.register({
-        id: 'router-pane',
+        id: 'legacy-router-pane',
         component: MockComponent,
-        title: 'Router Pane',
+        title: 'Legacy Router Pane',
         requiresRouters: ['pty', 'chat'],
       })
       registry.register({
@@ -164,14 +164,18 @@ describe('PaneRegistry', () => {
       })
     })
 
-    it('returns required features for a pane', () => {
-      expect(registry.getRequiredFeatures('feature-pane')).toEqual(['files', 'git'])
+    it('returns required capabilities for a pane', () => {
+      expect(registry.getRequiredCapabilities('capability-pane')).toEqual(['workspace.files', 'workspace.git'])
       expect(registry.getRequiredFeatures('simple-pane')).toEqual([])
+      expect(registry.getRequiredCapabilities('unknown')).toEqual([])
+    })
+
+    it('preserves legacy feature accessors for panes that do not use them', () => {
       expect(registry.getRequiredFeatures('unknown')).toEqual([])
     })
 
-    it('returns required routers for a pane', () => {
-      expect(registry.getRequiredRouters('router-pane')).toEqual(['pty', 'chat'])
+    it('returns required routers for legacy router-gated panes', () => {
+      expect(registry.getRequiredRouters('legacy-router-pane')).toEqual(['pty', 'chat'])
       expect(registry.getRequiredRouters('simple-pane')).toEqual([])
       expect(registry.getRequiredRouters('unknown')).toEqual([])
     })
@@ -180,15 +184,15 @@ describe('PaneRegistry', () => {
   describe('checkRequirements', () => {
     beforeEach(() => {
       registry.register({
-        id: 'feature-pane',
+        id: 'capability-pane',
         component: MockComponent,
-        title: 'Feature Pane',
-        requiresFeatures: ['files', 'git'],
+        title: 'Capability Pane',
+        requiresCapabilities: ['workspace.files', 'workspace.git'],
       })
       registry.register({
-        id: 'router-pane',
+        id: 'legacy-router-pane',
         component: MockComponent,
-        title: 'Router Pane',
+        title: 'Legacy Router Pane',
         requiresRouters: ['pty'],
       })
       registry.register({
@@ -198,32 +202,32 @@ describe('PaneRegistry', () => {
       })
     })
 
-    it('returns true when all features are satisfied', () => {
+    it('returns true when all abstract capabilities are satisfied', () => {
       const capabilities = {
-        features: { files: true, git: true },
+        capabilities: { 'workspace.files': true, 'workspace.git': true },
       }
-      expect(registry.checkRequirements('feature-pane', capabilities)).toBe(true)
+      expect(registry.checkRequirements('capability-pane', capabilities)).toBe(true)
     })
 
-    it('returns false when features are missing', () => {
+    it('returns false when abstract capabilities are missing', () => {
       const capabilities = {
-        features: { files: true },
+        capabilities: { 'workspace.files': true },
       }
-      expect(registry.checkRequirements('feature-pane', capabilities)).toBe(false)
+      expect(registry.checkRequirements('capability-pane', capabilities)).toBe(false)
     })
 
-    it('returns true when routers are satisfied', () => {
+    it('still supports legacy router checks during migration', () => {
       const capabilities = {
         features: { pty: true },
       }
-      expect(registry.checkRequirements('router-pane', capabilities)).toBe(true)
+      expect(registry.checkRequirements('legacy-router-pane', capabilities)).toBe(true)
     })
 
-    it('returns false when routers are missing', () => {
+    it('returns false when legacy routers are missing', () => {
       const capabilities = {
         features: {},
       }
-      expect(registry.checkRequirements('router-pane', capabilities)).toBe(false)
+      expect(registry.checkRequirements('legacy-router-pane', capabilities)).toBe(false)
     })
 
     it('returns true for panes with no requirements', () => {
@@ -242,13 +246,13 @@ describe('PaneRegistry', () => {
         id: 'files-pane',
         component: MockComponent,
         title: 'Files',
-        requiresFeatures: ['files'],
+        requiresCapabilities: ['workspace.files'],
       })
       registry.register({
         id: 'git-pane',
         component: MockComponent,
         title: 'Git',
-        requiresFeatures: ['git'],
+        requiresCapabilities: ['workspace.git'],
       })
       registry.register({
         id: 'simple-pane',
@@ -258,7 +262,7 @@ describe('PaneRegistry', () => {
     })
 
     it('returns panes with satisfied requirements', () => {
-      const capabilities = { features: { files: true } }
+      const capabilities = { capabilities: { 'workspace.files': true } }
       const available = registry.getAvailablePanes(capabilities)
 
       expect(available.map(p => p.id)).toContain('files-pane')
@@ -274,7 +278,7 @@ describe('PaneRegistry', () => {
         component: MockComponent,
         title: 'Essential with Feature',
         essential: true,
-        requiresFeatures: ['files'],
+        requiresCapabilities: ['workspace.files'],
       })
       registry.register({
         id: 'essential-simple',
@@ -286,12 +290,12 @@ describe('PaneRegistry', () => {
         id: 'non-essential',
         component: MockComponent,
         title: 'Non-Essential',
-        requiresFeatures: ['git'],
+        requiresCapabilities: ['workspace.git'],
       })
     })
 
     it('returns essential panes with unmet requirements', () => {
-      const capabilities = { features: {} }
+      const capabilities = { capabilities: {} }
       const unavailable = registry.getUnavailableEssentialPanes(capabilities)
 
       expect(unavailable.map(p => p.id)).toContain('essential-with-feature')
@@ -307,18 +311,15 @@ describe('createDefaultRegistry', () => {
 
     expect(registry.has('filetree')).toBe(true)
     expect(registry.has('editor')).toBe(true)
-    expect(registry.has('terminal')).toBe(true)
-    expect(registry.has('shell')).toBe(true)
     expect(registry.has('empty')).toBe(true)
     expect(registry.has('review')).toBe(true)
+    expect(registry.has('agent')).toBe(true)
   })
 
   it('marks essential panes correctly', () => {
     const registry = createDefaultRegistry()
 
     expect(registry.isEssential('filetree')).toBe(true)
-    expect(registry.isEssential('terminal')).toBe(false)
-    expect(registry.isEssential('shell')).toBe(true)
     expect(registry.isEssential('editor')).toBe(false)
     expect(registry.isEssential('empty')).toBe(false)
   })
@@ -326,9 +327,8 @@ describe('createDefaultRegistry', () => {
   it('sets requirements for panes', () => {
     const registry = createDefaultRegistry()
 
-    expect(registry.getRequiredFeatures('filetree')).toContain('files')
-    expect(registry.getRequiredRouters('terminal')).toContain('chat_claude_code')
-    expect(registry.getRequiredRouters('shell')).toContain('pty')
+    expect(registry.getRequiredCapabilities('filetree')).toContain('workspace.files')
+    expect(registry.getRequiredCapabilities('editor')).toContain('workspace.files')
   })
 
   it('includes agent pane with correct config', () => {
@@ -336,18 +336,18 @@ describe('createDefaultRegistry', () => {
 
     expect(registry.has('agent')).toBe(true)
     const pane = registry.get('agent')
-    expect(pane.requiresFeatures).toContain('pi')
+    expect(pane.requiresCapabilities).toContain('agent.chat')
     expect(pane.essential).toBe(false)
     expect(pane.placement).toBe('right')
     expect(pane.hideHeader).toBe(true)
   })
 
-  it('gates agent pane on the pi feature', () => {
+  it('gates agent pane on the abstract agent.chat capability', () => {
     const registry = createDefaultRegistry()
 
-    expect(registry.checkRequirements('agent', { features: {} })).toBe(false)
-    expect(registry.checkRequirements('agent', { features: { pi: false } })).toBe(false)
+    expect(registry.checkRequirements('agent', { capabilities: {} })).toBe(false)
+    expect(registry.checkRequirements('agent', { capabilities: { 'agent.chat': false } })).toBe(false)
 
-    expect(registry.checkRequirements('agent', { features: { pi: true } })).toBe(true)
+    expect(registry.checkRequirements('agent', { capabilities: { 'agent.chat': true } })).toBe(true)
   })
 })

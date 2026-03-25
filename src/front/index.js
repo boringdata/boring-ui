@@ -87,8 +87,6 @@ export { ThemeProvider, useTheme } from './hooks/useTheme'
 // =============================================================================
 export { default as FileTreePanel } from './panels/FileTreePanel'
 export { default as EditorPanel } from './panels/EditorPanel'
-export { default as TerminalPanel } from './panels/TerminalPanel'
-export { default as ShellTerminalPanel } from './panels/ShellTerminalPanel'
 export { default as EmptyPanel } from './panels/EmptyPanel'
 export { default as ReviewPanel } from './panels/ReviewPanel'
 

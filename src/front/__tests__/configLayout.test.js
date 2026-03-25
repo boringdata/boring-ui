@@ -21,7 +21,7 @@ const createRegistryWithCustomPanes = () => {
       component: makeComponent(),
       title: 'Chart Canvas',
       placement: 'center',
-      requiresFeatures: ['files'],
+      requiresCapabilities: ['workspace.files'],
     })
   }
 
@@ -31,7 +31,7 @@ const createRegistryWithCustomPanes = () => {
       component: makeComponent(),
       title: 'Restricted',
       placement: 'center',
-      requiresFeatures: ['pi'],
+      requiresCapabilities: ['agent.chat'],
     })
   }
 
@@ -141,7 +141,15 @@ const createMockApi = () => {
 
 const createHarness = ({
   config = {},
-  capabilities = { features: { files: true, pty: true, chat_claude_code: true, pi: true } },
+  capabilities = {
+    capabilities: {
+      'workspace.files': true,
+      'workspace.exec': true,
+      'workspace.git': true,
+      'agent.chat': true,
+      'agent.tools': true,
+    },
+  },
   nativeAgentEnabled = true,
   panelSizes = {},
   panelMin = {},
@@ -620,7 +628,13 @@ describe('configurable layout builder', () => {
 
   it('7) unmet capability requirements skip panel with warning', () => {
     const harness = createHarness({
-      capabilities: { features: { files: true, pty: true, chat_claude_code: true } },
+      capabilities: {
+        capabilities: {
+          'workspace.files': true,
+          'workspace.exec': true,
+          'workspace.git': true,
+        },
+      },
       config: {
         defaultLayout: {
           panels: [{ id: 'filetree' }, { id: 'restricted', position: 'right', ref: 'filetree' }],

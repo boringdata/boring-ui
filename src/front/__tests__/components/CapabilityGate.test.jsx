@@ -5,13 +5,13 @@ import { render, screen } from '@testing-library/react'
 vi.mock('../../registry/panes', () => ({
   getPane: vi.fn((id) => {
     if (id === 'test-pane') {
-      return { id: 'test-pane', title: 'Test Pane', requiresFeatures: ['some_feature'] }
+      return { id: 'test-pane', title: 'Test Pane', requiresCapabilities: ['workspace.files'] }
     }
     return null
   }),
   checkRequirements: vi.fn((id, capabilities) => {
     if (id === 'test-pane') {
-      return !!capabilities?.features?.some_feature
+      return !!capabilities?.capabilities?.['workspace.files']
     }
     return false
   }),
@@ -50,7 +50,7 @@ describe('CapabilityGate', () => {
 
   it('renders the wrapped component when capabilities are met', () => {
     renderGated({
-      capabilities: { features: { some_feature: true } },
+      capabilities: { capabilities: { 'workspace.files': true } },
       pending: false,
     })
 
@@ -60,12 +60,12 @@ describe('CapabilityGate', () => {
 
   it('shows error state when required capabilities are missing', () => {
     renderGated({
-      capabilities: { features: {} },
+      capabilities: { capabilities: {} },
       pending: false,
     })
 
     expect(screen.getByText('Test Pane Unavailable')).toBeInTheDocument()
-    expect(screen.getByText('some_feature')).toBeInTheDocument()
+    expect(screen.getByText('workspace.files')).toBeInTheDocument()
     expect(screen.queryByTestId('dummy-pane')).not.toBeInTheDocument()
   })
 
@@ -89,7 +89,7 @@ describe('CapabilityGate', () => {
 
     rerender(
       <CapabilitiesStatusContext.Provider value={{ pending: false }}>
-        <CapabilitiesContext.Provider value={{ features: { some_feature: true } }}>
+        <CapabilitiesContext.Provider value={{ capabilities: { 'workspace.files': true } }}>
           <GatedPane />
         </CapabilitiesContext.Provider>
       </CapabilitiesStatusContext.Provider>,

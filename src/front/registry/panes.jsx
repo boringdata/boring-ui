@@ -6,17 +6,17 @@
  *
  * ## Capability Gating
  *
- * Panes can declare backend dependencies via `requiresFeatures` and `requiresRouters`.
+ * Panes can declare backend dependencies via `requiresCapabilities`.
  * These are checked against the `/api/capabilities` endpoint response:
  *
  * ```json
  * {
- *   "features": {
- *     "files": true,      // File system operations available
- *     "git": true,        // Git operations available
- *     "pty": true,        // PTY/shell WebSocket available
- *     "chat_claude_code": true,  // Claude chat WebSocket available
- *     "approval": true    // Approval request router available
+ *   "capabilities": {
+ *     "workspace.files": true,
+ *     "workspace.git": true,
+ *     "workspace.exec": true,
+ *     "agent.chat": true,
+ *     "agent.tools": true
  *   }
  * }
  * ```
@@ -25,19 +25,19 @@
  *
  * | Capability | Type | Description |
  * |------------|------|-------------|
- * | `files` | feature | File read/write/rename/delete operations |
- * | `git` | feature | Git status, diff, show operations |
- * | `pty` | router | PTY WebSocket for shell terminals |
- * | `chat_claude_code` | router | Claude stream WebSocket for AI chat |
- * | `approval` | router | Approval request handling |
+ * | `workspace.files` | workspace | File read/write/rename/delete operations |
+ * | `workspace.git` | workspace | Git status, diff, show operations |
+ * | `workspace.exec` | workspace | Shell/command execution surface |
+ * | `agent.chat` | agent | Agent chat surface |
+ * | `agent.tools` | agent | Tool-review / approval surface |
  *
  * ### Default Pane Requirements
  *
- * - `filetree`: requires `files` feature
- * - `editor`: requires `files` feature
- * - `terminal`: requires `chat_claude_code` router
- * - `shell`: requires `pty` router
- * - `review`: requires `approval` router
+ * - `filetree`: requires `workspace.files`
+ * - `editor`: requires `workspace.files`
+ * - `terminal`: requires `agent.chat`
+ * - `shell`: requires `workspace.exec`
+ * - `review`: requires `agent.tools`
  * - `empty`: no requirements (always available)
  *
  * When requirements are unmet, the pane renders an error state explaining
@@ -56,8 +56,6 @@ import PanelErrorBoundary from '../components/PanelErrorBoundary'
 // EditorPanel pulls tiptap+lowlight (~600KB), TerminalPanel pulls xterm (~300KB),
 // AgentPanel pulls pi-ai+pi-web-ui (~900KB), etc.
 const LazyEditorPanel = lazy(() => import('../panels/EditorPanel'))
-const LazyTerminalPanel = lazy(() => import('../panels/TerminalPanel'))
-const LazyShellTerminalPanel = lazy(() => import('../panels/ShellTerminalPanel'))
 const LazyReviewPanel = lazy(() => import('../panels/ReviewPanel'))
 const LazyAgentPanel = lazy(() => import('../panels/AgentPanel'))
 
@@ -78,8 +76,6 @@ function withSuspense(LazyComponent, panelName) {
 }
 
 const EditorPanel = withSuspense(LazyEditorPanel, 'Editor')
-const TerminalPanel = withSuspense(LazyTerminalPanel, 'Terminal')
-const ShellTerminalPanel = withSuspense(LazyShellTerminalPanel, 'Shell')
 const ReviewPanel = withSuspense(LazyReviewPanel, 'Review')
 const AgentPanel = withSuspense(LazyAgentPanel, 'Agent')
 
@@ -95,7 +91,11 @@ const AgentPanel = withSuspense(LazyAgentPanel, 'Agent')
  * @property {boolean} [hideHeader] - If true, group header is hidden (default: false)
  * @property {string} [tabComponent] - Optional Dockview tab component key
  * @property {Object} [constraints] - Size constraints { minWidth, minHeight, collapsedWidth, collapsedHeight }
- * @property {string[]} [requiresFeatures] - Backend features this pane requires.
+ * @property {string[]} [requiresCapabilities] - Abstract capabilities this pane requires.
+ *   Checked against capabilities.capabilities from /api/capabilities.
+ *   Common values: 'workspace.files', 'workspace.exec', 'agent.chat'.
+ *   Default: [] (no capability requirements)
+ * @property {string[]} [requiresFeatures] - Legacy backend features this pane requires.
  *   Checked against capabilities.features from /api/capabilities.
  *   Common values: 'files', 'git'. Default: [] (no feature requirements)
  * @property {string[]} [requiresAnyFeatures] - Backend features where at least one must be enabled.
@@ -210,7 +210,8 @@ class PaneRegistry {
     for (const [id, config] of this._panes) {
       // Only gate components that have requirements
       const hasRequirements =
-        (config.requiresFeatures?.length > 0)
+        (config.requiresCapabilities?.length > 0)
+        || (config.requiresFeatures?.length > 0)
         || (config.requiresAnyFeatures?.length > 0)
         || (config.requiresRouters?.length > 0)
       components[id] = hasRequirements
@@ -226,6 +227,16 @@ class PaneRegistry {
    */
   getKnownComponents() {
     return new Set(this._panes.keys())
+  }
+
+  /**
+   * Get required abstract capabilities for a pane.
+   * @param {string} id - Pane identifier
+   * @returns {string[]}
+   */
+  getRequiredCapabilities(id) {
+    const pane = this._panes.get(id)
+    return pane?.requiresCapabilities || []
   }
 
   /**
@@ -269,6 +280,13 @@ class PaneRegistry {
     if (!pane) return false
 
     const features = capabilities?.features || {}
+    const abstractCapabilities = capabilities?.capabilities || {}
+
+    // Check abstract capabilities
+    const requiredCapabilities = pane.requiresCapabilities || []
+    for (const capability of requiredCapabilities) {
+      if (!abstractCapabilities[capability]) return false
+    }
 
     // Check required features
     const requiredFeatures = pane.requiresFeatures || []
@@ -319,13 +337,11 @@ class PaneRegistry {
  * Default panes and their capability requirements:
  * | Pane ID   | Essential | Placement | Requirements          |
  * |-----------|-----------|-----------|------------------------|
- * | filetree  | yes       | left      | files feature          |
- * | editor    | no        | center    | files feature          |
- * | terminal  | no        | right     | chat_claude_code router|
- * | shell     | yes       | bottom    | pty router             |
+ * | filetree  | yes       | left      | workspace.files        |
+ * | editor    | no        | center    | workspace.files        |
  * | empty     | no        | center    | none                   |
- * | review    | no        | center    | approval router        |
- * | agent     | no        | right     | pi feature             |
+ * | review    | no        | center    | agent.tools            |
+ * | agent     | no        | right     | agent.chat             |
  *
  * @returns {PaneRegistry} Configured registry instance
  */
@@ -359,7 +375,7 @@ const createDefaultRegistry = () => {
       minWidth: 180,
       collapsedWidth: 48,
     },
-    requiresFeatures: ['files'],
+    requiresCapabilities: ['workspace.files'],
   })
 
   // Editor - center
@@ -369,40 +385,7 @@ const createDefaultRegistry = () => {
     title: 'Editor',
     placement: 'center',
     essential: false,
-    requiresFeatures: ['files'],
-  })
-
-  // Terminal (Claude sessions) - right sidebar
-  registry.register({
-    id: 'terminal',
-    component: TerminalPanel,
-    title: 'Code Sessions',
-    placement: 'right',
-    essential: false,
-    locked: false,
-    hideHeader: true,
-    constraints: {
-      minWidth: 250,
-      collapsedWidth: 48,
-    },
-    requiresRouters: ['chat_claude_code'],
-  })
-
-  // Shell - bottom of center column
-  registry.register({
-    id: 'shell',
-    component: ShellTerminalPanel,
-    tabComponent: 'noClose',
-    title: 'Shell',
-    placement: 'bottom',
-    essential: true,
-    locked: true,
-    hideHeader: true,
-    constraints: {
-      minHeight: 100,
-      collapsedHeight: 36,
-    },
-    requiresRouters: ['pty'],
+    requiresCapabilities: ['workspace.files'],
   })
 
   // Empty placeholder - shown when no editors open
@@ -421,7 +404,7 @@ const createDefaultRegistry = () => {
     title: 'Review',
     placement: 'center',
     essential: false,
-    requiresRouters: ['approval'],
+    requiresCapabilities: ['agent.tools'],
   })
 
   // Agent - PI chat panel for frontend or backend agent mode.
@@ -436,7 +419,7 @@ const createDefaultRegistry = () => {
     constraints: {
       minWidth: 250,
     },
-    requiresFeatures: ['pi'],
+    requiresCapabilities: ['agent.chat'],
   })
 
   return registry
@@ -462,6 +445,7 @@ export const hasPane = (id) => defaultRegistry.has(id)
 export const getComponents = () => defaultRegistry.getComponents()
 export const getGatedComponents = (gateFactory) => defaultRegistry.getGatedComponents(gateFactory)
 export const getKnownComponents = () => defaultRegistry.getKnownComponents()
+export const getRequiredCapabilities = (id) => defaultRegistry.getRequiredCapabilities(id)
 export const getRequiredFeatures = (id) => defaultRegistry.getRequiredFeatures(id)
 export const getRequiredAnyFeatures = (id) => defaultRegistry.getRequiredAnyFeatures(id)
 export const getRequiredRouters = (id) => defaultRegistry.getRequiredRouters(id)

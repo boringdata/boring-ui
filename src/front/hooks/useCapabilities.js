@@ -13,9 +13,62 @@ import { routes } from '../utils/routes'
 
 export const UNKNOWN_CAPABILITIES = Object.freeze({
   version: 'unknown',
+  capabilities: {},
   features: {},
   routers: [],
 })
+
+const normalizeLegacyToAbstract = (features = {}) => ({
+  'workspace.files': features.files === true,
+  'workspace.git': features.git === true,
+  'workspace.exec': features.pty === true,
+  'workspace.python': false,
+  'agent.chat': features.pi === true || features.chat_claude_code === true,
+  'agent.tools': features.approval === true,
+})
+
+const normalizeAbstractToLegacy = (capabilities = {}) => ({
+  files: capabilities['workspace.files'] === true,
+  git: capabilities['workspace.git'] === true,
+  pty: capabilities['workspace.exec'] === true,
+  chat_claude_code: capabilities['agent.chat'] === true,
+  pi: capabilities['agent.chat'] === true,
+  approval: capabilities['agent.tools'] === true,
+})
+
+export const normalizeCapabilitiesPayload = (payload) => {
+  if (!payload || typeof payload !== 'object') {
+    return { ...UNKNOWN_CAPABILITIES }
+  }
+
+  const hasAbstractCapabilities = payload.capabilities && typeof payload.capabilities === 'object'
+  const hasLegacyFeatures = payload.features && typeof payload.features === 'object'
+
+  if (hasAbstractCapabilities) {
+    return {
+      ...payload,
+      capabilities: { ...payload.capabilities },
+      features: hasLegacyFeatures
+        ? { ...normalizeAbstractToLegacy(payload.capabilities), ...payload.features }
+        : normalizeAbstractToLegacy(payload.capabilities),
+      routers: Array.isArray(payload.routers) ? payload.routers : [],
+    }
+  }
+
+  if (hasLegacyFeatures) {
+    return {
+      ...payload,
+      capabilities: normalizeLegacyToAbstract(payload.features),
+      features: { ...payload.features },
+      routers: Array.isArray(payload.routers) ? payload.routers : [],
+    }
+  }
+
+  return {
+    ...UNKNOWN_CAPABILITIES,
+    ...payload,
+  }
+}
 
 /**
  * Capabilities response from /api/capabilities endpoint.
@@ -68,7 +121,7 @@ export const useCapabilities = (options = {}) => {
         throw new Error(`Failed to fetch capabilities: ${response.status}`)
       }
 
-      setCapabilities(data)
+      setCapabilities(normalizeCapabilitiesPayload(data))
       hasLoaded.current = true
     } catch (err) {
       console.error('[Capabilities] Failed to fetch:', err)

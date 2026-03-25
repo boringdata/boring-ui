@@ -38,6 +38,7 @@ export function createCapabilityGatedPane(paneId, Component) {
     const capabilitiesStatus = useCapabilitiesStatusContext()
     const paneConfig = getPane(paneId)
     const capabilitiesPending = capabilitiesStatus?.pending === true
+    const abstractCapabilities = capabilities?.capabilities || {}
 
     // During capability bootstrap/retry, render a loading state instead of
     // a transient "missing capability" error.
@@ -56,13 +57,16 @@ export function createCapabilityGatedPane(paneId, Component) {
     }
 
     // Requirements not met - show error state
+    const missingRequiredCapabilities = (paneConfig?.requiresCapabilities || []).filter(
+      (capability) => !abstractCapabilities?.[capability]
+    )
     const missingRequiredFeatures = (paneConfig?.requiresFeatures || []).filter(
       (f) => !capabilities?.features?.[f]
     )
     const requiresAny = paneConfig?.requiresAnyFeatures || []
     const anySatisfied = requiresAny.some((f) => capabilities?.features?.[f])
     const missingAnyFeatures = anySatisfied ? [] : requiresAny
-    const missingFeatures = [...missingRequiredFeatures, ...missingAnyFeatures]
+    const missingFeatures = [...missingRequiredCapabilities, ...missingRequiredFeatures, ...missingAnyFeatures]
     const missingRouters = (paneConfig?.requiresRouters || []).filter(
       (r) => !capabilities?.features?.[r]
     )
