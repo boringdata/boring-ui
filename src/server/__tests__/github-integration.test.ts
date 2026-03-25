@@ -10,7 +10,8 @@ import { loadConfig } from '../config.js'
 
 // Generate a test RSA key pair for JWT signing tests
 let testPrivateKeyPem: string
-let testPublicKey: jose.KeyLike
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let testPublicKey: any
 
 async function ensureTestKeys() {
   if (testPrivateKeyPem) return

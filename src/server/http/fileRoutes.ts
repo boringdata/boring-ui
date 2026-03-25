@@ -3,7 +3,7 @@
  * Python-compatible response shapes for smoke test parity.
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { readdir, readFile, writeFile, unlink, rename, stat } from 'node:fs/promises'
+import { readdir, readFile, writeFile, unlink, rename } from 'node:fs/promises'
 import { join, resolve, relative, dirname, basename } from 'node:path'
 import { existsSync } from 'node:fs'
 
@@ -12,8 +12,11 @@ function getWorkspaceRoot(app: FastifyInstance): string {
 }
 
 function validatePath(workspaceRoot: string, requestedPath: string): string {
+  const resolvedRoot = resolve(workspaceRoot)
   const resolved = resolve(workspaceRoot, requestedPath)
-  if (!resolved.startsWith(resolve(workspaceRoot))) {
+  // Must use resolvedRoot + '/' to prevent prefix collision:
+  // e.g., /workspace-evil/file would falsely match /workspace without the trailing /
+  if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + '/')) {
     throw Object.assign(new Error('Path traversal detected'), { statusCode: 400 })
   }
   return resolved

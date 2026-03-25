@@ -171,17 +171,8 @@ export function createGitServiceImpl(workspaceRoot: string): GitServiceImpl {
       credentials?: GitCredentials,
     ): Promise<{ pushed: boolean }> {
       validateRemoteName(remote)
-      if (credentials) {
-        // Inject credentials via GIT_ASKPASS or credential helper
-        const env = {
-          GIT_TERMINAL_PROMPT: '0',
-          GIT_ASKPASS: 'echo',
-        }
-        // For now, use the git instance directly
-        // Credential injection via remote URL rewriting is handled at a higher level
-      }
-      const args = branch ? [remote, branch] : [remote]
-      await git.push(args)
+      // Credential injection via remote URL rewriting is handled at a higher level
+      await git.push(remote, branch)
       return { pushed: true }
     },
 
@@ -191,8 +182,7 @@ export function createGitServiceImpl(workspaceRoot: string): GitServiceImpl {
       credentials?: GitCredentials,
     ): Promise<{ pulled: boolean }> {
       validateRemoteName(remote)
-      const args: string[] = branch ? [remote, branch] : [remote]
-      await git.pull(...args as [string, string])
+      await git.pull(remote, branch)
       return { pulled: true }
     },
 

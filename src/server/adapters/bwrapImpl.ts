@@ -91,8 +91,9 @@ export function execInSandbox(
 ): Promise<ExecResult> {
   const { cwd, timeoutSeconds = BWRAP_TIMEOUT_SECONDS } = options
   const sandboxHome = '/workspace'
-  const sandboxCwd = cwd
-    ? cwd.replace(workspaceRoot, sandboxHome)
+  // Replace workspace root PREFIX with sandbox home (not arbitrary occurrences)
+  const sandboxCwd = cwd && cwd.startsWith(workspaceRoot)
+    ? sandboxHome + cwd.slice(workspaceRoot.length)
     : sandboxHome
 
   const bwrapArgs = buildBwrapArgs(workspaceRoot, sandboxHome, sandboxCwd)

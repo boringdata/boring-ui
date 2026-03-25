@@ -67,7 +67,9 @@ export function resolveWorkspacePath(
   const resolvedRoot = resolve(workspaceRoot)
   const resolvedPath = resolve(workspaceRoot, workspaceId)
 
-  if (!resolvedPath.startsWith(resolvedRoot)) {
+  // Use resolvedRoot + '/' to prevent prefix collision:
+  // e.g., /workspace-evil would falsely match /workspace without trailing /
+  if (resolvedPath !== resolvedRoot && !resolvedPath.startsWith(resolvedRoot + '/')) {
     throw new Error(`Path traversal detected: ${workspaceId}`)
   }
 
@@ -85,7 +87,7 @@ export function resolvePathBeneath(
   const resolvedBase = resolve(workspacePath)
   const resolvedPath = resolve(workspacePath, requestedPath)
 
-  if (!resolvedPath.startsWith(resolvedBase)) {
+  if (resolvedPath !== resolvedBase && !resolvedPath.startsWith(resolvedBase + '/')) {
     throw new Error(`Path traversal detected: ${requestedPath}`)
   }
 

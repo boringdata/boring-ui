@@ -22,7 +22,11 @@ export function redactSecrets(value: unknown): unknown {
   let result = value
   for (const pattern of SECRET_PATTERNS) {
     result = result.replace(pattern, (match) => {
-      return match.replace(/=.+|:\s*.+/, `=${REDACTED}`)
+      // For connection strings (postgres://...), redact the entire match
+      if (match.match(/^postgres/i)) return REDACTED
+      // For key=value or key: value patterns, keep the key, redact the value
+      const replaced = match.replace(/=.+|:\s*.+/, `=${REDACTED}`)
+      return replaced === match ? REDACTED : replaced
     })
   }
   return result

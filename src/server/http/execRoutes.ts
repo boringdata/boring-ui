@@ -1,12 +1,16 @@
 /**
- * Exec HTTP route — POST /api/v1/exec
- * Runs bounded commands in bwrap sandbox, captures output.
+ * Exec HTTP routes — short exec + long-running job lifecycle.
+ *
+ * Short exec: POST /exec → synchronous result
+ * Long-running: POST /exec/start → jobId, GET /exec/jobs/:id → chunks,
+ *               POST /exec/jobs/:id/cancel → cancelled
  */
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { execInSandbox } from '../adapters/bwrapImpl.js'
 import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
+import { startJob, readJob, cancelJob } from '../jobs/execJob.js'
 
 const MAX_OUTPUT_BYTES = 512 * 1024 // 512KB
 
@@ -46,8 +50,9 @@ export async function registerExecRoutes(app: FastifyInstance): Promise<void> {
     // Validate cwd if provided
     let effectiveCwd: string | undefined
     if (body.cwd) {
+      const resolvedRoot = resolve(workspaceRoot)
       const resolvedCwd = resolve(workspaceRoot, body.cwd)
-      if (!resolvedCwd.startsWith(resolve(workspaceRoot))) {
+      if (resolvedCwd !== resolvedRoot && !resolvedCwd.startsWith(resolvedRoot + '/')) {
         return reply.code(400).send({
           error: 'validation',
           code: 'PATH_TRAVERSAL',
@@ -105,4 +110,63 @@ export async function registerExecRoutes(app: FastifyInstance): Promise<void> {
       })
     }
   })
+
+  // --- Long-running job routes ---
+
+  // POST /exec/start — Start a long-running command job
+  app.post('/exec/start', async (request, reply) => {
+    const body = request.body as { command?: string; cwd?: string } | null
+
+    if (!body?.command?.trim()) {
+      return reply.code(400).send({
+        error: 'validation',
+        code: 'COMMAND_REQUIRED',
+        message: 'command is required',
+      })
+    }
+
+    const workspaceRoot = app.config.workspaceRoot
+    const result = startJob(workspaceRoot, body.command, { cwd: body.cwd })
+    return result
+  })
+
+  // GET /exec/jobs/:jobId — Read output chunks from a job
+  app.get<{ Params: { jobId: string }; Querystring: { after?: string } }>(
+    '/exec/jobs/:jobId',
+    async (request, reply) => {
+      const { jobId } = request.params
+      const afterStr = (request.query as any).after
+      const after = afterStr ? parseInt(afterStr, 10) : undefined
+
+      const result = readJob(jobId, after)
+      if (!result) {
+        return reply.code(404).send({
+          error: 'not_found',
+          code: 'JOB_NOT_FOUND',
+          message: `Job not found: ${jobId}`,
+        })
+      }
+
+      return result
+    },
+  )
+
+  // POST /exec/jobs/:jobId/cancel — Cancel a running job
+  app.post<{ Params: { jobId: string } }>(
+    '/exec/jobs/:jobId/cancel',
+    async (request, reply) => {
+      const { jobId } = request.params
+      const cancelled = cancelJob(jobId)
+
+      if (!cancelled) {
+        return reply.code(404).send({
+          error: 'not_found',
+          code: 'JOB_NOT_FOUND',
+          message: `Job not found: ${jobId}`,
+        })
+      }
+
+      return { cancelled: true, job_id: jobId }
+    },
+  )
 }

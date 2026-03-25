@@ -100,8 +100,13 @@ export async function registerWorkspaceBoundary(
       return reply.code(401).send({ error: 'unauthorized', code: 'INVALID_SESSION' })
     }
 
-    // Redirect to the actual route (strip /w/{id} prefix)
+    // Redirect to the actual route (strip /w/{id} prefix).
+    // Uses 307 to preserve the HTTP method (302 would change POST→GET).
+    // NOTE: POST/PUT redirects lose the request body in most clients.
+    // The frontend sends API calls directly to /api/v1/* (not through /w/{id}/*),
+    // so this redirect primarily serves GET requests and browser navigation.
     const queryStr = request.url.includes('?') ? '?' + request.url.split('?')[1] : ''
+    reply.code(307)
     return reply.redirect(normalizedPath + queryStr)
   })
 
