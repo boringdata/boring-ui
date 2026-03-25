@@ -254,7 +254,7 @@ def _verification_email_failed_message() -> str:
     return "Account created, but we could not send the verification email. Try again later or contact the administrator."
 
 
-def _issue_session_response(
+async def _issue_session_response(
     request: Request,
     *,
     config: APIConfig,
@@ -538,7 +538,7 @@ async def _neon_password_auth(
             message=missing_token_message,
         )
 
-    return _issue_session_response(
+    return await _issue_session_response(
         request,
         config=config,
         access_token=access_token,
@@ -2221,7 +2221,7 @@ def create_auth_session_router_neon(config: APIConfig) -> APIRouter:
             )
 
         redirect_uri = _safe_redirect_path(body.get("redirect_uri"))
-        response = _issue_session_response(
+        response = await _issue_session_response(
             request,
             config=config,
             access_token=access_token,
