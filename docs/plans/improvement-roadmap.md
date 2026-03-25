@@ -12,13 +12,19 @@ This roadmap now assumes these hard product decisions:
 - PTY, Claude stream, and `agent_normal` runtime surfaces are removed rather than preserved
 - no backward-compatibility aliases are required for removed runtime surfaces
 - auth/session/bootstrap correctness is the highest-priority engineering track
-- the runtime contract should express explicit placement/storage/isolation policy, not vague `agent-lite` / `agent-frontend` / `agent-backend` modes
+- the runtime contract should express explicit placement/storage/provisioner policy, not vague `agent-lite` / `agent-frontend` / `agent-backend` modes
 - the existing eval framework under `tests/eval/` must become a first-class validation tool in the roadmap
 
-Recent auth fixes are still assumed to be landed:
+Recent work already landed that this roadmap builds on:
 
 - truthful verification-email messaging
 - explicit public-origin support for hosted auth callbacks
+- user settings persistence moved to Neon DB
+- stale backend-agent workspace provisioner secrets were cleaned up
+- orphaned Fly workspace machines were cleaned up
+- `package-lock.json` was regenerated to unblock Docker builds
+- smoke email collisions were fixed with randomized suffixes
+- the three deployed app variants were brought back to a smoke-passing state
 
 Tracked beads that remain relevant after this rewrite:
 
@@ -30,7 +36,7 @@ Tracked beads that remain relevant after this rewrite:
 - `bd-om29` Frontend: break `App.jsx` workspace shell into focused state/hooks modules
 - `bd-1mwn4` Foundation: remove Claude runtime and terminal/shell/PTy legacy surface
 - `bd-waixe` Auth: freeze and harden auth/session/callback/bootstrap contract
-- `bd-f21sg` Foundation: replace mode-centric config with placement/storage/isolation policy
+- `bd-f21sg` Foundation: replace mode-centric config with placement/storage/provisioner policy
 - `bd-wjlvl` Foundation: freeze PI-only runtime-config/capabilities/pane contract
 - `bd-xle50` Testing: realign unit, smoke, and eval gates around the PI-only core
 - `bd-x8boo` Foundation: split overloaded control_plane module and relocate API-root stragglers
@@ -47,12 +53,12 @@ The framework needs a smaller and more explicit core.
 
 The new execution order is:
 
-1. harden auth/session/bootstrap first
-2. delete the Claude/terminal/shell/PTy legacy surface instead of refactoring it
-3. replace mode-centric config with explicit placement/storage/isolation policy
-4. freeze a PI-only runtime contract across `/__bui/config`, `/api/capabilities`, and pane requirements
-5. realign unit, smoke, and eval so each layer protects a clear slice of the new core
-6. simplify `src/front/App.jsx` only after the runtime surface is smaller
+1. land operational hygiene first so the repo is trustworthy to change
+2. harden auth/session/bootstrap
+3. delete the Claude/terminal/shell/PTy legacy surface instead of refactoring it
+4. run backend config work and frontend `App.jsx` decomposition in parallel
+5. freeze the PI-only runtime contract and restructure backend modules around it
+6. realign unit, smoke, and eval so each layer protects a clear slice of the new core
 
 The old roadmap spent too much effort on shrinking hotspots that may no longer belong in the product. This rewrite moves the focus to contract clarity, scope reduction, auth correctness, and testable foundations.
 
@@ -68,7 +74,13 @@ These decisions are now part of the plan, not open questions:
 4. No PTY transport in the core product unless a future roadmap explicitly reintroduces shell as a core feature
 5. No backward-compatibility aliases for removed runtime families
 6. Auth is a core guarantee, not an optional convenience
-7. Deployment presets may still exist in `deploy/`, but they are packaging shortcuts, not the architecture contract
+7. `local` is dev-only, not a first-class product/runtime contract
+8. The reference production profile is:
+   - `agent.placement = "server"`
+   - `workspace.storage = "http"`
+   - `workspace.provisioner = "fly"`
+   - `auth.provider = "neon"`
+9. Deployment presets may still exist in `deploy/`, but they are packaging shortcuts, not the architecture contract
 
 ---
 
@@ -76,7 +88,7 @@ These decisions are now part of the plan, not open questions:
 
 - make the framework core materially smaller and easier to reason about
 - make auth/session/workspace bootstrap the most stable part of the app
-- replace implicit runtime “modes” with explicit isolation and placement policy
+- replace implicit runtime “modes” with explicit placement/storage/provisioner policy
 - expose a PI-only logical contract instead of transport-era capability names
 - use unit tests, smoke tests, and evals for distinct responsibilities with minimal overlap
 - keep the framework composable for child apps without carrying legacy runtime surface area
@@ -112,6 +124,7 @@ The current contract is still transport-shaped rather than product-shaped:
 - capabilities advertise router-era names instead of logical agent/workspace/auth shape
 - pane requirements use `requiresRouters` for legacy runtime families
 - deploy docs still center `agent-lite`, `agent-frontend`, and `agent-backend`
+- `local` and `neon` still leak into route/module structure as larger parallel implementations than the product now needs
 
 ### Testing
 
@@ -127,6 +140,7 @@ The test suite still validates a broader product than the one we want to keep:
 The broad architecture is good, but the repo is growing unevenly:
 
 - `src/back/boring_ui/api/modules/control_plane/` is acting as a junk drawer for auth, users, workspaces, collaboration, provider-specific persistence, and shared helpers
+- `local` vs `neon` is still expressed as duplicated router files in too many places; that is acceptable short-term, but it should not be the steady-state architecture
 - `src/back/boring_ui/api/modules/control_plane/auth_router_neon.py` is still the clearest oversized-file warning sign in the backend
 - `src/back/boring_ui/api/` still has loose files that either belong under an existing module or should be deleted as part of the PI-only cut:
   - `approval.py`
@@ -168,6 +182,12 @@ Explicitly removed from that target shape:
 - `modules/pty/`
 - `modules/stream/`
 - `modules/agent_normal/`
+
+With one additional rule:
+
+- domain routers and services should become provider-neutral
+- `local` should survive only as a thin dev adapter behind those domain services
+- the final steady state should not keep parallel `*_neon.py` / local router trees for every major domain
 
 This structure work is real, but it should follow the product cuts. Do not reorganize deleted runtime families into nicer folders.
 
@@ -213,6 +233,7 @@ Use for fast, deterministic validation of:
 - capability payload shape
 - pane registry requirements and gating logic
 - child-app extension contracts where no live deploy is required
+- thin local-dev adapters that are intentionally not part of the production contract
 
 #### Smoke Tests
 
@@ -223,6 +244,8 @@ Use for deploy-shaped validation of the real critical path:
 - files and git on a deployed instance
 - runtime-config and capabilities payloads on the deployed app
 - explicit absence of removed legacy runtime routes and capability names
+
+The default smoke reference path should be the reference production profile, not local mode.
 
 #### Eval Framework
 
@@ -236,6 +259,8 @@ Use `tests/eval/` to validate platform-level and framework-level behavior:
 
 The eval framework should not replace smoke tests. It should enforce higher-level framework guarantees across environments and child-app scenarios.
 
+The default eval reference path should also be the reference production profile. Local mode may have targeted harness tests, but it should not define the framework grade.
+
 ### Current Gaps
 
 1. The contract between `/__bui/config`, `/api/capabilities`, and `src/front/registry/panes.jsx` is not locked together.
@@ -245,6 +270,11 @@ The eval framework should not replace smoke tests. It should enforce higher-leve
 5. Eval profile contracts still encode old assumptions like `requires_frontend_shell`.
 6. There are not enough negative tests proving removed routes/capabilities are actually gone.
 7. `bd-znpbo` is still open, which means lint/style enforcement is not yet an authoritative repo-level gate.
+8. `local` still carries more architectural weight than it should for a dev-only path.
+9. Operational reliability issues are too easy to rediscover late:
+   - pre-existing unit test failures
+   - poor auth endpoint logging on 500s
+   - stale Fly workspace machines consuming the machine quota
 
 ### Required Testing Rework
 
@@ -253,8 +283,10 @@ The new plan must explicitly include:
 - deleting or rewriting tests that assert PTY/Claude-era behavior
 - adding negative tests for removed routes, panes, and capability names
 - adding contract tests for the new PI-only runtime payloads
-- using `tests/eval/` to validate the new runtime contract and isolation policy
+- using `tests/eval/` to validate the new runtime contract and the production reference profile
 - making auth smoke and auth contract tests the first-class correctness gate for the app
+- making the reference smoke/eval target the production profile (`server` placement + `http` storage + `fly` provisioner + Neon auth)
+- keeping `local` coverage focused on dev-adapter unit tests and a small parity subset only
 
 ---
 
@@ -269,24 +301,52 @@ The target app-level config is:
 ```toml
 [agent]
 runtime = "pi"
-placement = "browser"   # "browser" | "server"
+placement = "browser"   # "browser" | "server" — where PI runs
 
 [workspace]
-storage = "browser"     # "browser" | "server"
-isolation = "none"      # "none" | "microvm"
+storage = "http"        # "lightningfs" | "http" — matches existing data backend values
+provisioner = "none"    # "none" | "fly" — whether workspaces get dedicated machines
 
 [auth]
 provider = "neon"
-required = true
 ```
 
 Notes:
 
 - `agent.runtime` is fixed to `pi`
 - `placement` is about where the agent runs
-- `storage` is about where the workspace lives
-- `isolation` is about whether server-side workspace execution is direct or microvm-isolated
+- `storage` matches the real frontend/backend data path vocabulary already used by the app
+- `provisioner` is concrete and should map to real workspace machine provisioning behavior, not aspirational isolation vocabulary
 - deploy presets may still map to these fields, but the fields above are the contract
+- `auth.provider = "local"` is dev-only and should not define production contract behavior
+
+Deploy presets remain as user-facing shorthand:
+
+- `agent-lite`: `placement=browser`, `storage=http`, `provisioner=none`
+- `agent-frontend`: `placement=browser`, `storage=http`, `provisioner=none`
+- `agent-backend`: `placement=server`, `storage=http`, `provisioner=fly` when dedicated machines are enabled
+
+Reference profiles:
+
+1. Reference production profile
+   - `agent.placement = "server"`
+   - `workspace.storage = "http"`
+   - `workspace.provisioner = "fly"`
+   - `auth.provider = "neon"`
+
+2. Supported lighter hosted profile
+   - `agent.placement = "browser"`
+   - `workspace.storage = "http"`
+   - `workspace.provisioner = "none"`
+   - `auth.provider = "neon"`
+
+3. Local development profile
+   - `agent.placement = "browser"`
+   - `workspace.storage = "lightningfs"` or `"http"` for parity work
+   - `workspace.provisioner = "none"`
+   - `auth.provider = "local"`
+
+Only the first two profiles are product commitments. The local profile exists to speed development and debugging.
 
 ### Runtime Payload
 
@@ -302,8 +362,8 @@ Target shape:
     "available": true
   },
   "workspace": {
-    "storage": "server",
-    "isolation": "microvm"
+    "storage": "http",
+    "provisioner": "fly"
   },
   "features": {
     "files": true,
@@ -339,6 +399,44 @@ There is no core `terminal` pane and no core `shell` pane.
 
 ## Execution Order
 
+### Phase 0: Operational Hygiene
+
+Target:
+
+- remove avoidable operational noise before deeper foundation work starts
+
+Work:
+
+1. confirm and fix any pre-existing unit test failures in `tests/unit/test_auth_session_routes.py`
+2. add structured error logging to auth endpoints so 500s include actionable context
+3. add a guard or cleanup path for orphaned Fly workspace machines so stale `ws_*` machines cannot silently exhaust machine limits
+4. confirm `FLY_WORKSPACE_APP` and `FLY_IMAGE_REF` are absent from apps that should not provision dedicated workspace machines
+5. remove obvious orphan/legacy paths after a quick dependency check:
+   - `src/companion_service/`
+   - `src/test/`
+
+Done when:
+
+- `python3 -m pytest tests/unit/ -v` shows 0 failures
+- auth endpoints log request errors at warning/error level with useful detail
+- workspace machine state is bounded and no longer silently accumulates
+
+Why first:
+
+- foundation work goes faster when the repo and deploys are not already lying to you
+
+### Cross-Cutting: Observability
+
+This is not a standalone phase. Each phase should leave the changed subsystem more observable than before.
+
+Required observability improvements as work progresses:
+
+- auth endpoints: log Neon/Auth proxy failures with enough response detail to debug them
+- workspace creation/provisioning: log duration breakdown and failure reason
+- config validation: log resolved config summary and rejected invalid combinations
+- startup: log the effective product profile (`placement`, `storage`, `provisioner`, auth provider, enabled features)
+- cold start/provisioned workspaces: capture time from machine boot to first healthy response where applicable
+
 ### Prerequisite: Land The Tracked Lint Gate Cleanly
 
 Tracked bead:
@@ -346,6 +444,8 @@ Tracked bead:
 - `bd-znpbo`
 
 This is not the center of the roadmap anymore, but it still needs to be landed and enforced cleanly. The foundation plan assumes tracked lint/style commands are real and that contributor enforcement is defined in CI.
+
+This prerequisite should not block Phase 1 auth work if the tracked gate is mostly working and the remaining gap is enforcement rather than correctness.
 
 ---
 
@@ -379,16 +479,19 @@ Work:
 - fail closed on missing hosted auth config instead of silently falling back
 - tighten callback URL validation and redirect allowlisting
 - add startup validation for required Neon auth settings in hosted mode
+- keep `local` auth as a thin dev-only adapter behind the same domain service contract rather than a parallel product path
 - keep auth HTML extraction early because it is low-risk and removes noise from the file
 - extract auth URL helpers and crypto helpers before broader router thinning
 - expand smoke coverage for `AUTH_EMAIL_PROVIDER=none` and `BORING_UI_PUBLIC_ORIGIN`
 - add contract tests for misconfiguration, bad redirects, and callback completion invariants
+- add actionable request/error logging to the changed auth endpoints
 - do not broaden auth abstraction unless duplication still hurts after these concrete extractions
 
 Done when:
 
 - auth/session/bootstrap behavior is explicit and covered by unit + smoke tests
 - hosted misconfiguration fails fast
+- `local` auth behavior is clearly dev-only and does not define the production contract
 - auth template extraction is landed
 - `auth_router_neon.py` is materially smaller and easier to review
 - the boring-ui auth contract is documented and treated as stable
@@ -427,11 +530,13 @@ Files likely involved:
 
 Work:
 
+- triage `src/back/boring_ui/api/stream_bridge.py` before deletion; if PI imports no helpers from it, delete it entirely, otherwise extract only the surviving PI-relevant helpers into `api/agents/` first
 - remove `terminal` and `shell` panes from the registry
 - remove PTY websocket and lifecycle routes
 - remove Claude stream and `agent_normal` routes
 - remove Claude/PTy provider config and capability names
 - remove websocket route helpers for deleted surfaces
+- delete `src/back/boring_ui/api/git_routes.py` if it remains a dead stub
 - remove docs that present the deleted runtime surface as part of the framework core
 - remove tests that lock in deleted routes/capabilities, replacing them with absence tests where needed
 - do not leave a compatibility alias layer behind
@@ -449,11 +554,11 @@ Why second:
 
 ---
 
-### Phase 3: Replace Mode-Centric Config With Explicit Policy
+### Phase 3a: Make Config Explicit (Backend)
 
 Target:
 
-- replace the old `frontend/backend/lite` architecture language with explicit placement, storage, and isolation policy
+- replace the old `frontend/backend/lite` architecture language with explicit placement, storage, and provisioner policy
 
 Tracked bead:
 
@@ -473,23 +578,24 @@ Files likely involved:
 Work:
 
 - introduce singular `[agent]` config with `runtime` and `placement`
-- introduce `[workspace]` config with `storage` and `isolation`
+- introduce `[workspace]` config with `storage` and `provisioner`
 - remove `agents.mode` from the core contract
 - keep deploy presets only as packaging shortcuts mapped onto the new policy fields
 - add startup validation for invalid combinations
-- document the new policy with clear examples for local dev, hosted browser-agent, and hosted isolated-agent deployments
+- document the new policy with clear examples for local dev, hosted browser-agent, and hosted Fly-provisioned agent deployments
+- declare the Fly-provisioned hosted profile as the reference production path for docs, smoke, and eval
 
 Validation rules to enforce:
 
 - `agent.runtime` must be `pi`
-- `agent.placement = "server"` with `workspace.storage = "browser"` is invalid
-- hosted server-side execution without the required isolation policy should fail validation outside dev exceptions
+- `agent.placement = "server"` with `workspace.storage = "lightningfs"` is invalid
+- `auth.provider = "local"` is invalid outside explicit local development contexts
 - removed legacy keys should not silently reconfigure the app
 
 Done when:
 
 - runtime config and app config no longer depend on `frontend|backend` mode semantics
-- deployment documentation explains architecture in terms of placement/storage/isolation
+- deployment documentation explains architecture in terms of placement/storage/provisioner
 - invalid combinations fail early and loudly
 
 Why now:
@@ -498,11 +604,119 @@ Why now:
 
 ---
 
+### Phase 3b: Split `App.jsx` (Frontend, Parallel With Phase 3a)
+
+Target:
+
+- reduce `src/front/App.jsx` to a thin shell while the backend config work happens in parallel
+
+Tracked bead:
+
+- `bd-om29`
+
+Files likely involved:
+
+- `src/front/App.jsx`
+- extracted state modules/hooks/components under `src/front/`
+- relevant frontend tests
+
+Why here instead of last:
+
+- the `App.jsx` problem does not disappear when terminal/shell/Claude panels are removed
+- every later frontend change gets easier once stateful responsibilities are no longer all in one file
+- the extraction work mostly touches frontend state, routing, and DockView orchestration, not the deleted runtime panels
+- the backend config track and the frontend shell track touch different files and can run in parallel
+
+Target structure:
+
+```text
+src/front/
+  App.jsx                        # ~200 lines, shell + JSX only
+  hooks/
+    useWorkspaceAuth.js
+    useWorkspaceRouter.js
+    useDockLayout.js
+    usePanelActions.js
+    useApprovalPolling.js
+    useFrontendStatePersist.js
+    useDataProviderScope.js
+```
+
+Work:
+
+- remove now-dead runtime branches and panel orchestration first
+- extract pure state models/reducers/selectors before wrapping them in hooks
+- then extract the remaining stateful seams into focused modules with clear ownership
+- keep the shell composition thin and avoid inventing abstractions for deleted surfaces
+- group remaining frontend components by surviving domains only after the terminal/Claude components are gone; do not reorganize deleted files
+
+Concrete extraction plan after the scope cut:
+
+1. `useApprovalPolling` (~100 lines)
+2. `useDataProviderScope` (~100 lines)
+3. `useFrontendStatePersist` (~120 lines)
+4. `useWorkspaceAuth` (~150 lines)
+5. `useWorkspaceRouter` (~200 lines)
+6. `usePanelActions` (~400 lines)
+7. `useDockLayout` (~500 lines)
+
+Hook responsibilities:
+
+- `useWorkspaceAuth`
+  - user identity and workspace menu state
+  - workspace list loading
+  - switch/create workspace actions
+  - user/workspace settings entry points
+  - logout
+- `useWorkspaceRouter`
+  - route-derived workspace state
+  - storage prefix / project root / layout version
+  - settings/setup route detection
+  - workspace path synchronization
+- `useDockLayout`
+  - DockView layout state
+  - restore/migrate/persist layout
+  - group resolution and docking rules
+- `usePanelActions`
+  - file-open actions
+  - panel-open / close / focus flows
+  - surviving panel orchestration after terminal/shell removal
+- `useApprovalPolling`
+  - approval fetch / poll / refresh if approval remains core
+- `useFrontendStatePersist`
+  - local persisted frontend state outside DockView itself
+- `useDataProviderScope`
+  - data-provider selection, cache scoping, and namespace derivation
+
+Suggested shell shape:
+
+```jsx
+export default function App() {
+  const workspaceAuth = useWorkspaceAuth(...)
+  const workspaceRouter = useWorkspaceRouter(...)
+  const dockLayout = useDockLayout(...)
+  const panelActions = usePanelActions(...)
+  const approvalPolling = useApprovalPolling(...)
+  const frontendState = useFrontendStatePersist(...)
+  const dataProvider = useDataProviderScope(...)
+
+  return <WorkspaceShell ... />
+}
+```
+
+Done when:
+
+- `App.jsx` is primarily shell composition and JSX, not long-lived state orchestration
+- extracted state logic is unit-testable without full DockView rendering
+- the shell reflects the new core, not the old one spread across more files
+
+---
+
 ### Phase 4: Freeze The PI-Only Runtime Contract
 
 Target:
 
-- make `/__bui/config`, `/api/capabilities`, and pane requirements agree on one stable PI-only contract
+- make `/__bui/config`, `/api/capabilities`, and pane requirements agree on one stable PI-only contract while restructuring backend modules around the surviving product
 
 Tracked bead:
 
@@ -527,6 +741,7 @@ Work:
 - align the runtime payload served from `/__bui/config` with the same contract vocabulary
 - define what is core and what is experimental
 - explicitly classify approval as either durable core or experimental non-core before leaning on it further in the shell
+- converge local and Neon behavior behind shared domain routers/services; provider-specific differences should live in small adapters, not duplicate router trees
 - split the overloaded `control_plane/` area along real domain seams instead of keeping auth, users, workspaces, and collaboration in one bucket
 - move surviving API-root stragglers into the right homes:
   - `git_backend.py` and `subprocess_git.py` into `modules/git/`
@@ -541,6 +756,7 @@ Done when:
 - the contract is documented and locked by tests
 - there is no ambiguity about the supported agent/runtime surface
 - backend module boundaries match the supported product instead of the historical runtime sprawl
+- `local` no longer adds major structural complexity relative to Neon because it is clearly reduced to a dev adapter
 
 Why now:
 
@@ -601,117 +817,6 @@ Why now:
 
 ---
 
-### Phase 6: Simplify The Frontend Shell After Surface Reduction
-
-Target:
-
-- reduce `src/front/App.jsx` to a thin shell only after the runtime surface and contract are smaller
-
-Tracked bead:
-
-- `bd-om29`
-
-Files likely involved:
-
-- `src/front/App.jsx`
-- extracted state modules/hooks/components under `src/front/`
-- relevant frontend tests
-
-Target structure:
-
-```text
-src/front/
-  App.jsx                        # ~200 lines, shell + JSX only
-  hooks/
-    useWorkspaceAuth.js
-    useWorkspaceRouter.js
-    useDockLayout.js
-    usePanelActions.js
-    useApprovalPolling.js
-    useFrontendStatePersist.js
-    useDataProviderScope.js
-```
-
-Work:
-
-- remove now-dead runtime branches and panel orchestration first
-- extract pure state models/reducers/selectors before wrapping them in hooks
-- then extract the remaining stateful seams into focused modules with clear ownership
-- keep the shell composition thin and avoid inventing abstractions for deleted surfaces
-- group remaining frontend components by surviving domains only after the terminal/Claude components are gone; do not reorganize deleted files
-
-Concrete extraction plan after the scope cut:
-
-1. `useWorkspaceAuth` (~150 lines)
-   Moves user identity and workspace menu state:
-   - `menuUserId`, `menuUserEmail`, `userMenuAuthStatus`
-   - `userMenuIdentityError`, `userMenuWorkspaceError`
-   - `workspaceOptions`, `workspaceListStatus`, `showCreateWorkspaceModal`
-   Moves actions such as:
-   - `refreshUserMenuData`
-   - `fetchWorkspaceList`
-   - `handleUserMenuRetry`
-   - `handleSwitchWorkspace`
-   - `handleCreateWorkspace`
-   - `handleCreateWorkspaceSubmit`
-   - `handleOpenUserSettings`
-   - `handleOpenWorkspaceSettings`
-   - `handleLogout`
-
-2. `useWorkspaceRouter` (~200 lines)
-   Moves route-derived workspace state and page classification:
-   - `currentWorkspaceId`
-   - `storagePrefix`
-   - `layoutVersion`
-   - `projectRoot`
-   - settings/setup route detection
-   - URL-based workspace detection
-   - `syncWorkspacePathContext`
-
-3. `useDockLayout` (~500 lines)
-   Owns DockView layout state, layout restore, group resolution, and the remaining dock-specific orchestration. This is the biggest extraction and should stay dock-focused rather than absorbing unrelated auth or data-provider logic.
-
-4. `usePanelActions` (~400 lines)
-   Owns panel-open/panel-close/panel-focus flows, file-open actions, and any surviving panel orchestration after terminal/shell removal.
-
-5. `useApprovalPolling` (~100 lines)
-   Owns approval fetch/poll/refresh only if approval remains in core. If approval is classified experimental, this hook should stay out of the core shell path.
-
-6. `useFrontendStatePersist` (~120 lines)
-   Owns local persisted frontend state that is not specific to auth, routing, or DockView composition.
-
-7. `useDataProviderScope` (~100 lines)
-   Owns data-provider selection, cache scoping, and storage-namespace derivation after the new workspace policy is in place.
-
-Suggested shell shape:
-
-```jsx
-export default function App() {
-  const workspaceAuth = useWorkspaceAuth(...)
-  const workspaceRouter = useWorkspaceRouter(...)
-  const dockLayout = useDockLayout(...)
-  const panelActions = usePanelActions(...)
-  const approvalPolling = useApprovalPolling(...)
-  const frontendState = useFrontendStatePersist(...)
-  const dataProvider = useDataProviderScope(...)
-
-  return <WorkspaceShell ... />
-}
-```
-
-Done when:
-
-- `App.jsx` is materially smaller for the right reason: less product surface and clearer ownership
-- `App.jsx` is primarily shell composition and JSX, not long-lived state orchestration
-- extracted state logic is unit-testable without full DockView rendering
-- the shell reflects the new core, not the old one spread across more files
-
-Why last:
-
-- deleting and redefining the product surface first makes the shell refactor smaller and less error-prone
-
----
-
 ## Risks And Mitigations
 
 ### Risk: Auth hardening broadens into a full provider framework prematurely
@@ -762,10 +867,11 @@ The roadmap is succeeding if the repo reaches this state:
 - auth/session/bootstrap is the most reliable subsystem and is protected by unit + smoke coverage
 - no public route, capability, pane, or doc still depends on PTY/Claude-era runtime surface
 - the core runtime contract is PI-only and logical, not transport-shaped
-- app config is expressed in terms of agent placement and workspace isolation/storage policy
+- app config is expressed in terms of agent placement, workspace storage, and workspace provisioner policy
 - `/__bui/config`, `/api/capabilities`, and pane requirements all agree on one documented contract
 - unit tests, smoke tests, and eval each protect a distinct layer of that contract
 - the eval framework is actively used to validate framework and child-app contract behavior
+- the reference production profile is the default path for smoke/eval and documentation
 - `App.jsx` is smaller because the product surface is smaller and the remaining state has clearer ownership
 
 ---
@@ -774,10 +880,11 @@ The roadmap is succeeding if the repo reaches this state:
 
 The next best execution sequence is:
 
-1. start `bd-waixe` and `bd-3bs4j` together so auth hardening and auth smoke move first
-2. start `bd-1mwn4` immediately after the auth contract is stable enough to stop changing underfoot
-3. land `bd-f21sg` to replace mode-centric config with explicit policy
-4. land `bd-wjlvl` and `bd-xle50` together so the rewritten contract and the rewritten validation strategy arrive at the same time
-5. return to `bd-om29` only after the runtime surface is genuinely smaller
+1. land Phase 0 operational hygiene first so tests, logs, and workspace machine state are trustworthy
+2. start `bd-waixe` and `bd-3bs4j` together so auth hardening and auth smoke move first
+3. start `bd-1mwn4` immediately after the auth contract is stable enough to stop changing underfoot
+4. run `bd-f21sg` and `bd-om29` in parallel as Phase 3a/3b
+5. land `bd-wjlvl` and `bd-x8boo` together so the rewritten contract and the backend module boundaries converge at the same time
+6. finish `bd-xle50` so the new contract and the new test strategy land together
 
 That order keeps the work focused on foundations instead of polishing legacy branches that the framework no longer intends to keep.
