@@ -452,9 +452,9 @@ async def _neon_password_auth(
             request,
             status_code=502,
             error="upstream_error",
-                    code="NEON_AUTH_UNAVAILABLE",
-                    message="Unable to reach Neon Auth",
-                )
+            code="NEON_AUTH_UNAVAILABLE",
+            message="Unable to reach Neon Auth",
+        )
 
     if not complete_session:
         # Auto-send verification email — Better Auth doesn't send on signup.
