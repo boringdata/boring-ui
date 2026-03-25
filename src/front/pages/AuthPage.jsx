@@ -74,6 +74,7 @@ export default function AuthPage({ authConfig }) {
   const provider = authConfig?.provider === 'neon' ? 'neon' : 'local'
   const isNeon = provider === 'neon'
   const isLocal = provider === 'local'
+  const verificationEmailEnabled = authConfig?.verificationEmailEnabled !== false
   const urlSearchParams = new URLSearchParams(window.location.search)
 
   const redirectUri = safeRedirectPath(authConfig?.redirectUri || urlSearchParams.get('redirect_uri'))
@@ -185,8 +186,13 @@ export default function AuthPage({ authConfig }) {
         })
         if (result.error) {
           if (isEmailNotVerifiedError(result)) {
-            setVerificationRecoveryEmail(trimmed.toLowerCase())
-            showStatus('Email not verified. Check your inbox or resend the verification email.', true)
+            if (verificationEmailEnabled) {
+              setVerificationRecoveryEmail(trimmed.toLowerCase())
+              showStatus('Email not verified. Check your inbox or resend the verification email.', true)
+            } else {
+              clearVerificationRecovery()
+              showStatus('Email not verified. Verification email delivery is not configured for this deployment.', true)
+            }
             return
           }
           clearVerificationRecovery()
@@ -207,6 +213,10 @@ export default function AuthPage({ authConfig }) {
 
   const handleResendVerification = async () => {
     if (busy) return
+    if (!verificationEmailEnabled) {
+      showStatus('Verification email delivery is not configured for this deployment.', true)
+      return
+    }
     const trimmed = email.trim().toLowerCase()
     if (!trimmed) {
       showStatus('Enter your email to resend the verification link.', true)
@@ -487,7 +497,7 @@ export default function AuthPage({ authConfig }) {
                 type="button"
                 className="auth-link-btn"
                 onClick={handleResendVerification}
-                disabled={busy}
+                disabled={busy || !verificationEmailEnabled}
               >
                 Resend verification email
               </button>

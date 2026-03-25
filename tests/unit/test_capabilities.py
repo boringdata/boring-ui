@@ -235,6 +235,26 @@ class TestCapabilitiesEndpoint:
         assert 'pi' in data['agents']['available']
         assert data['frontend']['mode']['profile'] == 'frontend'
 
+    def test_capabilities_auth_reports_verification_email_metadata(self):
+        """Hosted auth metadata should expose verification email capability for the SPA."""
+        config = APIConfig(
+            workspace_root=Path.cwd(),
+            control_plane_provider='neon',
+            database_url='postgresql://example.invalid/neondb',
+            neon_auth_base_url='https://example.neonauth.test/neondb/auth',
+            neon_auth_jwks_url='https://example.neonauth.test/neondb/auth/.well-known/jwks.json',
+            auth_email_provider='none',
+        )
+        app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
+        client = TestClient(app)
+
+        response = client.get('/api/capabilities')
+        data = response.json()
+
+        assert data['auth']['provider'] == 'neon'
+        assert data['auth']['emailProvider'] == 'none'
+        assert data['auth']['verificationEmailEnabled'] is False
+
 
 class TestHealthEndpointFeatures:
     """Test that /health endpoint also reports features correctly."""
@@ -273,5 +293,4 @@ class TestHealthEndpointFeatures:
         assert features['pty'] is False
         assert features['stream'] is False
         assert features['approval'] is False
-
 

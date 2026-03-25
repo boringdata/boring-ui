@@ -175,7 +175,9 @@ JWT audience: Neon Auth origin URL (e.g., `https://ep-<id>.neonauth.<region>.aws
 - Neon Auth (Better Auth) does **not** auto-send verification emails on signup.
 - `bui neon setup` configures Resend SMTP by default (`--email-provider resend`), so emails are sent through Resend using the `auth@mail.boringdata.io` sender address.
 - boring-ui's backend auto-sends a verification email after successful signup by calling Neon Auth's `/send-verification-email` endpoint (added in commit `9df6aa2`).
+- If a deployment does not have Neon email delivery configured yet, set `AUTH_EMAIL_PROVIDER=none` so the auth UI stops promising that a verification email was sent.
 - The Neon Auth project `trusted_origins` must include the actual deploy origin used by the browser and callback URLs. If this list still points at an old Modal or local URL, direct verification-link clicks can fail with `INVALID_CALLBACKURL` even though signup itself appears healthy.
+- If proxy/header detection is unreliable in a hosted environment, set `BORING_UI_PUBLIC_ORIGIN=https://<your-app-host>` so verification and reset callbacks always use the correct public app origin.
 - Depending on the Neon Auth project configuration, the verification email may contain a clickable link or a 6-digit OTP code. Users can sign in regardless of verification status.
 - In boring-ui, Neon signup flow:
   - `POST /auth/sign-up` creates the account via Neon Auth, auto-sends verification email, and returns `requires_email_verification: true`

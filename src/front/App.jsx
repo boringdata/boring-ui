@@ -4675,6 +4675,8 @@ export default function App() {
           provider: capabilities?.auth?.provider || 'local',
           neonAuthUrl: capabilities?.auth?.neonAuthUrl || '',
           callbackUrl: capabilities?.auth?.callbackUrl || '',
+          emailProvider: capabilities?.auth?.emailProvider || '',
+          verificationEmailEnabled: capabilities?.auth?.verificationEmailEnabled !== false,
           redirectUri: new URLSearchParams(window.location.search).get('redirect_uri') || '/',
           initialMode: pagePathname === '/auth/signup'
             ? 'sign_up'

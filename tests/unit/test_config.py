@@ -48,6 +48,9 @@ class TestAPIConfig:
         assert config.auth_session_ttl_seconds == 86400
         assert config.auth_session_secure_cookie is False
         assert config.auth_dev_login_enabled is False
+        assert config.public_app_origin is None
+        assert config.auth_email_provider == 'unknown'
+        assert config.verification_email_enabled is True
         assert isinstance(config.auth_session_secret, str)
         assert len(config.auth_session_secret) >= 32
 
@@ -106,6 +109,14 @@ class TestAPIConfig:
         assert config.auth_session_secure_cookie is True
         assert config.auth_dev_login_enabled is True
         assert config.auth_session_secret == 'super-secret'
+
+    def test_public_origin_and_email_provider_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv('BORING_UI_PUBLIC_ORIGIN', 'https://frontend.example.com')
+        monkeypatch.setenv('AUTH_EMAIL_PROVIDER', 'smtp')
+        config = APIConfig(workspace_root=tmp_path)
+        assert config.public_app_origin == 'https://frontend.example.com'
+        assert config.auth_email_provider == 'smtp'
+        assert config.verification_email_enabled is True
 
     def test_github_private_key_unescapes_newlines(self, tmp_path, monkeypatch):
         """Docker env files carry PEMs with escaped newlines."""

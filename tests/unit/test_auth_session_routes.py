@@ -51,6 +51,7 @@ class _FakeAsyncResponse:
 
 class _FakeAsyncClient:
     post_response = _FakeAsyncResponse(200, {})
+    post_responses: list[_FakeAsyncResponse] = []
     token_response = _FakeAsyncResponse(200, {"token": "jwt-from-neon"})
     last_post: tuple[str, dict] | None = None
     last_get: str | None = None
@@ -71,6 +72,8 @@ class _FakeAsyncClient:
         type(self).post_headers.append(headers or {})
         if type(self).last_post is None:
             type(self).last_post = (url, json or {})
+        if type(self).post_responses:
+            return type(self).post_responses.pop(0)
         return type(self).post_response
 
     async def get(self, url):
@@ -252,6 +255,7 @@ def test_neon_sign_up_requires_email_verification_instead_of_auto_login(
 ) -> None:
     client = _client_neon(tmp_path)
     _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
+    _FakeAsyncClient.post_responses = []
     _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
     _FakeAsyncClient.last_post = None
     _FakeAsyncClient.last_get = None
@@ -267,6 +271,8 @@ def test_neon_sign_up_requires_email_verification_instead_of_auto_login(
     assert response.json() == {
         "ok": True,
         "requires_email_verification": True,
+        "verification_email_enabled": True,
+        "verification_email_sent": True,
         "message": "Check your email to verify your account.",
         "redirect_uri": "/",
     }
@@ -286,6 +292,78 @@ def test_neon_sign_up_requires_email_verification_instead_of_auto_login(
     assert params["pending_login"]
 
 
+def test_neon_sign_up_returns_truthful_message_when_auto_verification_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = _client_neon(tmp_path)
+    _FakeAsyncClient.post_responses = [
+        _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}}),
+        _FakeAsyncResponse(503, {"message": "Email provider unavailable"}, content=b'{"message":"Email provider unavailable"}'),
+    ]
+    _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.last_get = None
+    _FakeAsyncClient.posts = []
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = client.post(
+        "/auth/sign-up",
+        json={"email": "new@example.com", "password": "password123", "redirect_uri": "/"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "requires_email_verification": True,
+        "verification_email_enabled": True,
+        "verification_email_sent": False,
+        "message": "Account created, but we could not send the verification email. Try again later or contact the administrator.",
+        "redirect_uri": "/",
+    }
+    assert len(_FakeAsyncClient.posts) == 2
+
+
+def test_neon_sign_up_skips_auto_verification_when_email_delivery_disabled(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=False,
+        auth_dev_auto_login=False,
+        control_plane_provider="neon",
+        database_url="postgresql://example.invalid/neondb",
+        neon_auth_base_url="https://example.neonauth.test/neondb/auth",
+        neon_auth_jwks_url="https://example.neonauth.test/neondb/auth/.well-known/jwks.json",
+        auth_email_provider="none",
+        cors_origins=["http://127.0.0.1:5176"],
+    )
+    app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
+    client = TestClient(app)
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
+    _FakeAsyncClient.post_responses = []
+    _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.last_get = None
+    _FakeAsyncClient.posts = []
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = client.post(
+        "/auth/sign-up",
+        json={"email": "new@example.com", "password": "password123", "redirect_uri": "/"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "requires_email_verification": True,
+        "verification_email_enabled": False,
+        "verification_email_sent": False,
+        "message": "Account created, but verification email delivery is not configured for this deployment.",
+        "redirect_uri": "/",
+    }
+    assert len(_FakeAsyncClient.posts) == 1
+
+
 def test_neon_sign_up_auto_verification_uses_https_same_origin_for_fly_frontend_agent(
     tmp_path: Path,
     monkeypatch,
@@ -303,6 +381,7 @@ def test_neon_sign_up_auto_verification_uses_https_same_origin_for_fly_frontend_
     app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
     client = TestClient(app, base_url="http://boring-ui-frontend-agent.fly.dev")
     _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
+    _FakeAsyncClient.post_responses = []
     _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
     _FakeAsyncClient.last_post = None
     _FakeAsyncClient.last_get = None
@@ -329,6 +408,47 @@ def test_neon_sign_up_auto_verification_uses_https_same_origin_for_fly_frontend_
     assert parsed.path == "/auth/callback"
     params = parse_qs(parsed.query)
     assert params["redirect_uri"] == ["/"]
+    assert params["pending_login"]
+
+
+def test_neon_sign_up_auto_verification_prefers_configured_public_origin_without_request_origin(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = APIConfig(
+        workspace_root=tmp_path,
+        auth_dev_login_enabled=False,
+        auth_dev_auto_login=False,
+        control_plane_provider="neon",
+        database_url="postgresql://example.invalid/neondb",
+        neon_auth_base_url="https://example.neonauth.test/neondb/auth",
+        neon_auth_jwks_url="https://example.neonauth.test/neondb/auth/.well-known/jwks.json",
+        public_app_origin="https://frontend.example.com",
+        cors_origins=["http://127.0.0.1:5176"],
+    )
+    app = create_app(config=config, include_pty=False, include_stream=False, include_approval=False)
+    client = TestClient(app, base_url="http://internal-service")
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
+    _FakeAsyncClient.post_responses = []
+    _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
+    _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.last_get = None
+    _FakeAsyncClient.posts = []
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = client.post(
+        "/auth/sign-up",
+        json={"email": "new@example.com", "password": "password123", "redirect_uri": "/w/demo"},
+    )
+
+    assert response.status_code == 200
+    assert len(_FakeAsyncClient.posts) == 2
+    parsed = urlparse(_FakeAsyncClient.posts[1][1]["callbackURL"])
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "frontend.example.com"
+    assert parsed.path == "/auth/callback"
+    params = parse_qs(parsed.query)
+    assert params["redirect_uri"] == ["/w/demo"]
     assert params["pending_login"]
 
 

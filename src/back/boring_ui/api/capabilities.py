@@ -329,6 +329,8 @@ def create_capabilities_router(
                 'callbackUrl': '/auth/callback',
                 'appName': config.auth_app_name or '',
                 'appDescription': config.auth_app_description or '',
+                'emailProvider': config.auth_email_provider,
+                'verificationEmailEnabled': config.verification_email_enabled,
             }
 
         # Workspace runtime info for backend-agent mode

@@ -123,6 +123,25 @@ def _normalize_control_plane_provider(raw: str | None) -> str:
     return "local"
 
 
+def _normalize_public_origin(raw: str | None) -> str | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    match = re.match(r"^(https?)://([^/]+)$", text)
+    if not match:
+        return None
+    return f"{match.group(1)}://{match.group(2)}"
+
+
+def _normalize_auth_email_provider(raw: str | None) -> str:
+    value = str(raw or "").strip().lower()
+    if value in {"smtp", "resend", "email"}:
+        return "smtp"
+    if value in {"none", "disabled", "off"}:
+        return "none"
+    return "smtp" if os.environ.get("RESEND_API_KEY") else "unknown"
+
+
 @dataclass(frozen=True)
 class AgentRuntimeConfig:
     """Serializable agent configuration sourced from boring.app.toml."""
@@ -210,6 +229,12 @@ class APIConfig:
     auth_rail_code: str = field(
         default_factory=lambda: _env_str('AUTH_RAIL_CODE', '')
     )
+    public_app_origin: str | None = field(
+        default_factory=lambda: _normalize_public_origin(
+            os.environ.get('BORING_UI_PUBLIC_ORIGIN')
+            or os.environ.get('PUBLIC_APP_ORIGIN')
+        )
+    )
     # Canonical hosted control-plane database URL.
     database_url: str | None = field(
         default_factory=lambda: os.environ.get('DATABASE_URL')
@@ -228,6 +253,12 @@ class APIConfig:
             p.strip() for p in os.environ.get('AUTH_OAUTH_PROVIDERS', '').split(',')
             if p.strip()
         ]
+    )
+    auth_email_provider: str = field(
+        default_factory=lambda: _normalize_auth_email_provider(
+            os.environ.get('AUTH_EMAIL_PROVIDER')
+            or os.environ.get('NEON_AUTH_EMAIL_PROVIDER')
+        )
     )
     settings_encryption_key: str | None = field(
         default_factory=lambda: os.environ.get('BORING_SETTINGS_KEY')
@@ -315,6 +346,19 @@ class APIConfig:
             )
             self.github_app_slug = None
 
+        if self.public_app_origin:
+            normalized_public_origin = _normalize_public_origin(self.public_app_origin)
+            if not normalized_public_origin:
+                import logging
+                logging.getLogger(__name__).warning(
+                    'Invalid BORING_UI_PUBLIC_ORIGIN %r — clearing', self.public_app_origin,
+                )
+                self.public_app_origin = None
+            else:
+                self.public_app_origin = normalized_public_origin
+
+        self.auth_email_provider = _normalize_auth_email_provider(self.auth_email_provider)
+
         # Backend-agent workspace role: disable control plane when no DB is configured.
         # The same image serves both control plane (has DATABASE_URL) and workspace
         # (no DATABASE_URL, agents_mode=backend) roles on Fly.io.
@@ -393,6 +437,10 @@ class APIConfig:
             and self.github_app_id
             and self.github_app_private_key
         )
+
+    @property
+    def verification_email_enabled(self) -> bool:
+        return self.auth_email_provider != "none"
 
     @property
     def available_agents(self) -> list[str]:

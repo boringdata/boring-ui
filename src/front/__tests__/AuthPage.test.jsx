@@ -15,6 +15,8 @@ vi.mock('../components/ThemeToggle', () => ({
 const DEFAULT_AUTH_CONFIG = {
   provider: 'local',
   callbackUrl: '/auth/callback',
+  emailProvider: 'smtp',
+  verificationEmailEnabled: true,
   redirectUri: '/',
   initialMode: 'sign_in',
   appName: 'Test App',
@@ -233,6 +235,39 @@ describe('AuthPage', () => {
         }),
       })
     })
+  })
+
+  it('suppresses resend verification CTA when verification email delivery is disabled', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Email not verified',
+      }),
+    })
+
+    render(
+      <AuthPage
+        authConfig={{
+          ...DEFAULT_AUTH_CONFIG,
+          provider: 'neon',
+          emailProvider: 'none',
+          verificationEmailEnabled: false,
+        }}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Work email'), { target: { value: 'test@example.com' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Email not verified. Verification email delivery is not configured for this deployment.'),
+      ).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('button', { name: /resend verification email/i })).not.toBeInTheDocument()
   })
 
   it('requests a Neon password reset email from sign-in', async () => {
