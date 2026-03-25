@@ -3,9 +3,12 @@
  * Uses simple-git via GitServiceImpl. Python-compatible response shapes.
  */
 import type { FastifyInstance, FastifyReply } from 'fastify'
-import { createGitServiceImpl } from '../services/gitImpl.js'
+import { createGitServiceImpl, type GitServiceImpl } from '../services/gitImpl.js'
+import { mkdirSync } from 'node:fs'
 
 export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
+  // Lazy-init: ensure workspace root exists before creating git service
+  mkdirSync(app.config.workspaceRoot, { recursive: true })
   const gitService = createGitServiceImpl(app.config.workspaceRoot)
 
   // --- Read operations ---
