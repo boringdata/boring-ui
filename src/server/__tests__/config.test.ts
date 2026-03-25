@@ -231,4 +231,40 @@ describe('validateConfig', () => {
       }),
     ).toThrow(/placement.*server.*DATABASE_URL/)
   })
+
+  it('throws when placement=server with lightningfs backend', () => {
+    const config = loadConfig()
+    expect(() =>
+      validateConfig({
+        ...config,
+        agentPlacement: 'server',
+        workspaceBackend: 'lightningfs' as any,
+        databaseUrl: 'postgres://test@localhost/test',
+        controlPlaneProvider: 'local',
+      }),
+    ).toThrow(/placement.*server.*bwrap/)
+  })
+
+  it('passes for valid bwrap + browser combo', () => {
+    const config = loadConfig()
+    expect(() =>
+      validateConfig({
+        ...config,
+        workspaceBackend: 'bwrap',
+        agentPlacement: 'browser',
+        agentRuntime: 'pi',
+        controlPlaneProvider: 'local',
+      }),
+    ).not.toThrow()
+  })
+
+  it('rejects ai-sdk as agent runtime (not yet supported)', () => {
+    const config = loadConfig()
+    expect(() =>
+      validateConfig({
+        ...config,
+        agentRuntime: 'ai-sdk' as any,
+      }),
+    ).toThrow(/agent.runtime/)
+  })
 })
