@@ -81,6 +81,14 @@ class _FakeAsyncClient:
         return type(self).token_response
 
 
+class _FakeDbPool:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def execute(self, sql: str, *args) -> None:
+        self.calls.append((sql, args))
+
+
 def test_auth_login_requires_identity_params(tmp_path: Path) -> None:
     client = _client(tmp_path)
     response = client.get("/auth/login", follow_redirects=False)
@@ -403,10 +411,40 @@ def test_neon_sign_up_auto_verification_uses_https_same_origin_for_fly_frontend_
     assert _FakeAsyncClient.post_headers[1]["Origin"] == "https://boring-ui-frontend-agent.fly.dev"
     callback_url = _FakeAsyncClient.posts[1][1]["callbackURL"]
     parsed = urlparse(callback_url)
-    assert parsed.scheme == "https"
-    assert parsed.netloc == "boring-ui-frontend-agent.fly.dev"
+    assert parsed.scheme == ""
+    assert parsed.netloc == ""
     assert parsed.path == "/auth/callback"
     params = parse_qs(parsed.query)
+    assert params["redirect_uri"] == ["/"]
+    assert params["pending_login"]
+
+
+def test_neon_sign_up_auto_verification_uses_local_trusted_origin_for_ephemeral_backend_port(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = _client_neon(tmp_path)
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {"user": {"email": "new@example.com"}})
+    _FakeAsyncClient.post_responses = []
+    _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "unused"})
+    _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.last_get = None
+    _FakeAsyncClient.posts = []
+    _FakeAsyncClient.post_headers = []
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = client.post(
+        "/auth/sign-up",
+        headers={"Origin": "http://127.0.0.1:36213"},
+        json={"email": "new@example.com", "password": "password123", "redirect_uri": "/"},
+    )
+
+    assert response.status_code == 200
+    assert len(_FakeAsyncClient.post_headers) == 2
+    assert _FakeAsyncClient.post_headers[1]["Origin"] == "http://127.0.0.1:5176"
+    callback_url = _FakeAsyncClient.posts[1][1]["callbackURL"]
+    assert callback_url.startswith("/auth/callback?")
+    params = parse_qs(urlparse(callback_url).query)
     assert params["redirect_uri"] == ["/"]
     assert params["pending_login"]
 
@@ -434,6 +472,7 @@ def test_neon_sign_up_auto_verification_prefers_configured_public_origin_without
     _FakeAsyncClient.last_post = None
     _FakeAsyncClient.last_get = None
     _FakeAsyncClient.posts = []
+    _FakeAsyncClient.post_headers = []
     monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
 
     response = client.post(
@@ -443,9 +482,10 @@ def test_neon_sign_up_auto_verification_prefers_configured_public_origin_without
 
     assert response.status_code == 200
     assert len(_FakeAsyncClient.posts) == 2
+    assert _FakeAsyncClient.post_headers[1]["Origin"] == "https://frontend.example.com"
     parsed = urlparse(_FakeAsyncClient.posts[1][1]["callbackURL"])
-    assert parsed.scheme == "https"
-    assert parsed.netloc == "frontend.example.com"
+    assert parsed.scheme == ""
+    assert parsed.netloc == ""
     assert parsed.path == "/auth/callback"
     params = parse_qs(parsed.query)
     assert params["redirect_uri"] == ["/w/demo"]
@@ -770,3 +810,51 @@ def test_neon_token_exchange_omits_workspace_id_when_eager_provision_returns_non
     payload = response.json()
     assert payload["ok"] is True
     assert "workspace_id" not in payload
+
+
+def test_neon_token_exchange_syncs_identity_into_user_settings_not_legacy_users_table(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = _client_neon(tmp_path)
+    fake_pool = _FakeDbPool()
+    _FakeAsyncClient.post_response = _FakeAsyncResponse(200, {})
+    _FakeAsyncClient.token_response = _FakeAsyncResponse(200, {"token": "jwt-from-neon"})
+    _FakeAsyncClient.last_post = None
+    _FakeAsyncClient.last_get = None
+    _FakeAsyncClient.posts = []
+    monkeypatch.setattr(auth_router_neon.httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(
+        auth_router_neon,
+        "_validate_neon_jwt",
+        lambda token, *, config: {
+            "user_id": "11111111-1111-1111-1111-111111111111",
+            "email": "owner@example.com",
+        },
+    )
+
+    async def _fake_eager_provision(request, *, config, user_id):
+        return None
+
+    monkeypatch.setattr(auth_router_neon, "_eager_workspace_provision", _fake_eager_provision)
+    monkeypatch.setattr(
+        "boring_ui.api.modules.control_plane.db_client.get_pool_or_none",
+        lambda: fake_pool,
+    )
+
+    response = client.post(
+        "/auth/token-exchange",
+        json={"access_token": "valid-jwt", "redirect_uri": "/"},
+    )
+
+    assert response.status_code == 200
+    assert len(fake_pool.calls) == 1
+    sql, args = fake_pool.calls[0]
+    assert "INSERT INTO user_settings" in sql
+    assert "ON CONFLICT (user_id, app_id)" in sql
+    assert "INSERT INTO users" not in sql
+    assert args == (
+        "11111111-1111-1111-1111-111111111111",
+        client.app.state.app_config.control_plane_app_id,
+        "owner@example.com",
+    )

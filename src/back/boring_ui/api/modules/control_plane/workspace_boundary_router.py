@@ -9,11 +9,14 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, Body, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from ...config import APIConfig
 from ...policy import enforce_delegated_policy_or_none
+from ...workspace import resolve_websocket_workspace_context
+from ..pty.router import handle_pty_websocket
+from ..stream.router import handle_stream_websocket
 from .auth_session import SessionExpired, SessionInvalid, parse_session_cookie
 from .repository import LocalControlPlaneRepository
 from .service import ControlPlaneService
@@ -137,6 +140,18 @@ def _load_session(request: Request, config: APIConfig):
         )
 
 
+def _load_session_ws(websocket: WebSocket, config: APIConfig):
+    token = websocket.cookies.get(config.auth_session_cookie_name, "")
+    if not token:
+        return None, "SESSION_REQUIRED"
+    try:
+        return parse_session_cookie(token, secret=config.auth_session_secret), None
+    except SessionExpired:
+        return None, "SESSION_EXPIRED"
+    except SessionInvalid:
+        return None, "SESSION_INVALID"
+
+
 def _ensure_workspace_exists(service: ControlPlaneService, workspace_id: str) -> None:
     exists = any(item.get("workspace_id") == workspace_id for item in service.list_workspaces())
     if not exists:
@@ -187,6 +202,32 @@ def _require_workspace_member(
                 message="Workspace membership required",
             )
     return session
+
+
+def _require_workspace_member_ws(
+    websocket: WebSocket,
+    service: ControlPlaneService,
+    config: APIConfig,
+    workspace_id: str,
+) -> str | None:
+    session, session_error = _load_session_ws(websocket, config)
+    if session_error is not None:
+        return session_error
+
+    _ensure_workspace_exists(service, workspace_id)
+    membership = _membership_for_user(service, workspace_id, session.user_id)
+    if membership is None and config.auth_dev_auto_login:
+        mid = f"{workspace_id}:{session.user_id}"
+        service.upsert_membership(mid, {
+            "workspace_id": workspace_id,
+            "user_id": session.user_id,
+            "role": "owner",
+        })
+        membership = _membership_for_user(service, workspace_id, session.user_id)
+
+    if membership is None:
+        return "WORKSPACE_MEMBERSHIP_REQUIRED"
+    return None
 
 
 def _is_allowed_workspace_passthrough_target(path: str, config: APIConfig | None = None) -> bool:
@@ -422,6 +463,32 @@ def create_workspace_boundary_router(config: APIConfig) -> APIRouter:
             return session_or_error
         settings = service.set_workspace_settings(workspace_id, dict(body or {}))
         return {"ok": True, "settings": settings}
+
+    @router.websocket("/w/{workspace_id}/ws/agent/normal/stream")
+    async def workspace_agent_stream(websocket: WebSocket, workspace_id: str):
+        deny_reason = _require_workspace_member_ws(websocket, service, config, workspace_id)
+        if deny_reason is not None:
+            close_code = 4403 if deny_reason == "WORKSPACE_MEMBERSHIP_REQUIRED" else 4401
+            await websocket.close(code=close_code, reason=deny_reason)
+            return
+
+        try:
+            ctx = await resolve_websocket_workspace_context(websocket, config=config)
+        except ValueError as exc:
+            await websocket.close(code=4004, reason=str(exc))
+            return
+
+        await handle_stream_websocket(websocket, cwd=str(ctx.root_path))
+
+    @router.websocket("/w/{workspace_id}/ws/pty")
+    async def workspace_pty_websocket(websocket: WebSocket, workspace_id: str):
+        deny_reason = _require_workspace_member_ws(websocket, service, config, workspace_id)
+        if deny_reason is not None:
+            close_code = 4403 if deny_reason == "WORKSPACE_MEMBERSHIP_REQUIRED" else 4401
+            await websocket.close(code=close_code, reason=deny_reason)
+            return
+
+        await handle_pty_websocket(websocket, config)
 
     @router.api_route(
         "/w/{workspace_id}/{path:path}",

@@ -283,22 +283,26 @@ async def _issue_session_response(
             message="Session did not return user_id or email",
         )
 
-    # Ensure the user exists in the local users table.
-    # Neon Auth manages identity externally; this syncs the local record
-    # so workspace FK constraints and membership queries work.
+    # Ensure the hosted control plane has a durable user profile row.
+    # The shared Neon schema uses user_settings as the canonical per-user row;
+    # there is no standalone users table in the dual-stack baseline.
     from .db_client import get_pool_or_none
     pool = get_pool_or_none()
     if pool:
         try:
             await pool.execute(
-                """INSERT INTO users (id, email)
-                   VALUES ($1::uuid, $2)
-                   ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email""",
+                """
+                INSERT INTO user_settings (user_id, app_id, settings, email, display_name, updated_at)
+                VALUES ($1::uuid, $2, '{}'::jsonb, $3, '', now())
+                ON CONFLICT (user_id, app_id)
+                DO UPDATE SET email = EXCLUDED.email, updated_at = now()
+                """,
                 user_id,
+                config.control_plane_app_id or "boring-ui",
                 email,
             )
         except Exception:
-            _logger.warning("Failed to sync user %s to local users table", user_id, exc_info=True)
+            _logger.warning("Failed to sync user %s to hosted user_settings", user_id, exc_info=True)
 
     session_value = create_session_cookie(
         user_id,
@@ -483,26 +487,19 @@ async def _neon_password_auth(
         verification_email_error: str | None = None
         if signup_email and neon_base:
             if verification_email_enabled:
-                # Build callback URL and convert to relative path.
                 # Neon Auth rejects absolute callbackURLs that don't match
-                # their trusted_origins exactly, but accepts relative paths
-                # and resolves them against the Origin header.
-                full_callback = _build_callback_url(
-                    request,
-                    config=config,
+                # trusted_origins exactly. Use a relative callback and let
+                # Better Auth resolve it against the verified Origin header.
+                callback_path = _build_callback_path(
                     redirect_uri=redirect_uri,
                     pending_login=verification_pending_login,
                 )
-                parsed_cb = urlparse(full_callback)
-                relative_callback = parsed_cb.path
-                if parsed_cb.query:
-                    relative_callback += "?" + parsed_cb.query
 
                 verification_email_error = await _auto_send_verification_email(
                     neon_base=neon_base,
                     email=signup_email,
                     origin=public_origin,
-                    callback_url=relative_callback,
+                    callback_url=callback_path,
                 )
             else:
                 verification_email_error = _verification_email_disabled_message()
@@ -662,8 +659,8 @@ async def _auto_send_verification_email(
     try:
         payload: dict[str, str] = {"email": email}
         if callback_url:
-            # Keep the full app callback URL so the verification email links
-            # back to boring-ui rather than Neon Auth's host.
+            # Keep the app callback target so Better Auth resolves the email
+            # link back to boring-ui rather than Neon Auth's host.
             payload["callbackURL"] = callback_url
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             resp = await client.post(

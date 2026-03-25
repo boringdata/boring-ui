@@ -68,6 +68,56 @@ def test_workspace_context_dependency_resolves_path_param_in_hosted_mode(tmp_pat
     }
 
 
+def test_workspace_context_dependency_resolves_path_param_in_local_control_plane_mode(
+    tmp_path: Path,
+) -> None:
+    config = APIConfig(workspace_root=tmp_path, control_plane_provider="local")
+    app = FastAPI()
+    app.state.workspace_context_resolver = build_workspace_context_resolver(config)
+
+    @app.get("/w/{workspace_id}/ctx")
+    async def ctx_info(ctx: WorkspaceContext = Depends(get_workspace_context)):
+        return {
+            "workspace_id": ctx.workspace_id,
+            "root_path": str(ctx.root_path),
+        }
+
+    client = TestClient(app)
+    response = client.get("/w/ws-1/ctx")
+    assert response.status_code == 200
+    assert response.json() == {
+        "workspace_id": "ws-1",
+        "root_path": str((tmp_path / "ws-1").resolve()),
+    }
+
+
+def test_workspace_context_dependency_uses_base_root_when_control_plane_disabled(
+    tmp_path: Path,
+) -> None:
+    config = APIConfig(
+        workspace_root=tmp_path,
+        control_plane_provider="local",
+        control_plane_enabled=False,
+    )
+    app = FastAPI()
+    app.state.workspace_context_resolver = build_workspace_context_resolver(config)
+
+    @app.get("/w/{workspace_id}/ctx")
+    async def ctx_info(ctx: WorkspaceContext = Depends(get_workspace_context)):
+        return {
+            "workspace_id": ctx.workspace_id,
+            "root_path": str(ctx.root_path),
+        }
+
+    client = TestClient(app)
+    response = client.get("/w/ws-1/ctx")
+    assert response.status_code == 200
+    assert response.json() == {
+        "workspace_id": "ws-1",
+        "root_path": str(tmp_path.resolve()),
+    }
+
+
 def test_workspace_context_resolver_creates_missing_workspace_dir(tmp_path: Path) -> None:
     """Workspace dir may be lost after a container redeploy (ephemeral storage).
 
@@ -142,6 +192,33 @@ def test_git_router_uses_header_workspace_context_in_hosted_mode(tmp_path: Path)
     (workspace_root / "file.txt").write_text("updated", encoding="utf-8")
 
     config = APIConfig(workspace_root=tmp_path, control_plane_provider="neon")
+    app = FastAPI()
+    app.include_router(create_git_router(config), prefix="/api/v1/git")
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/git/status",
+        headers={"x-workspace-id": "ws-1"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["is_repo"] is True
+    files_by_path = {entry["path"]: entry["status"] for entry in payload["files"]}
+    assert files_by_path["file.txt"] == "M"
+
+
+def test_git_router_uses_header_workspace_context_in_local_control_plane_mode(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "ws-1"
+    workspace_root.mkdir()
+    subprocess.run(["git", "init"], cwd=workspace_root, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=workspace_root, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=workspace_root, capture_output=True, check=True)
+    (workspace_root / "file.txt").write_text("hello", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=workspace_root, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=workspace_root, capture_output=True, check=True)
+    (workspace_root / "file.txt").write_text("updated", encoding="utf-8")
+
+    config = APIConfig(workspace_root=tmp_path, control_plane_provider="local")
     app = FastAPI()
     app.include_router(create_git_router(config), prefix="/api/v1/git")
 

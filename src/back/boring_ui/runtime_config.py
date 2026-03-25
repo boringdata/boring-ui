@@ -25,6 +25,14 @@ def _normalize_profile(value: str | None) -> str:
     return normalized if normalized in _KNOWN_PROFILES else ""
 
 
+def _local_parity_data_backend_override() -> str | None:
+    """Return a local-dev data backend override when parity mode is enabled."""
+    mode = str(os.environ.get("LOCAL_PARITY_MODE") or "").strip().lower()
+    if mode == "http":
+        return "http"
+    return None
+
+
 def _build_auth_payload(config: APIConfig | None) -> dict[str, Any] | None:
     if config and config.use_neon_control_plane and config.neon_auth_base_url:
         return {
@@ -157,6 +165,9 @@ def build_runtime_config_payload(
         )
     )
     data_backend = str(data.get("backend") or "http").strip().lower() or "http"
+    parity_backend = _local_parity_data_backend_override()
+    if parity_backend is not None:
+        data_backend = parity_backend
     explicit_profile = _normalize_profile(
         os.environ.get("VITE_UI_PROFILE")
         or os.environ.get("UI_PROFILE")

@@ -117,9 +117,23 @@ def test_repo_frontend_mode_defaults_to_lightningfs(monkeypatch):
     monkeypatch.delenv("AGENTS_MODE", raising=False)
     monkeypatch.delenv("BUI_AGENTS_MODE", raising=False)
     monkeypatch.delenv("BORING_UI_AGENTS_MODE", raising=False)
+    monkeypatch.delenv("LOCAL_PARITY_MODE", raising=False)
 
     app = create_app_from_toml(str(REPO_ROOT / "boring.app.toml"))
     runtime = TestClient(app).get("/__bui/config").json()
 
     assert runtime["agents"]["mode"] == "frontend"
     assert runtime["frontend"]["data"]["backend"] == "lightningfs"
+
+
+def test_repo_local_parity_mode_forces_http_backend(monkeypatch):
+    monkeypatch.delenv("AGENTS_MODE", raising=False)
+    monkeypatch.delenv("BUI_AGENTS_MODE", raising=False)
+    monkeypatch.delenv("BORING_UI_AGENTS_MODE", raising=False)
+    monkeypatch.setenv("LOCAL_PARITY_MODE", "http")
+
+    app = create_app_from_toml(str(REPO_ROOT / "boring.app.toml"))
+    runtime = TestClient(app).get("/__bui/config").json()
+
+    assert runtime["agents"]["mode"] == "frontend"
+    assert runtime["frontend"]["data"]["backend"] == "http"

@@ -19,7 +19,9 @@ logger = logging.getLogger("boring_ui.workspace")
 
 
 def _default_single_mode(config: APIConfig) -> bool:
-    return config.control_plane_provider == "local"
+    # Local control-plane still provisions distinct workspace directories.
+    # Only collapse to the base root when the control plane is disabled.
+    return not config.control_plane_enabled
 
 
 def _build_storage_factory(config: APIConfig, storage: Storage | None):

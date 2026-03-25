@@ -2,9 +2,12 @@
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from boring_ui.api import APIConfig, create_app
+import boring_ui.api.modules.control_plane.workspace_boundary_router as boundary_router_module
 
 
 def _client(tmp_path: Path) -> TestClient:
@@ -107,6 +110,72 @@ def test_workspace_scoped_root_route_allows_membership_verified_access(tmp_path:
         "workspace_id": workspace_id,
         "route": "root",
     }
+
+
+def test_workspace_scoped_agent_ws_allows_membership_verified_access(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, str] = {}
+
+    async def fake_handle_stream_websocket(websocket, cmd="claude", base_args=None, cwd=None):
+        captured["cwd"] = cwd
+        await websocket.accept()
+        await websocket.close()
+
+    monkeypatch.setattr(boundary_router_module, "handle_stream_websocket", fake_handle_stream_websocket)
+
+    client = _client(tmp_path)
+    _login(client, user_id="owner-ws", email="owner-ws@example.com")
+    workspace_id = _create_workspace(client, name="WS Agent")
+    _bootstrap_owner_membership(client, workspace_id)
+
+    with client.websocket_connect(f"/w/{workspace_id}/ws/agent/normal/stream") as websocket:
+        with pytest.raises(WebSocketDisconnect):
+            websocket.receive_text()
+
+    assert captured["cwd"] == str((tmp_path / workspace_id).resolve())
+
+
+def test_workspace_scoped_agent_ws_requires_membership(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _login(client, user_id="owner-ws-deny", email="owner-ws-deny@example.com")
+    workspace_id = _create_workspace(client, name="WS Agent Deny")
+    _bootstrap_owner_membership(client, workspace_id)
+
+    _login(client, user_id="outsider-ws", email="outsider-ws@example.com")
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect(f"/w/{workspace_id}/ws/agent/normal/stream"):
+            pass
+
+    assert excinfo.value.code == 4403
+    assert excinfo.value.reason == "WORKSPACE_MEMBERSHIP_REQUIRED"
+
+
+def test_workspace_scoped_pty_ws_allows_membership_verified_access(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, str] = {}
+
+    async def fake_handle_pty_websocket(websocket, config):
+        captured["workspace_id"] = websocket.path_params["workspace_id"]
+        await websocket.accept()
+        await websocket.close()
+
+    monkeypatch.setattr(boundary_router_module, "handle_pty_websocket", fake_handle_pty_websocket)
+
+    client = _client(tmp_path)
+    _login(client, user_id="owner-pty", email="owner-pty@example.com")
+    workspace_id = _create_workspace(client, name="WS PTY")
+    _bootstrap_owner_membership(client, workspace_id)
+
+    with client.websocket_connect(f"/w/{workspace_id}/ws/pty?provider=shell") as websocket:
+        with pytest.raises(WebSocketDisconnect):
+            websocket.receive_text()
+
+    assert captured["workspace_id"] == workspace_id
 
 
 def test_workspace_scoped_precedence_prefers_reserved_settings_route(tmp_path: Path) -> None:
