@@ -286,7 +286,8 @@ async def _issue_session_response(
     # Ensure the user exists in the local users table.
     # Neon Auth manages identity externally; this syncs the local record
     # so workspace FK constraints and membership queries work.
-    pool = getattr(request.app.state, "db_pool", None)
+    from .db_client import get_pool_or_none
+    pool = get_pool_or_none()
     if pool:
         try:
             await pool.execute(
