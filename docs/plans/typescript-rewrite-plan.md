@@ -1394,3 +1394,175 @@ Requirements:
 
 AI SDK packages (`ai`, `@ai-sdk/anthropic`, `@ai-sdk/react`) are added in a future track
 when the second agent runtime is implemented. Not part of foundation dependencies.
+
+---
+
+## Python Implementation Reference
+
+These are precise pointers into the existing Python codebase. The TypeScript
+implementation must match this behavior exactly — the smoke tests enforce it.
+
+### Auth Session (`auth_session.py`)
+
+```
+JWT: HS256 with boring_session secret
+Fields: { sub: user_id, email: lowered, iat, exp, app_id? }
+Cookie: boring_session (or boring_session_{app_id} if app_id present)
+Cookie flags: httponly=true, samesite=lax, secure=config, path=/
+Clock leeway: 30 seconds
+Parsing: raises SessionExpired | SessionInvalid
+```
+
+Key files:
+- `src/back/boring_ui/api/modules/control_plane/auth_session.py` — create/parse JWT
+- Cookie name from `app_cookie_name()` — validates app_id with `^[A-Za-z0-9_-]+$`
+
+### Exec/bwrap Sandbox (`exec/service.py`)
+
+```
+Bwrap mounts:
+  --tmpfs /                          # clean root
+  --proc /proc --dev /dev --tmpfs /tmp
+  --ro-bind /usr /bin /lib /lib64 /sbin /etc   # system binaries (read-only)
+  --bind {workspace_root} /workspace            # workspace dir (read-write)
+  --chdir /workspace/{relative_cwd}
+  -- sh -c {command}
+
+Bootstrap (per workspace, once):
+  1. git init + config user.email/name (inside sandbox)
+  2. python3 -m venv /workspace/.venv (inside sandbox)
+
+Environment:
+  HOME=/workspace
+  PATH={venv}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  VIRTUAL_ENV={home}/.venv
+  PYTHONUSERBASE={home}/.local
+
+Timeout: 60s → kill process → 5s grace → return exit_code=-1
+Max output: 512KB truncated
+Fallback: plain subprocess.run when bwrap not installed (local dev)
+```
+
+Key file: `src/back/boring_ui/api/modules/exec/service.py`
+- `_build_sandbox_argv()` line 82 — exact bwrap flag construction
+- `_ensure_workspace_bootstrapped()` line 44 — bootstrap sequence
+- `execute_command()` line 132 — main entry point with timeout handling
+
+### Token Exchange (`auth_router_neon.py`)
+
+```
+POST /auth/token-exchange
+  Input: { access_token } or { session_token }
+  Steps:
+    1. Get JWT from Neon Auth: GET {neon_base}/token
+    2. Verify JWT via JWKS (EdDSA):
+       - JWKS URL: config.neon_auth_jwks_url or {neon_base}/.well-known/jwks.json
+       - Audience: urlparse(neon_base) → scheme://netloc
+    3. Extract user_id (sub) and email
+    4. Sync user to DB: INSERT INTO users (id, email) ON CONFLICT DO UPDATE
+    5. Create boring_session cookie (HS256, app_id from config)
+    6. Set cookie on response
+    7. Eager workspace provision: create default workspace if none exists
+  Output: { ok, redirect_uri, workspace_id? } + Set-Cookie header
+```
+
+Key functions in `auth_router_neon.py`:
+- `_validate_neon_jwt()` ~line 1724 — JWKS verification
+- `_issue_session_response()` ~line 257 — cookie creation
+- `_eager_workspace_provision()` ~line 322 — default workspace creation
+
+### Workspace Creation (`workspace_router_hosted.py`)
+
+```
+create_workspace_for_user(pool, app_id, user_id, name, is_default=False)
+  Transaction:
+    1. INSERT INTO users (id, email) ON CONFLICT DO NOTHING  — FK sync
+    2. INSERT INTO workspaces (name, app_id, created_by) RETURNING id
+       If is_default: ON CONFLICT (created_by, app_id) WHERE is_default DO NOTHING
+    3. INSERT INTO workspace_members (workspace_id, user_id, 'owner') ON CONFLICT DO NOTHING
+    4. INSERT INTO workspace_runtimes (workspace_id, 'pending') ON CONFLICT DO NOTHING
+  Returns: (workspace_id: str, created: bool)
+
+Post-creation:
+  ensure_workspace_root_dir(config.workspace_root, workspace_id)
+    → mkdir {workspace_root}/{workspace_id}
+```
+
+Key file: `src/back/boring_ui/api/modules/control_plane/workspace_router_hosted.py`
+- `create_workspace_for_user()` ~line 120
+
+### Workspace Boundary Routing (`workspace_boundary_router_hosted.py`)
+
+```
+/w/{workspace_id}/{path} → internal ASGI forward to /{path}
+  Auth: require workspace membership (DB lookup)
+  Injected headers: x-workspace-id={workspace_id}
+  Allowed paths: /api/v1/files, /api/v1/git, /api/v1/ui, /api/v1/me, etc.
+  Blocked: reserved subpaths (setup, runtime, settings — handled specially)
+  Browser: text/html Accept → serve SPA index.html
+  Static assets: /assets/*, /fonts/* served without auth
+```
+
+Key file: `src/back/boring_ui/api/modules/control_plane/workspace_boundary_router_hosted.py`
+- `_WORKSPACE_PASSTHROUGH_ROOTS` line 24 — allowed path prefixes
+- `_forward_http_request()` line 159 — ASGI transport forwarding
+- In TypeScript: replace with tRPC context + middleware (no internal HTTP proxy needed)
+
+### GitHub App (`github_auth/service.py`)
+
+```
+GitHubAppService:
+  JWT signing: RS256 with private key
+    payload: { iat: now-60, exp: now+600, iss: app_id }
+    Backdate 60s for clock skew
+
+  Installation token: POST /app/installations/{id}/access_tokens
+    Header: Authorization: Bearer {app_jwt}
+    Cache: thread-locked, refresh 5 min before expiry
+    Response: { token, expires_at (ISO-8601) }
+
+  Git credentials: { username: "x-access-token", password: {installation_token} }
+```
+
+Key file: `src/back/boring_ui/api/modules/github_auth/service.py`
+- `_make_jwt()` line 50 — RS256 JWT construction
+- `get_installation_token()` line 155 — cached token retrieval
+- `get_git_credentials()` line 192 — credential format
+
+### Capabilities (`capabilities.py`)
+
+```
+GET /api/capabilities
+  Response: {
+    version, features: {}, agents: [], agent_mode, agent_default,
+    routers: [{ name, prefix, description, tags, enabled }],
+    auth: { provider, neonAuthUrl, callbackUrl, emailProvider, verificationEmailEnabled },
+    workspace_runtime: { placement, agent_mode }  // if backend mode
+  }
+```
+
+Key file: `src/back/boring_ui/api/capabilities.py`
+- `create_default_registry()` line 103 — registers all routers
+- `build_capabilities_response()` ~line 215 — assembles full payload
+- In TypeScript: simplify to logical sections (agent, workspace, features, auth)
+
+### Config Loading (`config.py` + `app_config_loader.py`)
+
+```
+Env var precedence:
+  Session secret: BORING_UI_SESSION_SECRET → BORING_SESSION_SECRET → auto-generate
+  Agents mode: BUI_AGENTS_MODE → AGENTS_MODE → boring.app.toml [agents].mode → "frontend"
+  Workspace root: BORING_UI_WORKSPACE_ROOT → BUI_WORKSPACE_ROOT → boring.app.toml parent dir
+
+__post_init__ auto-detection:
+  1. Generate session secret if missing
+  2. Normalize passthrough roots
+  3. Validate GitHub slug and public origin
+  4. Disable control_plane if agents_mode=="backend" && no DATABASE_URL
+  5. Auto-enable neon provider if NEON_AUTH_BASE_URL is set
+  6. Normalize agent configs
+```
+
+Key files:
+- `src/back/boring_ui/api/config.py` — APIConfig dataclass, all fields and __post_init__
+- `src/back/boring_ui/app_config_loader.py` — boring.app.toml parsing + workspace_root resolution
