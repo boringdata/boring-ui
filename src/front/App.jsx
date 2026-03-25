@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import { DockviewReact } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
-import { ChevronDown, ChevronUp, Bot, X } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities, useKeyboardShortcuts } from './hooks'
+import { ThemeProvider, useCapabilities, useKeyboardShortcuts, UNKNOWN_CAPABILITIES } from './hooks'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
@@ -35,15 +35,34 @@ import {
   saveTabs,
   loadLayout,
   saveLayout,
-  loadCollapsedState,
   saveCollapsedState,
-  loadPanelSizes,
   savePanelSizes,
   pruneEmptyGroups,
   getStorageKey,
-  getSharedStorageKey,
   getFileName,
 } from './layout'
+import { debounce } from './utils/debounce'
+import {
+  isCenterContentPanel,
+  listDockPanels,
+  listDockGroups,
+  getPanelComponent,
+  countAgentPanels,
+  panelIdToAgentFamily,
+  countAllAgentPanels,
+} from './utils/dockHelpers'
+import {
+  collectFrontendStateSnapshot,
+  getFrontendStateClientId,
+} from './utils/frontendState'
+import {
+  arePlainObjectsEqual,
+  getPanelSizeConfigValue,
+  getCachedScopedValue,
+  isStableLightningUserScope,
+  readPersistedCollapsedState,
+  readPersistedPanelSizes,
+} from './utils/panelConfig'
 import ThemeToggle from './components/ThemeToggle'
 import Tooltip from './components/Tooltip'
 const ClaudeStreamChat = lazy(() => import('./components/chat/ClaudeStreamChat'))
@@ -81,6 +100,7 @@ import WorkspaceSettingsPage from './pages/WorkspaceSettingsPage'
 import WorkspaceSetupPage from './pages/WorkspaceSetupPage'
 import AuthPage, { AuthCallbackPage } from './pages/AuthPage'
 import CreateWorkspaceModal from './pages/CreateWorkspaceModal'
+import { UnifiedDockTab, tabComponents } from './components/DockTab'
 import {
   isMarkdownFile,
   getEditorPanelComponent,
@@ -93,403 +113,12 @@ const URL_PARAMS = new URLSearchParams(window.location.search)
 // POC mode - add ?poc=chat, ?poc=diff, or ?poc=tiptap-diff to URL to test
 const POC_MODE = URL_PARAMS.get('poc')
 
-const arePlainObjectsEqual = (left, right) => {
-  const leftEntries = Object.entries(left || {})
-  const rightEntries = Object.entries(right || {})
-  if (leftEntries.length !== rightEntries.length) return false
-  return leftEntries.every(([key, value]) => right?.[key] === value)
-}
-
-const hasSharedPreferenceValue = (prefix, suffix) => {
-  if (!prefix) return false
-  try {
-    return localStorage.getItem(getSharedStorageKey(prefix, suffix)) !== null
-  } catch {
-    return false
-  }
-}
-
-const resolveSharedPreferencePrefix = (prefix, fallbackPrefix, suffix) => {
-  if (hasSharedPreferenceValue(prefix, suffix)) return prefix
-  if (prefix !== fallbackPrefix && hasSharedPreferenceValue(fallbackPrefix, suffix)) {
-    return fallbackPrefix
-  }
-  return prefix
-}
-
-const readPersistedCollapsedState = (prefix, fallbackPrefix) => {
-  const effectivePrefix = resolveSharedPreferencePrefix(prefix, fallbackPrefix, 'sidebar-collapsed')
-  const saved = loadCollapsedState(effectivePrefix)
-  return { filetree: false, terminal: false, shell: false, agent: false, ...saved }
-}
-
-const readPersistedPanelSizes = (prefix, fallbackPrefix, panelDefaults, agentSize) => {
-  const effectivePrefix = resolveSharedPreferencePrefix(prefix, fallbackPrefix, 'panel-sizes')
-  return {
-    ...panelDefaults,
-    agent: agentSize,
-    ...(loadPanelSizes(effectivePrefix) || {}),
-  }
-}
 const MAIN_CONTENT_ID = 'workspace-main-content'
-const MAX_SCOPED_CACHE_ENTRIES = 12
 const MAX_PRESERVED_IDENTITY_AGE_MS = 30_000
-const UNKNOWN_CAPABILITIES = Object.freeze({
-  version: 'unknown',
-  features: {},
-  routers: [],
-})
-
-// Debounce helper - delays function execution until after wait ms of inactivity
-const debounce = (fn, wait) => {
-  let timeoutId = null
-  const debounced = (...args) => {
-    if (timeoutId) clearTimeout(timeoutId)
-    timeoutId = setTimeout(() => {
-      timeoutId = null
-      fn(...args)
-    }, wait)
-  }
-  // Allow immediate flush (for beforeunload)
-  debounced.flush = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-      timeoutId = null
-      fn()
-    }
-  }
-  debounced.cancel = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-      timeoutId = null
-    }
-  }
-  return debounced
-}
-
-const panelIdToConfigKey = (panelId) =>
-  String(panelId || '').replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())
-
-const getPanelSizeConfigValue = (sizeConfig, panelId, fallbackKey) => {
-  if (!sizeConfig || !panelId) return undefined
-  const direct = sizeConfig[panelId]
-  if (Number.isFinite(direct)) return direct
-  const camelKey = panelIdToConfigKey(panelId)
-  const camel = sizeConfig[camelKey]
-  if (Number.isFinite(camel)) return camel
-  const fallback = sizeConfig[fallbackKey]
-  return Number.isFinite(fallback) ? fallback : undefined
-}
-
-const getCachedScopedValue = (cache, key, createValue, onEvict) => {
-  if (cache.has(key)) {
-    const existing = cache.get(key)
-    cache.delete(key)
-    cache.set(key, existing)
-    return existing
-  }
-
-  const created = createValue()
-  cache.set(key, created)
-  if (cache.size > MAX_SCOPED_CACHE_ENTRIES) {
-    const oldestKey = cache.keys().next().value
-    const oldestValue = cache.get(oldestKey)
-    cache.delete(oldestKey)
-    if (onEvict) onEvict(oldestValue, oldestKey)
-  }
-  return created
-}
-
-const isStableLightningUserScope = (scope) => (
-  scope.startsWith('u-')
-  || scope.startsWith('e-')
-  || scope.startsWith('anon-')
-  || scope.startsWith('auth-')
-)
-
-const createFrontendStateClientId = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
-
-const getFrontendStateClientId = (storagePrefix) => {
-  const key = `${storagePrefix}-frontend-state-client-id`
-  try {
-    const existing = window.sessionStorage?.getItem(key)
-    if (existing) return existing
-    const created = createFrontendStateClientId()
-    window.sessionStorage?.setItem(key, created)
-    return created
-  } catch {
-    return createFrontendStateClientId()
-  }
-}
-
-const MAX_SNAPSHOT_DEPTH = 4
-const MAX_SNAPSHOT_ARRAY_ITEMS = 32
-const MAX_SNAPSHOT_OBJECT_KEYS = 64
-const MAX_SNAPSHOT_STRING_LENGTH = 2048
-
-const sanitizeSnapshotValue = (value, depth = 0, seen = new WeakSet()) => {
-  if (value == null) return value
-  const kind = typeof value
-  if (kind === 'string') {
-    if (value.length <= MAX_SNAPSHOT_STRING_LENGTH) {
-      return value
-    }
-    return `${value.slice(0, MAX_SNAPSHOT_STRING_LENGTH)}...`
-  }
-  if (kind === 'number' || kind === 'boolean') {
-    return value
-  }
-  if (kind === 'bigint') {
-    return value.toString()
-  }
-  if (kind === 'function' || kind === 'symbol' || kind === 'undefined') {
-    return undefined
-  }
-  if (depth >= MAX_SNAPSHOT_DEPTH) return undefined
-
-  if (Array.isArray(value)) {
-    return value
-      .slice(0, MAX_SNAPSHOT_ARRAY_ITEMS)
-      .map((item) => sanitizeSnapshotValue(item, depth + 1, seen))
-      .filter((item) => item !== undefined)
-  }
-
-  if (kind === 'object') {
-    if (seen.has(value)) return undefined
-    seen.add(value)
-    const out = {}
-    Object.entries(value)
-      .slice(0, MAX_SNAPSHOT_OBJECT_KEYS)
-      .forEach(([key, entry]) => {
-        const sanitized = sanitizeSnapshotValue(entry, depth + 1, seen)
-        if (sanitized !== undefined) out[key] = sanitized
-      })
-    return out
-  }
-
-  return undefined
-}
-
-const collectFrontendStateSnapshot = (api, clientId, projectRoot) => {
-  const activePanelId = api?.activePanel?.id ?? null
-  const panels = Array.isArray(api?.panels)
-    ? api.panels
-    : typeof api?.getPanels === 'function'
-      ? api.getPanels()
-      : []
-
-  const openPanels = panels
-    .filter((panel) => typeof panel?.id === 'string' && panel.id.length > 0)
-    .map((panel) => {
-      const params = sanitizeSnapshotValue(
-        panel?.params ?? panel?.api?.params ?? panel?.api?.parameters ?? {},
-      ) || {}
-      const entry = {
-        id: panel.id,
-        component: panel?.api?.component ?? panel?.component ?? null,
-        title: panel?.api?.title ?? panel?.title ?? null,
-        active: panel.id === activePanelId,
-        params,
-      }
-      if (panel?.group?.id) entry.group_id = panel.group.id
-      return entry
-    })
-
-  return {
-    client_id: clientId,
-    project_root: projectRoot || null,
-    active_panel_id: activePanelId,
-    open_panels: openPanels,
-    captured_at_ms: Date.now(),
-    meta: {
-      pane_count: openPanels.length,
-    },
-  }
-}
-
-const isCenterContentPanel = (panel, registry) => {
-  if (!panel?.id || panel.id === 'empty-center') return false
-  if (panel.id.startsWith('editor-') || panel.id.startsWith('review-')) return true
-
-  const componentId = panel?.api?.component ?? panel?.component
-  if (typeof componentId !== 'string' || componentId.length === 0) return false
-  const paneConfig = registry?.get?.(componentId)
-  return paneConfig?.placement === 'center'
-}
-
-const listDockPanels = (api) => {
-  if (!api) return []
-  if (Array.isArray(api.panels)) return api.panels
-  if (typeof api.getPanels === 'function') return api.getPanels()
-  return []
-}
-
-const listDockGroups = (api) => {
-  if (!api) return []
-  if (Array.isArray(api.groups)) return api.groups
-  if (typeof api.getGroups === 'function') return api.getGroups()
-  return []
-}
-
-const getPanelComponent = (panel) => panel?.api?.component ?? panel?.component ?? ''
-
-const countAgentPanels = (api, family) => {
-  const panels = listDockPanels(api)
-  if (family === 'terminal') {
-    return panels.filter((panel) => getPanelComponent(panel) === 'terminal').length
-  }
-  if (family === 'agent') {
-    return panels.filter((panel) => getPanelComponent(panel) === 'agent').length
-  }
-  return 0
-}
-
-const panelIdToAgentFamily = (panelId) => {
-  if (panelId === 'terminal' || panelId.startsWith('terminal-chat-')) return 'terminal'
-  if (panelId === 'agent' || panelId.startsWith('agent-chat-')) return 'agent'
-  return null
-}
-
-const countAllAgentPanels = (api) =>
-  countAgentPanels(api, 'terminal')
-  + countAgentPanels(api, 'agent')
 
 // Get capability-gated components from pane registry
 // Components with requiresFeatures/requiresRouters will show error states when unavailable
 const getLiveKnownComponents = () => getKnownComponents()
-
-const COMPACT_TAB_COMPONENTS = new Set(['terminal', 'agent', 'shell'])
-const COMPACT_TAB_PREFIXES = ['terminal-chat-', 'agent-chat-']
-
-const shouldUseCompactTab = (api, tabLocation) => {
-  if (tabLocation === 'headerOverflow') return true
-
-  const panelId = String(api?.id || '')
-  const componentId = String(api?.component || '')
-  if (COMPACT_TAB_COMPONENTS.has(componentId)) return true
-  return COMPACT_TAB_PREFIXES.some((prefix) => panelId.startsWith(prefix))
-}
-
-function UnifiedDockTab({
-  api,
-  containerApi: _containerApi,
-  hideClose = false,
-  closeActionOverride,
-  onPointerDown,
-  onPointerUp,
-  onPointerLeave,
-  tabLocation,
-  className,
-  ...rest
-}) {
-  const [title, setTitle] = useState(api?.title)
-  const isMiddleMouseButton = useRef(false)
-  const compact = shouldUseCompactTab(api, tabLocation)
-
-  useEffect(() => {
-    setTitle(api?.title)
-    if (!api?.onDidTitleChange) return undefined
-
-    const disposable = api.onDidTitleChange((event) => {
-      setTitle(event.title)
-    })
-
-    return () => {
-      disposable?.dispose?.()
-    }
-  }, [api])
-
-  const onClose = useCallback(
-    (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      if (closeActionOverride) {
-        closeActionOverride()
-      } else {
-        api?.close?.()
-      }
-    },
-    [api, closeActionOverride],
-  )
-
-  const handlePointerDown = useCallback(
-    (event) => {
-      isMiddleMouseButton.current = event.button === 1
-      onPointerDown?.(event)
-    },
-    [onPointerDown],
-  )
-
-  const handlePointerUp = useCallback(
-    (event) => {
-      if (isMiddleMouseButton.current && event.button === 1 && !hideClose) {
-        isMiddleMouseButton.current = false
-        onClose(event)
-      }
-      onPointerUp?.(event)
-    },
-    [hideClose, onClose, onPointerUp],
-  )
-
-  const handlePointerLeave = useCallback(
-    (event) => {
-      isMiddleMouseButton.current = false
-      onPointerLeave?.(event)
-    },
-    [onPointerLeave],
-  )
-
-  const tabClassName = [
-    'dv-default-tab',
-    'ui-dv-tab',
-    compact ? 'ui-dv-tab-compact' : 'ui-dv-tab-default',
-    className,
-  ]
-    .filter(Boolean)
-    .join(' ')
-
-  return (
-    <div
-      data-testid="dockview-dv-default-tab"
-      {...rest}
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerLeave}
-      className={tabClassName}
-    >
-      <span className="dv-default-tab-content">
-        {title === 'Agent' && <Bot size={14} className="dv-tab-icon" />}
-        {title || ''}
-      </span>
-      {!hideClose && (
-        <button
-          type="button"
-          className="dv-default-tab-action ui-dv-tab-close"
-          onPointerDown={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-          }}
-          onClick={onClose}
-          aria-label={title ? `Close ${title}` : 'Close tab'}
-        >
-          <X size={14} />
-        </button>
-      )}
-    </div>
-  )
-}
-
-// Custom tab component that hides close button (for shell tabs)
-const TabWithoutClose = (props) => <UnifiedDockTab {...props} hideClose />
-
-const tabComponents = {
-  noClose: TabWithoutClose,
-}
 
 export default function App() {
   // Get config (defaults are used until async load completes)

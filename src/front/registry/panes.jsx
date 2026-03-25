@@ -50,6 +50,7 @@ import { lazy, Suspense } from 'react'
 import FileTreePanel from '../panels/FileTreePanel'
 import DataCatalogPanel from '../panels/DataCatalogPanel'
 import EmptyPanel from '../panels/EmptyPanel'
+import PanelErrorBoundary from '../components/PanelErrorBoundary'
 
 // Lazy-load heavy panels to reduce initial bundle size.
 // EditorPanel pulls tiptap+lowlight (~600KB), TerminalPanel pulls xterm (~300KB),
@@ -60,24 +61,27 @@ const LazyShellTerminalPanel = lazy(() => import('../panels/ShellTerminalPanel')
 const LazyReviewPanel = lazy(() => import('../panels/ReviewPanel'))
 const LazyAgentPanel = lazy(() => import('../panels/AgentPanel'))
 
-// Wrap lazy components with Suspense so DockView gets a valid component
-function withSuspense(LazyComponent) {
+// Wrap lazy components with Suspense + ErrorBoundary so DockView gets a valid
+// component that degrades gracefully on both load and render failures.
+function withSuspense(LazyComponent, panelName) {
   function SuspenseWrapper(props) {
     return (
-      <Suspense fallback={<div className="panel-lazy-loading" />}>
-        <LazyComponent {...props} />
-      </Suspense>
+      <PanelErrorBoundary panelName={panelName}>
+        <Suspense fallback={<div className="panel-lazy-loading" />}>
+          <LazyComponent {...props} />
+        </Suspense>
+      </PanelErrorBoundary>
     )
   }
-  SuspenseWrapper.displayName = `Lazy(${LazyComponent.displayName || LazyComponent.name || 'Component'})`
+  SuspenseWrapper.displayName = `Lazy(${panelName || LazyComponent.displayName || LazyComponent.name || 'Component'})`
   return SuspenseWrapper
 }
 
-const EditorPanel = withSuspense(LazyEditorPanel)
-const TerminalPanel = withSuspense(LazyTerminalPanel)
-const ShellTerminalPanel = withSuspense(LazyShellTerminalPanel)
-const ReviewPanel = withSuspense(LazyReviewPanel)
-const AgentPanel = withSuspense(LazyAgentPanel)
+const EditorPanel = withSuspense(LazyEditorPanel, 'Editor')
+const TerminalPanel = withSuspense(LazyTerminalPanel, 'Terminal')
+const ShellTerminalPanel = withSuspense(LazyShellTerminalPanel, 'Shell')
+const ReviewPanel = withSuspense(LazyReviewPanel, 'Review')
+const AgentPanel = withSuspense(LazyAgentPanel, 'Agent')
 
 /**
  * @typedef {Object} PaneConfig

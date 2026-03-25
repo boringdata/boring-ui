@@ -12,6 +12,7 @@ export {
   useCapabilities,
   isFeatureEnabled,
   areAllFeaturesEnabled,
+  UNKNOWN_CAPABILITIES,
 } from './useCapabilities'
 
 export {

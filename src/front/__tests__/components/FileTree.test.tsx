@@ -103,13 +103,14 @@ describe('FileTree', () => {
 
       render(<FileTree {...defaultProps} />)
 
-      // Component retries with a 300ms backoff; give it enough time deterministically.
+      // Component uses refetchInterval: 3000ms; need enough time for 2 empty
+      // responses + 1 successful response (up to ~7s worst case).
       await waitFor(() => {
         expect(screen.getByText('README.md')).toBeInTheDocument()
-      }, { timeout: 2000 })
+      }, { timeout: 10000 })
 
       expect(listCalls).toBeGreaterThanOrEqual(3)
-    })
+    }, 15000)
   })
 
   describe('Directory Expand/Collapse', () => {

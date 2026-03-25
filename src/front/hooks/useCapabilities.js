@@ -11,11 +11,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiFetchJson } from '../utils/transport'
 import { routes } from '../utils/routes'
 
-const UNKNOWN_CAPABILITIES = {
+export const UNKNOWN_CAPABILITIES = Object.freeze({
   version: 'unknown',
   features: {},
   routers: [],
-}
+})
 
 /**
  * Capabilities response from /api/capabilities endpoint.
