@@ -5,15 +5,20 @@
  * All routes require authentication via session cookie.
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { appCookieName } from '../auth/session.js'
+import {
+  parseSessionCookie,
+  appCookieName,
+  SessionExpiredError,
+} from '../auth/session.js'
 
-// Simple session extraction (full auth port in bd-rwy92.4)
+// Session extraction with proper JWT verification
 async function requireSession(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
   const cookieName = appCookieName()
   const token = request.cookies[cookieName]
+  const secret = request.server.config.sessionSecret
 
   if (!token) {
     reply.code(401).send({
@@ -24,19 +29,19 @@ async function requireSession(
     return
   }
 
-  // Full JWT verification will be in bd-rwy92.4.
-  // For now, just check that a cookie exists.
-  // The session parsing will be plugged in when auth is ported.
   try {
-    // Minimal JWT decode (no verification — placeholder)
-    const parts = token.split('.')
-    if (parts.length !== 3) throw new Error('Invalid JWT format')
-    const payload = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString('utf-8'),
-    )
-    request.sessionUserId = payload.sub
-    request.sessionEmail = payload.email
-  } catch {
+    const session = await parseSessionCookie(token, secret)
+    request.sessionUserId = session.user_id
+    request.sessionEmail = session.email
+  } catch (err) {
+    if (err instanceof SessionExpiredError) {
+      reply.code(401).send({
+        error: 'unauthorized',
+        code: 'SESSION_EXPIRED',
+        message: 'Session has expired. Please sign in again.',
+      })
+      return
+    }
     reply.code(401).send({
       error: 'unauthorized',
       code: 'INVALID_SESSION',
