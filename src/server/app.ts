@@ -17,6 +17,7 @@ import { registerExecRoutes } from './http/execRoutes.js'
 import { registerMeRoutes } from './http/meRoutes.js'
 import { registerWorkspaceBoundary } from './http/workspaceBoundary.js'
 import { registerCollaborationRoutes } from './http/collaborationRoutes.js'
+import { registerUiStateRoutes } from './http/uiStateRoutes.js'
 import { registerGitHubRoutes } from './http/githubRoutes.js'
 import { registerStaticRoutes } from './http/static.js'
 
@@ -80,6 +81,9 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   // --- GitHub App routes (require auth) ---
   app.register(registerGitHubRoutes, { prefix: '/api/v1' })
+
+  // --- UI State routes ---
+  app.register(registerUiStateRoutes, { prefix: '/api/v1' })
 
   // --- Workspace boundary routing (/w/{id}/*) ---
   app.register(registerWorkspaceBoundary)
