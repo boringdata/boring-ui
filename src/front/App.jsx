@@ -6,19 +6,16 @@ import { ThemeProvider, useCapabilities, useKeyboardShortcuts, UNKNOWN_CAPABILIT
 import useApprovalPolling from './hooks/useApprovalPolling'
 import useDataProviderScope from './hooks/useDataProviderScope'
 import useFrontendStatePersist from './hooks/useFrontendStatePersist'
+import useWorkspaceAuth from './hooks/useWorkspaceAuth'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
 import { useConfig } from './config'
-import { apiFetch, apiFetchJson, getHttpErrorDetail } from './utils/transport'
-import { buildApiUrl } from './utils/apiBase'
+import { apiFetch, apiFetchJson } from './utils/transport'
 import { routeHref, routes } from './utils/routes'
 import {
-  extractUserId,
-  extractUserEmail,
   extractWorkspaceId,
   getWorkspaceIdFromPathname,
   getWorkspacePathSuffix,
-  normalizeWorkspaceList,
   runWithPreflightFallback,
 } from './utils/controlPlane'
 import {
@@ -52,7 +49,6 @@ import {
   countAllAgentPanels,
 } from './utils/dockHelpers'
 import {
-  collectFrontendStateSnapshot,
   getFrontendStateClientId,
 } from './utils/frontendState'
 import {
@@ -97,8 +93,6 @@ import {
 } from './utils/editorFiles'
 
 const MAIN_CONTENT_ID = 'workspace-main-content'
-const MAX_PRESERVED_IDENTITY_AGE_MS = 30_000
-
 // Get capability-gated components from pane registry
 // Components with requiresFeatures/requiresRouters will show error states when unavailable
 const getLiveKnownComponents = () => getKnownComponents()
@@ -246,6 +240,8 @@ export default function App() {
   const dockApiRef = useRef(null)
   dockApiRef.current = dockApi
   const [tabs, setTabs] = useState({}) // path -> { content, isDirty }
+  const [projectRoot, setProjectRoot] = useState(null) // null = not loaded yet, '' = loaded but empty
+  const projectRootRef = useRef(null) // Stable ref for callbacks
   // Approval polling (extracted to hook)
   const {
     approvals,
@@ -262,17 +258,21 @@ export default function App() {
   const [activeSidebarPanelId, setActiveSidebarPanelId] = useState('filetree')
   const [filetreeActivityIntent, setFiletreeActivityIntent] = useState(null)
   const [catalogActivityIntent, setCatalogActivityIntent] = useState(null)
-  const [menuUserId, setMenuUserId] = useState('')
-  const [menuUserEmail, setMenuUserEmail] = useState('')
-  const [userMenuAuthStatus, setUserMenuAuthStatus] = useState('unknown') // unknown | authenticated | unauthenticated | error
-  // Scope localStorage keys per user so layout/tabs/settings don't leak across accounts.
-  const storagePrefix = menuUserId
-    ? `${baseStoragePrefix}-u-${menuUserId.slice(0, 12)}`
-    : baseStoragePrefix
-  const [userMenuIdentityError, setUserMenuIdentityError] = useState('')
-  const [userMenuWorkspaceError, setUserMenuWorkspaceError] = useState('')
-  const [workspaceOptions, setWorkspaceOptions] = useState([])
-  const [workspaceListStatus, setWorkspaceListStatus] = useState('idle') // idle | loading | success | error
+  // Auth identity + workspace list (extracted to hook)
+  const {
+    userId: menuUserId,
+    email: menuUserEmail,
+    authStatus: userMenuAuthStatus,
+    identityError: userMenuIdentityError,
+    workspaceError: userMenuWorkspaceError,
+    workspaces: workspaceOptions,
+    workspaceListStatus,
+    storagePrefix,
+    refreshData: refreshUserMenuData,
+    fetchWorkspaces: fetchWorkspaceList,
+    retryData: handleUserMenuRetry,
+    logout: handleLogout,
+  } = useWorkspaceAuth({ baseStoragePrefix })
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState(() =>
     getWorkspaceIdFromPathname(window.location.pathname),
   )
@@ -316,10 +316,9 @@ export default function App() {
   const ensureCorePanelsRef = useRef(null)
   const suppressPendingLayoutRestoreRef = useRef(false)
   const hasRestoredFromUrl = useRef(false)
-  const [projectRoot, setProjectRoot] = useState(null) // null = not loaded yet, '' = loaded but empty
-  const projectRootRef = useRef(null) // Stable ref for callbacks
   // Frontend state refs (managed by hook — clientId generation + reset on prefix change)
   const {
+    publish: persistFrontendState,
     clientIdRef: frontendStateClientIdRef,
     unavailableRef: frontendStateUnavailableRef,
   } = useFrontendStatePersist({
@@ -327,7 +326,6 @@ export default function App() {
     storagePrefix,
   })
   const frontendCommandUnavailableRef = useRef(false)
-  const lastIdentitySuccessAtRef = useRef(0)
   const storagePrefixRef = useRef(storagePrefix) // Stable ref for callbacks
   storagePrefixRef.current = storagePrefix
   const layoutVersionRef = useRef(layoutVersion) // Stable ref for callbacks
@@ -380,62 +378,12 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- outer-scope functions are stable; intentionally run only on storagePrefix change
   }, [storagePrefix, readPersistedCollapsedState, readPersistedPanelSizes])
 
-  const publishFrontendState = useCallback(async (api, options = {}) => {
-    const targetApi = api || dockApi
-    if (!targetApi) return false
-    if (!uiStateFeatureEnabled) return false
-
-    const force = options.force === true
-    const transport = options.transport === 'beacon' ? 'beacon' : 'fetch'
-
-    if (frontendStateUnavailableRef.current && !force) {
-      return false
-    }
-
-    if (!frontendStateClientIdRef.current) {
-      frontendStateClientIdRef.current = getFrontendStateClientId(storagePrefixRef.current)
-    }
-
-    const route = routes.uiState.upsert()
-    const snapshot = collectFrontendStateSnapshot(
-      targetApi,
-      frontendStateClientIdRef.current,
-      projectRootRef.current,
-    )
-
-    if (
-      transport === 'beacon'
-      && typeof navigator !== 'undefined'
-      && typeof navigator.sendBeacon === 'function'
-    ) {
-      try {
-        const body = new Blob([JSON.stringify(snapshot)], { type: 'application/json' })
-        return navigator.sendBeacon(buildApiUrl(route.path, route.query), body)
-      } catch {
-        return false
-      }
-    }
-
-    try {
-      const response = await apiFetch(route.path, {
-        query: route.query,
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(snapshot),
-        keepalive: true,
-      })
-      if (response.ok) {
-        frontendStateUnavailableRef.current = false
-        return true
-      }
-      if (response.status === 404 || response.status === 405) {
-        frontendStateUnavailableRef.current = true
-      }
-    } catch {
-      // Ignore transient publish failures (network/server startup races).
-    }
-    return false
-  }, [dockApi, uiStateFeatureEnabled])
+  const publishFrontendState = useCallback((api, options = {}) => {
+    return persistFrontendState(api || dockApi, {
+      ...options,
+      projectRoot: options.projectRoot ?? projectRootRef.current ?? '',
+    })
+  }, [dockApi, persistFrontendState])
 
   useEffect(() => {
     if (!dockApi || projectRoot === null || !uiStateFeatureEnabled) return
@@ -831,116 +779,6 @@ export default function App() {
     }
   }, [syncWorkspacePathContext])
 
-  const fetchWorkspaceList = useCallback(async () => {
-    const route = routes.controlPlane.workspaces.list()
-    setWorkspaceListStatus('loading')
-    try {
-      const { response, data } = await apiFetchJson(route.path, {
-        query: route.query,
-        rootScoped: true,
-      })
-      if (!response.ok) {
-        if (response.status === 401) {
-          setUserMenuWorkspaceError('Not signed in.')
-        } else if (response.status === 403) {
-          setUserMenuWorkspaceError('Permission denied while loading workspaces.')
-        } else {
-          setUserMenuWorkspaceError(getHttpErrorDetail(response, data, 'Failed to load workspaces'))
-        }
-        setWorkspaceListStatus('error')
-        console.debug('[WorkspaceRedirect] list fetch failed, status=%d', response.status)
-        return []
-      }
-
-      setUserMenuWorkspaceError('')
-      const workspaces = normalizeWorkspaceList(data)
-      setWorkspaceOptions(workspaces)
-      setWorkspaceListStatus('success')
-      console.debug('[WorkspaceRedirect] list fetch success, count=%d', workspaces.length)
-      return workspaces
-    } catch (error) {
-      console.warn('[UserMenu] Workspaces load failed:', error)
-      setUserMenuWorkspaceError('Failed to reach control plane for workspaces.')
-      setWorkspaceListStatus('error')
-      console.debug('[WorkspaceRedirect] list fetch error:', error.message)
-      return []
-    }
-  }, [])
-
-  const refreshUserMenuData = useCallback(async () => {
-    const meRoute = routes.controlPlane.me.get()
-    setUserMenuIdentityError('')
-
-    let meResponse = null
-    let meData = {}
-    try {
-      const result = await apiFetchJson(meRoute.path, {
-        query: meRoute.query,
-        rootScoped: true,
-      })
-      meResponse = result.response
-      meData = result.data
-    } catch (error) {
-      console.warn('[UserMenu] Identity load failed:', error)
-      const now = Date.now()
-      const identityAgeMs = now - lastIdentitySuccessAtRef.current
-      const preserveStableIdentity = (
-        userMenuAuthStatus === 'authenticated'
-        && menuUserId.length > 0
-        && identityAgeMs >= 0
-        && identityAgeMs <= MAX_PRESERVED_IDENTITY_AGE_MS
-      )
-      if (!preserveStableIdentity) {
-        setMenuUserId('')
-        setMenuUserEmail('')
-        setUserMenuAuthStatus('error')
-      }
-      setUserMenuIdentityError('Failed to reach control plane for identity.')
-      return fetchWorkspaceList()
-    }
-
-    const workspaces = await fetchWorkspaceList()
-
-    if (meResponse.ok) {
-      lastIdentitySuccessAtRef.current = Date.now()
-      setUserMenuAuthStatus('authenticated')
-      const userId = extractUserId(meData)
-      const email = extractUserEmail(meData)
-      setMenuUserId(userId || '')
-      setMenuUserEmail(email || '')
-      return workspaces
-    }
-
-    if (meResponse.status === 401) {
-      setMenuUserId('')
-      setMenuUserEmail('')
-      setUserMenuAuthStatus('unauthenticated')
-      setUserMenuIdentityError('Not signed in.')
-    } else if (meResponse.status === 403) {
-      setMenuUserId('')
-      setMenuUserEmail('')
-      setUserMenuAuthStatus('error')
-      setUserMenuIdentityError('Permission denied while loading identity.')
-    } else {
-      setMenuUserId('')
-      setMenuUserEmail('')
-      setUserMenuAuthStatus('error')
-      setUserMenuIdentityError(getHttpErrorDetail(meResponse, meData, 'Failed to load identity'))
-    }
-
-    return workspaces
-  }, [fetchWorkspaceList, menuUserId, userMenuAuthStatus])
-
-  useEffect(() => {
-    refreshUserMenuData().catch(() => {})
-  }, [refreshUserMenuData])
-
-  const handleUserMenuRetry = useCallback(() => {
-    setUserMenuIdentityError('')
-    setUserMenuWorkspaceError('')
-    return refreshUserMenuData()
-  }, [refreshUserMenuData])
-
   const handleSwitchWorkspace = useCallback(async () => {
     const workspaces = await fetchWorkspaceList()
     const candidateWorkspaces = getWorkspaceSwitchCandidates(workspaces, currentWorkspaceId)
@@ -1053,11 +891,6 @@ export default function App() {
     const route = routes.controlPlane.workspaces.scope(currentWorkspaceId, 'settings')
     window.location.assign(route.path)
   }, [currentWorkspaceId])
-
-  const handleLogout = useCallback(() => {
-    const route = routes.controlPlane.auth.logout()
-    window.location.assign(routeHref(route))
-  }, [])
 
   // Keyboard shortcuts
   const searchFiles = useCallback(() => {
