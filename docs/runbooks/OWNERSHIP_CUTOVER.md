@@ -117,6 +117,47 @@ curl -i http://<api>/api/v1/workspaces
 4. Confirm macro endpoints still isolated (`/api/v1/macro/*` only).
 5. Document incident + cause before next cutover attempt.
 
+## Rollback Rehearsal
+
+Before relying on rollback during a cutover, rehearse the exact Python path that would be used as the fallback.
+
+Local proof sequence:
+
+```bash
+# Required env: DATABASE_URL, BORING_UI_SESSION_SECRET, BORING_SETTINGS_KEY,
+# RESEND_API_KEY, NEON_AUTH_BASE_URL, NEON_AUTH_JWKS_URL
+export LOCAL_PARITY_MODE=http
+export AUTH_SESSION_SECURE_COOKIE=false
+export BORING_UI_PUBLIC_ORIGIN=http://127.0.0.1:5176
+export BORING_UI_STATIC_DIR=$PWD/dist
+export BORING_UI_WORKSPACE_ROOT=/tmp/boring-ui-rollback-workspaces
+export BUI_APP_TOML=$PWD/boring.app.toml
+export PYTHONPATH=$PWD/src/back
+
+uv sync --frozen --no-dev
+npm run build
+uv run uvicorn boring_ui.runtime:app --host 127.0.0.1 --port 5176
+```
+
+In a second shell, run the shared smoke matrix against that Python app:
+
+```bash
+uv run python tests/smoke/run_all.py \
+  --base-url http://127.0.0.1:5176 \
+  --auth-mode neon \
+  --public-origin http://127.0.0.1:5176 \
+  --timeout 180
+```
+
+Hosted rollback deploy sequence:
+
+```bash
+bash deploy/fly/fly.secrets.sh boring-ui-frontend-agent
+fly deploy -c deploy/fly/fly.frontend-agent.toml --remote-only
+```
+
+After the deploy, rerun the same smoke matrix against the rollback target URL. Treat the rollback path as unproven until both the deploy and the smoke pass.
+
 ## No-Retro-Compat Policy
 
 This migration path assumes no retro-compat shims are required. Rollback is operational (traffic + deployment) rather than contract-bridging.

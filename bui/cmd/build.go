@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/boringdata/boring-ui/bui/config"
 	"github.com/boringdata/boring-ui/bui/framework"
@@ -35,6 +36,19 @@ var buildCmd = &cobra.Command{
 
 		if err := vite.Run(); err != nil {
 			return fmt.Errorf("vite build: %w", err)
+		}
+
+		// TypeScript backend: also run type-check
+		bt := strings.TrimSpace(strings.ToLower(cfg.Backend.Type))
+		if bt == "typescript" || bt == "ts" {
+			fmt.Println("[bui] type-checking server...")
+			tsc := exec.Command("npx", "tsc", "--noEmit", "--project", "tsconfig.server.json")
+			tsc.Dir = root
+			tsc.Stdout = os.Stdout
+			tsc.Stderr = os.Stderr
+			if err := tsc.Run(); err != nil {
+				return fmt.Errorf("tsc: %w", err)
+			}
 		}
 
 		fmt.Printf("[bui] build complete: %s\n", outDir)

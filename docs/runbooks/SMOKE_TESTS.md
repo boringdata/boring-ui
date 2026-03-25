@@ -26,6 +26,7 @@ python3 tests/smoke/<script>.py \
 Common flags:
 
 - `--base-url`: app origin to test
+- `--public-origin`: expected verification/reset callback origin when it differs from `--base-url`
 - `--auth-mode`: `neon` or `dev`
 - `--skip-signup --email --password`: reuse an existing account
 - `--timeout`: email polling timeout for verify-first auth flows
@@ -116,6 +117,7 @@ With `--skip-signup`, skips phase 1 and runs phases 2-19 against an existing acc
 Important:
 - phase 1 is intentionally strict
 - if the email arrives but the raw verification link fails with `INVALID_CALLBACKURL` or similar, the smoke must fail
+- for canonical local Python-server runs, keep the verification callback on a stable trusted origin such as `http://127.0.0.1:5176`; if needed, set `BORING_UI_PUBLIC_ORIGIN` before launching the app instead of relying on an ephemeral backend port
 
 ```bash
 # Full suite with signup (requires Resend API key in Vault)
@@ -124,6 +126,21 @@ python3 tests/smoke/smoke_neon_auth.py --base-url https://<app-url>
 # Skip signup, use existing account
 python3 tests/smoke/smoke_neon_auth.py --base-url https://<app-url> \
   --skip-signup --email user@test.com --password Pass123
+```
+
+Local Neon note:
+
+- verification emails must point at a callback origin already present in Neon Auth `trusted_origins`
+- when the browser/public origin differs from the backend API URL, set the same value on the backend with `BORING_UI_PUBLIC_ORIGIN` and pass it to the smoke via `--public-origin`
+- avoid ad hoc ephemeral loopback ports for phase 1 unless that exact origin is trusted by Neon Auth
+
+Example:
+
+```bash
+BORING_UI_PUBLIC_ORIGIN=http://127.0.0.1:8010 \
+python3 tests/smoke/smoke_neon_auth.py \
+  --base-url http://127.0.0.1:8010 \
+  --public-origin http://127.0.0.1:8010
 ```
 
 ### Workspace lifecycle

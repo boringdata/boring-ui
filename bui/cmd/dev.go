@@ -25,8 +25,8 @@ var (
 
 var devCmd = &cobra.Command{
 	Use:   "dev",
-	Short: "Start dev server (uvicorn + vite)",
-	Long: `Start uvicorn + vite with hot-reload. Auto-detects ../boring-ui as framework.
+	Short: "Start dev server (backend + vite)",
+	Long: `Start backend + vite with hot-reload. Supports python (uvicorn), typescript (tsx), and go (air).
 
 Run 'bui docs dev' for detailed setup guide.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -211,8 +211,20 @@ func buildBackendCommand(root string, cfg *config.AppConfig, procEnv []string, b
 			fmt.Sprintf("BORING_PORT=%d", backendPort),
 		)
 		return air, nil
+	case "typescript", "ts":
+		entry := strings.TrimSpace(cfg.Backend.Entry)
+		if entry == "" {
+			entry = "src/server/index.ts"
+		}
+		tsx := exec.Command("npx", "tsx", "watch", entry)
+		tsx.Dir = root
+		tsx.Env = append(procEnv,
+			fmt.Sprintf("PORT=%d", backendPort),
+			fmt.Sprintf("BUI_APP_TOML=%s", configPath),
+		)
+		return tsx, nil
 	default:
-		return nil, fmt.Errorf("unsupported backend.type %q", cfg.Backend.Type)
+		return nil, fmt.Errorf("unsupported backend.type %q (supported: python, go, typescript)", cfg.Backend.Type)
 	}
 }
 

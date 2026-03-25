@@ -85,4 +85,57 @@ func TestBuildBackendCommandPythonMatchesExistingFlow(t *testing.T) {
 	}
 }
 
+func TestBuildBackendCommandTypescriptUsesTsx(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.AppConfig{}
+	cfg.Backend.Type = "typescript"
+
+	cmd, err := buildBackendCommand(root, cfg, []string{"A=B"}, 8002, "")
+	if err != nil {
+		t.Fatalf("buildBackendCommand returned error: %v", err)
+	}
+	args := strings.Join(cmd.Args, " ")
+	if !strings.Contains(args, "tsx watch src/server/index.ts") {
+		t.Fatalf("expected tsx watch command, got %s", args)
+	}
+	if cmd.Dir != root {
+		t.Fatalf("expected command dir %q, got %q", root, cmd.Dir)
+	}
+	env := strings.Join(cmd.Env, "\n")
+	if !strings.Contains(env, "PORT=8002") {
+		t.Fatalf("expected PORT in env, got %s", env)
+	}
+}
+
+func TestBuildBackendCommandTypescriptTsAlias(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.AppConfig{}
+	cfg.Backend.Type = "ts"
+
+	cmd, err := buildBackendCommand(root, cfg, nil, 8003, "")
+	if err != nil {
+		t.Fatalf("buildBackendCommand returned error: %v", err)
+	}
+	args := strings.Join(cmd.Args, " ")
+	if !strings.Contains(args, "tsx watch") {
+		t.Fatalf("expected tsx watch for ts alias, got %s", args)
+	}
+}
+
+func TestBuildBackendCommandTypescriptCustomEntry(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.AppConfig{}
+	cfg.Backend.Type = "typescript"
+	cfg.Backend.Entry = "server/main.ts"
+
+	cmd, err := buildBackendCommand(root, cfg, nil, 8004, "")
+	if err != nil {
+		t.Fatalf("buildBackendCommand returned error: %v", err)
+	}
+	args := strings.Join(cmd.Args, " ")
+	if !strings.Contains(args, "tsx watch server/main.ts") {
+		t.Fatalf("expected custom entry, got %s", args)
+	}
+}
+
 var execLookPath = lookPath

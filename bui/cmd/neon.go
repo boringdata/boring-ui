@@ -232,14 +232,13 @@ func runNeonSetup(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  JWKS URL: %s\n", authResp.JWKSURL)
 
 	// 4b. Add trusted origins so verification emails and auth callbacks work.
-	// Derive the Fly URL from the app ID (the default deploy target).
-	flyURL := fmt.Sprintf("https://%s.fly.dev", cfg.App.ID)
-	fmt.Printf("[bui] adding trusted origin: %s\n", flyURL)
-	if err := neonSetTrustedOrigins(apiKey, projectID, branchID, []string{flyURL}); err != nil {
+	trustedOrigins := defaultNeonTrustedOrigins(cfg.App.ID)
+	fmt.Printf("[bui] adding trusted origins: %s\n", strings.Join(trustedOrigins, ", "))
+	if err := neonSetTrustedOrigins(apiKey, projectID, branchID, trustedOrigins); err != nil {
 		fmt.Printf("  warn: could not set trusted origins: %v\n", err)
 		fmt.Println("  Add manually in Neon Console → Settings → Auth → Trusted origins")
 	} else {
-		fmt.Println("  ✓ trusted origin added")
+		fmt.Println("  ✓ trusted origins added")
 	}
 
 	// 5. Configure email provider.
@@ -327,17 +326,8 @@ func runNeonSetup(cmd *cobra.Command, args []string) error {
 	fmt.Println("[bui] Neon setup complete!")
 	fmt.Println()
 	fmt.Println("Next steps:")
-	if neonEmailProvider == "" {
-		fmt.Println("  1. Configure email provider for verification emails:")
-		fmt.Println("     bui neon setup --email-provider resend  (or configure in Neon Console)")
-		fmt.Println("     Neon Console → Settings → Auth → Custom SMTP provider")
-		fmt.Println("  2. Run `bui deploy` to deploy with Neon auth")
-		fmt.Println("  3. Visit your app and test signup/signin")
-		fmt.Println("  4. Run `bui neon status` to verify health")
-	} else {
-		fmt.Println("  1. Run `bui deploy` to deploy with Neon auth")
-		fmt.Println("  2. Visit your app and test signup/signin")
-		fmt.Println("  3. Run `bui neon status` to verify health")
+	for _, line := range neonSetupNextSteps(emailProvider != "" && emailProvider != "none") {
+		fmt.Println(line)
 	}
 	return nil
 }
@@ -564,6 +554,33 @@ func configureEmailProvider(apiKey, projectID, provider, appName string) {
 
 	default:
 		fmt.Printf("  Unknown email provider: %q (supported: resend, smtp, none)\n", provider)
+	}
+}
+
+func defaultNeonTrustedOrigins(appID string) []string {
+	origins := []string{fmt.Sprintf("https://%s.fly.dev", appID)}
+	// Neon rejects explicit localhost entries via the auth API, so seed the
+	// canonical loopback IP origins that we use for repeatable local callbacks.
+	for _, port := range []string{"3000", "5173", "5174", "5175", "5176"} {
+		origins = append(origins, fmt.Sprintf("http://127.0.0.1:%s", port))
+	}
+	return origins
+}
+
+func neonSetupNextSteps(emailConfigured bool) []string {
+	if !emailConfigured {
+		return []string{
+			"  1. Configure a custom SMTP provider in Neon Console if you need verification emails",
+			"     Neon Console → Settings → Auth → Custom SMTP provider",
+			"  2. Run `bui deploy` to deploy with Neon auth",
+			"  3. Visit your app and test signup/signin",
+			"  4. Run `bui neon status` to verify health",
+		}
+	}
+	return []string{
+		"  1. Run `bui deploy` to deploy with Neon auth",
+		"  2. Visit your app and test signup/signin",
+		"  3. Run `bui neon status` to verify health",
 	}
 }
 

@@ -90,8 +90,11 @@ Keep `trusted_origins` aligned with every real browser origin that can host the
 app or appear in auth emails:
 
 - `https://boring-ui-frontend-agent.fly.dev`
+- canonical local loopback callback origins (`http://127.0.0.1:3000`, `http://127.0.0.1:5173-5176`)
 - any current Modal deploy URL
 - any custom production domain
+
+`bui neon setup` now seeds the Fly app URL plus the canonical `127.0.0.1` loopback origins above. It does not PATCH `http://localhost:*` into `trusted_origins`, because Neon currently rejects those entries via API. Existing Neon projects may still need a manual trusted-origins update in Neon Console.
 
 If `trusted_origins` is stale, auth can partially work while email-based flows
 still break:
@@ -173,7 +176,7 @@ JWT audience: Neon Auth origin URL (e.g., `https://ep-<id>.neonauth.<region>.aws
 ### Email Verification Behavior (Neon / Better Auth)
 
 - Neon Auth (Better Auth) does **not** auto-send verification emails on signup.
-- `bui neon setup` configures Resend SMTP by default (`--email-provider resend`), so emails are sent through Resend using the `auth@mail.boringdata.io` sender address.
+- During first-time provisioning, `bui neon setup` configures Resend SMTP when a Resend key is available (auto-detected from Vault or selected with `--email-provider resend`), so emails are sent through Resend using the `auth@mail.boringdata.io` sender address.
 - boring-ui's backend auto-sends a verification email after successful signup by calling Neon Auth's `/send-verification-email` endpoint (added in commit `9df6aa2`).
 - If a deployment does not have Neon email delivery configured yet, set `AUTH_EMAIL_PROVIDER=none` so the auth UI stops promising that a verification email was sent.
 - The Neon Auth project `trusted_origins` must include the actual deploy origin used by the browser and callback URLs. If this list still points at an old Modal or local URL, direct verification-link clicks can fail with `INVALID_CALLBACKURL` even though signup itself appears healthy.
@@ -186,7 +189,7 @@ JWT audience: Neon Auth origin URL (e.g., `https://ep-<id>.neonauth.<region>.aws
 
 ### SMTP / Resend Configuration
 
-`bui neon setup` automatically configures Resend SMTP on the Neon Auth project. This requires a `RESEND_API_KEY` (stored in the app-specific vault key).
+During first-time provisioning, `bui neon setup` can automatically configure Resend SMTP on the Neon Auth project. This requires a `RESEND_API_KEY` in Vault. Existing projects should be updated in Neon Console or through the Neon API.
 
 To manually configure SMTP on an existing Neon Auth project:
 
@@ -335,7 +338,7 @@ boring-ui session cookies (`boring_session`) are HS256 JWTs. Any child app (bori
 
 4. **Check `app_id`** if the child app requires it. boring-sandbox rejects sessions without a matching `app_id` when an app is resolved. Set `CONTROL_PLANE_APP_ID` in boring-ui to match what the child expects.
 
-5. **Email verification is automatic**. `bui neon setup` configures Resend SMTP on the Neon Auth project, and the boring-ui backend auto-sends verification emails on signup. No child-app-specific email setup is needed.
+5. **Email verification is automatic once Neon email delivery is configured**. boring-ui auto-sends verification emails on signup, but the Neon Auth project still needs Resend or another SMTP provider configured. Child apps do not need their own separate email setup.
 
 ### Checklist
 
@@ -379,6 +382,7 @@ For new projects (boring-macro, boring-sandbox, etc.) that need their own Neon d
 **Direct verification email link returns `INVALID_CALLBACKURL`**
 - Check Neon Auth `trusted_origins`
 - Add the current Fly/Modal/custom app origin, not just an old deploy URL
+- For canonical local Python-server smoke runs, do not rely on an arbitrary `http://127.0.0.1:<ephemeral-port>` callback origin. Use a stable local app origin that Neon trusts instead, typically `BORING_UI_PUBLIC_ORIGIN=http://127.0.0.1:5176`, and pass the same value to `tests/smoke/smoke_neon_auth.py` via `--public-origin` when it differs from `--base-url`.
 - Re-run `tests/smoke/smoke_neon_auth.py` and confirm phase 1 clicks the exact delivered verification link successfully
 
 **Session cookie not set (cross-domain)**
