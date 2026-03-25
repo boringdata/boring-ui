@@ -15,6 +15,8 @@ import { registerFileRoutes } from './http/fileRoutes.js'
 import { registerGitRoutes } from './http/gitRoutes.js'
 import { registerExecRoutes } from './http/execRoutes.js'
 import { registerMeRoutes } from './http/meRoutes.js'
+import { registerWorkspaceBoundary } from './http/workspaceBoundary.js'
+import { registerStaticRoutes } from './http/static.js'
 
 // Extend Fastify types to include our custom properties
 declare module 'fastify' {
@@ -70,6 +72,18 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   // --- Workspace routes (require auth) ---
   app.register(registerWorkspaceRoutes, { prefix: '/api/v1' })
+
+  // --- Workspace boundary routing (/w/{id}/*) ---
+  app.register(registerWorkspaceBoundary)
+
+  // --- Static file serving + SPA fallback (must be LAST) ---
+  // Only when BORING_UI_STATIC_DIR is set (production deployment).
+  // IMPORTANT: registered last so API routes take priority over SPA fallback.
+  if (config.staticDir) {
+    app.register(async (instance) => {
+      await registerStaticRoutes(instance, config.staticDir!)
+    })
+  }
 
   return app
 }
