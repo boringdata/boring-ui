@@ -127,6 +127,13 @@ async def create_workspace_for_user(
     user_uuid = uuid.UUID(str(user_id))
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # Ensure user exists in the users table (Neon Auth manages
+            # users externally; this syncs the local FK reference).
+            await conn.execute(
+                """INSERT INTO users (id) VALUES ($1)
+                   ON CONFLICT (id) DO NOTHING""",
+                user_uuid,
+            )
             if is_default:
                 workspace_row = await conn.fetchrow(
                     """
