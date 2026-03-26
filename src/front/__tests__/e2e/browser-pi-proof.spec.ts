@@ -1,11 +1,36 @@
 import fs from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
-import type { Page, TestInfo } from '@playwright/test'
+import type { Page, Request, TestInfo } from '@playwright/test'
 import { createRegressionLogger } from './regressionLogging'
 
 const REAL_BROWSER_PI_ENABLED = process.env.PW_REAL_BROWSER_PI === '1'
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const hasApiRequest = (
+  apiRequests: Array<{ method: string; path: string }>,
+  method: string,
+  pathFragment: string,
+) => apiRequests.some((entry) => entry.method === method && entry.path.includes(pathFragment))
+
+const isModelRequest = (request: Request) => {
+  try {
+    const url = new URL(request.url())
+    return url.hostname === 'api.anthropic.com' && url.pathname.includes('/v1/messages')
+  } catch {
+    return false
+  }
+}
+
+const waitForPiIdle = async (page: Page, activeModelRequests: Set<Request>) => {
+  await expect
+    .poll(() => activeModelRequests.size, {
+      timeout: 120000,
+      message: 'expected browser PI model requests to settle before sending the next turn',
+    })
+    .toBe(0)
+
+  await expect(page.locator('message-editor textarea').first()).toBeVisible({ timeout: 15000 })
+}
 
 const waitForDockview = async (page: Page) => {
   await page.waitForSelector('[data-testid="dockview"]', {
@@ -77,6 +102,7 @@ test.describe('Real Browser PI Workflow Proof', () => {
     const fileName = `bd-jzeeb-browser-pi-${tag}.sh`
     const expectedOutput = `browser-pi-proof-${tag}`
     const apiRequests: Array<{ method: string; path: string }> = []
+    const activeModelRequests = new Set<Request>()
     const logger = createRegressionLogger(page, testInfo, {
       bead: 'bd-jzeeb',
       predecessor: 'bd-1qiym',
@@ -92,7 +118,12 @@ test.describe('Real Browser PI Workflow Proof', () => {
           path: `${url.pathname}${url.search}`,
         })
       }
+      if (isModelRequest(request)) {
+        activeModelRequests.add(request)
+      }
     })
+    page.on('requestfinished', (request) => activeModelRequests.delete(request))
+    page.on('requestfailed', (request) => activeModelRequests.delete(request))
 
     await logger.step('establish local browser session', async () => {
       await loginLocalDevUser(page, `bd-jzeeb-${tag}@test.local`)
@@ -120,20 +151,17 @@ test.describe('Real Browser PI Workflow Proof', () => {
         timeout: 120000,
       })
       await expect(page.locator('code').filter({
-        hasText: new RegExp(`^${escapeRegExp(expectedOutput)}$`),
+        hasText: new RegExp(`^\\s*${escapeRegExp(expectedOutput)}\\s*$`),
       }).last()).toBeVisible({
         timeout: 120000,
       })
 
-      await expect.poll(() =>
-        apiRequests.some((entry) => entry.path.startsWith('/api/v1/files/write')),
-      ).toBe(true)
-      await expect.poll(() =>
-        apiRequests.some((entry) => entry.path.startsWith('/api/v1/exec/run')),
-      ).toBe(true)
+      await expect.poll(() => hasApiRequest(apiRequests, 'PUT', '/api/v1/files/write')).toBe(true)
+      await expect.poll(() => hasApiRequest(apiRequests, 'POST', '/api/v1/exec')).toBe(true)
     })
 
     await logger.step('open file through ui bridge and verify tabs', async () => {
+      await waitForPiIdle(page, activeModelRequests)
       await sendPiMessage(
         page,
         [

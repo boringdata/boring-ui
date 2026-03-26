@@ -111,6 +111,50 @@ func TestEnsureFlyAppExistsReturnsCreateFailure(t *testing.T) {
 	}
 }
 
+func TestFindFlyBinaryResolvesFlyctlBinCommandName(t *testing.T) {
+	dir := t.TempDir()
+	flyBin, _ := writeFakeFlyScript(t)
+	commandPath := filepath.Join(dir, "fly")
+	if err := os.WriteFile(commandPath, mustReadFile(t, flyBin), 0o755); err != nil {
+		t.Fatalf("write fly command: %v", err)
+	}
+
+	t.Setenv("PATH", dir)
+	t.Setenv("FLYCTL_BIN", "fly")
+
+	got, err := findFlyBinary()
+	if err != nil {
+		t.Fatalf("findFlyBinary returned error: %v", err)
+	}
+	if got != commandPath {
+		t.Fatalf("expected command from PATH, got %q", got)
+	}
+}
+
+func TestFindFlyBinaryFallsBackToHomeInstall(t *testing.T) {
+	home := t.TempDir()
+	flyDir := filepath.Join(home, ".fly", "bin")
+	if err := os.MkdirAll(flyDir, 0o755); err != nil {
+		t.Fatalf("mkdir fly dir: %v", err)
+	}
+	flyPath := filepath.Join(flyDir, "fly")
+	if err := os.WriteFile(flyPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write fly binary: %v", err)
+	}
+
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+	t.Setenv("FLYCTL_BIN", "")
+
+	got, err := findFlyBinary()
+	if err != nil {
+		t.Fatalf("findFlyBinary returned error: %v", err)
+	}
+	if got != flyPath {
+		t.Fatalf("expected home-installed fly path, got %q", got)
+	}
+}
+
 func TestApplyNeonFallbackSecretsUsesEnvFile(t *testing.T) {
 	root := t.TempDir()
 	boringDir := filepath.Join(root, ".boring")
@@ -218,6 +262,16 @@ exit 0
 	}
 
 	return scriptPath, logPath
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file %s: %v", path, err)
+	}
+	return data
 }
 
 func readFlyLog(t *testing.T, path string) []string {

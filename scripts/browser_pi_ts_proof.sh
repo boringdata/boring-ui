@@ -103,13 +103,13 @@ CORS_ORIGINS="http://127.0.0.1:${FRONTEND_PORT},http://localhost:${FRONTEND_PORT
 TS_SERVER_PID=$!
 
 for _ in $(seq 1 60); do
-  if curl -sf "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
-    break
-  fi
   if ! kill -0 "$TS_SERVER_PID" 2>/dev/null; then
     echo "[browser-pi-proof] TS server exited during startup" >&2
     tail -n 100 "$SERVER_LOG" >&2 || true
     exit 1
+  fi
+  if curl -sf "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
+    break
   fi
   sleep 1
 done
@@ -121,13 +121,13 @@ VITE_PI_ANTHROPIC_API_KEY="$VITE_PI_ANTHROPIC_API_KEY" \
 VITE_PID=$!
 
 for _ in $(seq 1 60); do
-  if curl -sf "http://127.0.0.1:${FRONTEND_PORT}" >/dev/null 2>&1; then
-    break
-  fi
   if ! kill -0 "$VITE_PID" 2>/dev/null; then
     echo "[browser-pi-proof] Vite dev server exited during startup" >&2
     tail -n 100 "$VITE_LOG" >&2 || true
     exit 1
+  fi
+  if curl -sf "http://127.0.0.1:${FRONTEND_PORT}" >/dev/null 2>&1; then
+    break
   fi
   sleep 1
 done

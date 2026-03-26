@@ -53,12 +53,64 @@ Use --env to target staging/dev. Use --dry-run to preview without executing.`,
 }
 
 func findFlyBinary() (string, error) {
-	for _, candidate := range []string{"fly", "flyctl"} {
-		if path, err := exec.LookPath(candidate); err == nil {
+	for _, candidate := range flyBinaryCandidates() {
+		if candidate == "" {
+			continue
+		}
+		if path, err := resolveExecutable(candidate); err == nil {
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("fly CLI not found on PATH (expected fly or flyctl)")
+	return "", fmt.Errorf("fly CLI not found (checked FLYCTL_BIN, PATH, and ~/.fly/bin/{fly,flyctl})")
+}
+
+func flyBinaryCandidates() []string {
+	candidates := []string{}
+	if fromEnv := strings.TrimSpace(os.Getenv("FLYCTL_BIN")); fromEnv != "" {
+		candidates = append(candidates, fromEnv)
+	}
+	candidates = append(candidates, "fly", "flyctl")
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		candidates = append(candidates,
+			filepath.Join(home, ".fly", "bin", "fly"),
+			filepath.Join(home, ".fly", "bin", "flyctl"),
+		)
+	}
+	return candidates
+}
+
+func resolveExecutable(candidate string) (string, error) {
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return "", fmt.Errorf("empty executable candidate")
+	}
+
+	if strings.HasPrefix(candidate, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		candidate = filepath.Join(home, candidate[2:])
+	} else if strings.HasPrefix(candidate, "$HOME/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		candidate = filepath.Join(home, candidate[len("$HOME/"):])
+	}
+
+	if strings.Contains(candidate, string(os.PathSeparator)) {
+		info, err := os.Stat(candidate)
+		if err != nil {
+			return "", err
+		}
+		if info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+			return candidate, nil
+		}
+		return "", fmt.Errorf("candidate is not executable: %s", candidate)
+	}
+
+	return exec.LookPath(candidate)
 }
 
 func deployFly(cfg *config.AppConfig, root string) error {
