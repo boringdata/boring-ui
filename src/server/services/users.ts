@@ -1,6 +1,8 @@
 /**
  * Users service — transport-independent user identity + settings.
  * Mirrors Python's me_router_neon.py.
+  *
+ * @deprecated Interface only — factory removed. Routes import *Impl directly.
  */
 import type { User } from '../../shared/types.js'
 
@@ -19,6 +21,3 @@ export interface UserService {
   ): Promise<void>
 }
 
-export function createUserService(_deps: UserServiceDeps): UserService {
-  throw new Error('Not implemented — see bd-k8box.2 (Phase 3: Users service)')
-}

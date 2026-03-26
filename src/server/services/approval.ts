@@ -1,6 +1,8 @@
 /**
  * Approval service — transport-independent tool approval workflow.
  * Mirrors Python's approval.py ApprovalStore.
+  *
+ * @deprecated Interface only — factory removed. Routes import *Impl directly.
  */
 import type { ApprovalRequest } from '../../shared/types.js'
 
@@ -19,8 +21,3 @@ export interface ApprovalStore {
   delete(requestId: string): Promise<boolean>
 }
 
-export function createInMemoryApprovalStore(): ApprovalStore {
-  throw new Error(
-    'Not implemented — see bd-1wkce.2 (Phase 4: Approval workflow)',
-  )
-}

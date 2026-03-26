@@ -1,6 +1,8 @@
 /**
  * Auth service — transport-independent authentication logic.
  * Mirrors Python's control_plane auth_session.py + auth_router_neon.py.
+  *
+ * @deprecated Interface only — factory removed. Routes import *Impl directly.
  */
 import type { SessionPayload } from '../../shared/types.js'
 
@@ -20,9 +22,6 @@ export interface AuthService {
   cookieName(appId?: string): string
 }
 
-export function createAuthService(_deps: AuthServiceDeps): AuthService {
-  throw new Error('Not implemented — see bd-rwy92.4 (Phase 1: Auth system port)')
-}
 
 // Session cookie constants
 export const COOKIE_NAME = 'boring_session'

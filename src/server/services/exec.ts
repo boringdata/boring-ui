@@ -1,6 +1,8 @@
 /**
  * Exec service — transport-independent business logic for command execution.
  * The BwrapBackend provides sandboxed execution via bubblewrap.
+  *
+ * @deprecated Interface only — factory removed. Routes import *Impl directly.
  */
 
 export interface ExecResult {
@@ -19,6 +21,3 @@ export interface ExecService {
   pythonExec(code: string, cwd?: string): Promise<ExecResult>
 }
 
-export function createExecService(_deps: ExecServiceDeps): ExecService {
-  throw new Error('Not implemented — see bd-qvv02.1 (Phase 2: BwrapBackend)')
-}

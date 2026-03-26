@@ -1,6 +1,8 @@
 /**
  * File service — transport-independent business logic for file operations.
  * Mirrors Python's modules/files/service.py.
+  *
+ * @deprecated Interface only — factory removed. Routes import *Impl directly.
  */
 import type {
   FileListResult,
@@ -26,6 +28,3 @@ export interface FileService {
   searchFiles(pattern: string, path?: string): Promise<FileSearchResult>
 }
 
-export function createFileService(_deps: FileServiceDeps): FileService {
-  throw new Error('Not implemented — see bd-qvv02 (Phase 2: Files service)')
-}

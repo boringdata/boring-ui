@@ -6,6 +6,7 @@ const SERVER_ROOT = path.resolve(__dirname, '..')
 const SHARED_ROOT = path.resolve(__dirname, '../../shared')
 
 describe('Service layer skeleton structure', () => {
+  // Service interface files (factories removed, interfaces kept)
   const expectedServiceFiles = [
     'services/files.ts',
     'services/git.ts',
@@ -20,20 +21,23 @@ describe('Service layer skeleton structure', () => {
     'services/index.ts',
   ]
 
+  // Active HTTP route files (*Routes.ts pattern)
   const expectedHttpFiles = [
     'http/health.ts',
-    'http/files.ts',
-    'http/git.ts',
-    'http/auth.ts',
-    'http/workspaces.ts',
-    'http/exec.ts',
+    'http/fileRoutes.ts',
+    'http/gitRoutes.ts',
+    'http/authRoutes.ts',
+    'http/workspaceRoutes.ts',
+    'http/execRoutes.ts',
+    'http/meRoutes.ts',
+    'http/static.ts',
+    'http/workspaceBoundary.ts',
+    'http/uiStateRoutes.ts',
   ]
 
+  // tRPC: only framework.ts (child app extension) remains
   const expectedTrpcFiles = [
-    'trpc/router.ts',
-    'trpc/context.ts',
-    'trpc/files.ts',
-    'trpc/git.ts',
+    'trpc/framework.ts',
   ]
 
   const expectedAdapterFiles = ['adapters/bwrap.ts']
@@ -126,13 +130,23 @@ describe('Service barrel exports active implementations', () => {
     expect(typeof barrel.buildGitCredentials).toBe('function')
     expect(typeof barrel.isGitHubConfigured).toBe('function')
   })
+
+  it('service stubs no longer export throwing factories', async () => {
+    // Verify factories were removed — only type exports remain
+    const files = await import('../services/files.js')
+    expect((files as any).createFileService).toBeUndefined()
+
+    const git = await import('../services/git.js')
+    expect((git as any).createGitService).toBeUndefined()
+  })
 })
 
-describe('tRPC root router', () => {
-  it('creates an empty app router', async () => {
-    const { appRouter } = await import('../trpc/router.js')
-    expect(appRouter).toBeDefined()
-    expect(appRouter._def).toBeDefined()
+describe('tRPC framework (child app extension)', () => {
+  it('exports createFrameworkTRPC', async () => {
+    const fw = await import('../trpc/framework.js')
+    expect(typeof fw.createFrameworkTRPC).toBe('function')
+    expect(typeof fw.mergeChildRouters).toBe('function')
+    expect(typeof fw.registerChildTools).toBe('function')
   })
 })
 

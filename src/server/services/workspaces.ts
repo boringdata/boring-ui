@@ -1,6 +1,8 @@
 /**
  * Workspaces service — transport-independent workspace CRUD + settings.
  * Mirrors Python's workspace_router_hosted.py.
+  *
+ * @deprecated Interface only — factory removed. Routes import *Impl directly.
  */
 import type {
   Workspace,
@@ -44,10 +46,3 @@ export interface WorkspaceService {
   revokeInvite(inviteId: string): Promise<void>
 }
 
-export function createWorkspaceService(
-  _deps: WorkspaceServiceDeps,
-): WorkspaceService {
-  throw new Error(
-    'Not implemented — see bd-k8box.1 (Phase 3: Workspaces service)',
-  )
-}

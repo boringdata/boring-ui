@@ -8,7 +8,13 @@
  */
 import { initTRPC } from '@trpc/server'
 import type { z } from 'zod'
-import type { TRPCContext } from './context.js'
+
+/** tRPC context — provides authenticated user and workspace to procedures. */
+export interface TRPCContext {
+  userId?: string
+  email?: string
+  workspaceId?: string
+}
 
 // --- Framework tRPC instance ---
 

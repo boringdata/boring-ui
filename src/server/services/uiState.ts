@@ -1,6 +1,8 @@
 /**
  * UI State service — persists frontend UI state on the server.
  * Mirrors Python's modules/ui_state/router.py.
+  *
+ * @deprecated Interface only — factory removed. Routes import *Impl directly.
  */
 
 export interface UIStateService {
@@ -10,6 +12,3 @@ export interface UIStateService {
   list(): Promise<string[]>
 }
 
-export function createUIStateService(_workspaceRoot: string): UIStateService {
-  throw new Error('Not implemented — see Phase 2/4 UI state beads')
-}

@@ -1,6 +1,8 @@
 /**
  * Git service — transport-independent business logic for git operations.
  * Mirrors Python's modules/git/service.py.
+  *
+ * @deprecated Interface only — factory removed. Routes import *Impl directly.
  */
 import type {
   GitStatusResult,
@@ -57,6 +59,3 @@ export interface GitService {
   addRemote(name: string, url: string): Promise<{ added: boolean }>
 }
 
-export function createGitService(_deps: GitServiceDeps): GitService {
-  throw new Error('Not implemented — see bd-qvv02 (Phase 2: Git service)')
-}
