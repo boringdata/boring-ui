@@ -1,0 +1,50 @@
+# Stage 1: Build frontend
+FROM node:20-slim AS frontend-build
+WORKDIR /build
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY src/front ./src/front
+COPY index.html vite.config.ts tailwind.config.js ./
+COPY boring.app.toml ./boring.app.toml
+RUN npx vite build
+
+# Stage 2: TypeScript backend + frontend static
+FROM node:20-slim
+
+ENV NODE_ENV=production \
+    BORING_UI_STATIC_DIR=/app/dist
+
+WORKDIR /app
+
+# Install system packages needed for workspace operations
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bubblewrap \
+    git \
+    python3 \
+    python3-venv \
+    jq \
+    ripgrep \
+    tree \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Copy server source (TypeScript, executed via tsx)
+COPY src/server ./src/server
+COPY src/shared ./src/shared
+COPY tsconfig.server.json ./
+
+# Copy config
+COPY boring.app.toml ./boring.app.toml
+COPY drizzle.config.ts ./
+
+# Frontend static files from build stage
+COPY --from=frontend-build /build/dist ./dist
+
+EXPOSE 8000
+
+# Run via tsx (TypeScript execution without compilation step)
+CMD ["node", "--import", "tsx", "src/server/index.ts"]
