@@ -14,6 +14,7 @@ from typing import Any
 
 from tests.eval.check_catalog import CATALOG
 from tests.eval.contracts import CheckResult, RunManifest
+from tests.eval.fly_cli import resolve_fly_cli
 from tests.eval.reason_codes import Attribution, CheckStatus
 
 
@@ -100,9 +101,13 @@ def _check_bui_available(ctx: PreflightContext) -> CheckResult:
 
 def _check_fly_available(ctx: PreflightContext) -> CheckResult:
     cid = "preflight.fly_available"
-    fly = shutil.which("fly") or shutil.which("flyctl")
+    fly = resolve_fly_cli()
     if not fly:
-        return _invalid(cid, "ENV_FLY_AUTH", "fly/flyctl CLI not found")
+        return _invalid(
+            cid,
+            "ENV_FLY_AUTH",
+            "fly/flyctl CLI not found (checked FLYCTL_BIN, PATH, and ~/.fly/bin)",
+        )
     if os.environ.get("FLY_API_TOKEN"):
         return _pass(cid, "Fly CLI + FLY_API_TOKEN set")
     rc, _, _ = _run_cmd([fly, "auth", "whoami"])
@@ -208,9 +213,9 @@ def _check_provider_api_access(ctx: PreflightContext) -> CheckResult:
     cid = "preflight.provider_api_access"
     # Quick check that provider APIs are reachable
     issues: list[str] = []
-    if shutil.which("fly") or shutil.which("flyctl"):
-        fly = shutil.which("fly") or shutil.which("flyctl")
-        rc, _, _ = _run_cmd([fly, "apps", "list", "--json"])  # type: ignore
+    fly = resolve_fly_cli()
+    if fly:
+        rc, _, _ = _run_cmd([fly, "apps", "list", "--json"])
         if rc != 0:
             issues.append("Fly API not accessible")
     else:

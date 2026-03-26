@@ -24,6 +24,7 @@ from tests.eval.capabilities import (
     validate_profile_against_capabilities,
 )
 from tests.eval.contracts import PlatformFacts
+from tests.eval.fly_cli import resolve_fly_cli
 
 
 # ---------------------------------------------------------------------------
@@ -127,10 +128,10 @@ def _bui_version() -> str:
 
 def _fly_version() -> str:
     """Get Fly CLI version."""
-    if not shutil.which("fly") and not shutil.which("flyctl"):
+    fly = resolve_fly_cli()
+    if not fly:
         return ""
-    cmd = ["fly", "version"] if shutil.which("fly") else ["flyctl", "version"]
-    rc, stdout, _ = _run(cmd)
+    rc, stdout, _ = _run([fly, "version"])
     if rc != 0:
         return ""
     line = stdout.split("\n")[0].strip()

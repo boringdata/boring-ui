@@ -10,6 +10,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
+from tests.eval.fly_cli import resolve_fly_cli
+
 
 @dataclass
 class AppInfo:
@@ -23,8 +25,10 @@ class FlyAdapter:
     """Fly.io provider adapter using the fly/flyctl CLI."""
 
     def __init__(self, fly_cmd: str | None = None) -> None:
-        import shutil
-        self._cmd = fly_cmd or shutil.which("fly") or shutil.which("flyctl") or "fly"
+        if fly_cmd:
+            self._cmd = resolve_fly_cli(fly_cmd) or fly_cmd
+            return
+        self._cmd = resolve_fly_cli() or "fly"
 
     def _run(self, args: list[str], timeout: int = 30) -> tuple[int, str, str]:
         try:

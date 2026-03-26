@@ -689,3 +689,52 @@ class TestPreflightChecks:
             "capabilities",
             f"secret/data/agent/app/{manifest.app_slug}/prod",
         ]]
+
+    def test_fly_available_uses_home_install_fallback(self, manifest, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        fly_path = home / ".fly" / "bin" / "fly"
+        fly_path.parent.mkdir(parents=True)
+        fly_path.write_text("#!/bin/sh\nexit 0\n")
+        fly_path.chmod(0o755)
+
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("PATH", "")
+        monkeypatch.delenv("FLYCTL_BIN", raising=False)
+        monkeypatch.delenv("FLY_API_TOKEN", raising=False)
+
+        calls = []
+
+        def fake_run(cmd, timeout=10):
+            calls.append(cmd)
+            return 0, "me@example.com", ""
+
+        monkeypatch.setattr(preflight_checks, "_run_cmd", fake_run)
+
+        result = preflight_checks._check_fly_available(PreflightContext(manifest))
+
+        assert result.status == CheckStatus.PASS
+        assert calls == [[str(fly_path), "auth", "whoami"]]
+
+    def test_provider_api_access_uses_home_install_fallback(self, manifest, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        fly_path = home / ".fly" / "bin" / "fly"
+        fly_path.parent.mkdir(parents=True)
+        fly_path.write_text("#!/bin/sh\nexit 0\n")
+        fly_path.chmod(0o755)
+
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("PATH", "")
+        monkeypatch.delenv("FLYCTL_BIN", raising=False)
+
+        calls = []
+
+        def fake_run(cmd, timeout=10):
+            calls.append(cmd)
+            return 0, "[]", ""
+
+        monkeypatch.setattr(preflight_checks, "_run_cmd", fake_run)
+
+        result = preflight_checks._check_provider_api_access(PreflightContext(manifest))
+
+        assert result.status == CheckStatus.PASS
+        assert calls == [[str(fly_path), "apps", "list", "--json"]]

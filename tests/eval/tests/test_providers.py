@@ -5,13 +5,44 @@ Run with: python3 -m pytest tests/eval/tests/test_providers.py -v
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import tests.eval.providers.neon as neon_module
+from tests.eval.fly_cli import resolve_fly_cli
 from tests.eval.providers.fly import FlyAdapter
 from tests.eval.providers.neon import NeonAdapter
 from tests.eval.providers.vault import VaultAdapter
 from tests.eval.redaction import SecretRegistry
+
+
+class TestFlyCliDiscovery:
+    def test_resolve_fly_cli_uses_home_install(self, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        fly_path = home / ".fly" / "bin" / "fly"
+        fly_path.parent.mkdir(parents=True)
+        fly_path.write_text("#!/bin/sh\nexit 0\n")
+        fly_path.chmod(0o755)
+
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("PATH", "")
+        monkeypatch.delenv("FLYCTL_BIN", raising=False)
+
+        assert resolve_fly_cli() == str(fly_path)
+
+    def test_fly_adapter_defaults_to_resolved_home_install(self, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        fly_path = home / ".fly" / "bin" / "fly"
+        fly_path.parent.mkdir(parents=True)
+        fly_path.write_text("#!/bin/sh\nexit 0\n")
+        fly_path.chmod(0o755)
+
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("PATH", "")
+        monkeypatch.delenv("FLYCTL_BIN", raising=False)
+
+        adapter = FlyAdapter()
+        assert Path(adapter._cmd) == fly_path
 
 
 class TestFlyAdapter:

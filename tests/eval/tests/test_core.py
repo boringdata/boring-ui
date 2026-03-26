@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import tests.eval.introspection as introspection_module
 from tests.eval.agent_prompt import generate_prompt, save_prompt
 from tests.eval.contracts import NamingContract, ObservedCommand, RunManifest
 from tests.eval.eval_child_app import _default_agent_runner
@@ -73,6 +74,12 @@ class TestAgentPrompt:
         assert "Do NOT hardcode" in prompt
         assert f"secret/agent/app/{sample_manifest.app_slug}/prod" in prompt
         assert "Neon auth" in prompt
+
+    def test_generate_avoids_legacy_python_path_instructions(self, sample_manifest):
+        prompt = generate_prompt(sample_manifest, profile="auth-plus")
+        assert f"src/{sample_manifest.python_module}/routers/status.py" not in prompt
+        assert f"src/{sample_manifest.python_module}/routers/notes.py" not in prompt
+        assert "local validation first" in prompt
 
     def test_generate_deterministic(self, sample_manifest):
         p1 = generate_prompt(sample_manifest)
@@ -278,6 +285,32 @@ class TestIntrospection:
         facts = PlatformFacts()  # empty — no tools
         manifest = build_manifest_from_facts(facts)
         assert manifest.bui_available is False
+
+    def test_discover_uses_home_installed_fly(self, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        fly_path = home / ".fly" / "bin" / "fly"
+        fly_path.parent.mkdir(parents=True)
+        fly_path.write_text("#!/bin/sh\nexit 0\n")
+        fly_path.chmod(0o755)
+
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("PATH", "")
+        monkeypatch.delenv("FLYCTL_BIN", raising=False)
+
+        calls = []
+
+        def fake_run(cmd, timeout=10):
+            calls.append(cmd)
+            if cmd[:2] == [str(fly_path), "version"]:
+                return 0, "fly v0.3.99 linux/amd64 Commit: test BuildDate: now", ""
+            return 0, "", ""
+
+        monkeypatch.setattr(introspection_module, "_run", fake_run)
+
+        facts = discover_platform_facts()
+
+        assert facts.fly_cli_version == "0.3.99"
+        assert [str(fly_path), "version"] in calls
 
 
 # ===================================================================

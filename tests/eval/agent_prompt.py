@@ -32,13 +32,13 @@ def generate_prompt(
     whoami_section = ""
     if profile in ("auth-plus", "full-stack", "extensible"):
         whoami_section = textwrap.dedent("""
-        **Authenticated identity route** (implement in your mounted backend routes):
+        **Authenticated identity route**:
 
         GET /whoami  (authenticated)
           200 → {"user_id": "...", "email": "...", "app": "..."}
           401/403 when unauthenticated
 
-        Validate the shared `boring_session` cookie from the app config.
+        Use the shared `boring_session` cookie contract from the app config.
         """)
 
     report_shape = json.dumps({
@@ -64,20 +64,19 @@ def generate_prompt(
 
 In addition to everything above, you must create:
 
-**Custom workspace pane** (`kurt/panels/eval-status/Panel.jsx`):
+**Custom workspace pane**:
 - Default-export a React component.
 - Render the `eval_id` ("{manifest.eval_id}") and `verification_nonce`
   ("{manifest.verification_nonce}") visibly.
 - On mount or via a button, call `GET /api/x/eval_tool/compute?input=<value>`
   and display the response.
 
-**Custom backend router** (`src/{manifest.python_module}/routers/eval_tool.py`):
+**Custom backend tool route**:
 - Expose `GET /api/x/eval_tool/compute` accepting query parameter `input`.
 - Return:
     {{"result": "<deterministic_transform(input)>", "input": "<original_input>", "eval_id": "{manifest.eval_id}", "verification_nonce": "{manifest.verification_nonce}"}}
 - The transformation must be non-trivial but deterministic (e.g., reverse +
   uppercase, word count + SHA256 prefix, or similar).
-- Declare this router in `boring.app.toml` under `[backend].routers`.
 
 **Verification before deploy:**
 - `/api/capabilities` must include the custom pane in `workspace_panes`.
@@ -107,22 +106,26 @@ Please discover the normal `bui` workflow yourself starting from `bui --help`.
 
 ## What to build
 
-**Verification endpoints** (`src/{manifest.python_module}/routers/status.py`):
+Build the child app using the current boring-ui child-app workflow and extension points. Do local validation first, then provision hosted auth/deploy, then validate the live app.
+
+Implement these product requirements:
+
+**Verification endpoints**:
 
   GET /health → {{"ok": true, "app": "{manifest.app_slug}", "custom": true, "eval_id": "{manifest.eval_id}", "verification_nonce": "{manifest.verification_nonce}"}}
   GET /info   → {{"name": "{manifest.app_slug}", "version": "0.1.0", "eval_id": "{manifest.eval_id}"}}
 {whoami_section}
 **Quick Notes feature** — a working pane + API for saving short text notes:
 
-  Backend (`src/{manifest.python_module}/routers/notes.py`):
-    POST /notes       {{"text": "..."}}  → {{"id": "...", "text": "...", "created_at": "..."}}
-    GET  /notes                          → [{{"id": "...", "text": "...", "created_at": "..."}}]
-    DELETE /notes/{{id}}                  → {{"deleted": true}}
+  API:
+    POST /notes        {{"text": "..."}} → {{"id": "...", "text": "...", "created_at": "..."}}
+    GET  /notes                           → [{{"id": "...", "text": "...", "created_at": "..."}}]
+    DELETE /notes/{{id}}                   → {{"deleted": true}}
 
-  Frontend (`panels/NotesPanel.jsx`):
+  UI:
     A panel that lists notes, lets you add new ones, and delete them.
 
-Wire all routers and the panel in boring.app.toml. Deploy to Fly.io.
+Use the framework shape that `bui init` and current `bui` docs support today. Do not assume legacy file paths or auth defaults if the current scaffold expects something else. Deploy to Fly.io.
 {extensible_section}
 Constraints:
 - Do NOT modify `../boring-ui/` or sibling directories.
