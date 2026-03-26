@@ -84,8 +84,8 @@ const FileList = ({ files }) => (
           color: 'var(--chat-text)',
           padding: '2px 0',
         }}
-      >
-        <span style={{ color: 'var(--chat-text-muted)', fontSize: '12px' }}>
+        >
+        <span style={{ color: 'var(--chat-text-muted)', fontSize: 'var(--font-size-sm)' }}>
           {getFileIcon(file, 12)}
         </span>
         <span>{file}</span>

@@ -28,6 +28,10 @@ export default defineConfig(({ mode }) => {
       find: /^@mariozechner\/pi-ai$/,
       replacement: path.resolve(__dirname, './src/front/providers/pi/piAi.browser.js'),
     },
+    {
+      find: /^node:zlib$/,
+      replacement: path.resolve(__dirname, './src/front/providers/data/nodeZlib.browser.js'),
+    },
   ]
   if (workspaceRoot) {
     resolveAlias.push({
@@ -155,11 +159,16 @@ export default defineConfig(({ mode }) => {
           target: proxyApiTarget,
           changeOrigin: false,
           bypass(req) {
-            const requestPath = req.url?.split('?')[0]
+            const requestUrl = new URL(req.url || '/', 'http://localhost')
+            const requestPath = requestUrl.pathname
+            const hasLocalIdentity = requestUrl.searchParams.has('user_id')
+              && requestUrl.searchParams.has('email')
             // Let SPA handle these auth pages; proxy all other auth routes to backend
             if (requestPath === '/auth/settings') return req.url
-            if (requestPath?.startsWith('/auth/login')) return req.url
+            if (requestPath?.startsWith('/auth/login') && !hasLocalIdentity) return req.url
             if (requestPath?.startsWith('/auth/signup')) return req.url
+            if (requestPath?.startsWith('/auth/reset-password')) return req.url
+            if (requestPath?.startsWith('/auth/callback') && !hasLocalIdentity) return req.url
           },
         },
         '/w': {

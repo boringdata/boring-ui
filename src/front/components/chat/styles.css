@@ -269,7 +269,7 @@
 .claude-message::before {
   content: '●';
   color: var(--color-text-tertiary);
-  font-size: 8px;
+  font-size: var(--font-size-4xs);
   position: absolute;
   left: 12px;
   top: 5px;
@@ -313,7 +313,7 @@
 
 .claude-assistant-bullet {
   color: var(--color-text-tertiary);
-  font-size: 8px;
+  font-size: var(--font-size-4xs);
   line-height: 1;
   margin-top: 5px;
   margin-left: -8px;
@@ -640,20 +640,20 @@
 }
 
 .claude-context-pill-icon {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-tertiary);
 }
 
 .claude-context-pill-label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .claude-context-pill button {
   border: none;
   background: transparent;
   color: var(--color-text-tertiary);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   cursor: pointer;
   padding: 0;
   margin-left: var(--space-1);
@@ -730,7 +730,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-semibold);
   color: var(--color-text-inverse);
   flex-shrink: 0;
@@ -1620,7 +1620,7 @@
 }
 
 .tool-use-bullet {
-  font-size: 8px;
+  font-size: var(--font-size-4xs);
   line-height: 1;
   flex-shrink: 0;
   margin-top: 0;
@@ -1652,12 +1652,12 @@
 .tool-use-name {
   font-weight: var(--font-medium);
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .tool-use-description {
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
 }
 
@@ -1685,7 +1685,7 @@
 
 .tool-use-subtitle {
   color: var(--color-text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   margin-top: 2px;
 }
 
@@ -1715,7 +1715,7 @@
 
 .tool-command-language {
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   text-transform: lowercase;
 }
 
@@ -1765,7 +1765,7 @@
   border: none;
   background: transparent;
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);

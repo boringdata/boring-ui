@@ -171,7 +171,7 @@ const BashToolRenderer = ({
         <div
           style={{
             marginTop: 'var(--chat-spacing-xs, 4px)',
-            fontSize: '12px',
+            fontSize: 'var(--font-size-sm)',
             color: 'var(--chat-error)',
           }}
         >

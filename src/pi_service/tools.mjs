@@ -225,6 +225,7 @@ function createSharedUiTools(backendUrl, authToken) {
           body: JSON.stringify({
             command: {
               kind: 'open_panel',
+              panel_id: `editor-${path}`,
               component: 'editor',
               title: path.split('/').pop() || path,
               params: { path },

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import { DockviewReact } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
+import { Bot } from 'lucide-react'
 
 import { ThemeProvider, useCapabilities, useKeyboardShortcuts, UNKNOWN_CAPABILITIES } from './hooks'
 import { TooltipProvider } from './components/ui/tooltip'
@@ -9,6 +10,8 @@ import useDataProviderScope from './hooks/useDataProviderScope'
 import useFrontendStatePersist from './hooks/useFrontendStatePersist'
 import useDockLayout from './hooks/useDockLayout'
 import usePanelActions from './hooks/usePanelActions'
+import useResponsiveSidebarCollapse from './hooks/useResponsiveSidebarCollapse'
+import useViewportBreakpoint from './hooks/useViewportBreakpoint'
 import useWorkspaceAuth from './hooks/useWorkspaceAuth'
 import useWorkspaceRouter from './hooks/useWorkspaceRouter'
 import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
@@ -73,6 +76,7 @@ import {
 } from './utils/editorFiles'
 
 const MAIN_CONTENT_ID = 'workspace-main-content'
+const NARROW_VIEWPORT_BREAKPOINT = 960
 // Get capability-gated components from pane registry
 // Components with requiresFeatures/requiresRouters will show error states when unavailable
 const getLiveKnownComponents = () => getKnownComponents()
@@ -282,6 +286,7 @@ export default function App() {
     readPersistedCollapsedState(storagePrefix, baseStoragePrefix)
   ))
   const [layoutChromeHydratedPrefix, setLayoutChromeHydratedPrefix] = useState(storagePrefix)
+  const isNarrowViewport = useViewportBreakpoint(NARROW_VIEWPORT_BREAKPOINT)
   const sidebarToggleHostId = useMemo(() => {
     const hasFiletree = leftSidebarPanelIds.includes('filetree')
     if (collapsed.filetree && hasFiletree) return 'filetree'
@@ -476,9 +481,10 @@ export default function App() {
     isLeftSidebarGroup,
     findCenterAnchorPanel,
     getLiveCenterGroup,
-    toggleFiletree,
+    toggleFiletree: toggleDockFiletree,
     toggleAgent,
     activeSidebarPanelId,
+    setActiveSidebarPanelId,
     filetreeActivityIntent,
     catalogActivityIntent,
     sectionCollapsed,
@@ -500,6 +506,16 @@ export default function App() {
     saveCollapsedState,
     savePanelSizes,
   })
+  const clearResponsiveFiletreeAutoCollapse = useResponsiveSidebarCollapse({
+    isNarrowViewport,
+    storagePrefix,
+    collapsedFiletree: collapsed.filetree,
+    setCollapsed,
+  })
+  const toggleFiletree = useCallback(() => {
+    clearResponsiveFiletreeAutoCollapse()
+    toggleDockFiletree()
+  }, [clearResponsiveFiletreeAutoCollapse, toggleDockFiletree])
 
   useEffect(() => {
     if (!dockApi) return
@@ -2868,13 +2884,17 @@ export default function App() {
     collapsed.agent && 'agent-is-collapsed',
     collapsed.shell && 'shell-is-collapsed',
   ].filter(Boolean).join(' ')
+  const appContainerClassName = [
+    'app-container',
+    isNarrowViewport && 'app-container-narrow',
+  ].filter(Boolean).join(' ')
 
   return (
     <QueryClientProvider key={dataProviderScopeKey} client={queryClient}>
       <DataContext.Provider key={dataProviderScopeKey} value={dataProvider}>
         <ThemeProvider>
           <TooltipProvider delayDuration={300} skipDelayDuration={100}>
-          <div className="app-container">
+          <div className={appContainerClassName}>
             <a className="skip-to-content-link" href={`#${MAIN_CONTENT_ID}`}>
               Skip to main content
             </a>

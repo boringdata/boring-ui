@@ -17,7 +17,13 @@ describe('runtimeConfigToProviderConfig', () => {
         panels: { chart: { component: 'chart-panel' } },
         mode: { profile: 'backend' },
       },
-      agents: { mode: 'backend', available: ['pi'] },
+      agents: {
+        mode: 'backend',
+        runtime: 'ai-sdk',
+        placement: 'server',
+        default: 'ai-sdk',
+        available: ['ai-sdk'],
+      },
       auth: { provider: 'neon' },
     })
 
@@ -26,7 +32,10 @@ describe('runtimeConfigToProviderConfig', () => {
     expect(config.mode.profile).toBe('backend')
     expect(config.app.id).toBe('child-app')
     expect(config.agents.mode).toBe('backend')
-    expect(config.agents.available).toEqual(['pi'])
+    expect(config.agents.runtime).toBe('ai-sdk')
+    expect(config.agents.placement).toBe('server')
+    expect(config.agents.default).toBe('ai-sdk')
+    expect(config.agents.available).toEqual(['ai-sdk'])
     expect(config.auth.provider).toBe('neon')
   })
 })

@@ -141,15 +141,15 @@ pi-chat-panel {
 /* ── Typography — align with boring-ui (14px base, Inter) ── */
 .pi-root {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: var(--font-size-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-.pi-root .text-sm { font-size: 13px; }
-.pi-root .text-xs { font-size: 11px; }
-.pi-root .text-base { font-size: 14px; }
-.pi-root .text-lg { font-size: 16px; }
+.pi-root .text-sm { font-size: var(--font-size-ui); }
+.pi-root .text-xs { font-size: var(--font-size-xs); }
+.pi-root .text-base { font-size: var(--font-size-base); }
+.pi-root .text-lg { font-size: var(--font-size-md); }
 
 .pi-root textarea,
 .pi-root input,
@@ -176,7 +176,7 @@ pi-chat-panel {
 
 /* ── Message editor input — compact for panel layout ── */
 message-editor textarea {
-  font-size: 14px !important;
+  font-size: var(--font-size-base) !important;
   line-height: 1.5 !important;
   padding: 12px !important;
   color: var(--foreground);
@@ -240,13 +240,13 @@ message-editor [contenteditable="true"]:focus-visible {
 
 /* ── Model selector button — smaller, matches app buttons ── */
 message-editor button {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   border-radius: 6px;
 }
 
 /* ── Stats row — smaller ── */
 .pi-root .text-xs.text-muted-foreground.flex.justify-between {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   padding: 2px 4px 4px;
 }
 
@@ -290,7 +290,7 @@ tool-message button {
 /* ── Model selector dialog — align with app design ── */
 agent-model-selector .fixed.inset-0 {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 /* Dialog backdrop */
@@ -308,14 +308,14 @@ agent-model-selector .bg-background {
 
 /* Dialog header title */
 agent-model-selector h2 {
-  font-size: 16px;
+  font-size: var(--font-size-md);
   font-weight: 600;
 }
 
 /* Search input in dialog */
 agent-model-selector input[type="text"],
 agent-model-selector input[placeholder] {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   border-radius: 8px;
   padding: 8px 12px;
   border: 1px solid var(--border);
@@ -331,7 +331,7 @@ agent-model-selector input:focus {
 
 /* Filter buttons (Thinking, Vision) */
 agent-model-selector .rounded-full {
-  font-size: 12px !important;
+  font-size: var(--font-size-sm) !important;
   padding: 4px 12px !important;
   border-radius: 9999px !important;
 }
@@ -343,16 +343,16 @@ agent-model-selector [data-model-item] {
 }
 
 agent-model-selector [data-model-item] .text-sm {
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 agent-model-selector [data-model-item] .text-xs {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 /* Provider badge in model list */
 agent-model-selector [data-model-item] .inline-flex.items-center {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   border-radius: 4px;
 }
 

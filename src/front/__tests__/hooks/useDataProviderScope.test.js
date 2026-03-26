@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import useDataProviderScope from '../../hooks/useDataProviderScope'
 import {
   createHttpProvider,
+  createJustBashDataProvider,
   createLightningDataProvider,
   createQueryClient,
   getDataProvider,
@@ -14,6 +15,7 @@ vi.mock('../../providers/data', () => ({
   getDataProvider: vi.fn(),
   getDataProviderFactory: vi.fn(),
   createHttpProvider: vi.fn(),
+  createJustBashDataProvider: vi.fn(),
   createLightningDataProvider: vi.fn(),
 }))
 
@@ -36,6 +38,7 @@ describe('useDataProviderScope', () => {
     vi.clearAllMocks()
     createQueryClient.mockImplementation(() => ({ clear: vi.fn() }))
     createHttpProvider.mockImplementation(({ workspaceId }) => ({ kind: 'http', workspaceId }))
+    createJustBashDataProvider.mockImplementation(() => ({ kind: 'justbash' }))
     createLightningDataProvider.mockImplementation(({ fsName }) => ({ kind: 'lightningfs', fsName }))
     getDataProvider.mockReturnValue(null)
     getDataProviderFactory.mockReturnValue(null)
@@ -77,6 +80,29 @@ describe('useDataProviderScope', () => {
 
     expect(createLightningDataProvider).toHaveBeenCalledTimes(1)
     expect(createQueryClient).toHaveBeenCalledTimes(1)
+    expect(result.current.dataProvider).toBe(firstProvider)
+    expect(result.current.queryClient).toBe(firstQueryClient)
+  })
+
+  it('reuses cached justbash provider and query client for the same workspace scope', () => {
+    const props = makeProps({
+      config: { data: { backend: 'justbash', strictBackend: true } },
+      menuUserId: 'user-1',
+    })
+
+    const { result, rerender } = renderHook((hookProps) => useDataProviderScope(hookProps), {
+      initialProps: props,
+    })
+    const firstProvider = result.current.dataProvider
+    const firstQueryClient = result.current.queryClient
+
+    rerender(props)
+
+    expect(createJustBashDataProvider).toHaveBeenCalledTimes(1)
+    expect(createQueryClient).toHaveBeenCalledTimes(1)
+    expect(result.current.dataProviderScopeKey).toBe(
+      'justbash:user:u-user-1|workspace:ws-1|session:client-boring-ui',
+    )
     expect(result.current.dataProvider).toBe(firstProvider)
     expect(result.current.queryClient).toBe(firstQueryClient)
   })

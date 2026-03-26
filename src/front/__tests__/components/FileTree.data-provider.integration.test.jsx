@@ -1,10 +1,15 @@
+/**
+ * @vitest-environment jsdom
+ */
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import '../setup.ts'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import FileTree from '../../components/FileTree'
 import DataContext from '../../providers/data/DataContext'
 import { queryKeys } from '../../providers/data/queries'
+import { createJustBashDataProvider } from '../../providers/data/justBashDataProvider'
 
 const defaultProps = {
   onOpen: vi.fn(),
@@ -105,5 +110,18 @@ describe('FileTree DataProvider integration', () => {
 
     expect(provider.files.list).toHaveBeenCalledWith('.', expect.any(Object))
     expect(provider.git.status).toHaveBeenCalled()
+  })
+
+  it('renders root entries from the real justbash provider', async () => {
+    const provider = createJustBashDataProvider()
+    await provider.runCommand('echo alpha > README.md')
+
+    renderWithProvider(provider)
+
+    await waitFor(() => {
+      expect(screen.getByText('README.md')).toBeInTheDocument()
+    })
+
+    expect(await provider.files.read('README.md')).toBe('alpha\n')
   })
 })

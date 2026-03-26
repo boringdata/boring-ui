@@ -45,7 +45,7 @@ const styles = {
   },
   title: {
     color: 'var(--chat-text)',
-    fontSize: '14px',
+    fontSize: 'var(--font-size-base)',
     fontWeight: 500,
     marginBottom: 'var(--chat-spacing-sm, 8px)',
   },
@@ -64,21 +64,21 @@ const styles = {
     color: 'white',
     padding: '3px 8px',
     borderRadius: '4px',
-    fontSize: '11px',
+    fontSize: 'var(--font-size-xs)',
     fontWeight: 500,
   },
   toolIcon: {
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
   },
   primaryInfo: {
     color: 'var(--chat-text)',
     fontFamily: 'monospace',
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
     wordBreak: 'break-all',
   },
   secondaryInfo: {
     color: 'var(--chat-text-muted)',
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
     marginBottom: 'var(--chat-spacing-sm, 8px)',
     fontStyle: 'italic',
   },
@@ -91,7 +91,7 @@ const styles = {
     maxHeight: '200px',
     overflowY: 'auto',
     fontFamily: 'monospace',
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
   },
   diffLine: {
     whiteSpace: 'pre',
@@ -121,7 +121,7 @@ const styles = {
   codeContent: {
     margin: 0,
     fontFamily: 'monospace',
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
     color: 'var(--chat-text-muted)',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-all',
@@ -142,7 +142,7 @@ const styles = {
     cursor: 'pointer',
     textAlign: 'left',
     color: 'var(--chat-text)',
-    fontSize: '14px',
+    fontSize: 'var(--font-size-base)',
     transition: 'background-color var(--transition-fast)',
   },
   optionSelected: {
@@ -171,7 +171,7 @@ const styles = {
     border: '1px solid var(--chat-border)',
     borderRadius: 'var(--chat-radius-sm, 4px)',
     color: 'var(--chat-text-muted)',
-    fontSize: '14px',
+    fontSize: 'var(--font-size-base)',
     outline: 'none',
     boxSizing: 'border-box',
   },
@@ -189,7 +189,7 @@ const styles = {
   },
   bashCommandInput: {
     fontFamily: 'monospace',
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
     backgroundColor: 'var(--chat-input-bg)',
     border: '1px solid var(--chat-border)',
     borderRadius: '4px',
@@ -224,7 +224,7 @@ const styles = {
     background: 'transparent',
     color: 'var(--chat-text-muted)',
     cursor: 'pointer',
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
   },
   questionTabActive: {
     borderColor: 'var(--chat-accent)',
@@ -238,7 +238,7 @@ const styles = {
     border: 'none',
     color: 'var(--chat-text-muted)',
     cursor: 'pointer',
-    fontSize: '16px',
+    fontSize: 'var(--font-size-md)',
     padding: '0 4px',
   },
   questionBody: {
@@ -287,7 +287,7 @@ const styles = {
   },
   questionOptionDescription: {
     color: 'var(--chat-text-muted)',
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
   },
   checkbox: {
     width: '14px',
@@ -316,11 +316,11 @@ const styles = {
     border: '1px solid var(--chat-border)',
     backgroundColor: 'var(--chat-input-bg)',
     color: 'var(--chat-text)',
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
   },
   questionEmpty: {
     color: 'var(--chat-text-muted)',
-    fontSize: '12px',
+    fontSize: 'var(--font-size-sm)',
   },
 }
 

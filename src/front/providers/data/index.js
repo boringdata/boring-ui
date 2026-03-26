@@ -49,6 +49,7 @@ export { createAutoSyncEngine, performSyncCycle } from './autoSync'
 
 // Provider factories
 export { createHttpProvider } from './httpProvider'
+export { createJustBashDataProvider } from './justBashDataProvider'
 export { createLightningFsProvider } from './lightningFsProvider'
 export { createLightningDataProvider } from './lightningDataProvider'
 export { createIsomorphicGitProvider } from './isomorphicGitProvider'

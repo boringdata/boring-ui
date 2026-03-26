@@ -298,6 +298,7 @@ html {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .app-header-logo {
@@ -322,12 +323,38 @@ html {
   font-weight: var(--font-semibold);
   color: var(--color-text-primary);
   line-height: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-header-controls {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.app-container-narrow .app-header {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+}
+
+.app-container-narrow .app-header-brand {
+  gap: var(--space-1);
+}
+
+.app-container-narrow .app-header-logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+
+.app-container-narrow .app-header-title {
+  font-size: var(--text-sm);
+  max-width: min(68vw, 18rem);
 }
 
 .dockview-host {

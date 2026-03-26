@@ -6,6 +6,7 @@ import {
 } from './sessionBus'
 import { fetchJsonUrl, fetchUrl } from '../../utils/transport'
 import { createPiRoutes } from './routes'
+import { getWorkspaceIdFromPathname } from '../../utils/controlPlane'
 import { renderToolPart } from '../../components/chat/toolRenderers'
 import { Button } from '../../components/ui/button'
 import { Textarea } from '../../components/ui/textarea'
@@ -39,6 +40,10 @@ async function readJson(response) {
 
 export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap = 'latest' }) {
   const piRoutes = useMemo(() => createPiRoutes(serviceUrl), [serviceUrl])
+  const workspaceId = useMemo(
+    () => (typeof window === 'undefined' ? '' : getWorkspaceIdFromPathname(window.location.pathname)),
+    [],
+  )
   const [sessions, setSessions] = useState([])
   const [currentSessionId, setCurrentSessionId] = useState('')
   const [messages, setMessages] = useState([])
@@ -73,12 +78,12 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
   }, [panelId])
 
   const listSessions = useCallback(async () => {
-    const { response, data: payload } = await fetchJsonUrl(piRoutes.sessions())
+    const { response, data: payload } = await fetchJsonUrl(piRoutes.sessions(workspaceId))
     if (!response.ok) {
       throw new Error(`Failed to list PI sessions (${response.status})`)
     }
     return Array.isArray(payload.sessions) ? payload.sessions : []
-  }, [piRoutes])
+  }, [piRoutes, workspaceId])
 
   const loadHistory = useCallback(async (sessionId) => {
     if (!sessionId) return
@@ -96,7 +101,7 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
     const { response, data: payload } = await fetchJsonUrl(piRoutes.createSession(), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ workspace_id: workspaceId }),
     })
     if (!response.ok) {
       throw new Error(`Failed to create PI session (${response.status})`)
@@ -116,7 +121,7 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
     setActiveTools(new Map())
     publishState(nextSessions, created.id)
     return created.id
-  }, [piRoutes, publishState])
+  }, [piRoutes, publishState, workspaceId])
 
   const switchSession = useCallback(async (sessionId) => {
     if (!sessionId) return
@@ -213,7 +218,7 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
       const response = await fetchUrl(piRoutes.stream(currentSessionId), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, workspace_id: workspaceId }),
       })
 
       if (!response.ok || !response.body) {
@@ -327,7 +332,7 @@ export default function PiBackendAdapter({ serviceUrl, panelId, sessionBootstrap
       setStreamText('')
       setActiveTools(new Map())
     }
-  }, [currentSessionId, input, isSending, listSessions, piRoutes, publishState])
+  }, [currentSessionId, input, isSending, listSessions, piRoutes, publishState, workspaceId])
 
   // Render active (in-flight) tool cards
   const activeToolCards = useMemo(() => {

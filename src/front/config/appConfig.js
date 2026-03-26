@@ -87,6 +87,10 @@ const DEFAULT_CONFIG = {
 
   agents: {
     mode: 'frontend',
+    runtime: 'pi',
+    placement: 'browser',
+    default: 'pi',
+    available: ['pi'],
   },
 
   // Feature flags

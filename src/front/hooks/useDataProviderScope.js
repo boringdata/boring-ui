@@ -4,6 +4,7 @@ import {
   getDataProvider,
   getDataProviderFactory,
   createHttpProvider,
+  createJustBashDataProvider,
   createLightningDataProvider,
 } from '../providers/data'
 import {
@@ -63,9 +64,16 @@ export default function useDataProviderScope({
   )
   const strictDataBackend = Boolean(config?.data?.strictBackend)
   const lightningFsProviderCacheKey = `user:${lightningFsUserScope}|fs:${resolvedLightningFsName}`
-  const dataProviderScopeKey = (
+  const justBashProviderCacheKey = `user:${lightningFsUserScope}|workspace:${lightningFsWorkspaceScope}|session:${lightningFsSessionScope}`
+  const isLightningBackend = (
     configuredDataBackend === 'lightningfs' || configuredDataBackend === 'lightning-fs'
+  )
+  const isJustBashBackend = configuredDataBackend === 'justbash'
+  const dataProviderScopeKey = (
+    isLightningBackend
       ? `lightningfs:${lightningFsProviderCacheKey}`
+      : isJustBashBackend
+        ? `justbash:${justBashProviderCacheKey}`
       : `backend:${configuredDataBackend || 'http'}`
   )
   const queryClient = useMemo(
@@ -86,11 +94,19 @@ export default function useDataProviderScope({
         return createHttpProvider({ workspaceId: currentWorkspaceId })
       }
 
-      if (configuredDataBackend === 'lightningfs' || configuredDataBackend === 'lightning-fs') {
+      if (isLightningBackend) {
         return getCachedScopedValue(
           dataProviderCacheRef.current,
           lightningFsProviderCacheKey,
           () => createLightningDataProvider({ fsName: resolvedLightningFsName }),
+        )
+      }
+
+      if (isJustBashBackend) {
+        return getCachedScopedValue(
+          dataProviderCacheRef.current,
+          justBashProviderCacheKey,
+          () => createJustBashDataProvider(),
         )
       }
 
@@ -111,6 +127,9 @@ export default function useDataProviderScope({
     [
       configuredDataBackend,
       currentWorkspaceId,
+      isJustBashBackend,
+      isLightningBackend,
+      justBashProviderCacheKey,
       lightningFsProviderCacheKey,
       resolvedLightningFsName,
       strictDataBackend,
@@ -118,15 +137,14 @@ export default function useDataProviderScope({
   )
 
   useEffect(() => {
-    const isLightningBackend = (
-      configuredDataBackend === 'lightningfs'
-      || configuredDataBackend === 'lightning-fs'
-    )
-    if (!isLightningBackend) return
+    if (!isLightningBackend && !isJustBashBackend) return
     if (!isStableLightningUserScope(lightningFsUserScope)) return
 
     const providerKeyPrefix = `user:${lightningFsUserScope}|`
-    const queryKeyPrefix = `lightningfs:${providerKeyPrefix}`
+    const queryKeyPrefix = isLightningBackend
+      ? `lightningfs:${providerKeyPrefix}`
+      : `justbash:${providerKeyPrefix}`
+    const queryKeyStartsWith = isLightningBackend ? 'lightningfs:' : 'justbash:'
 
     Array.from(dataProviderCacheRef.current.keys()).forEach((key) => {
       if (key.startsWith(providerKeyPrefix)) return
@@ -134,12 +152,12 @@ export default function useDataProviderScope({
     })
 
     Array.from(queryClientCacheRef.current.entries()).forEach(([key, client]) => {
-      if (!key.startsWith('lightningfs:')) return
+      if (!key.startsWith(queryKeyStartsWith)) return
       if (key.startsWith(queryKeyPrefix)) return
       client?.clear?.()
       queryClientCacheRef.current.delete(key)
     })
-  }, [configuredDataBackend, lightningFsUserScope])
+  }, [isJustBashBackend, isLightningBackend, lightningFsUserScope])
 
   return {
     configuredDataBackend,

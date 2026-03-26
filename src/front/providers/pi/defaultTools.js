@@ -408,7 +408,7 @@ function createPiCoreTools(provider, queryClient, { includeUi = false } = {}) {
     tools.push(...createPiNativeUiTools())
   }
 
-  if (provider.git) {
+  if (provider.git && provider.git.available !== false) {
     tools.push(
       {
         name: 'git_status',

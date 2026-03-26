@@ -152,6 +152,18 @@ describe('createPiDefaultTools', () => {
     expect(names).toEqual(['list_tabs', 'open_file'])
   })
 
+  it('does not expose git tools when the provider marks git unavailable', () => {
+    const provider = createMemoryProvider()
+    provider.git.available = false
+    const tools = createPiDefaultTools(provider, { invalidateQueries: vi.fn(async () => undefined) })
+    const names = tools.map((tool) => tool.name)
+
+    expect(names).toContain('read_file')
+    expect(names).toContain('write_file')
+    expect(names).not.toContain('git_status')
+    expect(names).not.toContain('git_commit')
+  })
+
   it('open_file uses UI bridge and normalizes leading slash', async () => {
     const provider = createMemoryProvider()
     const queryClient = { invalidateQueries: vi.fn(async () => undefined) }

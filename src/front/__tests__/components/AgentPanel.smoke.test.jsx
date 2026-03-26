@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
 import { CapabilitiesContext } from '../../components/CapabilityGate'
+import { resetConfig } from '../../config'
 import { getPane } from '../../registry/panes'
 import AgentPanel from '../../panels/AgentPanel'
 
@@ -16,6 +17,16 @@ vi.mock('../../providers/pi/nativeAdapter', () => ({
       native:{panelId}:{sessionBootstrap}:{initialSessionId}
     </div>
   ),
+}))
+vi.mock('../../providers/pi/backendAdapter', () => ({
+  default: ({ panelId, sessionBootstrap, serviceUrl }) => (
+    <div data-testid="pi-backend-adapter">
+      backend:{panelId}:{sessionBootstrap}:{serviceUrl}
+    </div>
+  ),
+}))
+vi.mock('../../components/chat/AiChat', () => ({
+  default: () => <div data-testid="ai-chat">ai-sdk-chat</div>,
 }))
 
 const renderPanel = ({
@@ -36,6 +47,7 @@ const renderPanel = ({
 describe('AgentPanel smoke', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_PI_SERVICE_URL', '')
+    resetConfig()
   })
 
   it('keeps the agent pane registry contract stable', () => {
@@ -63,12 +75,12 @@ describe('AgentPanel smoke', () => {
     expect(screen.getByTestId('pi-native-adapter')).toHaveTextContent('native:agent-panel-1:latest:')
   })
 
-  it('keeps rendering the native adapter when backend mode params are passed', () => {
+  it('switches to the backend adapter when capabilities advertise backend PI', () => {
     renderPanel({
       capabilities: {
         capabilities: { 'agent.chat': true },
         services: {
-          pi: { mode: 'backend', url: '/w/ws-123' },
+          pi: { mode: 'backend', url: 'https://example.test' },
         },
       },
       params: {
@@ -78,6 +90,22 @@ describe('AgentPanel smoke', () => {
       },
     })
 
-    expect(screen.getByTestId('pi-native-adapter')).toHaveTextContent('native:agent-panel-1:new:sess-42')
+    expect(screen.queryByTestId('pi-native-adapter')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pi-backend-adapter')).toHaveTextContent(
+      'backend:agent-panel-1:new:https://example.test',
+    )
+  })
+
+  it('renders the ai-sdk chat component when the runtime is selected', () => {
+    renderPanel({
+      params: {
+        agentRuntime: 'ai-sdk',
+      },
+    })
+
+    expect(screen.queryByTestId('pi-session-toolbar')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('pi-native-adapter')).not.toBeInTheDocument()
+    expect(screen.getByTestId('agent-ai-sdk-app')).toBeInTheDocument()
+    expect(screen.getByTestId('ai-chat')).toHaveTextContent('ai-sdk-chat')
   })
 })

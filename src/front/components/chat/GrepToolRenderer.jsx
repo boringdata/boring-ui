@@ -71,7 +71,7 @@ const GrepToolRenderer = ({
         <div
           style={{
             marginTop: 'var(--chat-spacing-xs, 4px)',
-            fontSize: '12px',
+            fontSize: 'var(--font-size-sm)',
             color: 'var(--chat-text-muted)',
           }}
         >
@@ -113,7 +113,7 @@ const FileResult = ({ result, pattern }) => {
       {/* File path */}
       <div
         style={{
-          fontSize: '12px',
+          fontSize: 'var(--font-size-sm)',
           color: 'var(--chat-accent)',
           fontFamily: 'var(--font-mono)',
           marginBottom: '4px',

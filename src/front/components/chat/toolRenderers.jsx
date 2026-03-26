@@ -16,7 +16,7 @@ import WriteToolRenderer from './WriteToolRenderer'
 import EditToolRenderer from './EditToolRenderer'
 import GlobToolRenderer from './GlobToolRenderer'
 import GrepToolRenderer from './GrepToolRenderer'
-import ToolUseBlock, { ToolOutput } from './ToolUseBlock'
+import ToolUseBlock, { InlineCode, ToolError, ToolOutput } from './ToolUseBlock'
 
 const parseGrepResults = (output) => {
   if (!output) return []
@@ -47,6 +47,12 @@ const parseGlobFiles = (output) => {
  */
 const TOOL_NAME_ALIASES = {
   exec_bash: 'bash',
+  run_command: 'bash',
+  start_command: 'bash',
+  read_file: 'read',
+  write_file: 'write',
+  search_files: 'glob',
+  git_diff: 'edit',
 }
 
 function normalizeToolName(name) {
@@ -111,9 +117,43 @@ export function renderToolPart(part) {
   if (toolName === 'glob') {
     return (
       <GlobToolRenderer
-        pattern={input.pattern || input.glob}
+        pattern={input.pattern || input.glob || input.path}
         files={parseGlobFiles(output)}
         status={part.status}
+      />
+    )
+  }
+  if (toolName === 'list_dir') {
+    return (
+      <TextListToolRenderer
+        toolName="List Directory"
+        description={(
+          <>
+            path: <InlineCode>{input.path || '.'}</InlineCode>
+          </>
+        )}
+        lines={parseGlobFiles(output)}
+        emptyMessage="(empty)"
+        runningMessage="Listing directory..."
+        status={part.status}
+        error={part.error}
+      />
+    )
+  }
+  if (toolName === 'git_status') {
+    return (
+      <TextListToolRenderer
+        toolName="Git Status"
+        description={input.path ? (
+          <>
+            path: <InlineCode>{input.path}</InlineCode>
+          </>
+        ) : undefined}
+        lines={parseGlobFiles(output)}
+        emptyMessage="Clean working tree"
+        runningMessage="Collecting git status..."
+        status={part.status}
+        error={part.error}
       />
     )
   }
@@ -129,6 +169,55 @@ export function renderToolPart(part) {
   }
 
   return <ToolFallback name={part.name} input={input} output={output} />
+}
+
+function TextListToolRenderer({
+  toolName,
+  description,
+  lines = [],
+  emptyMessage,
+  runningMessage,
+  status = 'complete',
+  error,
+}) {
+  const hasResults = lines.length > 0
+
+  return (
+    <ToolUseBlock
+      toolName={toolName}
+      description={description}
+      status={status}
+      collapsible={hasResults}
+      defaultExpanded={status !== 'complete' || Boolean(error)}
+    >
+      {error ? (
+        <ToolError message={error} />
+      ) : status === 'running' ? (
+        <div
+          style={{
+            color: 'var(--chat-text-muted)',
+            fontSize: 'var(--text-sm)',
+            fontStyle: 'italic',
+          }}
+        >
+          {runningMessage}
+        </div>
+      ) : hasResults ? (
+        <ToolOutput>
+          <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{lines.join('\n')}</pre>
+        </ToolOutput>
+      ) : (
+        <div
+          style={{
+            color: 'var(--chat-text-muted)',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          {emptyMessage}
+        </div>
+      )}
+    </ToolUseBlock>
+  )
 }
 
 function ToolFallback({ name, input, output }) {
