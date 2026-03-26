@@ -4,8 +4,14 @@
  *
  * All routes require authentication via session cookie.
  */
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
+import type { FastifyInstance } from 'fastify'
 import { createAuthHook } from '../auth/middleware.js'
+import {
+  getWorkspacePersistence,
+  RuntimeInvalidTransitionError,
+  RuntimeNotFoundError,
+  SettingsKeyRequiredError,
+} from '../services/workspacePersistence.js'
 
 // UUID format validation
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -17,6 +23,8 @@ function isValidUUID(value: string): boolean {
 export async function registerWorkspaceRoutes(
   app: FastifyInstance,
 ): Promise<void> {
+  const persistence = getWorkspacePersistence(app.config)
+
   // Auth hook for all routes in this plugin
   app.addHook('onRequest', createAuthHook(app))
 
@@ -26,12 +34,11 @@ export async function registerWorkspaceRoutes(
       return reply.code(401).send({ error: 'unauthorized' })
     }
 
-    // DB query will be added when database is available (bd-fus66)
-    // For now, return empty list (satisfies the route contract)
+    const workspaces = await persistence.listWorkspaces(request.sessionUserId)
     return {
       ok: true,
-      workspaces: [],
-      count: 0,
+      workspaces: workspaces.map((w) => ({ ...w, workspace_id: w.id })),
+      count: workspaces.length,
     }
   })
 
@@ -54,22 +61,14 @@ export async function registerWorkspaceRoutes(
       })
     }
 
-    // DB insert will be added when database is available (bd-fus66)
-    // For now, return a placeholder response
-    const workspaceId = crypto.randomUUID()
+    const ws = await persistence.createWorkspace(
+      request.sessionUserId,
+      name,
+    )
     reply.code(201)
     return {
       ok: true,
-      workspace: {
-        id: workspaceId,
-        workspace_id: workspaceId,
-        app_id: app.config.controlPlaneAppId,
-        name,
-        created_by: request.sessionUserId,
-        machine_id: null,
-        volume_id: null,
-        fly_region: null,
-      },
+      workspace: { ...ws, workspace_id: ws.id },
     }
   })
 
@@ -90,19 +89,21 @@ export async function registerWorkspaceRoutes(
         })
       }
 
-      // DB query will be added when database is available
+      if (app.config.controlPlaneProvider === 'neon') {
+        const workspace = await persistence.getWorkspace(id)
+        if (!workspace) {
+          return reply.code(404).send({
+            error: 'not_found',
+            code: 'WORKSPACE_NOT_FOUND',
+            message: 'Workspace not found',
+          })
+        }
+      }
+
+      const runtime = await persistence.getWorkspaceRuntime(id)
       return {
         ok: true,
-        runtime: {
-          workspace_id: id,
-          state: 'pending',
-          status: 'pending',
-          sprite_url: null,
-          sprite_name: null,
-          last_error: null,
-          updated_at: new Date().toISOString(),
-          retryable: false,
-        },
+        runtime,
       }
     },
   )
@@ -141,14 +142,20 @@ export async function registerWorkspaceRoutes(
         })
       }
 
-      // DB update will be added when database is available
+      const updated = await persistence.updateWorkspace(id, { name: body.name })
+      if (!updated && app.config.controlPlaneProvider === 'neon') {
+        return reply.code(404).send({
+          error: 'not_found',
+          code: 'WORKSPACE_NOT_FOUND',
+          message: 'Workspace not found',
+        })
+      }
+
       return {
         ok: true,
-        workspace: {
-          id,
-          workspace_id: id,
-          name: body.name,
-        },
+        workspace: updated
+          ? { ...updated, workspace_id: updated.id }
+          : { id, workspace_id: id, name: body.name },
       }
     },
   )
@@ -170,7 +177,15 @@ export async function registerWorkspaceRoutes(
         })
       }
 
-      // DB soft-delete will be added when database is available
+      const deleted = await persistence.deleteWorkspace(id)
+      if (!deleted && app.config.controlPlaneProvider === 'neon') {
+        return reply.code(404).send({
+          error: 'not_found',
+          code: 'WORKSPACE_NOT_FOUND',
+          message: 'Workspace not found or already deleted',
+        })
+      }
+
       return { ok: true, deleted: true }
     },
   )
@@ -192,8 +207,23 @@ export async function registerWorkspaceRoutes(
         })
       }
 
-      // DB query will be added when database is available
-      return { ok: true, settings: {} }
+      if (app.config.controlPlaneProvider === 'neon') {
+        const workspace = await persistence.getWorkspace(id)
+        if (!workspace) {
+          return reply.code(404).send({
+            error: 'not_found',
+            code: 'WORKSPACE_NOT_FOUND',
+            message: 'Workspace not found',
+          })
+        }
+      }
+
+      const settings = await persistence.getWorkspaceSettings(id)
+      return {
+        ok: true,
+        settings,
+        data: { workspace_settings: settings },
+      }
     },
   )
 
@@ -249,7 +279,6 @@ export async function registerWorkspaceRoutes(
         }
       }
 
-      // Validate encryption key is configured
       if (!app.config.settingsKey) {
         return reply.code(500).send({
           error: 'server_error',
@@ -258,8 +287,32 @@ export async function registerWorkspaceRoutes(
         })
       }
 
-      // DB upsert with pgp_sym_encrypt will be added when database is available
-      return { ok: true, settings: body }
+      if (app.config.controlPlaneProvider === 'neon') {
+        const workspace = await persistence.getWorkspace(id)
+        if (!workspace) {
+          return reply.code(404).send({
+            error: 'not_found',
+            code: 'WORKSPACE_NOT_FOUND',
+            message: 'Workspace not found',
+          })
+        }
+      }
+
+      let updated
+      try {
+        updated = await persistence.putWorkspaceSettings(id, body)
+      } catch (error) {
+        if (error instanceof SettingsKeyRequiredError) {
+          return reply.code(500).send({
+            error: 'server_error',
+            code: error.code,
+            message: 'Settings encryption key not configured',
+          })
+        }
+        throw error
+      }
+
+      return { ok: true, settings: updated }
     },
   )
 
@@ -280,15 +333,30 @@ export async function registerWorkspaceRoutes(
         })
       }
 
-      // DB update will be added when database is available
+      let runtime
+      try {
+        runtime = await persistence.retryWorkspaceRuntime(id)
+      } catch (error) {
+        if (error instanceof RuntimeNotFoundError) {
+          return reply.code(404).send({
+            error: 'not_found',
+            code: error.code,
+            message: error.message,
+          })
+        }
+        if (error instanceof RuntimeInvalidTransitionError) {
+          return reply.code(409).send({
+            error: 'conflict',
+            code: error.code,
+            message: error.message,
+          })
+        }
+        throw error
+      }
+
       return {
         ok: true,
-        runtime: {
-          workspace_id: id,
-          state: 'pending',
-          status: 'pending',
-          retryable: false,
-        },
+        runtime,
         retried: true,
       }
     },

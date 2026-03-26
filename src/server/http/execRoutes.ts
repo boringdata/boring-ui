@@ -5,14 +5,16 @@
  * Long-running: POST /exec/start → jobId, GET /exec/jobs/:id → chunks,
  *               POST /exec/jobs/:id/cancel → cancelled
  */
-import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { execInSandbox } from '../adapters/bwrapImpl.js'
 import { resolve } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { startJob, readJob, cancelJob } from '../jobs/execJob.js'
+import { resolveWorkspacePath } from '../workspace/resolver.js'
 
 const MAX_OUTPUT_BYTES = 512 * 1024 // 512KB
+const FALLBACK_EXEC_MAX_BUFFER = MAX_OUTPUT_BYTES * 2
 
 function truncateOutput(output: string): string {
   if (Buffer.byteLength(output) > MAX_OUTPUT_BYTES) {
@@ -30,6 +32,71 @@ function hasBwrap(): boolean {
   }
 }
 
+function getWorkspaceRoot(app: FastifyInstance, request: FastifyRequest): string {
+  const workspaceIdHeader = request.headers['x-workspace-id']
+  if (typeof workspaceIdHeader === 'string' && workspaceIdHeader.trim()) {
+    const workspaceRoot = resolveWorkspacePath(app.config.workspaceRoot, workspaceIdHeader)
+    mkdirSync(workspaceRoot, { recursive: true })
+    return workspaceRoot
+  }
+  return app.config.workspaceRoot
+}
+
+function validateCwd(
+  workspaceRoot: string,
+  cwd: string | undefined,
+):
+  | { cwd?: string }
+  | { error: { error: string; code: string; message: string } } {
+  if (!cwd) return {}
+
+  const resolvedRoot = resolve(workspaceRoot)
+  const resolvedCwd = resolve(workspaceRoot, cwd)
+  if (resolvedCwd !== resolvedRoot && !resolvedCwd.startsWith(resolvedRoot + '/')) {
+    return {
+      error: {
+        error: 'validation',
+        code: 'PATH_TRAVERSAL',
+        message: 'cwd must be within workspace',
+      },
+    }
+  }
+
+  if (!existsSync(resolvedCwd)) {
+    return {
+      error: {
+        error: 'validation',
+        code: 'CWD_NOT_FOUND',
+        message: `Directory not found: ${cwd}`,
+      },
+    }
+  }
+
+  if (!statSync(resolvedCwd).isDirectory()) {
+    return {
+      error: {
+        error: 'validation',
+        code: 'CWD_NOT_FOUND',
+        message: `Directory not found: ${cwd}`,
+      },
+    }
+  }
+
+  const realRoot = realpathSync(resolvedRoot)
+  const realCwd = realpathSync(resolvedCwd)
+  if (realCwd !== realRoot && !realCwd.startsWith(realRoot + '/')) {
+    return {
+      error: {
+        error: 'validation',
+        code: 'PATH_TRAVERSAL',
+        message: 'cwd must be within workspace',
+      },
+    }
+  }
+
+  return { cwd: resolvedCwd }
+}
+
 export async function registerExecRoutes(app: FastifyInstance): Promise<void> {
   const useBwrap = hasBwrap()
 
@@ -45,29 +112,13 @@ export async function registerExecRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    const workspaceRoot = app.config.workspaceRoot
+    const workspaceRoot = getWorkspaceRoot(app, request)
 
-    // Validate cwd if provided
-    let effectiveCwd: string | undefined
-    if (body.cwd) {
-      const resolvedRoot = resolve(workspaceRoot)
-      const resolvedCwd = resolve(workspaceRoot, body.cwd)
-      if (resolvedCwd !== resolvedRoot && !resolvedCwd.startsWith(resolvedRoot + '/')) {
-        return reply.code(400).send({
-          error: 'validation',
-          code: 'PATH_TRAVERSAL',
-          message: 'cwd must be within workspace',
-        })
-      }
-      if (!existsSync(resolvedCwd)) {
-        return reply.code(400).send({
-          error: 'validation',
-          code: 'CWD_NOT_FOUND',
-          message: `Directory not found: ${body.cwd}`,
-        })
-      }
-      effectiveCwd = resolvedCwd
+    const cwdCheck = validateCwd(workspaceRoot, body.cwd)
+    if ('error' in cwdCheck) {
+      return reply.code(400).send(cwdCheck.error)
     }
+    const effectiveCwd = cwdCheck.cwd
 
     const start = Date.now()
 
@@ -92,7 +143,7 @@ export async function registerExecRoutes(app: FastifyInstance): Promise<void> {
           {
             cwd: effectiveCwd || workspaceRoot,
             timeout: 60000,
-            maxBuffer: MAX_OUTPUT_BYTES,
+            maxBuffer: FALLBACK_EXEC_MAX_BUFFER,
             env: {
               ...process.env,
               HOME: workspaceRoot,
@@ -125,21 +176,15 @@ export async function registerExecRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    const workspaceRoot = app.config.workspaceRoot
+    const workspaceRoot = getWorkspaceRoot(app, request)
 
-    try {
-      const result = startJob(workspaceRoot, body.command, { cwd: body.cwd })
-      return result
-    } catch (err: any) {
-      if (err.message?.includes('within workspace')) {
-        return reply.code(400).send({
-          error: 'validation',
-          code: 'PATH_TRAVERSAL',
-          message: 'cwd must be within workspace',
-        })
-      }
-      throw err
+    const cwdCheck = validateCwd(workspaceRoot, body.cwd)
+    if ('error' in cwdCheck) {
+      return reply.code(400).send(cwdCheck.error)
     }
+
+    const result = startJob(workspaceRoot, body.command, { cwd: body.cwd })
+    return result
   })
 
   // GET /exec/jobs/:jobId — Read output chunks from a job
@@ -149,7 +194,7 @@ export async function registerExecRoutes(app: FastifyInstance): Promise<void> {
       const { jobId } = request.params
       const afterStr = (request.query as any).after
       const after = afterStr ? parseInt(afterStr, 10) : undefined
-      if (after !== undefined && !Number.isFinite(after)) {
+      if (after !== undefined && (!Number.isFinite(after) || after < 0)) {
         return reply.code(400).send({
           error: 'validation',
           code: 'INVALID_CURSOR',

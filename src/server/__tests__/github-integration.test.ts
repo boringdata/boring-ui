@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto'
 import { describe, it, expect, vi } from 'vitest'
 import * as jose from 'jose'
 import {
@@ -54,6 +55,23 @@ describe('GitHub App JWT signing (RS256)', () => {
     await expect(
       createGitHubAppJwt('12345', 'not-a-valid-pem'),
     ).rejects.toThrow()
+  })
+
+  it('accepts PKCS#1 RSA private keys from Vault-style GitHub App PEMs', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    })
+    const pkcs1Pem = privateKey.export({
+      type: 'pkcs1',
+      format: 'pem',
+    }).toString()
+
+    const jwt = await createGitHubAppJwt('12345', pkcs1Pem)
+    const { payload } = await jose.jwtVerify(jwt, publicKey, {
+      algorithms: ['RS256'],
+    })
+
+    expect(payload.iss).toBe('12345')
   })
 })
 

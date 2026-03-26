@@ -5,48 +5,78 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { createGitServiceImpl, type GitServiceImpl } from '../services/gitImpl.js'
 import { mkdirSync } from 'node:fs'
+import { resolveWorkspacePath } from '../workspace/resolver.js'
+
+function resolveGitWorkspaceRoot(app: FastifyInstance, workspaceIdHeader: string | string[] | undefined): string {
+  const workspaceId = Array.isArray(workspaceIdHeader)
+    ? workspaceIdHeader[0]
+    : workspaceIdHeader
+  if (!workspaceId) {
+    return app.config.workspaceRoot
+  }
+  return resolveWorkspacePath(app.config.workspaceRoot, String(workspaceId))
+}
 
 export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
-  // Lazy-init: ensure workspace root exists before creating git service
-  mkdirSync(app.config.workspaceRoot, { recursive: true })
-  const gitService = createGitServiceImpl(app.config.workspaceRoot)
+  const gitServiceFor = (workspaceIdHeader: string | string[] | undefined): GitServiceImpl => {
+    const workspaceRoot = resolveGitWorkspaceRoot(app, workspaceIdHeader)
+    mkdirSync(workspaceRoot, { recursive: true })
+    return createGitServiceImpl(workspaceRoot)
+  }
+
+  const sendGitError = (reply: FastifyReply, err: any, fallbackStatusCode = 500) => {
+    const message = String(err?.message || 'git error')
+    const lowered = message.toLowerCase()
+    const statusCode = err?.statusCode
+      ?? (lowered.includes('nothing to commit') ? 400 : fallbackStatusCode)
+
+    return reply.code(statusCode).send({
+      error: 'git_error',
+      message,
+      detail: `Git error: ${message}`,
+    })
+  }
 
   // --- Read operations ---
 
   // GET /git/status
-  app.get('/git/status', async () => gitService.getStatus())
+  app.get('/git/status', async (request) => gitServiceFor(request.headers['x-workspace-id']).getStatus())
 
   // GET /git/diff?path=...
   app.get('/git/diff', async (request) => {
     const { path } = request.query as { path?: string }
-    return gitService.getDiff(path)
+    return gitServiceFor(request.headers['x-workspace-id']).getDiff(path)
   })
 
   // GET /git/show?path=...
   app.get('/git/show', async (request, reply) => {
     const { path } = request.query as { path?: string }
     if (!path) return reply.code(400).send({ error: 'validation', message: 'path is required' })
-    return gitService.getShow(path)
+    return gitServiceFor(request.headers['x-workspace-id']).getShow(path)
   })
 
   // GET /git/branch
-  app.get('/git/branch', async () => gitService.currentBranch())
+  app.get('/git/branch', async (request) => gitServiceFor(request.headers['x-workspace-id']).currentBranch())
 
   // GET /git/branches
-  app.get('/git/branches', async () => gitService.listBranches())
+  app.get('/git/branches', async (request) => gitServiceFor(request.headers['x-workspace-id']).listBranches())
 
   // GET /git/remotes
-  app.get('/git/remotes', async () => gitService.listRemotes())
+  app.get('/git/remotes', async (request) => gitServiceFor(request.headers['x-workspace-id']).listRemotes())
 
   // --- Write operations ---
 
   // POST /git/init
-  app.post('/git/init', async () => gitService.initRepo())
+  app.post('/git/init', async (request) => gitServiceFor(request.headers['x-workspace-id']).initRepo())
 
   // POST /git/add
-  app.post('/git/add', async (request) => {
+  app.post('/git/add', async (request, reply) => {
     const body = request.body as { paths?: string[] } | null
-    return gitService.addFiles(body?.paths)
+    try {
+      return await gitServiceFor(request.headers['x-workspace-id']).addFiles(body?.paths)
+    } catch (err: any) {
+      return sendGitError(reply, err)
+    }
   })
 
   // POST /git/commit
@@ -55,6 +85,10 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
       message: string
       author_name?: string
       author_email?: string
+      author?: {
+        name?: string
+        email?: string
+      }
     } | null
 
     if (!body?.message?.trim()) {
@@ -62,9 +96,11 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      return await gitService.commit(body.message, body.author_name, body.author_email)
+      const authorName = body.author_name || body.author?.name
+      const authorEmail = body.author_email || body.author?.email
+      return await gitServiceFor(request.headers['x-workspace-id']).commit(body.message, authorName, authorEmail)
     } catch (err: any) {
-      return reply.code(500).send({ error: 'git_error', message: err.message })
+      return sendGitError(reply, err)
     }
   })
 
@@ -72,10 +108,10 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
   app.post('/git/push', async (request, reply) => {
     const body = request.body as { remote?: string; branch?: string } | null
     try {
-      return await gitService.push(body?.remote, body?.branch)
+      return await gitServiceFor(request.headers['x-workspace-id']).push(body?.remote, body?.branch)
     } catch (err: any) {
-      const statusCode = err.message?.includes('Authentication') ? 401 : 500
-      return reply.code(statusCode).send({ error: 'git_error', message: err.message })
+      const fallbackStatusCode = err.message?.includes('Authentication') ? 401 : 500
+      return sendGitError(reply, err, fallbackStatusCode)
     }
   })
 
@@ -83,10 +119,10 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
   app.post('/git/pull', async (request, reply) => {
     const body = request.body as { remote?: string; branch?: string } | null
     try {
-      return await gitService.pull(body?.remote, body?.branch)
+      return await gitServiceFor(request.headers['x-workspace-id']).pull(body?.remote, body?.branch)
     } catch (err: any) {
-      const statusCode = err.message?.includes('Authentication') ? 401 : 500
-      return reply.code(statusCode).send({ error: 'git_error', message: err.message })
+      const fallbackStatusCode = err.message?.includes('Authentication') ? 401 : 500
+      return sendGitError(reply, err, fallbackStatusCode)
     }
   })
 
@@ -97,9 +133,9 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'validation', message: 'url is required' })
     }
     try {
-      return await gitService.cloneRepo(body.url, body.branch)
+      return await gitServiceFor(request.headers['x-workspace-id']).cloneRepo(body.url, body.branch)
     } catch (err: any) {
-      return reply.code(500).send({ error: 'git_error', message: err.message })
+      return sendGitError(reply, err)
     }
   })
 
@@ -110,9 +146,9 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'validation', message: 'branch name is required' })
     }
     try {
-      return await gitService.createBranch(body.name, body.checkout ?? true)
+      return await gitServiceFor(request.headers['x-workspace-id']).createBranch(body.name, body.checkout ?? true)
     } catch (err: any) {
-      return reply.code(500).send({ error: 'git_error', message: err.message })
+      return sendGitError(reply, err)
     }
   })
 
@@ -123,9 +159,9 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'validation', message: 'branch name is required' })
     }
     try {
-      return await gitService.checkoutBranch(body.name)
+      return await gitServiceFor(request.headers['x-workspace-id']).checkoutBranch(body.name)
     } catch (err: any) {
-      return reply.code(500).send({ error: 'git_error', message: err.message })
+      return sendGitError(reply, err)
     }
   })
 
@@ -136,23 +172,26 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'validation', message: 'source branch is required' })
     }
     try {
-      return await gitService.mergeBranch(body.source, body.message)
+      return await gitServiceFor(request.headers['x-workspace-id']).mergeBranch(body.source, body.message)
     } catch (err: any) {
       const statusCode = err.message?.includes('CONFLICTS') ? 409 : 500
-      return reply.code(statusCode).send({ error: 'git_error', message: err.message })
+      return sendGitError(reply, err, statusCode)
     }
   })
 
-  // POST /git/remote/add
-  app.post('/git/remote/add', async (request, reply) => {
+  const addRemoteHandler = async (request: any, reply: FastifyReply) => {
     const body = request.body as { name: string; url: string } | null
     if (!body?.name?.trim() || !body?.url?.trim()) {
       return reply.code(400).send({ error: 'validation', message: 'name and url are required' })
     }
     try {
-      return await gitService.addRemote(body.name, body.url)
+      return await gitServiceFor(request.headers['x-workspace-id']).addRemote(body.name, body.url)
     } catch (err: any) {
-      return reply.code(500).send({ error: 'git_error', message: err.message })
+      return sendGitError(reply, err)
     }
-  })
+  }
+
+  // POST /git/remote and /git/remote/add
+  app.post('/git/remote', addRemoteHandler)
+  app.post('/git/remote/add', addRemoteHandler)
 }

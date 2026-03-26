@@ -68,13 +68,10 @@ describe('Workspace HTTP routes', () => {
 })
 
 describe('WorkspaceService interface', () => {
-  it('workspace service stub throws not implemented', async () => {
-    const { createWorkspaceService } = await import('../services/workspaces.js')
-    expect(() =>
-      createWorkspaceService({
-        workspaceRoot: '/tmp',
-      }),
-    ).toThrow(/not implemented/i)
+  it('exports WorkspaceService type (interface only, no factory)', async () => {
+    const mod = await import('../services/workspaces.js')
+    // Factory was removed — only the interface type remains
+    expect((mod as any).createWorkspaceService).toBeUndefined()
   })
 })
 
