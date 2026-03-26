@@ -61,11 +61,22 @@ const LazyAgentPanel = lazy(() => import('../panels/AgentPanel'))
 
 // Wrap lazy components with Suspense + ErrorBoundary so DockView gets a valid
 // component that degrades gracefully on both load and render failures.
+function PanelLoadingSkeleton({ name }) {
+  return (
+    <div className="panel-lazy-loading" role="status" aria-label={`Loading ${name || 'panel'}...`}>
+      <div className="panel-lazy-loading-content">
+        <div className="panel-lazy-loading-spinner" />
+        <span className="panel-lazy-loading-text">Loading {name || 'panel'}...</span>
+      </div>
+    </div>
+  )
+}
+
 function withSuspense(LazyComponent, panelName) {
   function SuspenseWrapper(props) {
     return (
       <PanelErrorBoundary panelName={panelName}>
-        <Suspense fallback={<div className="panel-lazy-loading" />}>
+        <Suspense fallback={<PanelLoadingSkeleton name={panelName} />}>
           <LazyComponent {...props} />
         </Suspense>
       </PanelErrorBoundary>

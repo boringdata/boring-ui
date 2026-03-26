@@ -6,6 +6,16 @@ import {
   TooltipTrigger,
 } from './ui/tooltip'
 
+/**
+ * Tooltip wrapper with built-in fallback provider.
+ *
+ * For best UX (skip-delay across consecutive hovers), mount a global
+ * <TooltipProvider> at the app root. This component includes a local
+ * fallback provider so it also works standalone in tests and isolated renders.
+ *
+ * When nested inside a global TooltipProvider, the inner one is harmless
+ * (Radix merges provider contexts).
+ */
 export default function Tooltip({
   label,
   shortcut = '',
@@ -26,7 +36,7 @@ export default function Tooltip({
   const triggerChild = isValidElement(child) ? child : <span>{child}</span>
 
   return (
-    <TooltipProvider delayDuration={400}>
+    <TooltipProvider delayDuration={300}>
       <PrimitiveTooltip>
         <TooltipTrigger asChild>
           <span className="ui-tooltip-anchor">{triggerChild}</span>

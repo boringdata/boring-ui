@@ -7,7 +7,7 @@ describe('PaneErrorState', () => {
     render(<PaneErrorState paneId="terminal" paneTitle="Terminal" />)
 
     expect(screen.getByText('Terminal Unavailable')).toBeInTheDocument()
-    expect(screen.getByText(/requires backend capabilities/)).toBeInTheDocument()
+    expect(screen.getByText(/requires a service/)).toBeInTheDocument()
   })
 
   it('falls back to paneId when title is missing', () => {
@@ -44,6 +44,6 @@ describe('PaneErrorState', () => {
   it('shows hint about API server', () => {
     render(<PaneErrorState paneId="test" />)
 
-    expect(screen.getByText(/Check that the API server/)).toBeInTheDocument()
+    expect(screen.getByText(/check that the backend/i)).toBeInTheDocument()
   })
 })

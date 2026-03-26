@@ -3,6 +3,7 @@ import { DockviewReact } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 
 import { ThemeProvider, useCapabilities, useKeyboardShortcuts, UNKNOWN_CAPABILITIES } from './hooks'
+import { TooltipProvider } from './components/ui/tooltip'
 import useApprovalPolling from './hooks/useApprovalPolling'
 import useDataProviderScope from './hooks/useDataProviderScope'
 import useFrontendStatePersist from './hooks/useFrontendStatePersist'
@@ -2848,6 +2849,7 @@ export default function App() {
     <QueryClientProvider key={dataProviderScopeKey} client={queryClient}>
       <DataContext.Provider key={dataProviderScopeKey} value={dataProvider}>
         <ThemeProvider>
+          <TooltipProvider delayDuration={300} skipDelayDuration={100}>
           <div className="app-container">
             <a className="skip-to-content-link" href={`#${MAIN_CONTENT_ID}`}>
               Skip to main content
@@ -2903,6 +2905,7 @@ export default function App() {
               />
             )}
           </div>
+          </TooltipProvider>
         </ThemeProvider>
       </DataContext.Provider>
     </QueryClientProvider>
