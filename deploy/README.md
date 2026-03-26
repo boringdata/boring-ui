@@ -1,25 +1,36 @@
 # Deployment
 
-boring-ui deploys to Fly.io in three agent modes. Legacy Modal, Docker Compose, Go backend, and edge-mode artifacts have been removed.
+boring-ui deploys to Fly.io with a single TypeScript backend. The Python backend and multi-mode deployment variants are being replaced.
 
-## Agent modes
+## Architecture
 
-| Mode | Fly app | Config | Dockerfile | Agent execution |
-|------|---------|--------|------------|-----------------|
-| **agent-lite** | `boring-ui-lite` | `deploy/fly-lite/fly.toml` | `deploy/fly-lite/Dockerfile` | Browser PI only, bubblewrap sandbox, no Node.js runtime sidecar |
-| **agent-frontend** | `boring-ui-frontend-agent` | `deploy/fly/fly.frontend-agent.toml` | `deploy/shared/Dockerfile.backend` | Browser PI, Vite static served from backend |
-| **agent-backend** | `boring-ui-backend-agent` | `deploy/fly/fly.backend-agent.toml` | `deploy/shared/Dockerfile.backend` | Server-side agent with Node.js pi_service sidecar |
+| Component | Technology | Description |
+|-----------|-----------|-------------|
+| **Backend** | Fastify (TypeScript) | API server: files, git, exec (bwrap), auth, workspaces |
+| **Frontend** | Vite (React) | Built to `dist/`, served by Fastify `@fastify/static` |
+| **Database** | Neon PostgreSQL | Auth (Neon Auth/Better Auth), workspace state (Drizzle ORM) |
+| **Agent** | PI (browser) | Browser-side agent, calls backend API for file/git/exec |
+| **Sandbox** | bubblewrap | Isolates workspace command execution |
 
-All three share:
-- Neon Auth (email/password)
-- `data.backend = "http"` (real filesystem, not browser IndexedDB)
-- Same Vault secrets via `deploy/fly/fly.secrets.sh`
+## Configuration
 
-### Key differences
+Production config via `boring.app.toml`:
 
-- **agent-lite**: Minimal footprint. Browser-only PI agent, bubblewrap sandbox for exec. No Node.js at runtime. Good for lightweight single-user setups.
-- **agent-frontend**: Browser PI agent with full backend (FastAPI + Vite static). No server-side agent process. Standard deploy strategy.
-- **agent-backend**: Full stack with Node.js pi_service sidecar for server-side agent execution. Uses `immediate` deploy strategy to avoid stale asset mismatches during rollout.
+```toml
+[workspace]
+backend = "bwrap"
+
+[agent]
+runtime = "pi"
+placement = "browser"
+
+[backend]
+type = "typescript"
+entry = "src/server/index.ts"
+port = 8000
+```
+
+Secrets managed via Vault → `[deploy.secrets]` mapping in `boring.app.toml`.
 
 ## Deploy flow
 
@@ -57,6 +68,27 @@ python tests/smoke/run_all.py \
 python tests/smoke/run_all.py \
   --base-url https://boring-ui-backend-agent.fly.dev \
   --include-agent-ws ...
+```
+
+## Rollback rehearsal
+
+Use the scripted Python rollback rehearsal instead of manually stitching together env vars, `uvicorn`, and the shared smoke runner:
+
+```bash
+python3 scripts/rehearse_python_rollback.py \
+  --summary-out .agent-evidence/rollback/local-summary.json
+```
+
+To preview the matching hosted rollback deploy sequence:
+
+```bash
+python3 scripts/rehearse_python_rollback.py \
+  --dry-run \
+  --skip-sync \
+  --skip-build \
+  --skip-smoke \
+  --print-hosted-commands \
+  --hosted-url https://boring-ui-frontend-agent.fly.dev
 ```
 
 ## Dockerfiles
