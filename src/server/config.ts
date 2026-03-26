@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto'
 // --- Types ---
 
 export type WorkspaceBackend = 'bwrap' | 'lightningfs' | 'justbash'
-export type AgentRuntime = 'pi'
+export type AgentRuntime = 'pi' | 'ai-sdk'
 export type AgentPlacement = 'browser' | 'server'
 export type ControlPlaneProvider = 'local' | 'neon'
 
@@ -35,7 +35,7 @@ export interface ServerConfig {
   controlPlaneProvider: ControlPlaneProvider
   /** Workspace backend: bwrap | lightningfs | justbash */
   workspaceBackend: WorkspaceBackend
-  /** Agent runtime: pi */
+  /** Agent runtime: pi | ai-sdk */
   agentRuntime: AgentRuntime
   /** Agent placement: browser | server */
   agentPlacement: AgentPlacement
@@ -59,6 +59,8 @@ export interface ServerConfig {
   authSessionTtlSeconds: number
   /** Auth session cookie name */
   authSessionCookieName: string
+  /** Set Secure flag on session cookies (HTTPS only) */
+  authSessionSecureCookie: boolean
   /** Auth email provider */
   authEmailProvider: string
   /** Auth app name */
@@ -78,7 +80,7 @@ export interface ServerConfig {
 const GITHUB_SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9-]*$/
 const PUBLIC_ORIGIN_RE = /^(https?):\/\/([^/]+)$/
 const VALID_WORKSPACE_BACKENDS: WorkspaceBackend[] = ['bwrap', 'lightningfs', 'justbash']
-const VALID_AGENT_RUNTIMES: AgentRuntime[] = ['pi']
+const VALID_AGENT_RUNTIMES: AgentRuntime[] = ['pi', 'ai-sdk']
 const VALID_AGENT_PLACEMENTS: AgentPlacement[] = ['browser', 'server']
 const GENERATED_SESSION_SECRET_WARNING =
   'BORING_UI_SESSION_SECRET and BORING_SESSION_SECRET are unset; generated an ephemeral session secret. Existing sessions will not survive process restart.'
@@ -220,6 +222,7 @@ export function loadConfig(): ServerConfig {
     githubSyncEnabled: envBool('GITHUB_SYNC_ENABLED', true),
     authSessionTtlSeconds: envInt('AUTH_SESSION_TTL_SECONDS', 86400),
     authSessionCookieName: envStr('AUTH_SESSION_COOKIE_NAME', 'boring_session'),
+    authSessionSecureCookie: envBool('AUTH_SESSION_SECURE_COOKIE', false),
     authEmailProvider: normalizeEmailProvider(
       process.env.AUTH_EMAIL_PROVIDER || process.env.NEON_AUTH_EMAIL_PROVIDER,
     ),
@@ -291,6 +294,13 @@ export function validateConfig(config: ServerConfig): void {
         'agent.placement=server requires DATABASE_URL for workspace state.',
       )
     }
+  }
+
+  if (config.agentRuntime === 'ai-sdk' && config.agentPlacement !== 'server') {
+    errors.push(
+      `agent.runtime=ai-sdk requires agent.placement=server, ` +
+      `got "${config.agentPlacement}".`,
+    )
   }
 
   if (errors.length > 0) {
