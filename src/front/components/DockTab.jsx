@@ -100,9 +100,13 @@ export function UnifiedDockTab({
     .filter(Boolean)
     .join(' ')
 
+  const isActive = api?.isActive ?? false
+
   return (
     <div
       data-testid="dockview-dv-default-tab"
+      role="tab"
+      aria-selected={isActive}
       {...rest}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}

@@ -224,7 +224,7 @@ html {
 .app-error-boundary-reload {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   margin-top: var(--spacing-md, 12px);
   padding: 10px 24px;
   border-radius: var(--radius-md, 6px);
@@ -286,7 +286,7 @@ html {
   justify-content: space-between;
   height: 48px;
   min-height: 48px;
-  padding: 0 16px;
+  padding: 0 var(--spacing-lg, 16px);
   background-color: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
@@ -839,16 +839,16 @@ html {
   border-radius: 6px;
   box-shadow: var(--shadow-lg);
   min-width: 180px;
-  padding: 4px 0;
+  padding: var(--spacing-xs, 4px) 0;
   z-index: var(--z-dropdown);
 }
 
 .sync-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   width: 100%;
-  padding: 6px 12px;
+  padding: var(--spacing-xs, 4px) var(--spacing-md, 12px);
   background: none;
   border: none;
   cursor: pointer;
@@ -913,7 +913,7 @@ html {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-tertiary);
-  padding: 6px 12px 2px;
+  padding: var(--spacing-xs, 4px) var(--spacing-md, 12px) 2px;
 }
 
 /* Branch submenu — fixed flyout beside parent menu */
@@ -926,14 +926,14 @@ html {
   min-width: 170px;
   max-height: 240px;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: var(--spacing-xs, 4px) 0;
   z-index: var(--z-overlay);
 }
 
 .sync-branch-create {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   padding: 4px 12px 6px;
   color: var(--color-text-muted);
   position: sticky;
@@ -965,7 +965,7 @@ html {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 2px 4px 4px;
+  padding: var(--spacing-xxs, 2px) var(--spacing-xxs, 2px) var(--spacing-xs, 4px) var(--spacing-xs, 4px);
   margin-bottom: var(--space-1);
 }
 
@@ -1500,7 +1500,7 @@ kbd {
 
 .dockview-theme-abyss .dv-tab {
   margin: 0;
-  padding: 0 12px;
+  padding: 0 var(--spacing-md, 12px);
   border-right: 1px solid var(--color-border-secondary);
   border-top-left-radius: 0;
   border-top-right-radius: 0;
@@ -1969,7 +1969,7 @@ kbd {
 .file-tree-skeleton {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   padding: 10px 10px 8px;
 }
 
@@ -1998,7 +1998,7 @@ kbd {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: var(--spacing-xs, 4px);
   padding: var(--space-5) var(--space-3);
   text-align: center;
 }
@@ -2368,7 +2368,7 @@ kbd {
 .editor-content {
   flex: 1;
   overflow: auto;
-  padding: 16px 20px;
+  padding: var(--spacing-lg, 16px) var(--spacing-xl, 20px);
   min-height: 0;
   font-family: var(--font-sans);
   font-size: var(--text-sm);
@@ -2434,7 +2434,7 @@ kbd {
 .editor-content .tiptap ul[data-type="taskList"] li {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
 }
 
 .editor-content .tiptap ul[data-type="taskList"] li > label {
@@ -3734,7 +3734,7 @@ kbd {
 .editor-mode-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--spacing-xs, 4px);
   min-height: 24px;
   padding: 0 8px;
   border: 1px solid var(--color-border-primary);
@@ -3786,7 +3786,7 @@ kbd {
 .editor-mode-option {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   width: 100%;
   padding: 6px 8px;
   border: none;
@@ -3802,7 +3802,7 @@ kbd {
 .editor-mode-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   width: 100%;
   padding: 6px 8px;
   border-radius: 3px;
@@ -3856,7 +3856,7 @@ kbd {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 20px;
+  padding: var(--spacing-lg, 16px) var(--spacing-xl, 20px);
 }
 
 .diff-editor-wrapper .ProseMirror {
@@ -4209,12 +4209,12 @@ kbd {
 
 .editor-approval-banner .approval-banner-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
 }
 
 .editor-approval-banner .approval-banner-actions button {
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: var(--spacing-xs, 4px) var(--spacing-md, 12px);
   font-size: var(--font-size-sm, 12px);
   cursor: pointer;
   border: none;
@@ -4295,7 +4295,7 @@ kbd {
 
 .approval-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
 }
 
 .review-panel-content .approval-actions {
@@ -4653,7 +4653,7 @@ kbd {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
 }
 
 .git-inline-spinner {
@@ -4848,7 +4848,7 @@ kbd {
 .editor-loading-skeleton {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
 }
 
 .editor-loading-line {
@@ -4892,7 +4892,7 @@ kbd {
   border-radius: var(--radius-md);
   background: var(--color-error-bg);
   color: var(--color-error);
-  padding: 6px 12px;
+  padding: var(--spacing-xs, 4px) var(--spacing-md, 12px);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
@@ -5233,7 +5233,7 @@ kbd {
 }
 
 .user-menu-workspace {
-  padding: 0 12px 8px;
+  padding: 0 var(--spacing-md, 12px) 8px;
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
 }
@@ -5311,7 +5311,7 @@ kbd {
 .user-menu-ws-submenu-item {
   display: flex;
   align-items: center;
-  padding: 6px 12px;
+  padding: var(--spacing-xs, 4px) var(--spacing-md, 12px);
   text-decoration: none;
   color: var(--color-text-secondary);
   font-size: var(--text-sm, 13px);
@@ -6328,7 +6328,7 @@ kbd {
 .github-connect-repos {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-xs, 4px);
   margin-top: 4px;
 }
 .github-connect-repo-link {
@@ -6354,7 +6354,7 @@ kbd {
 .github-connect-status-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
 }
 .github-connect-status-grid {
   display: grid;
@@ -6381,7 +6381,7 @@ kbd {
 .github-connect-selected-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--spacing-xs, 4px);
   color: var(--text-primary);
   font-size: var(--font-size-sm, 12px);
   text-decoration: none;
@@ -6393,14 +6393,14 @@ kbd {
 .github-connect-repo-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   width: 100%;
 }
 .github-connect-repo-card {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--spacing-md, 12px);
   padding: 12px;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
@@ -6413,13 +6413,13 @@ kbd {
 .github-connect-repo-main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-xs, 4px);
   min-width: 0;
 }
 .github-connect-repo-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   flex-wrap: wrap;
 }
 .github-connect-repo-name {
@@ -6435,7 +6435,7 @@ kbd {
 .github-connect-repo-selected-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--spacing-xs, 4px);
   padding: 2px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-success) 16%, transparent);
@@ -6446,7 +6446,7 @@ kbd {
 .github-connect-repo-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -6459,7 +6459,7 @@ kbd {
   align-items: center;
   text-align: center;
   padding: 32px 24px;
-  gap: 12px;
+  gap: var(--spacing-md, 12px);
 }
 .github-connect-wizard-icon {
   color: var(--text-muted);
@@ -6479,14 +6479,14 @@ kbd {
 .github-connect-wizard-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   margin-top: 8px;
 }
 .github-connect-wizard-loading,
 .github-connect-wizard-connected {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
   color: var(--text-muted);
   font-size: var(--font-size-ui, 13px);
 }
@@ -6570,7 +6570,7 @@ kbd {
 .setup-wizard-continue {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
 }
 .setup-wizard-footnote {
   color: var(--text-muted);

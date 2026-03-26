@@ -2889,7 +2889,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="app-header-controls">
-                  <ThemeToggle />
+                  {/* Theme toggle moved to UserMenu — single location for settings */}
                 </div>
               </header>
             )}
