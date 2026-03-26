@@ -39,6 +39,7 @@ ENV NODE_ENV=production
 # Copy server source (TypeScript, executed via tsx)
 COPY src/server ./src/server
 COPY src/shared ./src/shared
+COPY src/pi_service ./src/pi_service
 COPY tsconfig.server.json ./
 
 # Copy config
