@@ -2,6 +2,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { Buffer } from 'buffer'
 import App from './App'
+import AppErrorBoundary from './components/AppErrorBoundary'
 import { ConfigProvider } from './config'
 import { fetchRuntimeConfig, runtimeConfigToProviderConfig } from './config/runtimeConfig'
 import './styles.css'
@@ -54,9 +55,11 @@ async function bootstrap() {
   }
 
   createRoot(document.getElementById('root')).render(
-    <ConfigProvider config={appConfig}>
-      <App />
-    </ConfigProvider>
+    <AppErrorBoundary>
+      <ConfigProvider config={appConfig}>
+        <App />
+      </ConfigProvider>
+    </AppErrorBoundary>
   )
 }
 

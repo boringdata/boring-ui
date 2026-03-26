@@ -45,19 +45,6 @@ export default class PanelErrorBoundary extends Component {
             type="button"
             onClick={this.handleRetry}
             className="pane-error-retry"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              marginTop: '12px',
-              padding: '6px 16px',
-              borderRadius: '6px',
-              border: '1px solid var(--color-border, #333)',
-              background: 'var(--color-bg-secondary, #1a1a1a)',
-              color: 'var(--color-text-primary, #e0e0e0)',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
           >
             <RotateCcw size={14} />
             Retry
