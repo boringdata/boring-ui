@@ -6,22 +6,25 @@ name = "boring-ui"
 logo = "B"
 id   = "boring-ui"
 
-# ─── Backend ───────────────────────────────────────────────
+# ─── Workspace Backend ────────────────────────────────────
+[workspace]
+# Production: "bwrap" (bubblewrap sandbox, server-side files/git/exec)
+# Local dev:  "lightningfs" (browser IndexedDB + isomorphic-git)
+# Experimental: "justbash" (JustBash WASM, in-memory, no persistence)
+backend = "bwrap"
+
+# ─── Agent ────────────────────────────────────────────────
+[agent]
+runtime   = "pi"       # PI agent (only supported runtime)
+placement = "browser"  # "browser" (PI in browser) or "server" (future)
+
+# ─── Backend Server ───────────────────────────────────────
 [backend]
-# Canonical backend for boring-ui and child apps.
-type  = "python"
-entry = "boring_ui.api.app:create_app"
-pythonpath = ["src/back"]
+type  = "typescript"
+entry = "src/server/index.ts"
 port  = 8000
-# Additional FastAPI routers (Python dotted paths)
+# Child app tRPC routers (module:export format)
 routers = []
-
-[agents]
-mode = "frontend"  # browser PI / LightningFS
-default = "pi"
-
-[agents.pi]
-enabled = true
 
 # ─── Frontend ──────────────────────────────────────────────
 [frontend]
