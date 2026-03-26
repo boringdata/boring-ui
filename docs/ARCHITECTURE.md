@@ -104,58 +104,80 @@ Edge mode runtime profile:
 
 1. `companion-httpfs` (default): Companion rail + backend files/git via edge proxy.
 
-## Backend Architecture
+## Backend Architecture (TypeScript)
 
 ### Application Factory
 
-`create_app()` in `app.py` wires everything:
-1. Creates `APIConfig` (workspace root, CORS, PTY providers, companion/PI URLs)
-2. Builds a `RouterRegistry` with all available routers
-3. Mounts only the enabled subset of routers
-4. Mounts capabilities endpoint reflecting actual availability
-5. Optionally mounts workspace plugins (`/api/x`)
+`createApp()` in `src/server/app.ts` wires everything:
+1. Loads `ServerConfig` from environment (fail-closed validation)
+2. Registers plugins: CORS, cookie, request ID middleware
+3. Mounts public routes: health, capabilities, `/__bui/config`
+4. Mounts authenticated routes: files, git, exec, workspaces, me, collaboration, GitHub, UI state
+5. Mounts workspace boundary routing (`/w/{id}/*`)
+6. Optionally mounts static file serving + SPA fallback
 
 ### Module Structure
 
-Each backend module follows router/service separation:
+The TypeScript backend uses a service/transport separation pattern:
 
 ```
-modules/
-├── files/          File CRUD: list, read, write, delete, rename, move, search
-│   ├── router.py   FastAPI endpoints
-│   └── service.py  Business logic (path validation, storage ops)
-├── git/            Git operations: status, diff, show
-│   ├── router.py
-│   └── service.py
-├── control_plane/  Workspace/user/collab metadata foundation
-│   ├── router.py   Foundation API at /api/v1/control-plane/*
-│   ├── auth_router.py Auth/session routes at /auth/* (local mode)
-│   ├── auth_router_neon.py Auth/session routes at /auth/* (Neon Auth / Better Auth)
-│   ├── me_router.py User identity/settings at /api/v1/me* (local mode)
-│   ├── me_router_neon.py User identity/settings at /api/v1/me* (Neon hosted mode)
-│   ├── workspace_router.py Workspace lifecycle/settings at /api/v1/workspaces* (local mode)
-│   ├── workspace_router_hosted.py Workspace lifecycle/settings at /api/v1/workspaces* (Neon hosted mode)
-│   ├── collaboration_router.py Membership/invite routes at /api/v1/workspaces/{id}/{members,invites}* (local mode)
-│   ├── collaboration_router_hosted.py Membership/invite routes at /api/v1/workspaces/{id}/{members,invites}* (Neon hosted mode)
-│   ├── workspace_boundary_router.py Reserved + pass-through routes at /w/{workspace_id}/... (local mode)
-│   ├── workspace_boundary_router_hosted.py Reserved + pass-through routes at /w/{workspace_id}/... (Neon hosted mode)
-│   ├── auth_session.py HMAC session cookie primitives
-│   ├── service.py  Domain facade for users/workspaces/members/invites/settings/runtime
-│   ├── repository.py JSON-backed repository contracts + local implementation
-│   ├── models.py   Persisted state model
-│   ├── common.py   Shared hosted control-plane helpers
-│   ├── db_client.py Asyncpg pool + Neon host handling
-│   └── membership.py Hosted membership helpers
-├── pty/            PTY terminal sessions via WebSocket
-│   ├── router.py   WS endpoint at /ws/pty
-│   ├── lifecycle.py REST lifecycle at /api/v1/pty/*
-│   └── service.py
-├── stream/         Claude chat stream via WebSocket
-│   ├── router.py   WS endpoint at /ws/agent/normal/stream
-│   └── service.py
-└── agent_normal/   Agent-normal runtime session management
-    └── router.py   REST at /api/v1/agent/normal/*
+src/server/
+├── app.ts                  Fastify app factory (createApp)
+├── config.ts               Config loader + Zod-style validation
+├── index.ts                Server entry point
+├── services/               Domain services (transport-independent)
+│   ├── capabilitiesImpl.ts Abstract capability vocabulary
+│   ├── pythonCompatCapabilities.ts Legacy Python-compat response
+│   ├── runtimeConfig.ts    /__bui/config payload builder
+│   ├── gitImpl.ts          Git operations via simple-git
+│   ├── githubImpl.ts       GitHub App JWT + OAuth
+│   ├── uiStateImpl.ts      UI state persistence (in-memory)
+│   ├── extensionTrust.ts   Extension trust model
+│   └── (stubs)             files, exec, auth, workspaces, users, approval
+├── http/                   Fastify HTTP routes
+│   ├── health.ts           /health, /healthz, /api/capabilities, /__bui/config
+│   ├── fileRoutes.ts       /api/v1/files/* (7 endpoints)
+│   ├── gitRoutes.ts        /api/v1/git/* (16 endpoints)
+│   ├── execRoutes.ts       /api/v1/exec (short + long-running jobs)
+│   ├── workspaceRoutes.ts  /api/v1/workspaces/* (CRUD, settings, runtime)
+│   ├── meRoutes.ts         /api/v1/me (identity, settings)
+│   ├── collaborationRoutes.ts Members + invites
+│   ├── githubRoutes.ts     GitHub OAuth + installations
+│   ├── uiStateRoutes.ts    UI state snapshots + commands
+│   ├── workspaceBoundary.ts /w/{id}/* → workspace-scoped routing
+│   └── static.ts           Static file serving + SPA fallback
+├── trpc/                   tRPC router + procedures
+│   ├── router.ts           Root router (AppRouter type export)
+│   ├── context.ts          Request context (auth + workspace)
+│   ├── childApp.ts         Child app router merging
+│   └── framework.ts        Framework exports for child apps
+├── adapters/               Workspace backend implementations
+│   ├── bwrapImpl.ts        Bubblewrap sandbox (production exec backend)
+│   └── bwrap.ts            WorkspaceBackend interface
+├── auth/                   Authentication
+│   ├── session.ts          HS256 JWT session cookies (jose, PyJWT-compatible)
+│   ├── middleware.ts        Fastify onRequest auth hook
+│   ├── validation.ts        Redirect URL allowlisting, config checks
+│   └── neonClient.ts        Neon Auth API client (stub)
+├── workspace/              Workspace resolution
+│   ├── resolver.ts          Backend resolver (bwrap/lightningfs/justbash)
+│   ├── membership.ts        DB membership checks
+│   ├── paths.ts             Safe path resolution
+│   └── boundary.ts          Passthrough prefix constants
+├── db/                     Database (Drizzle ORM + postgres.js)
+│   ├── schema.ts            Drizzle schema (generated by drizzle-kit pull)
+│   ├── relations.ts         Table relations
+│   └── index.ts             Client factory
+├── jobs/                   Long-running execution
+│   └── execJob.ts           Job lifecycle (start/read/cancel)
+└── middleware/              Cross-cutting concerns
+    ├── requestId.ts          X-Request-Id propagation
+    └── secretRedaction.ts    Pino log redaction
 ```
+
+### Legacy Python Backend (src/back/)
+
+The Python backend in `src/back/boring_ui/api/` is being replaced by the TypeScript backend above. During the dual-stack migration period, both exist. The Python backend is the reference implementation for parity testing via smoke suites.
 
 ### Auth Provider Architecture
 
