@@ -100,7 +100,7 @@ describe('File HTTP compat routes', () => {
     it('finds files matching pattern', async () => {
       const app = getApp()
       const token = await testSessionCookie()
-      const res = await app.inject({ method: 'GET', url: '/api/v1/files/search?pattern=hello', cookies: { boring_session: token } })
+      const res = await app.inject({ method: 'GET', url: '/api/v1/files/search?pattern=hello*', cookies: { boring_session: token } })
       expect(res.statusCode).toBe(200)
       const body = JSON.parse(res.payload)
       expect(body.results.length).toBeGreaterThan(0)
