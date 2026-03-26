@@ -21,6 +21,7 @@ import { registerCollaborationRoutes } from './http/collaborationRoutes.js'
 import { registerUiStateRoutes } from './http/uiStateRoutes.js'
 import { registerGitHubRoutes } from './http/githubRoutes.js'
 import { registerStaticRoutes } from './http/static.js'
+import { registerAuthRoutes } from './http/authRoutes.js'
 
 // Extend Fastify types to include our custom properties
 declare module 'fastify' {
@@ -77,6 +78,9 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
 
   // --- Health, capabilities, config endpoints (public, no auth) ---
   app.register(registerHealthRoutes)
+
+  // --- Auth routes (login/logout/session) ---
+  app.register(registerAuthRoutes)
 
   // --- Authenticated API routes ---
   // All /api/v1/* routes require session authentication.
