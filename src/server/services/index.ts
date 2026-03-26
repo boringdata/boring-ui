@@ -1,36 +1,39 @@
 /**
  * Service layer barrel export.
- * All services are transport-independent — no Fastify/tRPC imports.
+ *
+ * NOTE: The stub interface files (files.ts, git.ts, etc.) are DEPRECATED.
+ * Production routes import directly from the *Impl files:
+ * - gitImpl.ts (via gitRoutes.ts)
+ * - githubImpl.ts (via githubRoutes.ts)
+ * - capabilitiesImpl.ts (via health.ts)
+ * - pythonCompatCapabilities.ts (via health.ts)
+ * - runtimeConfig.ts (via health.ts)
+ * - uiStateImpl.ts (via uiStateRoutes.ts)
+ * - extensionTrust.ts
+ *
+ * The type-only exports below are kept for backward compatibility.
+ * New code should import from the Impl files directly.
  */
-export type { FileService, FileServiceDeps } from './files.js'
-export { createFileService } from './files.js'
 
-export type { GitService, GitServiceDeps } from './git.js'
-export { createGitService } from './git.js'
+// --- Active implementations ---
+export { createGitServiceImpl, type GitServiceImpl } from './gitImpl.js'
+export { buildCapabilitiesResponse } from './capabilitiesImpl.js'
+export { buildPythonCompatCapabilities, buildEnabledFeatures } from './pythonCompatCapabilities.js'
+export { buildRuntimeConfigPayload } from './runtimeConfig.js'
+export {
+  createGitHubAppJwt,
+  buildGitCredentials,
+  buildOAuthUrl,
+  isGitHubConfigured,
+} from './githubImpl.js'
 
-export type { ExecService, ExecServiceDeps } from './exec.js'
-export { createExecService } from './exec.js'
-
-export type { AuthService, AuthServiceDeps } from './auth.js'
-export { createAuthService, COOKIE_NAME, SESSION_ALGORITHM } from './auth.js'
-
-export type { WorkspaceService, WorkspaceServiceDeps } from './workspaces.js'
-export { createWorkspaceService } from './workspaces.js'
-
-export type { UserService, UserServiceDeps } from './users.js'
-export { createUserService } from './users.js'
-
-export type {
-  CapabilitiesService,
-  CapabilitiesServiceDeps,
-} from './capabilities.js'
-export { createCapabilitiesService } from './capabilities.js'
-
+// --- Deprecated stub types (kept for backward compatibility) ---
+export type { FileService } from './files.js'
+export type { GitService } from './git.js'
+export type { ExecService } from './exec.js'
+export type { AuthService } from './auth.js'
+export type { WorkspaceService } from './workspaces.js'
+export type { UserService } from './users.js'
 export type { ApprovalStore } from './approval.js'
-export { createInMemoryApprovalStore } from './approval.js'
-
 export type { UIStateService } from './uiState.js'
-export { createUIStateService } from './uiState.js'
-
-export type { GitHubService, GitHubServiceDeps } from './github.js'
-export { createGitHubService } from './github.js'
+export type { GitHubService } from './github.js'

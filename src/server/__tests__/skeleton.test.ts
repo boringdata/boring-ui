@@ -115,30 +115,16 @@ describe('Service layer transport independence', () => {
   })
 })
 
-describe('Service interfaces are exported', () => {
-  it('services/index.ts exports all service types', async () => {
+describe('Service barrel exports active implementations', () => {
+  it('exports real implementation factories', async () => {
     const barrel = await import('../services/index.js')
-    // Check that factory functions are exported (they throw, but they're present)
-    expect(typeof barrel.createFileService).toBe('function')
-    expect(typeof barrel.createGitService).toBe('function')
-    expect(typeof barrel.createExecService).toBe('function')
-    expect(typeof barrel.createAuthService).toBe('function')
-    expect(typeof barrel.createWorkspaceService).toBe('function')
-    expect(typeof barrel.createUserService).toBe('function')
-    expect(typeof barrel.createCapabilitiesService).toBe('function')
-    expect(typeof barrel.createInMemoryApprovalStore).toBe('function')
-    expect(typeof barrel.createUIStateService).toBe('function')
-    expect(typeof barrel.createGitHubService).toBe('function')
-  })
-
-  it('service factory functions throw "Not implemented"', async () => {
-    const barrel = await import('../services/index.js')
-    expect(() => barrel.createFileService({ workspaceRoot: '/' })).toThrow(
-      /not implemented/i,
-    )
-    expect(() => barrel.createGitService({ workspaceRoot: '/' })).toThrow(
-      /not implemented/i,
-    )
+    expect(typeof barrel.createGitServiceImpl).toBe('function')
+    expect(typeof barrel.buildCapabilitiesResponse).toBe('function')
+    expect(typeof barrel.buildPythonCompatCapabilities).toBe('function')
+    expect(typeof barrel.buildRuntimeConfigPayload).toBe('function')
+    expect(typeof barrel.createGitHubAppJwt).toBe('function')
+    expect(typeof barrel.buildGitCredentials).toBe('function')
+    expect(typeof barrel.isGitHubConfigured).toBe('function')
   })
 })
 
@@ -164,5 +150,6 @@ describe('workspace/boundary exports', () => {
     const boundary = await import('../workspace/boundary.js')
     expect(boundary.WORKSPACE_PASSTHROUGH_PREFIXES).toContain('/auth/')
     expect(boundary.WORKSPACE_PASSTHROUGH_PREFIXES).toContain('/api/v1/files')
+    expect(boundary.WORKSPACE_PASSTHROUGH_PREFIXES).toContain('/api/v1/agent')
   })
 })
