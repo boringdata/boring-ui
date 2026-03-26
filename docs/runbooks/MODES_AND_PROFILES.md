@@ -1,16 +1,35 @@
 # Modes and Profiles
 
-This document describes the current compatibility deployment/runtime contract for `boring-ui`.
+This document describes the deployment/runtime contract for `boring-ui`.
 
-Canonical backend-agent architecture for new work:
-- one FastAPI backend with `backend.type = "python"`
-- one local Node.js PI sidecar
-- `nsjail` isolation on a normal Linux host
-- app-level agent choice via `frontend|backend`
+## Foundation Profile (Production Default)
 
-`edge` remains a legacy compatibility deployment path. `boring-sandbox` is optional edge infrastructure only and is not required for the canonical backend-agent architecture.
+```toml
+[workspace]
+backend = "bwrap"      # Bubblewrap sandbox for file/git/exec
 
-For the Python backend-agent architecture, `core` is the canonical deployment path. `edge` remains a supported legacy compatibility mode for deployments that still need `boring-sandbox` in front of `boring-ui`.
+[agent]
+runtime = "pi"         # PI agent
+placement = "browser"  # PI runs in the browser
+```
+
+- **Backend**: TypeScript (Fastify + tRPC + Drizzle), serves HTTP API + static frontend
+- **Agent**: PI loads in the browser, calls server API for file/git/exec
+- **Sandbox**: bubblewrap (`bwrap`) isolates workspace operations
+- **Auth**: Neon Auth (EdDSA JWT) + HS256 session cookies
+- **Database**: PostgreSQL via Neon (Drizzle ORM + postgres.js)
+
+## Other Profiles
+
+| Profile | workspace.backend | agent.placement | Status |
+|---------|-------------------|----------------|--------|
+| Local dev | `lightningfs` | `browser` | Supported — all ops in browser via IndexedDB |
+| Server PI | `bwrap` | `server` | **Deferred** — PI in-process on server |
+| JustBash | `justbash` | `browser` | **Experimental** — JustBash WASM, no persistence |
+
+## Legacy
+
+The Python backend (`src/back/`) and edge/core deployment modes are being replaced.
 
 ## Deployment Modes
 
