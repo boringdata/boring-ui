@@ -1,8 +1,8 @@
 /**
  * Workspace boundary router — maps /w/{workspaceId}/* to workspace-scoped routes.
  *
- * In the TS architecture, this sets ctx.workspaceId via middleware instead of
- * the Python ASGI proxy pattern. This eliminates transport indirection.
+ * Uses internal proxy (app.inject) instead of HTTP redirects to preserve
+ * request body, cookies, and response for non-browser clients (smoke tests, API).
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import {
@@ -74,11 +74,8 @@ export async function registerWorkspaceBoundary(
       })
     }
 
-    // Set workspace ID on request for downstream handlers
-    request.workspaceId = workspaceId
-
     // Auth check
-    const cookieName = appCookieName()
+    const cookieName = app.config.authSessionCookieName || appCookieName()
     const token = request.cookies[cookieName]
 
     if (!token) {
@@ -100,14 +97,40 @@ export async function registerWorkspaceBoundary(
       return reply.code(401).send({ error: 'unauthorized', code: 'INVALID_SESSION' })
     }
 
-    // Redirect to the actual route (strip /w/{id} prefix).
-    // Uses 307 to preserve the HTTP method (302 would change POST→GET).
-    // NOTE: POST/PUT redirects lose the request body in most clients.
-    // The frontend sends API calls directly to /api/v1/* (not through /w/{id}/*),
-    // so this redirect primarily serves GET requests and browser navigation.
+    // Internal proxy: dispatch the request to the actual route via app.inject()
+    // This preserves request body, cookies, and returns the real response
+    // (unlike 307 redirect which loses POST bodies and breaks non-browser clients).
     const queryStr = request.url.includes('?') ? '?' + request.url.split('?')[1] : ''
-    reply.code(307)
-    return reply.redirect(normalizedPath + queryStr)
+    const targetUrl = normalizedPath + queryStr
+
+    // Build headers — forward cookies and workspace context
+    const headers: Record<string, string> = {
+      'x-workspace-id': workspaceId,
+      'cookie': request.headers.cookie || '',
+    }
+    if (request.headers['content-type']) {
+      headers['content-type'] = request.headers['content-type'] as string
+    }
+
+    const injected = await app.inject({
+      method: request.method as any,
+      url: targetUrl,
+      headers,
+      payload: request.body as any,
+    })
+
+    // Forward the response
+    reply.code(injected.statusCode)
+
+    // Forward response headers (skip hop-by-hop headers)
+    const skipHeaders = new Set(['transfer-encoding', 'connection', 'keep-alive'])
+    for (const [key, value] of Object.entries(injected.headers)) {
+      if (!skipHeaders.has(key.toLowerCase()) && value) {
+        reply.header(key, value)
+      }
+    }
+
+    return reply.send(injected.rawPayload)
   })
 
   // Workspace root — serve SPA

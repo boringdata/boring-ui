@@ -108,10 +108,11 @@ describe('SPA fallback', () => {
     expect(res.payload).toContain('boring-ui')
   })
 
-  it('serves index.html for /auth/* paths', async () => {
+  it('serves index.html for unrouted client paths', async () => {
     const config = testConfig({ staticDir: TEST_STATIC_DIR })
     app = createApp({ config })
-    const res = await app.inject({ method: 'GET', url: '/auth/login' })
+    // Use a path that isn't a real route but is a frontend SPA page
+    const res = await app.inject({ method: 'GET', url: '/settings/profile' })
     expect(res.statusCode).toBe(200)
     expect(res.payload).toContain('boring-ui')
   })
