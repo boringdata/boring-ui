@@ -16,8 +16,8 @@ import { loadConfig, validateConfig } from '../config.js'
 import { testSessionCookie, TEST_SECRET } from './helpers.js'
 
 describe('Agent mode: browser PI server-side contract', () => {
-  function getApp() {
-    const config = { ...loadConfig(), sessionSecret: TEST_SECRET }
+  function getApp(overrides: Record<string, unknown> = {}) {
+    const config = { ...loadConfig(), sessionSecret: TEST_SECRET, ...overrides }
     return createApp({ config: config as any, skipValidation: true })
   }
 
@@ -120,6 +120,52 @@ describe('Agent mode: browser PI server-side contract', () => {
       await app.close()
     })
   })
+
+  describe('Runtime-specific server routes', () => {
+    it('does not mount PI routes when ai-sdk runtime is selected', async () => {
+      const app = getApp({
+        workspaceBackend: 'bwrap',
+        agentPlacement: 'server',
+        agentRuntime: 'ai-sdk',
+        databaseUrl: 'postgres://test',
+        controlPlaneProvider: 'local',
+      })
+
+      const token = await testSessionCookie()
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/agent/pi/sessions',
+        cookies: { boring_session: token },
+      })
+
+      expect(res.statusCode).toBe(404)
+      await app.close()
+    })
+
+    it('mounts the ai-sdk chat endpoint and fails closed without a server API key', async () => {
+      const app = getApp({
+        workspaceBackend: 'bwrap',
+        agentPlacement: 'server',
+        agentRuntime: 'ai-sdk',
+        databaseUrl: 'postgres://test',
+        controlPlaneProvider: 'local',
+      })
+
+      const token = await testSessionCookie()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/agent/chat',
+        cookies: { boring_session: token },
+        payload: { messages: [] },
+      })
+
+      expect(res.statusCode).toBe(503)
+      expect(JSON.parse(res.payload)).toMatchObject({
+        code: 'ANTHROPIC_API_KEY_REQUIRED',
+      })
+      await app.close()
+    })
+  })
 })
 
 describe('Config validation matrix', () => {
@@ -157,12 +203,26 @@ describe('Config validation matrix', () => {
     expect(() => validateConfig(config)).toThrow(/placement.*server.*bwrap/)
   })
 
-  it('rejects ai-sdk runtime', () => {
+  it('accepts ai-sdk with server placement on bwrap', () => {
     const config = {
       ...loadConfig(),
-      agentRuntime: 'ai-sdk' as any,
+      workspaceBackend: 'bwrap' as const,
+      agentPlacement: 'server' as const,
+      agentRuntime: 'ai-sdk' as const,
+      databaseUrl: 'postgres://test',
       controlPlaneProvider: 'local' as const,
     }
-    expect(() => validateConfig(config)).toThrow(/agent.runtime/)
+    expect(() => validateConfig(config)).not.toThrow()
+  })
+
+  it('rejects ai-sdk runtime in browser placement', () => {
+    const config = {
+      ...loadConfig(),
+      workspaceBackend: 'bwrap' as const,
+      agentPlacement: 'browser' as const,
+      agentRuntime: 'ai-sdk' as const,
+      controlPlaneProvider: 'local' as const,
+    }
+    expect(() => validateConfig(config)).toThrow(/ai-sdk.*placement=server/)
   })
 })
