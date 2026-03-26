@@ -12,9 +12,7 @@ import {
   RuntimeNotFoundError,
   SettingsKeyRequiredError,
 } from '../services/workspacePersistence.js'
-
-// UUID format validation
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { UUID_RE } from '../workspace/helpers.js'
 
 function isValidUUID(value: string): boolean {
   return UUID_RE.test(value)

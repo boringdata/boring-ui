@@ -1,6 +1,6 @@
-import { exec as execCallback, execSync } from 'node:child_process'
-import { lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
+import { exec as execCallback } from 'node:child_process'
+import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { basename, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { jsonSchema, tool } from 'ai'
 import {
@@ -22,6 +22,12 @@ import { createWorkspaceTools } from '../agent/piTools.js'
 import { startJob, readJob, cancelJob } from '../jobs/execJob.js'
 import { createGitServiceImpl } from './gitImpl.js'
 import {
+  validatePath as validateWorkspacePath,
+  ensureExistingWorkspacePath,
+  ensureWritableWorkspacePath,
+} from '../workspace/paths.js'
+import { hasBwrap, truncateOutput, MAX_OUTPUT_BYTES } from '../workspace/helpers.js'
+import {
   enqueueCommand,
   getLatestState,
   listOpenPanels,
@@ -29,91 +35,11 @@ import {
 } from './uiStateImpl.js'
 
 const execAsync = promisify(execCallback)
-const MAX_OUTPUT_BYTES = 512 * 1024
 const FLAG_INJECTION_RE = /^-/
-
-function hasBwrap(): boolean {
-  try {
-    execSync('which bwrap', { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
-}
 
 function normalizeRelativePath(path: string | undefined, fallback = '.'): string {
   const trimmed = String(path || '').trim().replace(/^\/+/, '')
   return trimmed || fallback
-}
-
-function validateWorkspacePath(workspaceRoot: string, requestedPath: string): string {
-  const resolvedRoot = resolve(workspaceRoot)
-  const resolvedPath = resolve(workspaceRoot, requestedPath)
-  const rel = relative(resolvedRoot, resolvedPath)
-  if (rel.startsWith('..') || isAbsolute(rel)) {
-    throw new Error('path resolves outside workspace root')
-  }
-  return resolvedPath
-}
-
-async function assertRealPathWithinWorkspace(
-  workspaceRoot: string,
-  candidatePath: string,
-): Promise<void> {
-  const realRoot = await realpath(resolve(workspaceRoot))
-  const realCandidate = await realpath(candidatePath)
-  const rel = relative(realRoot, realCandidate)
-  if (rel.startsWith('..') || isAbsolute(rel)) {
-    throw new Error('path resolves outside workspace root')
-  }
-}
-
-async function ensureExistingWorkspacePath(
-  workspaceRoot: string,
-  requestedPath: string,
-): Promise<string> {
-  const absolutePath = validateWorkspacePath(workspaceRoot, requestedPath)
-  await assertRealPathWithinWorkspace(workspaceRoot, absolutePath)
-  return absolutePath
-}
-
-async function ensureWritableWorkspacePath(
-  workspaceRoot: string,
-  requestedPath: string,
-): Promise<string> {
-  const absolutePath = validateWorkspacePath(workspaceRoot, requestedPath)
-  const absoluteDir = dirname(absolutePath)
-
-  let existingAncestor = absoluteDir
-  while (existingAncestor !== workspaceRoot) {
-    try {
-      await stat(existingAncestor)
-      break
-    } catch (error: any) {
-      if (error?.code !== 'ENOENT') throw error
-      existingAncestor = dirname(existingAncestor)
-    }
-  }
-  await assertRealPathWithinWorkspace(workspaceRoot, existingAncestor)
-
-  await mkdir(absoluteDir, { recursive: true })
-  await assertRealPathWithinWorkspace(workspaceRoot, absoluteDir)
-
-  try {
-    const stat = await lstat(absolutePath)
-    if (stat.isSymbolicLink()) {
-      throw new Error('path resolves outside workspace root')
-    }
-  } catch (error: any) {
-    if (error?.code !== 'ENOENT') throw error
-  }
-
-  return absolutePath
-}
-
-function truncateOutput(output: string): string {
-  if (Buffer.byteLength(output) <= MAX_OUTPUT_BYTES) return output
-  return output.slice(0, MAX_OUTPUT_BYTES) + '\n[truncated: output exceeded 512KB]'
 }
 
 function formatDirEntries(entries: Array<{ name: string; path: string; is_dir: boolean }>): string {

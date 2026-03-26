@@ -10,6 +10,7 @@ import {
   appCookieName,
   SessionExpiredError,
 } from '../auth/session.js'
+import { UUID_RE } from '../workspace/helpers.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -34,9 +35,6 @@ const PASSTHROUGH_PREFIXES = [
 
 // Paths that bypass workspace auth (served as SPA pages)
 const SPA_PATHS = new Set(['', 'setup', 'settings', 'runtime'])
-
-// UUID format
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function registerWorkspaceBoundary(
   app: FastifyInstance,

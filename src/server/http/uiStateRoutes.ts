@@ -2,7 +2,7 @@
  * UI State HTTP routes at /api/v1/ui/*.
  * In-memory state persistence for workspace panel layout.
  */
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 // HTTP error helpers (avoids @fastify/sensible dependency)
 function httpError(statusCode: number, message: string): Error & { statusCode: number } {
@@ -131,23 +131,17 @@ export async function registerUiStateRoutes(app: FastifyInstance): Promise<void>
     }
   }
 
-  app.put('/ui/state', async (request) => {
+  const upsertStateHandler = async (request: FastifyRequest) => {
     const body = asRecord(request.body)
     const state = upsertState(
       getKey(body, request.headers['x-workspace-id'] as string | undefined),
       normalizeSnapshot(body),
     )
     return { ok: true, state }
-  })
+  }
 
-  app.post('/ui/state', async (request) => {
-    const body = asRecord(request.body)
-    const state = upsertState(
-      getKey(body, request.headers['x-workspace-id'] as string | undefined),
-      normalizeSnapshot(body),
-    )
-    return { ok: true, state }
-  })
+  app.put('/ui/state', upsertStateHandler)
+  app.post('/ui/state', upsertStateHandler)
 
   app.get('/ui/state', async (request) => {
     const workspaceKey = getKey({}, request.headers['x-workspace-id'] as string | undefined)

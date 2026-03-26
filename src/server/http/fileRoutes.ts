@@ -3,83 +3,15 @@
  * Python-compatible response shapes for smoke test parity.
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { mkdirSync } from 'node:fs'
-import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
-import { join, resolve, relative, dirname, basename, isAbsolute } from 'node:path'
-import { resolveWorkspacePath } from '../workspace/resolver.js'
-
-function getWorkspaceRoot(app: FastifyInstance, request: FastifyRequest): string {
-  const workspaceIdHeader = request.headers['x-workspace-id']
-  const workspaceId = Array.isArray(workspaceIdHeader)
-    ? workspaceIdHeader[0]
-    : workspaceIdHeader
-  if (workspaceId) {
-    const workspaceRoot = resolveWorkspacePath(app.config.workspaceRoot, String(workspaceId))
-    mkdirSync(workspaceRoot, { recursive: true })
-    return workspaceRoot
-  }
-  return app.config.workspaceRoot
-}
-
-// Note: workspace directory creation is handled by mkdirSync in getWorkspaceRoot()
-
-function validatePath(workspaceRoot: string, requestedPath: string): string {
-  const resolvedRoot = resolve(workspaceRoot)
-  const resolved = resolve(workspaceRoot, requestedPath)
-  // Must use resolvedRoot + '/' to prevent prefix collision:
-  // e.g., /workspace-evil/file would falsely match /workspace without the trailing /
-  if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + '/')) {
-    throw Object.assign(new Error('Path traversal detected'), { statusCode: 400 })
-  }
-  return resolved
-}
-
-async function assertRealPathWithinWorkspace(workspaceRoot: string, candidatePath: string): Promise<void> {
-  const realRoot = await realpath(resolve(workspaceRoot))
-  const realCandidate = await realpath(candidatePath)
-  const rel = relative(realRoot, realCandidate)
-  if (rel.startsWith('..') || isAbsolute(rel)) {
-    throw Object.assign(new Error('Path traversal detected'), { statusCode: 400 })
-  }
-}
-
-async function ensureExistingWorkspacePath(workspaceRoot: string, requestedPath: string): Promise<string> {
-  const absolutePath = validatePath(workspaceRoot, requestedPath)
-  await assertRealPathWithinWorkspace(workspaceRoot, absolutePath)
-  return absolutePath
-}
-
-async function ensureWritableWorkspacePath(workspaceRoot: string, requestedPath: string): Promise<string> {
-  const absolutePath = validatePath(workspaceRoot, requestedPath)
-  const absoluteDir = dirname(absolutePath)
-  const resolvedRoot = resolve(workspaceRoot)
-
-  let existingAncestor = absoluteDir
-  while (existingAncestor !== resolvedRoot) {
-    try {
-      await stat(existingAncestor)
-      break
-    } catch (error: any) {
-      if (error?.code !== 'ENOENT') throw error
-      existingAncestor = dirname(existingAncestor)
-    }
-  }
-
-  await assertRealPathWithinWorkspace(workspaceRoot, existingAncestor)
-  await mkdir(absoluteDir, { recursive: true })
-  await assertRealPathWithinWorkspace(workspaceRoot, absoluteDir)
-
-  try {
-    const pathStat = await lstat(absolutePath)
-    if (pathStat.isSymbolicLink()) {
-      throw Object.assign(new Error('Path traversal detected'), { statusCode: 400 })
-    }
-  } catch (error: any) {
-    if (error?.code !== 'ENOENT') throw error
-  }
-
-  return absolutePath
-}
+import { lstat, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { join, resolve, relative, basename } from 'node:path'
+import {
+  validatePath,
+  assertRealPathWithinWorkspace,
+  ensureExistingWorkspacePath,
+  ensureWritableWorkspacePath,
+} from '../workspace/paths.js'
+import { getWorkspaceRoot } from '../workspace/helpers.js'
 
 function globToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[|\\{}()[\]^$+?.]/g, '\\$&')

@@ -27,6 +27,7 @@ import { resetLocalWorkspaceStore } from '../services/localWorkspaceStore.js'
 interface PendingGitHubState {
   callback: string | null
   workspaceId: string | null
+  createdAt: number
 }
 
 interface GitHubCallbackResult {
@@ -40,6 +41,14 @@ interface GitHubCallbackResult {
 }
 
 const pendingGitHubStates = new Map<string, PendingGitHubState>()
+const STATE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+function pruneStaleStates(): void {
+  const cutoff = Date.now() - STATE_TTL_MS
+  for (const [key, value] of pendingGitHubStates) {
+    if (value.createdAt < cutoff) pendingGitHubStates.delete(key)
+  }
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -174,9 +183,11 @@ export async function registerGitHubRoutes(app: FastifyInstance): Promise<void> 
     const state = randomUUID()
     const callbackUrl = query.redirect_uri?.trim()
       || `${requestOrigin(request, app)}${callbackPathForAuthorizeRequest(request)}`
+    pruneStaleStates()
     pendingGitHubStates.set(state, {
       callback: callbackUrl,
       workspaceId: query.workspace_id?.trim() || null,
+      createdAt: Date.now(),
     })
 
     const forceInstall = isTruthyFlag(query.force_install)
@@ -271,6 +282,7 @@ export async function registerGitHubRoutes(app: FastifyInstance): Promise<void> 
               pendingGitHubStates.set(installState, {
                 callback: pending.callback,
                 workspaceId,
+                createdAt: Date.now(),
               })
               result.install_url = buildGitHubAppInstallationUrl(config.githubAppSlug, installState)
               result.message = 'Install the GitHub App to continue.'

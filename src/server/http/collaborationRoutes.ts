@@ -9,8 +9,7 @@ import {
   type LocalMemberRole,
 } from '../services/localWorkspaceStore.js'
 import { getWorkspacePersistence } from '../services/workspacePersistence.js'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { UUID_RE } from '../workspace/helpers.js'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const VALID_ROLES: LocalMemberRole[] = ['owner', 'editor', 'viewer']
 
@@ -134,41 +133,26 @@ export async function registerCollaborationRoutes(app: FastifyInstance): Promise
     return { ok: true, member: await persistence.upsertWorkspaceMember(id, userId, role) }
   })
 
-  app.put<{ Params: { id: string; userId: string } }>(
-    '/workspaces/:id/members/:userId',
-    async (request, reply) => {
-      const { id, userId } = request.params
-      if (!UUID_RE.test(id)) return badRequest(reply, 'INVALID_WORKSPACE_ID', 'workspace_id must be a UUID')
-      if (!UUID_RE.test(userId)) return badRequest(reply, 'INVALID_MEMBER_USER_ID', 'user_id must be a UUID')
-      if (!await requireOwner(id, request, reply)) return reply
+  const updateMemberHandler = async (
+    request: FastifyRequest<{ Params: { id: string; userId: string } }>,
+    reply: FastifyReply,
+  ) => {
+    const { id, userId } = request.params
+    if (!UUID_RE.test(id)) return badRequest(reply, 'INVALID_WORKSPACE_ID', 'workspace_id must be a UUID')
+    if (!UUID_RE.test(userId)) return badRequest(reply, 'INVALID_MEMBER_USER_ID', 'user_id must be a UUID')
+    if (!await requireOwner(id, request, reply)) return reply
 
-      const body = request.body as { role?: string } | null
-      const role = normalizeRole(body?.role, 'viewer')
-      if (!role) {
-        return badRequest(reply, 'INVALID_ROLE', `role must be: ${VALID_ROLES.join(', ')}`)
-      }
+    const body = request.body as { role?: string } | null
+    const role = normalizeRole(body?.role, 'viewer')
+    if (!role) {
+      return badRequest(reply, 'INVALID_ROLE', `role must be: ${VALID_ROLES.join(', ')}`)
+    }
 
-      return { ok: true, member: await persistence.upsertWorkspaceMember(id, userId, role) }
-    },
-  )
+    return { ok: true, member: await persistence.upsertWorkspaceMember(id, userId, role) }
+  }
 
-  app.patch<{ Params: { id: string; userId: string } }>(
-    '/workspaces/:id/members/:userId',
-    async (request, reply) => {
-      const { id, userId } = request.params
-      if (!UUID_RE.test(id)) return badRequest(reply, 'INVALID_WORKSPACE_ID', 'workspace_id must be a UUID')
-      if (!UUID_RE.test(userId)) return badRequest(reply, 'INVALID_MEMBER_USER_ID', 'user_id must be a UUID')
-      if (!await requireOwner(id, request, reply)) return reply
-
-      const body = request.body as { role?: string } | null
-      const role = normalizeRole(body?.role, 'viewer')
-      if (!role) {
-        return badRequest(reply, 'INVALID_ROLE', `role must be: ${VALID_ROLES.join(', ')}`)
-      }
-
-      return { ok: true, member: await persistence.upsertWorkspaceMember(id, userId, role) }
-    },
-  )
+  app.put('/workspaces/:id/members/:userId', updateMemberHandler)
+  app.patch('/workspaces/:id/members/:userId', updateMemberHandler)
 
   app.delete<{ Params: { id: string; userId: string } }>('/workspaces/:id/members/:userId', async (request, reply) => {
     const { id, userId } = request.params

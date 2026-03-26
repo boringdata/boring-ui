@@ -16,7 +16,6 @@ import { join, resolve, relative, isAbsolute } from 'node:path'
 /** API/system prefixes that should never be caught by SPA fallback */
 const API_PREFIXES = [
   '/api/',
-  '/trpc/',
   '/health',
   '/healthz',
   '/metrics',

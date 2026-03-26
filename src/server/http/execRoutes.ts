@@ -8,39 +8,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { execInSandbox } from '../adapters/bwrapImpl.js'
 import { resolve } from 'node:path'
-import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
-import { execSync } from 'node:child_process'
+import { realpathSync, statSync } from 'node:fs'
 import { startJob, readJob, cancelJob } from '../jobs/execJob.js'
-import { resolveWorkspacePath } from '../workspace/resolver.js'
+import {
+  getWorkspaceRoot,
+  hasBwrap,
+  truncateOutput,
+  MAX_OUTPUT_BYTES,
+} from '../workspace/helpers.js'
 
-const MAX_OUTPUT_BYTES = 512 * 1024 // 512KB
 const FALLBACK_EXEC_MAX_BUFFER = MAX_OUTPUT_BYTES * 2
-
-function truncateOutput(output: string): string {
-  if (Buffer.byteLength(output) > MAX_OUTPUT_BYTES) {
-    return output.slice(0, MAX_OUTPUT_BYTES) + '\n[truncated: output exceeded 512KB]'
-  }
-  return output
-}
-
-function hasBwrap(): boolean {
-  try {
-    execSync('which bwrap', { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
-}
-
-function getWorkspaceRoot(app: FastifyInstance, request: FastifyRequest): string {
-  const workspaceIdHeader = request.headers['x-workspace-id']
-  if (typeof workspaceIdHeader === 'string' && workspaceIdHeader.trim()) {
-    const workspaceRoot = resolveWorkspacePath(app.config.workspaceRoot, workspaceIdHeader)
-    mkdirSync(workspaceRoot, { recursive: true })
-    return workspaceRoot
-  }
-  return app.config.workspaceRoot
-}
 
 function validateCwd(
   workspaceRoot: string,
@@ -62,17 +39,17 @@ function validateCwd(
     }
   }
 
-  if (!existsSync(resolvedCwd)) {
-    return {
-      error: {
-        error: 'validation',
-        code: 'CWD_NOT_FOUND',
-        message: `Directory not found: ${cwd}`,
-      },
+  try {
+    if (!statSync(resolvedCwd).isDirectory()) {
+      return {
+        error: {
+          error: 'validation',
+          code: 'CWD_NOT_FOUND',
+          message: `Directory not found: ${cwd}`,
+        },
+      }
     }
-  }
-
-  if (!statSync(resolvedCwd).isDirectory()) {
+  } catch {
     return {
       error: {
         error: 'validation',

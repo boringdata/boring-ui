@@ -318,8 +318,8 @@ function createLocalPersistence(config: ServerConfig): WorkspacePersistence {
     async getWorkspaceRuntime(id) {
       return {
         workspace_id: id,
-        state: 'pending',
-        status: 'pending',
+        state: 'ready',
+        status: 'ready',
         sprite_url: null,
         sprite_name: null,
         last_error: null,
@@ -330,8 +330,8 @@ function createLocalPersistence(config: ServerConfig): WorkspacePersistence {
     async retryWorkspaceRuntime(id) {
       return {
         workspace_id: id,
-        state: 'pending',
-        status: 'pending',
+        state: 'ready',
+        status: 'ready',
         sprite_url: null,
         sprite_name: null,
         last_error: null,
