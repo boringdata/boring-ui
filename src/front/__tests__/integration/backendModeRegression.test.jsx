@@ -238,18 +238,19 @@ describe('CreateWorkspaceModal centering', () => {
     expect(bodyRule).toContain('display: flex')
   })
 
-  it('scaleIn animation preserves translate(-50%, -50%) centering', () => {
+  it('.modal-dialog does not define a custom animation (uses Tailwind animate-in)', () => {
     const cssPath = resolve(__dirname, '../../styles.css')
     const css = readFileSync(cssPath, 'utf-8')
 
-    // The scaleIn animation must include translate(-50%, -50%) in both from/to,
-    // otherwise it overrides Tailwind's centering transforms and the dialog
-    // jumps to bottom-left after the animation completes.
-    const scaleInMatch = css.match(/@keyframes scaleIn\s*\{([^}]*\{[^}]*\}[^}]*\{[^}]*\})\s*\}/)
-    expect(scaleInMatch).not.toBeNull()
-    const keyframes = scaleInMatch[1]
+    // A custom animation on .modal-dialog conflicts with Tailwind's
+    // animate-in/slide-in centering transforms on DialogContent, causing
+    // the dialog to jump to bottom-left. The dialog must rely on Tailwind's
+    // built-in animations which properly handle translate(-50%, -50%).
+    const dialogMatch = css.match(/\.modal-dialog\s*\{([^}]+)\}/)
+    expect(dialogMatch).not.toBeNull()
+    const dialogRule = dialogMatch[1]
 
-    expect(keyframes).toContain('translate(-50%, -50%) scale(0.95)')
-    expect(keyframes).toContain('translate(-50%, -50%) scale(1)')
+    expect(dialogRule).not.toContain('animation')
+    expect(dialogRule).not.toContain('scaleIn')
   })
 })

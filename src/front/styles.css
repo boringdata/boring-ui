@@ -6128,7 +6128,6 @@ kbd {
   box-shadow: var(--shadow-lg);
   width: 90%;
   max-width: 440px;
-  animation: scaleIn 0.15s ease-out;
 }
 
 .create-workspace-dialog {
@@ -6257,16 +6256,6 @@ kbd {
   }
 }
 
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .save-spinner,
