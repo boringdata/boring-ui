@@ -90,9 +90,9 @@ describe('Membership helper', () => {
 })
 
 describe('Workspace path helpers', () => {
-  it('ensureWorkspaceDir joins root + id', async () => {
-    const { ensureWorkspaceDir } = await import('../workspace/paths.js')
-    const result = ensureWorkspaceDir('/workspaces', 'abc-123')
+  it('validatePath joins root + relative path safely', async () => {
+    const { validatePath } = await import('../workspace/paths.js')
+    const result = validatePath('/workspaces', 'abc-123')
     expect(result).toMatch(/workspaces.*abc-123/)
   })
 })

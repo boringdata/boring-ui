@@ -24,6 +24,7 @@ import { validateRedirectUrl } from '../auth/validation.js'
 
 const PENDING_LOGIN_TTL_SECONDS = 30 * 60
 const AUTH_CONFIG_PLACEHOLDER = '/*AUTH_CONFIG_JSON*/'
+const AUTH_APP_NAME_PLACEHOLDER = '__AUTH_APP_NAME__'
 const INVALID_REDIRECT_CHARS_RE = /[\0\r\n<>"'`]/
 
 type JsonRecord = Record<string, unknown>
@@ -33,7 +34,7 @@ const HOSTED_AUTH_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sign in</title>
+  <title>Sign in — ${AUTH_APP_NAME_PLACEHOLDER}</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -187,7 +188,7 @@ const HOSTED_AUTH_HTML = `<!doctype html>
   <div class="shell">
     <aside class="rail">
       <p>Hosted authentication</p>
-      <h1 id="app-name">Boring UI</h1>
+      <h1 id="app-name">${AUTH_APP_NAME_PLACEHOLDER}</h1>
       <p>Sign in, create an account, or recover access without leaving the app origin.</p>
     </aside>
     <main class="card">
@@ -755,10 +756,21 @@ function authHtmlConfig(
 }
 
 function renderInlineHtml(template: string, payload: JsonRecord): string {
-  return template.replace(
-    AUTH_CONFIG_PLACEHOLDER,
-    JSON.stringify(payload).replace(/</g, '\\u003c'),
-  )
+  const appName =
+    typeof payload.appName === 'string' && payload.appName.trim() ? payload.appName.trim() : 'Boring UI'
+  return template
+    .replaceAll(AUTH_APP_NAME_PLACEHOLDER, escapeHtmlText(appName))
+    .replace(
+      AUTH_CONFIG_PLACEHOLDER,
+      JSON.stringify(payload).replace(/</g, '\\u003c'),
+    )
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
 }
 
 function renderHostedAuthPage(

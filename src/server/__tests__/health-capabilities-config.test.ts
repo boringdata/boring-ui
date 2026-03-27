@@ -215,6 +215,25 @@ describe('GET /__bui/config', () => {
     expect(body.frontend.mode.profile).toBeDefined()
   })
 
+  it('reflects child app branding, features, and panels from config', async () => {
+    const config = testConfig({
+      appId: 'child-app',
+      appName: 'Child App',
+      appLogo: 'C',
+      frontendFeatures: { agentRailMode: 'all' },
+      frontendPanels: {
+        notes: { component: './panels/NotesPanel.jsx', title: 'Notes', placement: 'right' },
+      },
+    })
+    app = createApp({ config })
+    const res = await app.inject({ method: 'GET', url: '/__bui/config' })
+    const body = JSON.parse(res.payload)
+    expect(body.app).toEqual({ id: 'child-app', name: 'Child App', logo: 'C' })
+    expect(body.frontend.branding).toEqual({ name: 'Child App', logo: 'C' })
+    expect(body.frontend.features.agentRailMode).toBe('all')
+    expect(body.frontend.panels.notes.title).toBe('Notes')
+  })
+
   it('returns agents section with mode and available', async () => {
     app = createApp()
     const res = await app.inject({ method: 'GET', url: '/__bui/config' })

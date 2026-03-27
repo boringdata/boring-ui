@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import base64
 import hashlib
+import html as html_lib
 import json
 from urllib.parse import quote, unquote, urlparse
 from uuid import uuid4
@@ -862,13 +863,16 @@ async def _reset_neon_password(
 # Login / signup HTML template
 # ---------------------------------------------------------------------------
 
+_AUTH_APP_NAME_PLACEHOLDER = "&lt;app-name&gt;"
+_AUTH_APP_DESCRIPTION_PLACEHOLDER = "&lt;app-description&gt;"
+
 _NEON_LOGIN_HTML_TEMPLATE: str = """\
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in</title>
+  <title>Sign in — &lt;app-name&gt;</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&family=Fira+Code:wght@500;600&display=swap');
     :root {
@@ -1679,7 +1683,17 @@ def _render_neon_login_html(
         "oauthProviders": config.auth_oauth_providers or [],
     }
     cfg_json = json.dumps(cfg, separators=(",", ":"))
-    html = _NEON_LOGIN_HTML_TEMPLATE.replace(_AUTH_CONFIG_PLACEHOLDER, cfg_json, 1)
+    html = _NEON_LOGIN_HTML_TEMPLATE.replace(
+        _AUTH_APP_NAME_PLACEHOLDER,
+        html_lib.escape(config.auth_app_name),
+        2,
+    )
+    html = html.replace(
+        _AUTH_APP_DESCRIPTION_PLACEHOLDER,
+        html_lib.escape(config.auth_app_description),
+        1,
+    )
+    html = html.replace(_AUTH_CONFIG_PLACEHOLDER, cfg_json, 1)
 
     response = HTMLResponse(content=html, status_code=200)
     response.headers["Cache-Control"] = "no-store"

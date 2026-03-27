@@ -120,7 +120,10 @@ describe('local auth routes', () => {
 
 describe('hosted Neon auth routes', () => {
   it('serves HTML auth shells in neon mode', async () => {
-    app = createApp({ config: neonConfig() as any, skipValidation: true })
+    app = createApp({
+      config: neonConfig({ authAppName: 'Child App <Alpha>' }) as any,
+      skipValidation: true,
+    })
 
     const login = await app.inject({ method: 'GET', url: '/auth/login?redirect_uri=/w/demo' })
     const signup = await app.inject({ method: 'GET', url: '/auth/signup?redirect_uri=/w/demo' })
@@ -132,6 +135,9 @@ describe('hosted Neon auth routes', () => {
     expect(login.statusCode).toBe(200)
     expect(login.headers['content-type']).toContain('text/html')
     expect(login.payload).toContain('Welcome back')
+    expect(login.payload).toContain('<title>Sign in — Child App &lt;Alpha&gt;</title>')
+    expect(login.payload).toContain('<h1 id="app-name">Child App &lt;Alpha&gt;</h1>')
+    expect(login.payload).not.toContain('<h1 id="app-name">Boring UI</h1>')
 
     expect(signup.statusCode).toBe(200)
     expect(signup.headers['content-type']).toContain('text/html')

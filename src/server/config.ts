@@ -4,6 +4,9 @@
  * Fail-closed: missing critical config crashes on startup with clear errors.
  */
 import { randomBytes } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { parse } from 'smol-toml'
 
 // --- Types ---
 
@@ -13,6 +16,12 @@ export type AgentPlacement = 'browser' | 'server'
 export type ControlPlaneProvider = 'local' | 'neon'
 
 export interface ServerConfig {
+  /** App identifier from boring.app.toml */
+  appId: string
+  /** App display name from boring.app.toml */
+  appName: string
+  /** App logo glyph from boring.app.toml */
+  appLogo: string
   /** HTTP port (default: 8000) */
   port: number
   /** Bind host (default: 0.0.0.0) */
@@ -73,6 +82,10 @@ export interface ServerConfig {
   flyWorkspaceApp: string | undefined
   /** Static file directory for serving built frontend (optional) */
   staticDir: string | undefined
+  /** Frontend feature flags from boring.app.toml */
+  frontendFeatures: Record<string, unknown>
+  /** Frontend panel config from boring.app.toml */
+  frontendPanels: Record<string, unknown>
 }
 
 // --- Constants ---
@@ -98,6 +111,36 @@ const DEFAULT_CORS_ORIGINS = [
 ]
 
 let warnedAboutGeneratedSessionSecret = false
+
+interface ParsedAppToml {
+  app?: {
+    id?: string
+    name?: string
+    logo?: string
+  }
+  workspace?: {
+    backend?: string
+  }
+  agent?: {
+    runtime?: string
+    placement?: string
+  }
+  auth?: {
+    session_cookie?: string
+    session_ttl?: number
+  }
+  frontend?: {
+    branding?: {
+      name?: string
+      logo?: string
+    }
+    features?: Record<string, unknown>
+    panels?: Record<string, unknown>
+    data?: {
+      backend?: string
+    }
+  }
+}
 
 // --- Helpers ---
 
@@ -179,9 +222,67 @@ function warnAboutGeneratedSessionSecret(): void {
   console.warn(GENERATED_SESSION_SECRET_WARNING)
 }
 
+function readAppToml(): ParsedAppToml {
+  const explicitPath = process.env.BUI_APP_TOML?.trim() || process.env.BORING_APP_TOML?.trim() || ''
+  const candidate = explicitPath || path.join(process.cwd(), 'boring.app.toml')
+  if (!candidate || !existsSync(candidate)) return {}
+
+  try {
+    const parsed = parse(readFileSync(candidate, 'utf8'))
+    if (parsed && typeof parsed === 'object') {
+      return parsed as ParsedAppToml
+    }
+  } catch {
+    return {}
+  }
+
+  return {}
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value as Record<string, unknown>
+}
+
+function resolveWorkspaceBackendFallback(appToml: ParsedAppToml): WorkspaceBackend {
+  const explicit = appToml.workspace?.backend?.trim().toLowerCase()
+  if (explicit === 'bwrap' || explicit === 'lightningfs' || explicit === 'justbash') {
+    return explicit
+  }
+
+  const frontendBackend = appToml.frontend?.data?.backend?.trim().toLowerCase()
+  if (frontendBackend === 'http') return 'bwrap'
+  if (frontendBackend === 'lightningfs' || frontendBackend === 'justbash') {
+    return frontendBackend
+  }
+
+  return 'bwrap'
+}
+
+function resolveAgentRuntimeFallback(appToml: ParsedAppToml): AgentRuntime {
+  const runtime = appToml.agent?.runtime?.trim().toLowerCase()
+  return runtime === 'ai-sdk' ? 'ai-sdk' : 'pi'
+}
+
+function resolveAgentPlacementFallback(appToml: ParsedAppToml): AgentPlacement {
+  const placement = appToml.agent?.placement?.trim().toLowerCase()
+  return placement === 'server' ? 'server' : 'browser'
+}
+
 // --- Main ---
 
 export function loadConfig(): ServerConfig {
+  const appToml = readAppToml()
+  const appId = appToml.app?.id?.trim() || 'boring-ui'
+  const appName =
+    appToml.frontend?.branding?.name?.trim() ||
+    appToml.app?.name?.trim() ||
+    'Boring UI'
+  const appLogo =
+    appToml.frontend?.branding?.logo?.trim() ||
+    appToml.app?.logo?.trim() ||
+    'B'
+
   // Session secret precedence: BORING_UI_SESSION_SECRET → BORING_SESSION_SECRET → auto-generate
   let sessionSecret = process.env.BORING_UI_SESSION_SECRET?.trim() || ''
   if (!sessionSecret) {
@@ -193,6 +294,9 @@ export function loadConfig(): ServerConfig {
   }
 
   return {
+    appId,
+    appName,
+    appLogo,
     port: envInt('PORT', 8000),
     host: envStr('HOST', '0.0.0.0'),
     databaseUrl: process.env.DATABASE_URL,
@@ -207,9 +311,15 @@ export function loadConfig(): ServerConfig {
     neonAuthBaseUrl: process.env.NEON_AUTH_BASE_URL,
     neonAuthJwksUrl: process.env.NEON_AUTH_JWKS_URL,
     controlPlaneProvider: normalizeControlPlaneProvider(),
-    workspaceBackend: (envStr('WORKSPACE_BACKEND', 'bwrap') as WorkspaceBackend),
-    agentRuntime: (envStr('AGENT_RUNTIME', 'pi') as AgentRuntime),
-    agentPlacement: (envStr('AGENT_PLACEMENT', 'browser') as AgentPlacement),
+    workspaceBackend: (
+      envStr('WORKSPACE_BACKEND', resolveWorkspaceBackendFallback(appToml)) as WorkspaceBackend
+    ),
+    agentRuntime: (
+      envStr('AGENT_RUNTIME', resolveAgentRuntimeFallback(appToml)) as AgentRuntime
+    ),
+    agentPlacement: (
+      envStr('AGENT_PLACEMENT', resolveAgentPlacementFallback(appToml)) as AgentPlacement
+    ),
     agentsMode: normalizeAgentsMode(),
     publicAppOrigin: normalizePublicOrigin(
       process.env.BORING_UI_PUBLIC_ORIGIN || process.env.PUBLIC_APP_ORIGIN,
@@ -220,17 +330,25 @@ export function loadConfig(): ServerConfig {
     githubAppPrivateKey: envOptionalMultiline('GITHUB_APP_PRIVATE_KEY'),
     githubAppSlug: normalizeGithubSlug(process.env.GITHUB_APP_SLUG),
     githubSyncEnabled: envBool('GITHUB_SYNC_ENABLED', true),
-    authSessionTtlSeconds: envInt('AUTH_SESSION_TTL_SECONDS', 86400),
-    authSessionCookieName: envStr('AUTH_SESSION_COOKIE_NAME', 'boring_session'),
+    authSessionTtlSeconds: envInt(
+      'AUTH_SESSION_TTL_SECONDS',
+      Number.isFinite(appToml.auth?.session_ttl) ? Number(appToml.auth?.session_ttl) : 86400,
+    ),
+    authSessionCookieName: envStr(
+      'AUTH_SESSION_COOKIE_NAME',
+      appToml.auth?.session_cookie?.trim() || 'boring_session',
+    ),
     authSessionSecureCookie: envBool('AUTH_SESSION_SECURE_COOKIE', false),
     authEmailProvider: normalizeEmailProvider(
       process.env.AUTH_EMAIL_PROVIDER || process.env.NEON_AUTH_EMAIL_PROVIDER,
     ),
-    authAppName: envStr('AUTH_APP_NAME', 'Boring UI'),
-    controlPlaneAppId: envStr('CONTROL_PLANE_APP_ID', 'boring-ui'),
+    authAppName: envStr('AUTH_APP_NAME', appName),
+    controlPlaneAppId: envStr('CONTROL_PLANE_APP_ID', appId),
     flyApiToken: process.env.FLY_API_TOKEN,
     flyWorkspaceApp: process.env.FLY_WORKSPACE_APP,
     staticDir: process.env.BORING_UI_STATIC_DIR || undefined,
+    frontendFeatures: asRecord(appToml.frontend?.features),
+    frontendPanels: asRecord(appToml.frontend?.panels),
   }
 }
 

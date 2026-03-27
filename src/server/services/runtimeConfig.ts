@@ -88,16 +88,16 @@ export function buildRuntimeConfigPayload(
 
   return {
     app: {
-      id: config.controlPlaneAppId || 'boring-ui',
-      name: config.authAppName || 'Boring UI',
-      logo: 'B',
+      id: config.appId || config.controlPlaneAppId || 'boring-ui',
+      name: config.appName || config.authAppName || 'Boring UI',
+      logo: config.appLogo || 'B',
     },
     frontend: {
       branding: {
-        name: config.authAppName || 'Boring UI',
-        logo: 'B',
+        name: config.appName || config.authAppName || 'Boring UI',
+        logo: config.appLogo || 'B',
       },
-      features: {},
+      features: config.frontendFeatures,
       data: {
         backend: dataBackend,
       },
@@ -106,7 +106,7 @@ export function buildRuntimeConfigPayload(
         runtime: config.agentRuntime,
         placement: config.agentPlacement,
       },
-      panels: {},
+      panels: config.frontendPanels,
       mode: {
         profile,
       },

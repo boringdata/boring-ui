@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { loadConfig, validateConfig, type ServerConfig } from '../config.js'
 
 async function importFreshConfigModule() {
@@ -204,6 +207,54 @@ describe('loadConfig', () => {
     process.env.NEON_AUTH_EMAIL_PROVIDER = 'off'
     const config = loadConfig()
     expect(config.authEmailProvider).toBe('none')
+  })
+
+  it('loads child app metadata and runtime fallbacks from BUI_APP_TOML', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'boring-ui-config-'))
+    const configPath = path.join(dir, 'boring.app.toml')
+    writeFileSync(configPath, `
+[app]
+id = "child-app"
+name = "Child App"
+logo = "C"
+
+[workspace]
+backend = "lightningfs"
+
+[agent]
+runtime = "pi"
+placement = "browser"
+
+[auth]
+session_cookie = "child_session"
+session_ttl = 1234
+
+[frontend.branding]
+name = "Child Branding"
+
+[frontend.features]
+agentRailMode = "all"
+
+[frontend.panels]
+notes = { component = "./panels/NotesPanel.jsx", title = "Notes" }
+`, 'utf8')
+    process.env.BUI_APP_TOML = configPath
+
+    try {
+      const config = loadConfig()
+      expect(config.appId).toBe('child-app')
+      expect(config.appName).toBe('Child Branding')
+      expect(config.appLogo).toBe('C')
+      expect(config.controlPlaneAppId).toBe('child-app')
+      expect(config.authAppName).toBe('Child Branding')
+      expect(config.authSessionCookieName).toBe('child_session')
+      expect(config.authSessionTtlSeconds).toBe(1234)
+      expect(config.workspaceBackend).toBe('lightningfs')
+      expect(config.frontendFeatures.agentRailMode).toBe('all')
+      expect(config.frontendPanels.notes).toBeDefined()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
