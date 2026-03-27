@@ -292,9 +292,16 @@ _reg(CheckSpec(
     description="pyproject.toml parses successfully",
 ))
 _reg(CheckSpec(
+    id="scaff.backend_runtime_typescript",
+    category="scaffolding", weight=4,
+    prerequisites=("scaff.toml_valid",),
+    must_pass=True,
+    description="must_pass: backend.type is typescript for the TS child-app eval lane",
+))
+_reg(CheckSpec(
     id="scaff.backend_entry_exists",
     category="scaffolding", weight=3,
-    prerequisites=("scaff.toml_valid",),
+    prerequisites=("scaff.backend_runtime_typescript",),
     description="Backend entry resolves to a real file/module",
 ))
 _reg(CheckSpec(
@@ -415,6 +422,13 @@ _reg(CheckSpec(
     description="Local /info returns valid JSON with required fields matching manifest",
 ))
 _reg(CheckSpec(
+    id="local.notes_crud",
+    category="local_dev", weight=4,
+    must_pass=True,
+    prerequisites=("local.clean_room_dev_starts",),
+    description="must_pass: Local /notes create/list/delete flow works with shared persistence semantics",
+))
+_reg(CheckSpec(
     id="local.config_200",
     category="local_dev", weight=2,
     prerequisites=("local.clean_room_dev_starts",),
@@ -431,6 +445,12 @@ _reg(CheckSpec(
     category="local_dev", weight=2,
     prerequisites=("local.capabilities_200",),
     description="Capabilities payload has expected structure",
+))
+_reg(CheckSpec(
+    id="local.caps_auth_neon",
+    category="local_dev", weight=3,
+    prerequisites=("local.capabilities_200",),
+    description="Local capabilities report Neon auth rather than insecure local auth",
 ))
 _reg(CheckSpec(
     id="local.no_startup_import_errors",
@@ -522,6 +542,14 @@ _reg(CheckSpec(
     description="Live /info JSON matches the required contract",
 ))
 _reg(CheckSpec(
+    id="deploy.notes_crud",
+    category="deployment", weight=4,
+    must_pass=True,
+    prerequisites=("deploy.health_200",),
+    retry_policy=DEPLOY_RETRY,
+    description="must_pass: Live /notes create/list/delete flow works across deployed instances",
+))
+_reg(CheckSpec(
     id="deploy.health_stable",
     category="deployment", weight=3,
     prerequisites=("deploy.health_200",),
@@ -558,7 +586,7 @@ _reg(CheckSpec(
 _reg(CheckSpec(
     id="deploy.branding_match_if_profiled",
     category="deployment", weight=1,
-    description="Only applicable when profile explicitly includes frontend branding verification",
+    description="Live config and auth shell branding match boring.app.toml",
 ))
 
 # -------------------------------------------------------------------

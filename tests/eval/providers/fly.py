@@ -10,7 +10,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
-from tests.eval.fly_cli import resolve_fly_cli
+from tests.eval.fly_cli import fly_cli_env, resolve_fly_cli
 
 
 @dataclass
@@ -35,6 +35,7 @@ class FlyAdapter:
             r = subprocess.run(
                 [self._cmd, *args],
                 capture_output=True, text=True, timeout=timeout,
+                env=fly_cli_env(),
             )
             return r.returncode, r.stdout.strip(), r.stderr.strip()
         except FileNotFoundError:
@@ -66,11 +67,19 @@ class FlyAdapter:
 
     def app_exists(self, app_name: str) -> bool:
         """Check if a Fly app exists."""
-        rc, _, _ = self._run(["apps", "show", app_name, "--json"])
-        return rc == 0
+        return any(app.name == app_name for app in self.list_apps())
 
     def app_url(self, app_name: str) -> str | None:
         """Derive the public URL for a Fly app."""
+        for app in self.list_apps():
+            if app.name != app_name:
+                continue
+            hostname = (app.hostname or "").strip()
+            if hostname:
+                if hostname.startswith("http://") or hostname.startswith("https://"):
+                    return hostname
+                return f"https://{hostname}"
+            return f"https://{app_name}.fly.dev"
         if self.app_exists(app_name):
             return f"https://{app_name}.fly.dev"
         return None

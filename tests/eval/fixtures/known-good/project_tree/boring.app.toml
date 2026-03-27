@@ -1,6 +1,18 @@
 [app]
 name = "ce-0324-goodgood"
 id = "ce-0324-goodgood"
+logo = "C"
 
 [backend]
-entry = "ce_0324_abcd1234.api:create_app"
+type = "typescript"
+entry = "src/server/index.ts"
+
+[frontend.branding]
+name = "ce-0324-goodgood"
+logo = "C"
+
+[auth]
+provider = "neon"
+
+[deploy]
+platform = "fly"

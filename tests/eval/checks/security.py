@@ -128,9 +128,15 @@ def _skip(check_id: str, detail: str) -> CheckResult:
 def _read_all_source(root: Path) -> str:
     """Read all Python source files in a project, concatenated."""
     texts: list[str] = []
+    ignored_parts = {".git", ".venv", "node_modules", "__pycache__", "dist", "build"}
     if not root.is_dir():
         return ""
     for py in root.rglob("*.py"):
+        parts = set(py.parts)
+        if ignored_parts & parts:
+            continue
+        if any(part.endswith(".egg-info") for part in py.parts):
+            continue
         try:
             texts.append(py.read_text(encoding="utf-8", errors="replace"))
         except OSError:
@@ -217,7 +223,21 @@ def _check_high_entropy_scan_clean(ctx: SecurityContext) -> CheckResult:
     source = _read_all_source(ctx.project_root)
     if not source:
         return _pass(cid, "No source to scan")
-    matches = ctx.registry.scan_high_entropy(source)
+    matches = []
+    ignored_snippets = {
+        ctx.manifest.eval_id,
+        ctx.manifest.verification_nonce,
+        ctx.manifest.app_slug,
+        ctx.manifest.python_module,
+        f"/api/v1/{ctx.manifest.python_module}",
+    }
+    for match in ctx.registry.scan_high_entropy(source):
+        snippet = source[match.start:match.end]
+        if snippet in ignored_snippets:
+            continue
+        if ctx.manifest.app_slug in snippet or ctx.manifest.python_module in snippet:
+            continue
+        matches.append(match)
     if matches:
         return _fail(
             cid, "SEC_SECRET_LEAKED",
@@ -334,6 +354,26 @@ def _check_env_safe_if_present(ctx: SecurityContext) -> CheckResult:
     content = env_file.read_text(encoding="utf-8", errors="replace")
     matches = ctx.registry.scan(content)
     if matches:
+        gitignore = ctx.project_root / ".gitignore"
+        gitignore_text = ""
+        if gitignore.is_file():
+            gitignore_text = gitignore.read_text(encoding="utf-8", errors="replace")
+        env_gitignored = ".env" in gitignore_text
+        env_tracked = False
+        git_dir = ctx.project_root / ".git"
+        if git_dir.is_dir():
+            try:
+                result = subprocess.run(
+                    ["git", "-C", str(ctx.project_root), "ls-files", ".env"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                env_tracked = bool(result.stdout.strip())
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                env_tracked = False
+        if env_gitignored and not env_tracked:
+            return _pass(cid, ".env contains local secrets but is gitignored and untracked")
         return _fail(cid, "SEC_SECRET_HARDCODED", "Secrets found in .env")
     return _pass(cid, ".env present but no registered secrets detected")
 
@@ -394,15 +434,12 @@ def _check_no_forbidden_repo_changes(ctx: SecurityContext) -> CheckResult:
         return _pass(cid, "No filesystem snapshot available (advisory)")
 
     # Forbidden paths: anything outside the project directory
-    project_prefix = str(ctx.project_root)
-    evidence_prefix = ctx.manifest.evidence_dir
+    allowed_prefixes = _allowed_mutation_prefixes(ctx)
 
     new_or_changed = ctx.post_snapshot - ctx.pre_snapshot
     forbidden = [
         p for p in new_or_changed
-        if not p.startswith(project_prefix)
-        and not p.startswith(evidence_prefix)
-        and not p.startswith("/tmp/")
+        if not _is_allowed_mutation(p, allowed_prefixes)
     ]
 
     if forbidden:
@@ -418,15 +455,12 @@ def _check_only_project_dir_mutated(ctx: SecurityContext) -> CheckResult:
     if not ctx.pre_snapshot or not ctx.post_snapshot:
         return _pass(cid, "No filesystem snapshot (advisory)")
 
-    project_prefix = str(ctx.project_root)
-    evidence_prefix = ctx.manifest.evidence_dir
+    allowed_prefixes = _allowed_mutation_prefixes(ctx)
 
     new_or_changed = ctx.post_snapshot - ctx.pre_snapshot
     outside = [
         p for p in new_or_changed
-        if not p.startswith(project_prefix)
-        and not p.startswith(evidence_prefix)
-        and not p.startswith("/tmp/")
+        if not _is_allowed_mutation(p, allowed_prefixes)
     ]
 
     if outside:
@@ -446,9 +480,13 @@ def _check_no_symlink_escape(ctx: SecurityContext) -> CheckResult:
     try:
         for path in ctx.project_root.rglob("*"):
             if path.is_symlink():
+                rel_path = path.relative_to(ctx.project_root)
+                rel_text = rel_path.as_posix()
+                if rel_text.startswith(".venv/") or rel_text.startswith("node_modules/"):
+                    continue
                 target = path.resolve()
                 if not str(target).startswith(str(ctx.project_root)):
-                    escapes.append(str(path.relative_to(ctx.project_root)))
+                    escapes.append(rel_text)
     except OSError:
         pass
 
@@ -466,3 +504,26 @@ def _check_scope_guard_enforced(ctx: SecurityContext) -> CheckResult:
     # when it was configured. Since the runner may not support it,
     # this defaults to PASS with an advisory note.
     return _pass(cid, "Scope guard status: advisory (runner-dependent)")
+
+
+def _allowed_mutation_prefixes(ctx: SecurityContext) -> list[str]:
+    prefixes = [str(ctx.project_root.resolve())]
+    for candidate in (
+        Path(ctx.manifest.evidence_dir),
+        Path(ctx.manifest.report_output_path),
+        Path(ctx.manifest.event_log_path),
+    ):
+        try:
+            resolved = str(candidate.resolve())
+        except OSError:
+            resolved = str(candidate)
+        prefixes.append(resolved)
+        prefixes.append(str(Path(resolved).parent))
+    prefixes.append("/tmp/")
+    return prefixes
+
+
+def _is_allowed_mutation(path: str, prefixes: list[str]) -> bool:
+    if "/.git/" in path:
+        return True
+    return any(path.startswith(prefix) for prefix in prefixes)

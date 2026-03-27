@@ -157,35 +157,81 @@ def _manifest_for_fixture(tmp_path: Path, fixture_name: str) -> RunManifest:
 
 def _materialize_project(manifest: RunManifest, fixture_name: str) -> None:
     root = Path(manifest.project_root)
+    note = {
+        "id": "note-1",
+        "text": "hello from fixture",
+        "created_at": "2026-03-26T00:00:00+00:00",
+    }
     files = {
         ".gitignore": ".env\n.boring/\n__pycache__/\n",
         ".boring/neon-config.env": f"NEON_PROJECT_ID=neon-{manifest.app_slug}\n",
         "pyproject.toml": "[project]\nname = \"fixture-app\"\nversion = \"0.1.0\"\n",
         "boring.app.toml": (
             f"[app]\nname = \"{manifest.app_slug}\"\nid = \"{manifest.app_slug}\"\n\n"
-            f"[backend]\nentry = \"{manifest.python_module}.api:create_app\"\n"
-            f"routers = [\"{manifest.python_module}.routers.status:router\"]\n\n"
+            "logo = \"C\"\n\n"
+            "[auth]\nprovider = \"neon\"\n\n"
+            f"[frontend.branding]\nname = \"{manifest.app_slug}\"\nlogo = \"C\"\n\n"
+            "[backend]\n"
+            "type = \"typescript\"\n"
+            "entry = \"src/server/index.ts\"\n\n"
             "[deploy]\nplatform = \"fly\"\n"
         ),
-        f"src/{manifest.python_module}/__init__.py": "",
-        f"src/{manifest.python_module}/api.py": (
-            "from fastapi import FastAPI\n"
-            f"from .routers.status import router as status_router\n\n"
-            "def create_app():\n"
-            "    app = FastAPI()\n"
-            "    app.include_router(status_router)\n"
-            "    return app\n"
+        "src/server/index.ts": (
+            "import { registerStatusRoutes } from './routes/status.js'\n"
+            "import { registerNotesRoutes } from './routes/notes.js'\n\n"
+            "export function createApp() {\n"
+            "  const app = {\n"
+            "    routes: [],\n"
+            "    get(path, handler) {\n"
+            "      this.routes.push({ method: 'GET', path, handler })\n"
+            "    },\n"
+            "    post(path, handler) {\n"
+            "      this.routes.push({ method: 'POST', path, handler })\n"
+            "    },\n"
+            "    delete(path, handler) {\n"
+            "      this.routes.push({ method: 'DELETE', path, handler })\n"
+            "    },\n"
+            "    listen() {\n"
+            "      return undefined\n"
+            "    },\n"
+            "  }\n"
+            "  registerStatusRoutes(app)\n"
+            "  registerNotesRoutes(app)\n"
+            "  return app\n"
+            "}\n\n"
+            "const app = createApp()\n"
+            "app.listen()\n"
         ),
-        f"src/{manifest.python_module}/routers/__init__.py": "",
-        f"src/{manifest.python_module}/routers/status.py": (
-            "from fastapi import APIRouter\n\n"
-            "router = APIRouter()\n\n"
-            "@router.get('/health')\n"
-            "def health():\n"
-            f"    return {{'ok': True, 'app': '{manifest.app_slug}', 'eval_id': '{manifest.eval_id}', 'verification_nonce': '{manifest.verification_nonce}'}}\n\n"
-            "@router.get('/info')\n"
-            "def info():\n"
-            f"    return {{'name': '{manifest.app_slug}', 'version': '0.1.0', 'eval_id': '{manifest.eval_id}'}}\n"
+        "src/server/routes/status.ts": (
+            "export function registerStatusRoutes(app) {\n"
+            "  app.get('/health', async () => ({\n"
+            "    ok: true,\n"
+            f"    app: '{manifest.app_slug}',\n"
+            f"    eval_id: '{manifest.eval_id}',\n"
+            f"    verification_nonce: '{manifest.verification_nonce}',\n"
+            "    custom: true,\n"
+            "  }))\n\n"
+            "  app.get('/info', async () => ({\n"
+            f"    name: '{manifest.app_slug}',\n"
+            "    version: '0.1.0',\n"
+            f"    eval_id: '{manifest.eval_id}',\n"
+            "  }))\n"
+            "}\n"
+        ),
+        "src/server/routes/notes.ts": (
+            "let notes = []\n\n"
+            "export function registerNotesRoutes(app) {\n"
+            "  app.post('/notes', async (_req) => {\n"
+            f"    const note = {json.dumps(note)}\n"
+            "    notes.push(note)\n"
+            "    return note\n"
+            "  })\n\n"
+            "  app.get('/notes', async () => notes)\n\n"
+            "  app.delete('/notes/:id', async (req) => {\n"
+            "    notes = notes.filter((note) => note.id !== req.params.id)\n"
+            "    return { deleted: true }\n"
+            "  })\n"
+            "}\n"
         ),
     }
     make_project_tree(root, files)
@@ -197,8 +243,10 @@ def _materialize_project(manifest: RunManifest, fixture_name: str) -> None:
             encoding="utf-8",
         )
     elif fixture_name == "missing-route":
-        (root / "src" / manifest.python_module / "routers" / "status.py").write_text(
-            "from fastapi import APIRouter\n\nrouter = APIRouter()\n",
+        (root / "src" / "server" / "routes" / "status.ts").write_text(
+            "export function registerStatusRoutes(_app) {\n"
+            "  return undefined\n"
+            "}\n",
             encoding="utf-8",
         )
 
@@ -224,6 +272,11 @@ def _invalid_preflight_checks() -> list[CheckResult]:
 
 def _local_dev_context(manifest: RunManifest, fixture_name: str, command_log: list) -> LocalDevContext:
     doctor_seen = any("bui doctor" in cmd.command for cmd in command_log)
+    note = {
+        "id": "note-1",
+        "text": "hello from fixture",
+        "created_at": "2026-03-26T00:00:00+00:00",
+    }
     if fixture_name == "env-missing":
         return LocalDevContext(
             manifest,
@@ -259,9 +312,29 @@ def _local_dev_context(manifest: RunManifest, fixture_name: str, command_log: li
             else None
         ),
         info_status=status,
-        config_response={"app": manifest.app_slug} if status == 200 else None,
+        notes_create_response=note if status == 200 else None,
+        notes_create_status=200 if status == 200 else 404,
+        notes_list_response=[note] if status == 200 else None,
+        notes_list_status=200 if status == 200 else 404,
+        notes_delete_response={"deleted": True} if status == 200 else None,
+        notes_delete_status=200 if status == 200 else 404,
+        notes_after_delete_response=[] if status == 200 else None,
+        notes_after_delete_status=200 if status == 200 else 404,
+        config_response=(
+            {
+                "app": {"name": manifest.app_slug, "logo": "C"},
+                "frontend": {"branding": {"name": manifest.app_slug, "logo": "C"}},
+                "auth": {"appName": manifest.app_slug, "provider": "neon"},
+            }
+            if status == 200
+            else None
+        ),
         config_status=200 if status == 200 else 404,
-        capabilities_response={"features": {}, "routers": ["status"], "version": "0.1.0"} if status == 200 else None,
+        capabilities_response=(
+            {"features": {}, "routers": ["status"], "version": "0.1.0", "auth": {"provider": "neon"}}
+            if status == 200
+            else None
+        ),
         capabilities_status=200 if status == 200 else 404,
         clean_shutdown=True,
     )
@@ -272,6 +345,11 @@ def _deployment_context(manifest: RunManifest, fixture_name: str) -> DeploymentC
         return DeploymentContext(manifest, deployed_url=None, responses={})
 
     deployed_url = f"https://{manifest.app_slug}.fly.dev"
+    note = {
+        "id": "note-1",
+        "text": "hello from fixture",
+        "created_at": "2026-03-26T00:00:00+00:00",
+    }
     health_status = 200
     info_status = 200
     if fixture_name == "broken-deploy":
@@ -283,8 +361,20 @@ def _deployment_context(manifest: RunManifest, fixture_name: str) -> DeploymentC
 
     responses = {
         "/": (200, "<html><body>fixture</body></html>"),
-        "/__bui/config": (200, {"app": manifest.app_slug}),
-        "/api/capabilities": (200, {"features": {}, "runtime_config": {}, "version": "0.1.0"}),
+        "/__bui/config": (
+            200,
+            {
+                "app": {"name": manifest.app_slug, "logo": "C"},
+                "frontend": {"branding": {"name": manifest.app_slug, "logo": "C"}},
+                "auth": {"appName": manifest.app_slug, "provider": "neon"},
+            },
+        ),
+        "/api/capabilities": (200, {"features": {}, "runtime_config": {}, "version": "0.1.0", "auth": {"provider": "neon"}}),
+        "/auth/login": (
+            200,
+            f"<html><head><title>Sign in — {manifest.app_slug}</title></head>"
+            f"<body><h1 id=\"app-name\">{manifest.app_slug}</h1></body></html>",
+        ),
         "/health": (
             health_status,
             (
@@ -306,6 +396,9 @@ def _deployment_context(manifest: RunManifest, fixture_name: str) -> DeploymentC
                 else {"error": "fixture failure"}
             ),
         ),
+        "POST /notes": (200, note),
+        "GET /notes": [(200, [note]), (200, [])],
+        "DELETE /notes/note-1": (200, {"deleted": True}),
     }
     return DeploymentContext(
         manifest,
@@ -530,7 +623,7 @@ def test_run_eval_uses_real_check_modules_instead_of_stub(tmp_path, monkeypatch)
                 info_status=200,
                 config_response={"app": manifest.app_slug},
                 config_status=200,
-                capabilities_response={"features": {}, "routers": ["status"], "version": "0.1.0"},
+                capabilities_response={"features": {}, "routers": ["status"], "version": "0.1.0", "auth": {"provider": "neon"}},
                 capabilities_status=200,
                 clean_shutdown=True,
             ),
@@ -565,6 +658,64 @@ def test_run_eval_uses_real_check_modules_instead_of_stub(tmp_path, monkeypatch)
     assert by_id["deploy.health_200"].status == CheckStatus.SKIP
     assert "not yet wired" not in log_text
     assert "stub — no resources to clean" not in log_text
+
+
+def test_run_eval_recovers_when_local_validation_times_out_after_agent_timeout(tmp_path, monkeypatch):
+    class TimedOutMaterializingRunner:
+        @property
+        def name(self) -> str:
+            return "timed-out-materializing"
+
+        async def run(self, manifest: RunManifest, prompt: str, timeout_s: int = 600):
+            _materialize_project(manifest, "known-good")
+            return type("RunResultLike", (), {
+                "exit_code": -9,
+                "timed_out": True,
+                "stdout": "",
+                "stderr": "",
+                "final_response": "",
+                "command_log": [],
+                "elapsed_s": 0.1,
+            })()
+
+        async def cleanup(self) -> None:
+            return None
+
+    async def timed_out_local_dev_validation(manifest: RunManifest, timeout_s: int):
+        raise asyncio.TimeoutError
+
+    class FakeFlyAdapter:
+        def app_exists(self, app_name: str) -> bool:
+            return False
+
+        def app_url(self, app_name: str) -> str | None:
+            return None
+
+    monkeypatch.setattr(
+        eval_child_app_module,
+        "_run_local_dev_validation",
+        timed_out_local_dev_validation,
+    )
+    monkeypatch.setattr(eval_child_app_module, "FlyAdapter", FakeFlyAdapter)
+
+    evidence_dir = tmp_path / "evidence"
+    result = asyncio.run(run_eval(
+        profile="core",
+        evidence_dir=str(evidence_dir),
+        projects_root=str(tmp_path),
+        agent_timeout=1,
+        verify_timeout=1,
+        skip_deploy=True,
+        skip_cleanup=True,
+        runner=TimedOutMaterializingRunner(),
+        quiet=True,
+    ))
+
+    state = _load_run_state(str(evidence_dir / "run_state.json"))
+
+    assert result.status == CheckStatus.FAIL
+    assert state["phase"] == "complete"
+    assert (evidence_dir / "eval_result.json").exists()
 
 
 @pytest.mark.parametrize("fixture_name", list(FIXTURE_MANIFESTS))

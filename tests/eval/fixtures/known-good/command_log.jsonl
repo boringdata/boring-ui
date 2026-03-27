@@ -1,3 +1,4 @@
 {"command": "bui init ce-0324-goodgood", "exit_code": 0, "phase": "scaffold"}
 {"command": "bui doctor", "exit_code": 0, "phase": "local_validation"}
+{"command": "bui neon setup --region aws-us-east-1", "exit_code": 0, "phase": "neon_setup"}
 {"command": "bui deploy", "exit_code": 0, "phase": "deploy"}

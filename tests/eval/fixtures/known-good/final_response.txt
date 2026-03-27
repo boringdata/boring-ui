@@ -1,4 +1,4 @@
-Scaffolded app and deployed successfully.
+Scaffolded a TypeScript child app, verified it locally with Neon, and deployed it successfully.
 BEGIN_EVAL_REPORT_JSON
 {
   "eval_id": "child-eval-20260324T120000Z-goodgood",
@@ -13,7 +13,7 @@ BEGIN_EVAL_REPORT_JSON
   "fly_app_name": "ce-0324-goodgood",
   "neon_project_id": "neon-goodgood",
   "vault_secret_refs": [{"name": "DATABASE_URL", "vault": "secret/agent/app/demo", "field": "database_url"}],
-  "commands_run": ["bui init", "bui doctor", "bui deploy"],
+  "commands_run": ["bui init", "bui doctor", "bui neon setup", "bui deploy"],
   "steps": {
     "scaffold": {"status": "succeeded", "attempted": true},
     "local_validate": {"status": "succeeded", "attempted": true},

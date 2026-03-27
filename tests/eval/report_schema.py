@@ -1,7 +1,12 @@
 """Machine-readable response schema for the agent's final eval report.
 
-The agent wraps its structured report between ``BEGIN_EVAL_REPORT_JSON``
-and ``END_EVAL_REPORT_JSON`` markers.  This module defines:
+The agent emits its structured report in two places:
+
+- final response text, wrapped between ``BEGIN_EVAL_REPORT_JSON`` and
+  ``END_EVAL_REPORT_JSON`` markers
+- ``report_output_path`` on disk as plain JSON without markers
+
+This module defines:
 
 - ``REPORT_SCHEMA``: JSON Schema (draft 2020-12) for the report payload.
 - ``validate_report(json_dict)``: Validate against the schema.
@@ -303,6 +308,16 @@ def extract_report_from_text(text: str) -> dict[str, Any] | None:
     m = _BARE_RE.search(text)
     if m:
         return _try_parse(m.group(1).strip())
+
+    # Strategy 4: scan for any decodable nested JSON object containing eval_id
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text):
+        try:
+            obj, _ = decoder.raw_decode(text[match.start():])
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(obj, dict) and "eval_id" in obj:
+            return obj
 
     return None
 

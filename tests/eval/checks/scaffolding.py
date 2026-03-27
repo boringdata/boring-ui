@@ -47,7 +47,7 @@ class ScaffoldingContext:
 # ---------------------------------------------------------------------------
 
 def run_scaffolding_checks(manifest: RunManifest) -> list[CheckResult]:
-    """Run all 13 scaffolding checks and return results."""
+    """Run all scaffolding checks and return results."""
     ctx = ScaffoldingContext(manifest)
     results: list[CheckResult] = []
 
@@ -57,6 +57,7 @@ def run_scaffolding_checks(manifest: RunManifest) -> list[CheckResult]:
     results.append(_check_name_matches(ctx))
     results.append(_check_id_matches(ctx))
     results.append(_check_pyproject_valid(ctx))
+    results.append(_check_backend_runtime_typescript(ctx))
     results.append(_check_backend_entry_exists(ctx))
     results.append(_check_app_factory_or_entrypoint(ctx))
     results.append(_check_routers_dir_or_equivalent(ctx))
@@ -206,21 +207,31 @@ def _check_backend_entry_exists(ctx: ScaffoldingContext) -> CheckResult:
     if not entry:
         return _fail(cid, "SCAFF_ENTRY_MISSING", "[backend].entry not set")
 
-    # entry format: "module.path:factory" — resolve module path
-    module_path = entry.split(":")[0]
-    file_path = ctx.project_root / "src" / module_path.replace(".", "/")
-
-    # Check as package (__init__.py) or module (.py)
-    candidates = [
-        file_path.with_suffix(".py"),
-        file_path / "__init__.py",
-    ]
-    # Also check without src/ prefix
-    alt_path = ctx.project_root / module_path.replace(".", "/")
-    candidates.extend([
-        alt_path.with_suffix(".py"),
-        alt_path / "__init__.py",
-    ])
+    candidates: list[Path] = []
+    if ":" in entry:
+        module_path = entry.split(":")[0]
+        file_path = ctx.project_root / "src" / module_path.replace(".", "/")
+        candidates.extend([
+            file_path.with_suffix(".py"),
+            file_path.with_suffix(".ts"),
+            file_path.with_suffix(".js"),
+            file_path / "__init__.py",
+        ])
+        alt_path = ctx.project_root / module_path.replace(".", "/")
+        candidates.extend([
+            alt_path.with_suffix(".py"),
+            alt_path.with_suffix(".ts"),
+            alt_path.with_suffix(".js"),
+            alt_path / "__init__.py",
+        ])
+    else:
+        entry_path = ctx.project_root / str(entry)
+        candidates.extend([
+            entry_path,
+            entry_path.with_suffix(".ts"),
+            entry_path.with_suffix(".js"),
+            entry_path.with_suffix(".py"),
+        ])
 
     for candidate in candidates:
         if candidate.is_file():
@@ -237,19 +248,23 @@ def _check_app_factory_or_entrypoint(ctx: ScaffoldingContext) -> CheckResult:
     if ctx.toml_data is None:
         return _skip(cid, "TOML not parsed", blocked_by=["scaff.toml_valid"])
 
-    # Search for create_app in Python files
-    for py_file in ctx.project_root.rglob("*.py"):
+    for source_file in _iter_source_files(ctx.project_root):
         try:
-            content = py_file.read_text(encoding="utf-8", errors="replace")
-            if "def create_app" in content or "create_app" in content:
+            content = source_file.read_text(encoding="utf-8", errors="replace")
+            if (
+                "def create_app" in content
+                or "create_app" in content
+                or "createApp(" in content
+                or "app.listen(" in content
+            ):
                 return _pass(
                     cid,
-                    f"create_app found in {py_file.relative_to(ctx.project_root)}",
+                    f"Entrypoint found in {source_file.relative_to(ctx.project_root)}",
                 )
         except OSError:
             continue
 
-    return _fail(cid, "SCAFF_ENTRY_MISSING", "No create_app function found in project")
+    return _fail(cid, "SCAFF_ENTRY_MISSING", "No backend entrypoint pattern found in project")
 
 
 def _check_routers_dir_or_equivalent(ctx: ScaffoldingContext) -> CheckResult:
@@ -260,14 +275,21 @@ def _check_routers_dir_or_equivalent(ctx: ScaffoldingContext) -> CheckResult:
         if any(m.is_dir() for m in matches):
             return _pass(cid, f"Found routing directory: {pattern}")
 
-    # Fallback: any .py file with FastAPI/Flask router patterns
-    for py_file in ctx.project_root.rglob("*.py"):
+    # Fallback: any source file with route patterns
+    for source_file in _iter_source_files(ctx.project_root):
         try:
-            content = py_file.read_text(encoding="utf-8", errors="replace")
-            if "APIRouter" in content or "Blueprint" in content or "@app.route" in content:
+            content = source_file.read_text(encoding="utf-8", errors="replace")
+            if (
+                "APIRouter" in content
+                or "Blueprint" in content
+                or "@app.route" in content
+                or "app.get(" in content
+                or "app.post(" in content
+                or "fastify.get(" in content
+            ):
                 return _pass(
                     cid,
-                    f"Router pattern found in {py_file.relative_to(ctx.project_root)}",
+                    f"Router pattern found in {source_file.relative_to(ctx.project_root)}",
                 )
         except OSError:
             continue
@@ -284,9 +306,9 @@ def _check_custom_router_impl(ctx: ScaffoldingContext) -> CheckResult:
     found_info = False
     found_nonce = False
 
-    for py_file in ctx.project_root.rglob("*.py"):
+    for source_file in _iter_source_files(ctx.project_root):
         try:
-            content = py_file.read_text(encoding="utf-8", errors="replace")
+            content = source_file.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
 
@@ -327,10 +349,10 @@ def _check_custom_router_mounted(ctx: ScaffoldingContext) -> CheckResult:
         encoding="utf-8", errors="replace"
     ) if (ctx.project_root / "boring.app.toml").exists() else ""
 
-    # Look for router registration in Python
-    for py_file in ctx.project_root.rglob("*.py"):
+    # Look for router registration in source files
+    for source_file in _iter_source_files(ctx.project_root):
         try:
-            content = py_file.read_text(encoding="utf-8", errors="replace")
+            content = source_file.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
 
@@ -341,10 +363,12 @@ def _check_custom_router_mounted(ctx: ScaffoldingContext) -> CheckResult:
             "mount(",
             ".include(",
             "app.router",
-        ]):
+            "app.register(",
+            "fastify.register(",
+        ]) or re.search(r"register[A-Za-z0-9_]+Routes\(", content):
             return _pass(
                 cid,
-                f"Router mounting found in {py_file.relative_to(ctx.project_root)}",
+                f"Router mounting found in {source_file.relative_to(ctx.project_root)}",
             )
 
     # TOML-based routing
@@ -353,7 +377,27 @@ def _check_custom_router_mounted(ctx: ScaffoldingContext) -> CheckResult:
 
     return _fail(
         cid, "SCAFF_ROUTE_MISSING",
-        "No router mounting pattern found in Python or TOML",
+        "No router mounting pattern found in source or TOML",
+    )
+
+
+def _check_backend_runtime_typescript(ctx: ScaffoldingContext) -> CheckResult:
+    cid = "scaff.backend_runtime_typescript"
+    if ctx.toml_data is None:
+        return _skip(cid, "TOML not parsed", blocked_by=["scaff.toml_valid"])
+
+    backend = ctx.toml_data.get("backend", {})
+    backend_type = str(backend.get("type", "") or "").strip().lower()
+    if backend_type in {"typescript", "ts"}:
+        return _pass(cid, f'backend.type={backend_type!r}')
+
+    if not backend_type:
+        return _fail(cid, "SCAFF_TOML_FIELD_MISSING", "[backend].type must be set to \"typescript\"")
+
+    return _fail(
+        cid,
+        "SCAFF_TOML_FIELD_MISMATCH",
+        f'[backend].type={backend_type!r}, expected "typescript"',
     )
 
 
@@ -412,3 +456,10 @@ def _check_deploy_platform_fly(ctx: ScaffoldingContext) -> CheckResult:
 def _normalize(s: str) -> str:
     """Normalize a name for comparison (lowercase, replace hyphens with underscores)."""
     return s.lower().replace("-", "_").replace(" ", "_")
+
+
+def _iter_source_files(project_root: Path) -> list[Path]:
+    files: list[Path] = []
+    for pattern in ("*.py", "*.ts", "*.tsx", "*.js", "*.jsx"):
+        files.extend(project_root.rglob(pattern))
+    return files

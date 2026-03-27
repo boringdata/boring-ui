@@ -48,30 +48,27 @@ class TestFlyCliDiscovery:
 class TestFlyAdapter:
     def test_app_exists_returns_true_for_known_app(self, monkeypatch):
         adapter = FlyAdapter(fly_cmd="fly")
-        calls: list[list[str]] = []
-
-        def fake_run(args, timeout=30):
-            calls.append(args)
-            return 0, "{}", ""
-
-        monkeypatch.setattr(adapter, "_run", fake_run)
+        monkeypatch.setattr(
+            adapter,
+            "list_apps",
+            lambda prefix=None: [SimpleNamespace(name="known-app", hostname="known-app.fly.dev")],
+        )
 
         assert adapter.app_exists("known-app") is True
-        assert calls == [["apps", "show", "known-app", "--json"]]
 
     def test_app_exists_returns_false_for_unknown_app(self, monkeypatch):
         adapter = FlyAdapter(fly_cmd="fly")
-        monkeypatch.setattr(
-            adapter,
-            "_run",
-            lambda args, timeout=30: (1, "", "not found"),
-        )
+        monkeypatch.setattr(adapter, "list_apps", lambda prefix=None: [])
 
         assert adapter.app_exists("missing-app") is False
 
     def test_app_url_derives_fly_hostname(self, monkeypatch):
         adapter = FlyAdapter(fly_cmd="fly")
-        monkeypatch.setattr(adapter, "app_exists", lambda app_name: app_name == "demo")
+        monkeypatch.setattr(
+            adapter,
+            "list_apps",
+            lambda prefix=None: [SimpleNamespace(name="demo", hostname="demo.fly.dev")],
+        )
 
         assert adapter.app_url("demo") == "https://demo.fly.dev"
         assert adapter.app_url("missing") is None

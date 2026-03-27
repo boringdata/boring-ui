@@ -14,7 +14,7 @@ from typing import Any
 
 from tests.eval.check_catalog import CATALOG
 from tests.eval.contracts import CheckResult, RunManifest
-from tests.eval.fly_cli import resolve_fly_cli
+from tests.eval.fly_cli import fly_cli_env, resolve_fly_api_token, resolve_fly_cli
 from tests.eval.reason_codes import Attribution, CheckStatus
 
 
@@ -75,9 +75,13 @@ def _invalid(check_id: str, reason_code: str, detail: str = "") -> CheckResult:
     )
 
 
-def _run_cmd(cmd: list[str], timeout: int = 10) -> tuple[int, str, str]:
+def _run_cmd(
+    cmd: list[str],
+    timeout: int = 10,
+    env: dict[str, str] | None = None,
+) -> tuple[int, str, str]:
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         return r.returncode, r.stdout.strip(), r.stderr.strip()
     except FileNotFoundError:
         return -1, "", f"not found: {cmd[0]}"
@@ -108,9 +112,10 @@ def _check_fly_available(ctx: PreflightContext) -> CheckResult:
             "ENV_FLY_AUTH",
             "fly/flyctl CLI not found (checked FLYCTL_BIN, PATH, and ~/.fly/bin)",
         )
-    if os.environ.get("FLY_API_TOKEN"):
-        return _pass(cid, "Fly CLI + FLY_API_TOKEN set")
-    rc, _, _ = _run_cmd([fly, "auth", "whoami"])
+    token = resolve_fly_api_token()
+    if token:
+        return _pass(cid, "Fly CLI + FLY_API_TOKEN available")
+    rc, _, _ = _run_cmd([fly, "auth", "whoami"], env=fly_cli_env())
     if rc == 0:
         return _pass(cid, "Fly CLI + authenticated")
     return _invalid(cid, "ENV_FLY_AUTH", "Fly CLI found but not authenticated")
@@ -215,7 +220,7 @@ def _check_provider_api_access(ctx: PreflightContext) -> CheckResult:
     issues: list[str] = []
     fly = resolve_fly_cli()
     if fly:
-        rc, _, _ = _run_cmd([fly, "apps", "list", "--json"])
+        rc, _, _ = _run_cmd([fly, "apps", "list", "--json"], env=fly_cli_env())
         if rc != 0:
             issues.append("Fly API not accessible")
     else:
@@ -236,8 +241,8 @@ def _check_cleanup_permissions(ctx: PreflightContext) -> CheckResult:
     cid = "preflight.cleanup_permissions"
     # Verify harness can list and delete resources it creates
     # In practice, this means Fly delete access and Neon delete access
-    if os.environ.get("FLY_API_TOKEN"):
-        return _pass(cid, "FLY_API_TOKEN set — cleanup should work")
+    if resolve_fly_api_token():
+        return _pass(cid, "FLY_API_TOKEN available — cleanup should work")
     return _invalid(
         cid, "ENV_FLY_AUTH",
         "No FLY_API_TOKEN — cleanup may fail",

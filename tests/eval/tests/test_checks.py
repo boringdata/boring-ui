@@ -57,8 +57,16 @@ name = "{manifest.app_slug}"
 id = "{manifest.app_slug}"
 logo = "C"
 
+[workspace]
+backend = "bwrap"
+
+[agent]
+runtime = "pi"
+placement = "browser"
+
 [backend]
-entry = "{manifest.python_module}.api.app:create_app"
+type = "typescript"
+entry = "src/server/index.ts"
 
 [deploy]
 platform = "fly"
@@ -70,36 +78,46 @@ session_secret = {{vault = "secret/agent/app/test/prod", field = "session_secret
     (root / ".gitignore").write_text(".env\n.boring/\n__pycache__/\n")
 
     # Backend
-    pkg = root / "src" / manifest.python_module / "api"
-    pkg.mkdir(parents=True)
-    (pkg / "__init__.py").write_text("")
-    (pkg / "app.py").write_text("""
-from fastapi import FastAPI
-def create_app():
-    app = FastAPI()
-    from .routers import status
-    app.include_router(status.router)
-    return app
+    server_dir = root / "src" / "server"
+    routes_dir = server_dir / "routes"
+    routes_dir.mkdir(parents=True)
+    (server_dir / "index.ts").write_text(f"""
+import {{ registerStatusRoutes }} from './routes/status.js'
+
+function createApp() {{
+  const app = {{
+    routes: [],
+    get(path, handler) {{
+      this.routes.push({{ path, handler }})
+    }},
+    listen() {{
+      return undefined
+    }},
+  }}
+  registerStatusRoutes(app)
+  return app
+}}
+
+const app = createApp()
+app.listen()
 """)
 
-    routers = pkg / "routers"
-    routers.mkdir()
-    (routers / "__init__.py").write_text("")
-    (routers / "status.py").write_text(f"""
-from fastapi import APIRouter
-router = APIRouter()
+    (routes_dir / "status.ts").write_text(f"""
+export function registerStatusRoutes(app) {{
+  app.get('/health', async () => ({{
+    ok: true,
+    app: '{manifest.app_slug}',
+    eval_id: '{manifest.eval_id}',
+    verification_nonce: '{manifest.verification_nonce}',
+    custom: true,
+  }}))
 
-@router.get("/health")
-def health():
-    return {{"ok": True, "app": "{manifest.app_slug}",
-             "eval_id": "{manifest.eval_id}",
-             "verification_nonce": "{manifest.verification_nonce}",
-             "custom": True}}
-
-@router.get("/info")
-def info():
-    return {{"name": "{manifest.app_slug}", "version": "0.1.0",
-             "eval_id": "{manifest.eval_id}"}}
+  app.get('/info', async () => ({{
+    name: '{manifest.app_slug}',
+    version: '0.1.0',
+    eval_id: '{manifest.eval_id}',
+  }}))
+}}
 """)
     return root
 
@@ -184,8 +202,8 @@ class TestScaffoldingChecks:
     def test_good_project_passes_all(self, manifest, good_project):
         results = run_scaffolding_checks(manifest)
         passed = sum(1 for r in results if r.status == CheckStatus.PASS)
-        assert len(results) == 13
-        assert passed >= 12  # frontend check may vary
+        assert len(results) == 14
+        assert passed >= 13  # frontend check may vary
 
     def test_missing_project_fails(self, manifest):
         manifest.project_root = "/nonexistent/path"
@@ -202,8 +220,8 @@ class TestScaffoldingChecks:
         assert toml_check.status == CheckStatus.FAIL
 
     def test_nonce_required(self, manifest, good_project):
-        # Remove nonce from status.py
-        status_file = list(good_project.rglob("status.py"))[0]
+        # Remove nonce from status.ts
+        status_file = list(good_project.rglob("status.ts"))[0]
         content = status_file.read_text()
         content = content.replace(manifest.verification_nonce, "wrong-nonce")
         status_file.write_text(content)
@@ -266,10 +284,18 @@ class TestLocalDevChecks:
             },
             info_status=200,
             info_response={"name": manifest.app_slug, "version": "0.1.0", "eval_id": manifest.eval_id},
+            notes_create_status=200,
+            notes_create_response={"id": "note-1", "text": "hello", "created_at": "2026-03-26T00:00:00+00:00"},
+            notes_list_status=200,
+            notes_list_response=[{"id": "note-1", "text": "hello", "created_at": "2026-03-26T00:00:00+00:00"}],
+            notes_delete_status=200,
+            notes_delete_response={"deleted": True},
+            notes_after_delete_status=200,
+            notes_after_delete_response=[],
             config_status=200,
             config_response={"app": {}},
             capabilities_status=200,
-            capabilities_response={"version": "0.1.0", "features": {}},
+            capabilities_response={"version": "0.1.0", "features": {}, "auth": {"provider": "neon"}},
             clean_shutdown=True,
         )
         results = run_local_dev_checks(ctx)
@@ -296,6 +322,42 @@ class TestLocalDevChecks:
         results = run_local_dev_checks(ctx)
         skipped = [r for r in results if r.status == CheckStatus.SKIP]
         assert len(skipped) >= 8  # most checks need dev_started
+
+    def test_caps_auth_neon_fails_for_local_provider(self, manifest):
+        ctx = LocalDevContext(
+            manifest,
+            dev_started=True,
+            dev_port=5176,
+            capabilities_status=200,
+            capabilities_response={
+                "version": "0.1.0",
+                "features": {},
+                "auth": {"provider": "local"},
+            },
+        )
+        results = run_local_dev_checks(ctx)
+        auth_check = [r for r in results if r.id == "local.caps_auth_neon"][0]
+        assert auth_check.status == CheckStatus.FAIL
+        assert auth_check.reason_code == "LOCAL_AUTH_PROVIDER_INVALID"
+
+    def test_notes_crud_fails_when_created_note_missing_from_list(self, manifest):
+        ctx = LocalDevContext(
+            manifest,
+            dev_started=True,
+            dev_port=5176,
+            notes_create_status=200,
+            notes_create_response={"id": "note-1", "text": "hello", "created_at": "2026-03-26T00:00:00+00:00"},
+            notes_list_status=200,
+            notes_list_response=[],
+            notes_delete_status=200,
+            notes_delete_response={"deleted": True},
+            notes_after_delete_status=200,
+            notes_after_delete_response=[],
+        )
+        results = run_local_dev_checks(ctx)
+        notes_check = [r for r in results if r.id == "local.notes_crud"][0]
+        assert notes_check.status == CheckStatus.FAIL
+        assert notes_check.reason_code == "LOCAL_RESPONSE_INVALID"
 
 
 # ===================================================================
@@ -459,6 +521,89 @@ class TestSecurityChecks:
         transcript = [r for r in results if r.id == "sec.no_secrets_in_transcript"][0]
         assert transcript.status == CheckStatus.FAIL
 
+    def test_source_scan_ignores_virtualenv_and_node_modules(self, manifest, tmp_path):
+        root = tmp_path / "sandbox"
+        root.mkdir()
+        manifest.project_root = str(root)
+        manifest.evidence_dir = str(tmp_path / "evidence")
+        manifest.report_output_path = str(tmp_path / ".eval-evidence" / "report.json")
+        manifest.event_log_path = str(tmp_path / ".eval-evidence" / "events.jsonl")
+        (root / "boring.app.toml").write_text('provider = "neon"\n')
+        (root / ".gitignore").write_text(".env\n.boring/\n")
+
+        venv_py = root / ".venv" / "lib" / "python3.13" / "site-packages"
+        venv_py.mkdir(parents=True)
+        (venv_py / "secrets.py").write_text('postgres_url = "postgres://secret-user:secret-pass@db"\n')
+
+        node_py = root / "node_modules" / "boring-ui" / "py"
+        node_py.mkdir(parents=True)
+        (node_py / "shadow.py").write_text('postgres_url = "postgres://secret-user:secret-pass@db"\n')
+
+        app_py = root / "src" / manifest.python_module
+        app_py.mkdir(parents=True)
+        (app_py / "app.py").write_text("def create_app():\n    return None\n")
+
+        reg = SecretRegistry()
+        reg.register("postgres_url", "postgres://secret-user:secret-pass@db")
+        results = run_security_checks(manifest, reg)
+
+        source_check = [r for r in results if r.id == "sec.no_secrets_in_source"][0]
+        entropy_check = [r for r in results if r.id == "sec.high_entropy_scan_clean"][0]
+        assert source_check.status == CheckStatus.PASS
+        assert entropy_check.status == CheckStatus.PASS
+
+    def test_env_safe_if_present_allows_gitignored_untracked_local_secrets(self, manifest, good_project):
+        root = Path(manifest.project_root)
+        (root / ".env").write_text("DATABASE_URL=postgres://demo:secret@db.example/app\n")
+        reg = SecretRegistry()
+        reg.register("database_url", "postgres://demo:secret@db.example/app")
+
+        results = run_security_checks(manifest, reg)
+        env_check = [r for r in results if r.id == "sec.env_safe_if_present"][0]
+        assert env_check.status == CheckStatus.PASS
+
+    def test_scope_checks_allow_evidence_and_report_outputs(self, manifest, good_project, tmp_path):
+        evidence_dir = tmp_path / "evidence"
+        report_dir = tmp_path / ".eval-evidence" / manifest.app_slug
+        evidence_dir.mkdir()
+        report_dir.mkdir(parents=True)
+        manifest.evidence_dir = str(evidence_dir)
+        manifest.report_output_path = str(report_dir / "report.json")
+        manifest.event_log_path = str(report_dir / "events.jsonl")
+
+        pre_snapshot = {str(Path(manifest.project_root).resolve())}
+        post_snapshot = pre_snapshot | {
+            str((evidence_dir / "prompt.txt").resolve()),
+            str((report_dir / "report.json").resolve()),
+            str((report_dir / "events.jsonl").resolve()),
+        }
+
+        results = run_security_checks(
+            manifest,
+            SecretRegistry(),
+            pre_snapshot=pre_snapshot,
+            post_snapshot=post_snapshot,
+        )
+
+        by_id = {r.id: r for r in results}
+        assert by_id["sec.no_forbidden_repo_changes"].status == CheckStatus.PASS
+        assert by_id["sec.only_project_dir_mutated"].status == CheckStatus.PASS
+
+    def test_symlink_escape_ignores_expected_local_env_links(self, manifest, good_project):
+        root = Path(manifest.project_root)
+        venv_bin = root / ".venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "python3").symlink_to("/usr/bin/python3")
+
+        node_modules = root / "node_modules"
+        node_modules.mkdir()
+        (node_modules / "boring-ui").symlink_to("/home/ubuntu/projects/boring-ui")
+
+        results = run_security_checks(manifest, SecretRegistry())
+
+        symlink_check = [r for r in results if r.id == "sec.no_symlink_escape"][0]
+        assert symlink_check.status == CheckStatus.PASS
+
 
 # ===================================================================
 # Report quality checks
@@ -521,9 +666,17 @@ class TestReportQualityChecks:
 
 class TestDeploymentChecks:
     def test_with_good_responses(self, manifest):
+        class FakeFlyAdapter:
+            def app_exists(self, _app_name):
+                return True
+
+            def app_url(self, _app_name):
+                return f"https://{manifest.app_slug}.fly.dev"
+
         ctx = DeploymentContext(
             manifest,
             deployed_url=f"https://{manifest.app_slug}.fly.dev",
+            fly_adapter=FakeFlyAdapter(),
             responses={
                 "/": (200, "<html>App</html>"),
                 "/health": (200, {
@@ -532,13 +685,24 @@ class TestDeploymentChecks:
                     "verification_nonce": manifest.verification_nonce,
                 }),
                 "/info": (200, {"name": manifest.app_slug, "version": "0.1.0", "eval_id": manifest.eval_id}),
-                "/__bui/config": (200, {"app": {}}),
-                "/api/capabilities": (200, {"version": "0.1.0", "features": {}}),
+                "POST /notes": (200, {"id": "note-1", "text": "hello", "created_at": "2026-03-26T00:00:00+00:00"}),
+                "GET /notes": [
+                    (200, [{"id": "note-1", "text": "hello", "created_at": "2026-03-26T00:00:00+00:00"}]),
+                    (200, []),
+                ],
+                "DELETE /notes/note-1": (200, {"deleted": True}),
+                "/__bui/config": (200, {
+                    "app": {"name": manifest.app_slug, "logo": "C"},
+                    "frontend": {"branding": {"name": manifest.app_slug, "logo": "C"}},
+                    "auth": {"appName": manifest.app_slug, "provider": "neon"},
+                }),
+                "/api/capabilities": (200, {"version": "0.1.0", "features": {}, "auth": {"provider": "neon"}}),
+                "/auth/login": (200, f"<html><head><title>Sign in — {manifest.app_slug}</title></head><body><h1 id=\"app-name\">{manifest.app_slug}</h1></body></html>"),
                 "/api/v1/me": (401, {}),
             },
         )
         results = run_deployment_checks(ctx)
-        assert len(results) == 28
+        assert len(results) == 29
         passed = [r for r in results if r.status == CheckStatus.PASS]
         assert len(passed) >= 15
 
@@ -565,6 +729,70 @@ class TestDeploymentChecks:
         assert custom.status == CheckStatus.FAIL
         assert custom.reason_code == "DEPLOY_NONCE_MISMATCH"
 
+    def test_notes_crud_fails_when_created_note_missing_from_live_list(self, manifest):
+        ctx = DeploymentContext(
+            manifest,
+            deployed_url="https://test.fly.dev",
+            responses={
+                "/": (200, "<html>App</html>"),
+                "/health": (200, {
+                    "ok": True,
+                    "app": manifest.app_slug,
+                    "eval_id": manifest.eval_id,
+                    "verification_nonce": manifest.verification_nonce,
+                }),
+                "/info": (200, {"name": manifest.app_slug, "version": "0.1.0", "eval_id": manifest.eval_id}),
+                "POST /notes": (200, {"id": "note-1", "text": "hello", "created_at": "2026-03-26T00:00:00+00:00"}),
+                "GET /notes": (200, []),
+                "/__bui/config": (200, {
+                    "app": {"name": manifest.app_slug, "logo": "C"},
+                    "frontend": {"branding": {"name": manifest.app_slug, "logo": "C"}},
+                    "auth": {"appName": manifest.app_slug, "provider": "neon"},
+                }),
+                "/api/capabilities": (200, {"version": "0.1.0", "features": {}, "auth": {"provider": "neon"}}),
+                "/api/v1/me": (401, {}),
+            },
+        )
+        results = run_deployment_checks(ctx)
+        notes_check = [r for r in results if r.id == "deploy.notes_crud"][0]
+        assert notes_check.status == CheckStatus.FAIL
+        assert notes_check.reason_code == "DEPLOY_ROUTE_MISMATCH"
+
+    def test_branding_check_fails_when_live_branding_mismatches_config(self, good_project, manifest):
+        manifest.project_root = str(good_project)
+        ctx = DeploymentContext(
+            manifest,
+            deployed_url="https://test.fly.dev",
+            responses={
+                "/": (200, "<html>App</html>"),
+                "/health": (200, {
+                    "ok": True,
+                    "app": manifest.app_slug,
+                    "eval_id": manifest.eval_id,
+                    "verification_nonce": manifest.verification_nonce,
+                }),
+                "/info": (200, {"name": manifest.app_slug, "version": "0.1.0", "eval_id": manifest.eval_id}),
+                "POST /notes": (200, {"id": "note-1", "text": "hello", "created_at": "2026-03-26T00:00:00+00:00"}),
+                "GET /notes": [
+                    (200, [{"id": "note-1", "text": "hello", "created_at": "2026-03-26T00:00:00+00:00"}]),
+                    (200, [{"id": "note-1", "text": "hello", "created_at": "2026-03-26T00:00:00+00:00"}]),
+                ],
+                "DELETE /notes/note-1": (200, {"deleted": True}),
+                "/__bui/config": (200, {
+                    "app": {"name": "Boring UI", "logo": "B"},
+                    "frontend": {"branding": {"name": "Boring UI", "logo": "B"}},
+                    "auth": {"appName": "Boring UI", "provider": "neon"},
+                }),
+                "/api/capabilities": (200, {"version": "0.1.0", "features": {}, "auth": {"provider": "neon"}}),
+                "/auth/login": (200, "<html><head><title>Sign in — Boring UI</title></head><body><h1 id=\"app-name\">Boring UI</h1></body></html>"),
+            },
+        )
+
+        results = run_deployment_checks(ctx)
+        branding = [r for r in results if r.id == "deploy.branding_match_if_profiled"][0]
+        assert branding.status == CheckStatus.FAIL
+        assert branding.reason_code == "DEPLOY_ROUTE_MISMATCH"
+
     def test_auth_plus_checks_use_hosted_session(self, manifest, monkeypatch):
         manifest.platform_profile = "auth-plus"
         ctx = DeploymentContext(
@@ -579,8 +807,12 @@ class TestDeploymentChecks:
                     "verification_nonce": manifest.verification_nonce,
                 }),
                 "/info": (200, {"name": manifest.app_slug, "version": "0.1.0", "eval_id": manifest.eval_id}),
-                "/__bui/config": (200, {"app": {}}),
-                "/api/capabilities": (200, {"version": "0.1.0", "features": {}}),
+                "/__bui/config": (200, {
+                    "app": {"name": manifest.app_slug, "logo": "C"},
+                    "frontend": {"branding": {"name": manifest.app_slug, "logo": "C"}},
+                    "auth": {"appName": manifest.app_slug, "provider": "neon"},
+                }),
+                "/api/capabilities": (200, {"version": "0.1.0", "features": {}, "auth": {"provider": "neon"}}),
                 "/whoami": (401, {"error": "unauthorized"}),
             },
         )
@@ -704,7 +936,7 @@ class TestPreflightChecks:
 
         calls = []
 
-        def fake_run(cmd, timeout=10):
+        def fake_run(cmd, timeout=10, env=None):
             calls.append(cmd)
             return 0, "me@example.com", ""
 
@@ -714,6 +946,20 @@ class TestPreflightChecks:
 
         assert result.status == CheckStatus.PASS
         assert calls == [[str(fly_path), "auth", "whoami"]]
+
+    def test_fly_available_uses_vault_token_when_env_missing(self, manifest, monkeypatch):
+        monkeypatch.setattr(preflight_checks, "resolve_fly_cli", lambda: "/usr/bin/fly")
+        monkeypatch.setattr(preflight_checks, "resolve_fly_api_token", lambda: "vault-token")
+        monkeypatch.setattr(
+            preflight_checks,
+            "_run_cmd",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not call fly auth whoami")),
+        )
+
+        result = preflight_checks._check_fly_available(PreflightContext(manifest))
+
+        assert result.status == CheckStatus.PASS
+        assert "FLY_API_TOKEN" in result.detail
 
     def test_provider_api_access_uses_home_install_fallback(self, manifest, monkeypatch, tmp_path):
         home = tmp_path / "home"
@@ -728,7 +974,7 @@ class TestPreflightChecks:
 
         calls = []
 
-        def fake_run(cmd, timeout=10):
+        def fake_run(cmd, timeout=10, env=None):
             calls.append(cmd)
             return 0, "[]", ""
 

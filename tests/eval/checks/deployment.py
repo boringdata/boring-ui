@@ -14,6 +14,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 try:
@@ -21,6 +22,14 @@ try:
     _HAS_HTTPX = True
 except ImportError:
     _HAS_HTTPX = False
+
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ImportError:
+        tomllib = None  # type: ignore[assignment]
 
 from tests.eval.check_catalog import CATALOG
 from tests.eval.contracts import CheckResult, RunManifest
@@ -41,7 +50,7 @@ class DeploymentContext:
         deployed_url: str | None = None,
         fly_adapter: FlyAdapter | None = None,
         # Pre-fetched responses (for testing without network)
-        responses: dict[str, tuple[int, Any]] | None = None,
+        responses: dict[str, tuple[int, Any] | list[tuple[int, Any]]] | None = None,
         # Auth state (for auth-plus checks)
         session_cookie: str | None = None,
         auth_email: str | None = None,
@@ -53,22 +62,51 @@ class DeploymentContext:
         self.session_cookie = session_cookie
         self.auth_email = auth_email
 
-    def get(self, path: str, retry: int = 0, delay: float = 2.0) -> tuple[int, Any]:
-        """GET a path from the deployed URL. Returns (status, body_or_None).
+    def _consume_response(self, key: str) -> tuple[int, Any] | None:
+        response = self._responses.get(key)
+        if response is None:
+            return None
+        if isinstance(response, list):
+            if not response:
+                return None
+            if len(response) == 1:
+                return response[0]
+            next_response = response.pop(0)
+            return next_response
+        return response
 
-        If pre-fetched responses are available, uses those (for testing).
-        Otherwise makes real HTTP requests with retry/backoff.
-        """
-        if path in self._responses:
-            return self._responses[path]
-
+    def request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        retry: int = 0,
+        delay: float = 2.0,
+        payload: dict[str, Any] | None = None,
+    ) -> tuple[int, Any]:
+        """Make an HTTP request against the deployed URL and decode JSON when possible."""
+        method = method.upper()
+        method_key = f"{method} {path}"
+        method_response = self._consume_response(method_key)
+        if method_response is not None:
+            return method_response
+        if method == "GET":
+            path_response = self._consume_response(path)
+            if path_response is not None:
+                return path_response
         if not self.deployed_url or not _HAS_HTTPX:
             return (0, None)
 
         url = self.deployed_url.rstrip("/") + path
         for attempt in range(retry + 1):
             try:
-                resp = httpx.get(url, timeout=15, follow_redirects=True)
+                resp = httpx.request(
+                    method,
+                    url,
+                    json=payload,
+                    timeout=15,
+                    follow_redirects=True,
+                )
                 try:
                     body = resp.json()
                 except Exception:
@@ -82,6 +120,15 @@ class DeploymentContext:
 
         return (0, None)
 
+    def get(self, path: str, retry: int = 0, delay: float = 2.0) -> tuple[int, Any]:
+        return self.request_json("GET", path, retry=retry, delay=delay)
+
+    def post_json(self, path: str, payload: dict[str, Any], retry: int = 0, delay: float = 2.0) -> tuple[int, Any]:
+        return self.request_json("POST", path, retry=retry, delay=delay, payload=payload)
+
+    def delete(self, path: str, retry: int = 0, delay: float = 2.0) -> tuple[int, Any]:
+        return self.request_json("DELETE", path, retry=retry, delay=delay)
+
 
 @dataclass
 class AuthSessionState:
@@ -93,7 +140,7 @@ class AuthSessionState:
 
 
 def run_deployment_checks(ctx: DeploymentContext) -> list[CheckResult]:
-    """Run all 28 deployment checks (core + profile-gated)."""
+    """Run all deployment checks (core + profile-gated)."""
     results: list[CheckResult] = []
 
     # Core checks (17)
@@ -108,6 +155,7 @@ def run_deployment_checks(ctx: DeploymentContext) -> list[CheckResult]:
     results.append(_check_health_200(ctx))
     results.append(_check_custom_router_live(ctx))
     results.append(_check_info_live(ctx))
+    results.append(_check_notes_crud(ctx))
     results.append(_check_health_stable(ctx))
     results.append(_check_info_stable(ctx))
     results.append(_check_config_200(ctx))
@@ -352,6 +400,47 @@ def _check_info_live(ctx: DeploymentContext) -> CheckResult:
     return _pass(cid, "/info JSON matches contract")
 
 
+def _check_notes_crud(ctx: DeploymentContext) -> CheckResult:
+    cid = "deploy.notes_crud"
+    if not ctx.deployed_url:
+        return _skip(cid, "No URL", blocked_by=["deploy.health_200"])
+
+    create_status, create_body = ctx.post_json(
+        "/notes",
+        {"text": f"deploy-note-{ctx.manifest.eval_id}"},
+        retry=1,
+        delay=3.0,
+    )
+    if create_status != 200 or not isinstance(create_body, dict):
+        return _fail(cid, "DEPLOY_ROUTE_MISSING", f"POST /notes returned {create_status}")
+
+    note_id = str(create_body.get("id", "")).strip()
+    note_text = str(create_body.get("text", "")).strip()
+    created_at = str(create_body.get("created_at", "")).strip()
+    if not note_id or not note_text or not created_at:
+        return _fail(cid, "DEPLOY_ROUTE_MISMATCH", "POST /notes missing id/text/created_at")
+
+    list_status, list_body = ctx.get("/notes", retry=1, delay=3.0)
+    if list_status != 200 or not isinstance(list_body, list):
+        return _fail(cid, "DEPLOY_ROUTE_MISSING", f"GET /notes returned {list_status}")
+    if note_id not in {str(note.get("id", "")).strip() for note in list_body if isinstance(note, dict)}:
+        return _fail(cid, "DEPLOY_ROUTE_MISMATCH", "Created note was not returned by live GET /notes")
+
+    delete_status, delete_body = ctx.delete(f"/notes/{note_id}", retry=1, delay=3.0)
+    if delete_status != 200 or not isinstance(delete_body, dict):
+        return _fail(cid, "DEPLOY_ROUTE_MISSING", f"DELETE /notes/{{id}} returned {delete_status}")
+    if delete_body.get("deleted") is not True:
+        return _fail(cid, "DEPLOY_ROUTE_MISMATCH", "DELETE /notes/{id} did not return {deleted: true}")
+
+    after_delete_status, after_delete_body = ctx.get("/notes", retry=1, delay=3.0)
+    if after_delete_status != 200 or not isinstance(after_delete_body, list):
+        return _fail(cid, "DEPLOY_ROUTE_MISSING", f"GET /notes after delete returned {after_delete_status}")
+    if note_id in {str(note.get("id", "")).strip() for note in after_delete_body if isinstance(note, dict)}:
+        return _fail(cid, "DEPLOY_ROUTE_MISMATCH", "Deleted note still appeared in live GET /notes")
+
+    return _pass(cid, "Live /notes create/list/delete flow succeeded")
+
+
 def _check_health_stable(ctx: DeploymentContext) -> CheckResult:
     cid = "deploy.health_stable"
     if not ctx.deployed_url:
@@ -400,19 +489,127 @@ def _check_caps_auth_neon(ctx: DeploymentContext) -> CheckResult:
     status, body = ctx.get("/api/capabilities")
     if status != 200 or not isinstance(body, dict):
         return _skip(cid, "No capabilities", blocked_by=["deploy.capabilities_200"])
-    # Check if Neon auth is reported
-    features = body.get("features", {})
-    runtime = body.get("runtime_config", {})
-    if isinstance(features, dict):
-        return _pass(cid, "Capabilities available (auth provider check advisory)")
-    return _pass(cid, "Capabilities structure check (advisory)")
+    auth = body.get("auth")
+    if not isinstance(auth, dict):
+        return _fail(cid, "DEPLOY_RESPONSE_INVALID", "Capabilities missing auth block")
+    provider = auth.get("provider")
+    if provider == "neon":
+        return _pass(cid, "Capabilities report Neon auth live")
+    return _fail(cid, "DEPLOY_RESPONSE_INVALID", f"Capabilities reported auth.provider={provider!r}")
 
 
 def _check_branding_match_if_profiled(ctx: DeploymentContext) -> CheckResult:
     cid = "deploy.branding_match_if_profiled"
-    if ctx.manifest.platform_profile not in ("full-stack", "extensible"):
-        return _pass(cid, f"Profile {ctx.manifest.platform_profile!r} — branding not required")
-    return _pass(cid, "Branding check (advisory)")
+    expected = _load_expected_branding(ctx.manifest)
+    if expected is None:
+        return _skip(cid, "Could not load expected branding from boring.app.toml")
+
+    expected_name, expected_logo = expected
+    status, body = ctx.get("/__bui/config")
+    if status != 200 or not isinstance(body, dict):
+        return _skip(cid, "No config response", blocked_by=["deploy.config_200"])
+
+    mismatches: list[str] = []
+    config_name = _extract_config_name(body)
+    config_logo = _extract_config_logo(body)
+    if config_name != expected_name:
+        mismatches.append(f"/__bui/config name={config_name!r} expected {expected_name!r}")
+    if expected_logo and config_logo != expected_logo:
+        mismatches.append(f"/__bui/config logo={config_logo!r} expected {expected_logo!r}")
+
+    login_status, login_body = ctx.get("/auth/login")
+    if login_status == 200 and isinstance(login_body, str):
+        title = _extract_html_title(login_body)
+        heading = _extract_login_heading(login_body)
+        if title and expected_name not in title:
+            mismatches.append(f"/auth/login title={title!r} missing {expected_name!r}")
+        if heading and heading != expected_name:
+            mismatches.append(f"/auth/login heading={heading!r} expected {expected_name!r}")
+
+    if mismatches:
+        return _fail(cid, "DEPLOY_ROUTE_MISMATCH", "; ".join(mismatches[:3]))
+
+    return _pass(cid, f"Branding matches boring.app.toml ({expected_name}, {expected_logo})")
+
+
+def _load_expected_branding(manifest: RunManifest) -> tuple[str, str] | None:
+    toml_path = Path(manifest.project_root) / "boring.app.toml"
+    if not toml_path.is_file() or tomllib is None:
+        return None
+    try:
+        with open(toml_path, "rb") as handle:
+            data = tomllib.load(handle)
+    except Exception:
+        return None
+
+    app = data.get("app", {}) if isinstance(data, dict) else {}
+    frontend = data.get("frontend", {}) if isinstance(data, dict) else {}
+    branding = frontend.get("branding", {}) if isinstance(frontend, dict) else {}
+
+    name = str(
+        branding.get("name")
+        or app.get("name")
+        or manifest.app_slug
+    ).strip()
+    logo = str(
+        branding.get("logo")
+        or app.get("logo")
+        or (name[:1].upper() if name else "")
+    ).strip()
+    return (name, logo)
+
+
+def _extract_config_name(body: dict[str, Any]) -> str:
+    app = body.get("app")
+    if isinstance(app, dict):
+        name = app.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    frontend = body.get("frontend")
+    if isinstance(frontend, dict):
+        branding = frontend.get("branding")
+        if isinstance(branding, dict):
+            name = branding.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    auth = body.get("auth")
+    if isinstance(auth, dict):
+        app_name = auth.get("appName")
+        if isinstance(app_name, str) and app_name.strip():
+            return app_name.strip()
+    return ""
+
+
+def _extract_config_logo(body: dict[str, Any]) -> str:
+    app = body.get("app")
+    if isinstance(app, dict):
+        logo = app.get("logo")
+        if isinstance(logo, str) and logo.strip():
+            return logo.strip()
+    frontend = body.get("frontend")
+    if isinstance(frontend, dict):
+        branding = frontend.get("branding")
+        if isinstance(branding, dict):
+            logo = branding.get("logo")
+            if isinstance(logo, str) and logo.strip():
+                return logo.strip()
+    return ""
+
+
+def _extract_html_title(body: str) -> str:
+    match = re.search(r"<title>(.*?)</title>", body, re.IGNORECASE | re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def _extract_login_heading(body: str) -> str:
+    match = re.search(
+        r"<h1[^>]*id=[\"']app-name[\"'][^>]*>(.*?)</h1>",
+        body,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    return re.sub(r"\s+", " ", match.group(1)).strip()
 
 
 # ---------------------------------------------------------------------------

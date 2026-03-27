@@ -1,8 +1,9 @@
 """Local Dev / Runtime Validation checks (Phase B).
 
 Verifies the generated app starts and behaves correctly before deploy.
-The harness launches ``bui dev --backend-only`` in a clean-room environment
-with ``CONTROL_PLANE_PROVIDER=local`` to bypass database dependencies.
+The harness relaunches ``bui dev --backend-only`` in a clean-room
+environment using the app's real Neon configuration on a trusted local
+loopback origin so the local contract matches the hosted contract.
 """
 
 from __future__ import annotations
@@ -39,6 +40,14 @@ class LocalDevContext:
         health_status: int | None = None,
         info_response: dict[str, Any] | None = None,
         info_status: int | None = None,
+        notes_create_response: dict[str, Any] | None = None,
+        notes_create_status: int | None = None,
+        notes_list_response: list[dict[str, Any]] | None = None,
+        notes_list_status: int | None = None,
+        notes_delete_response: dict[str, Any] | None = None,
+        notes_delete_status: int | None = None,
+        notes_after_delete_response: list[dict[str, Any]] | None = None,
+        notes_after_delete_status: int | None = None,
         config_response: dict[str, Any] | None = None,
         config_status: int | None = None,
         capabilities_response: dict[str, Any] | None = None,
@@ -58,6 +67,14 @@ class LocalDevContext:
         self.health_status = health_status
         self.info_response = info_response
         self.info_status = info_status
+        self.notes_create_response = notes_create_response
+        self.notes_create_status = notes_create_status
+        self.notes_list_response = notes_list_response
+        self.notes_list_status = notes_list_status
+        self.notes_delete_response = notes_delete_response
+        self.notes_delete_status = notes_delete_status
+        self.notes_after_delete_response = notes_after_delete_response
+        self.notes_after_delete_status = notes_after_delete_status
         self.config_response = config_response
         self.config_status = config_status
         self.capabilities_response = capabilities_response
@@ -67,7 +84,7 @@ class LocalDevContext:
 
 
 def run_local_dev_checks(ctx: LocalDevContext) -> list[CheckResult]:
-    """Run all 13 local dev checks."""
+    """Run all local dev checks."""
     return [
         _check_doctor_exit_0(ctx),
         _check_doctor_no_errors(ctx),
@@ -76,9 +93,11 @@ def run_local_dev_checks(ctx: LocalDevContext) -> list[CheckResult]:
         _check_port_assigned(ctx),
         _check_custom_health(ctx),
         _check_custom_info(ctx),
+        _check_notes_crud(ctx),
         _check_config_200(ctx),
         _check_capabilities_200(ctx),
         _check_capabilities_shape(ctx),
+        _check_caps_auth_neon(ctx),
         _check_no_startup_import_errors(ctx),
         _check_clean_shutdown(ctx),
         _check_no_tracebacks(ctx),
@@ -219,6 +238,39 @@ def _check_custom_info(ctx: LocalDevContext) -> CheckResult:
     return _pass(cid, "/info returns valid JSON with required fields")
 
 
+def _check_notes_crud(ctx: LocalDevContext) -> CheckResult:
+    cid = "local.notes_crud"
+    if not ctx.dev_started:
+        return _skip(cid, "Dev server not started", blocked_by=["local.clean_room_dev_starts"])
+    if ctx.notes_create_status != 200 or not isinstance(ctx.notes_create_response, dict):
+        return _fail(cid, "LOCAL_ROUTE_MISSING", f"POST /notes returned {ctx.notes_create_status}")
+    if ctx.notes_list_status != 200 or not isinstance(ctx.notes_list_response, list):
+        return _fail(cid, "LOCAL_ROUTE_MISSING", f"GET /notes returned {ctx.notes_list_status}")
+    if ctx.notes_delete_status != 200 or not isinstance(ctx.notes_delete_response, dict):
+        return _fail(cid, "LOCAL_ROUTE_MISSING", f"DELETE /notes/{{id}} returned {ctx.notes_delete_status}")
+    if ctx.notes_after_delete_status != 200 or not isinstance(ctx.notes_after_delete_response, list):
+        return _fail(cid, "LOCAL_ROUTE_MISSING", f"GET /notes after delete returned {ctx.notes_after_delete_status}")
+
+    note_id = str(ctx.notes_create_response.get("id", "")).strip()
+    note_text = str(ctx.notes_create_response.get("text", "")).strip()
+    created_at = str(ctx.notes_create_response.get("created_at", "")).strip()
+    if not note_id or not note_text or not created_at:
+        return _fail(cid, "LOCAL_RESPONSE_INVALID", "POST /notes missing id/text/created_at")
+
+    listed_ids = {str(note.get("id", "")).strip() for note in ctx.notes_list_response}
+    if note_id not in listed_ids:
+        return _fail(cid, "LOCAL_RESPONSE_INVALID", "Created note was not returned by GET /notes")
+
+    if ctx.notes_delete_response.get("deleted") is not True:
+        return _fail(cid, "LOCAL_RESPONSE_INVALID", "DELETE /notes/{id} did not return {deleted: true}")
+
+    remaining_ids = {str(note.get("id", "")).strip() for note in ctx.notes_after_delete_response}
+    if note_id in remaining_ids:
+        return _fail(cid, "LOCAL_RESPONSE_INVALID", "Deleted note still appeared in GET /notes")
+
+    return _pass(cid, "Local /notes create/list/delete flow succeeded")
+
+
 def _check_config_200(ctx: LocalDevContext) -> CheckResult:
     cid = "local.config_200"
     if not ctx.dev_started:
@@ -249,6 +301,26 @@ def _check_capabilities_shape(ctx: LocalDevContext) -> CheckResult:
     if "features" in cap or "routers" in cap or "version" in cap:
         return _pass(cid, "Capabilities has expected structure")
     return _fail(cid, "LOCAL_RESPONSE_INVALID", "Capabilities missing features/routers/version")
+
+
+def _check_caps_auth_neon(ctx: LocalDevContext) -> CheckResult:
+    cid = "local.caps_auth_neon"
+    if ctx.capabilities_response is None:
+        return _skip(cid, "No capabilities response", blocked_by=["local.capabilities_200"])
+
+    auth = ctx.capabilities_response.get("auth")
+    if not isinstance(auth, dict):
+        return _fail(cid, "LOCAL_RESPONSE_INVALID", "Capabilities missing auth block")
+
+    provider = auth.get("provider")
+    if provider == "neon":
+        return _pass(cid, "Capabilities report Neon auth locally")
+
+    return _fail(
+        cid,
+        "LOCAL_AUTH_PROVIDER_INVALID",
+        f"Capabilities reported auth.provider={provider!r}",
+    )
 
 
 def _check_no_startup_import_errors(ctx: LocalDevContext) -> CheckResult:
