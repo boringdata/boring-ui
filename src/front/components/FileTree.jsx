@@ -83,11 +83,11 @@ export default function FileTree({
   const {
     data: entries = [],
     isLoading: isTreeLoading,
-    isFetching: isTreeFetching,
     error: treeError,
     refetch: refetchEntries,
   } = useFileList('.', {
     refetchInterval: isEditing ? false : 3000,
+    notifyOnChangeProps: ['data', 'isLoading', 'error'],
   })
 
   const { data: rawGitStatus } = useGitStatus({ refetchInterval: isEditing ? false : 5000 })
@@ -151,6 +151,7 @@ export default function FileTree({
       queryKey: queryKeys.files.list(path),
       queryFn: ({ signal }) => provider.files.list(path, { signal }),
       refetchInterval: isEditing ? false : 3000,
+      notifyOnChangeProps: ['data'],
     })),
   })
 
@@ -230,7 +231,7 @@ export default function FileTree({
 
   // Debounce file search calls to avoid query churn on every key stroke.
   const trimmedQuery = searchQuery.trim()
-  const showTreeLoading = !trimmedQuery && (isTreeLoading || isTreeFetching) && entries.length === 0
+  const showTreeLoading = !trimmedQuery && isTreeLoading && entries.length === 0
 
   useEffect(() => {
     if (!trimmedQuery) {
