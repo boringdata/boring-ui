@@ -412,7 +412,7 @@ class TestReasonCodes:
 
 class TestCheckCatalog:
     def test_catalog_count(self):
-        assert len(CATALOG) == 123
+        assert len(CATALOG) == 127
 
     def test_catalog_validation(self):
         errors = validate_catalog()
@@ -524,7 +524,7 @@ class TestCheckCatalog:
     def test_get_checks_by_category(self):
         scaff = get_checks_by_category("scaffolding")
         assert all(c.category == "scaffolding" for c in scaff)
-        assert len(scaff) == 13
+        assert len(scaff) == 14
 
 
 # ===================================================================

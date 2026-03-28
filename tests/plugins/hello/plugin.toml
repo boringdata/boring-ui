@@ -1,3 +1,0 @@
-name = "hello"
-command = ["python3", "-u", "main.py"]
-watch = ["main.py"]

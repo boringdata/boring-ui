@@ -32,8 +32,7 @@ User → boring-ui frontend → boring-ui backend → GitHub API
 ```
 
 **Backend modules:**
-- `src/back/boring_ui/api/modules/github_auth/service.py` — JWT, OAuth, installation tokens
-- `src/back/boring_ui/api/modules/github_auth/router.py` — API endpoints
+- `src/server/` — TypeScript backend (Fastify + tRPC), including GitHub auth routes
 
 **Frontend:**
 - `src/front/components/GitHubConnect.jsx` — `useGitHubConnection` hook + full settings UI

@@ -1,5 +1,10 @@
 # boring-ui TypeScript Migration Plan
 
+> **COMPLETED -- Python backend removed.** The migration described below has been
+> completed. The Python backend (`src/back/`) has been fully removed and the
+> TypeScript backend (`src/server/`) is now the sole backend. This document is
+> retained as a historical record of the migration plan and architectural decisions.
+
 ## Overview
 
 Migrate the boring-ui backend from Python/FastAPI to TypeScript/Fastify+tRPC using a

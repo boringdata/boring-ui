@@ -83,7 +83,7 @@ Route and service ownership follows the `boring-ui` core contract in `docs/plans
 
 Enforcement notes:
 1. `createApp()` does not mount `/api/v1/macro/*` routes in core.
-2. Macro boundary guardrail tests live in `tests/unit/test_macro_boundary_guardrails.py`.
+2. Macro boundary guardrail tests enforce the ownership contract.
 3. Workspace boundary pass-through (`/w/{workspace_id}/{path}`) only forwards `/auth/*`, `/api/v1/me*`, `/api/v1/workspaces*`, `/api/v1/files*`, and `/api/v1/git*`.
 4. Final keep-vs-move audit: see Ownership Audit appendix at end of this file.
 5. Cutover and rollback operations are documented in `docs/runbooks/OWNERSHIP_CUTOVER.md`.
@@ -171,10 +171,6 @@ src/server/
     └── secretRedaction.ts    Pino log redaction
 ```
 
-### Legacy Python Backend (src/back/)
-
-The Python backend in `src/back/boring_ui/api/` is being replaced by the TypeScript backend above. During the dual-stack migration period, both exist. The Python backend is the reference implementation for parity testing via smoke suites.
-
 ### Auth Provider Architecture
 
 The control plane supports two auth providers, selected via `CONTROL_PLANE_PROVIDER`:
@@ -197,7 +193,7 @@ The older browser-driven Neon `/token` -> `/auth/token-exchange` flow still exis
 
 **Session cookies** are boring-ui's own format (HS256 JWT signed with `BORING_UI_SESSION_SECRET`), not provider-specific. This enables cross-service interop with boring-sandbox regardless of auth provider.
 
-**Database access** uses `drizzle-orm` with `postgres.js` in the TS server. Local mode still uses the dev bypass auth/control-plane path, while the Python backend remains only for parity and rollback workflows.
+**Database access** uses `drizzle-orm` with `postgres.js` in the TS server. Local mode still uses the dev bypass auth/control-plane path.
 
 ### Cross-Cutting Concerns
 

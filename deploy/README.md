@@ -1,6 +1,6 @@
 # Deployment
 
-boring-ui deploys to Fly.io with a single TypeScript backend. The hosted `boring-ui-frontend-agent` app now builds from `deploy/shared/Dockerfile.ts-backend`.
+boring-ui deploys to Fly.io with a single TypeScript backend. The hosted `boring-ui-frontend-agent` app builds from `deploy/shared/Dockerfile.ts-backend`.
 
 ## Architecture
 
@@ -48,19 +48,12 @@ bash deploy/fly/fly.secrets.sh <app-name>
 fly deploy -c <config-path> --remote-only
 
 # Examples:
-bash deploy/fly/fly.secrets.sh boring-ui-lite
-fly deploy -c deploy/fly-lite/fly.toml --remote-only
-
 bash deploy/fly/fly.secrets.sh boring-ui-frontend-agent
 fly deploy -c deploy/fly/fly.frontend-agent.toml --remote-only
 
 bash deploy/fly/fly.secrets.sh boring-ui-backend-agent
 fly deploy -c deploy/fly/fly.backend-agent.toml --remote-only
 ```
-
-Use `deploy/fly/fly.frontend-agent.toml` as the canonical hosted TypeScript config.
-`deploy/fly/fly.ts-backend.toml` is retained only as a compatibility alias and should
-stay semantically identical to the canonical file.
 
 ## Smoke tests
 
@@ -80,37 +73,10 @@ python tests/smoke/run_all.py \
   --include-agent-ws ...
 ```
 
-## Rollback rehearsal
-
-Use the scripted Python rollback rehearsal instead of manually stitching together env vars, `uvicorn`, and the shared smoke runner:
-
-```bash
-python3 scripts/rehearse_python_rollback.py \
-  --summary-out .agent-evidence/rollback/local-summary.json
-```
-
-To preview the matching hosted rollback deploy sequence:
-
-```bash
-python3 scripts/rehearse_python_rollback.py \
-  --dry-run \
-  --skip-sync \
-  --skip-build \
-  --skip-smoke \
-  --print-hosted-commands \
-  --hosted-url https://boring-ui-frontend-agent.fly.dev
-```
-
 ## Dockerfiles
 
-- `deploy/shared/Dockerfile.ts-backend` — Two-stage build (Vite frontend + Fastify TypeScript backend). Used by the hosted `boring-ui-frontend-agent` app.
-- `deploy/shared/Dockerfile.backend` — Legacy Python/Node backend image path retained for rollback and compatibility workflows.
-- `deploy/fly-lite/Dockerfile` — Two-stage build (Vite frontend + Python backend with bubblewrap). Used by agent-lite.
-- `deploy/shared/Dockerfile.frontend` — Frontend dev image (local usage only).
+- `deploy/shared/Dockerfile.ts-backend` — Two-stage build (Vite frontend + Fastify TypeScript backend). Used by all hosted apps.
 
 ## App config
 
-Current app config sources:
 - Root `boring.app.toml` — copied into the hosted TypeScript image and used for shared app/deploy metadata plus Vault secret mapping.
-- `deploy/fly-lite/boring.app.toml` — dedicated lite profile.
-- `deploy/shared/boring.app.toml` — legacy Python deploy config retained for rollback and compatibility workflows.

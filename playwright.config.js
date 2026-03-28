@@ -116,10 +116,8 @@ export default defineConfig({
       timeout: 120000,
     },
     {
-      // Make webserver logs deterministic for transcript verification:
-      // - suppress per-request access logs (client ephemeral ports + query params)
-      // - suppress INFO startup logs (per-run PIDs)
-      command: `env -u NO_COLOR -u FORCE_COLOR BORING_UI_PTY_CLAUDE_COMMAND=bash PYTHONPATH=src/back BORING_UI_WORKSPACE_ROOT=$PWD python3 -m uvicorn boring_ui.runtime:app --host 127.0.0.1 --port ${e2eApiPort} --log-level warning --no-access-log`,
+      // TypeScript backend (Fastify)
+      command: `env -u NO_COLOR -u FORCE_COLOR BORING_UI_WORKSPACE_ROOT=$PWD PORT=${e2eApiPort} node --import tsx src/server/index.ts`,
       url: apiHealthUrl,
       reuseExistingServer,
       timeout: 120000,

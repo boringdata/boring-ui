@@ -77,15 +77,3 @@ database     = "neondb"
 auth_url     = "https://ep-solitary-darkness-ag6rrvrn.neonauth.c-2.eu-central-1.aws.neon.tech/neondb/auth"
 jwks_url     = "https://ep-solitary-darkness-ag6rrvrn.neonauth.c-2.eu-central-1.aws.neon.tech/neondb/auth/.well-known/jwks.json"
 
-[deploy.modal]
-app_name = "boring-ui"
-min_containers = 0
-
-[deploy.docker]
-registry = "ghcr.io/hachej"
-compose_file = "deploy/docker-compose.prod.yml"
-dockerfile = "deploy/python/Dockerfile"
-caddy_file = "deploy/python/Caddyfile.prod"
-host = "46.225.19.111.sslip.io"
-ssh_key_vault = "secret/agent/hetzner-ssh"
-remote_dir = "/opt/boring-ui"

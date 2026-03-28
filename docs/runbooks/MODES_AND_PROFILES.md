@@ -34,8 +34,7 @@ for what is real versus merely reserved lives in
 
 ## Legacy
 
-The Python backend (`src/back/`) remains only for parity testing and rollback rehearsal.
-The canonical runtime/deploy path is the TypeScript backend above.
+The Python backend has been removed. The TypeScript backend (`src/server/`) is the only backend.
 
 ## Deployment Modes
 

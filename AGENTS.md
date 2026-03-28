@@ -26,7 +26,6 @@ boring-ui is a **composable, capability-gated web IDE framework**. Panel-based U
 
 - **Frontend**: React 18, Vite 5, TailwindCSS 4, DockView (panels), Zustand (state), TipTap (editor)
 - **Backend**: TypeScript, Fastify 5, tRPC, Drizzle ORM, jose (JWT), simple-git
-- **Legacy Backend**: Python 3, FastAPI (being replaced — see `src/back/`)
 - **Control Plane**: PostgreSQL (Drizzle + postgres.js), Neon Auth (Better Auth, EdDSA JWT)
 - **CLI**: `bui` (Go) — dev orchestration, framework pinning, child app management
 - **Tests**: Vitest (frontend + server unit), Playwright (e2e)
@@ -91,8 +90,7 @@ src/server/             TypeScript backend (Fastify + tRPC)
   jobs/                 Long-running exec job manager
   middleware/            Request ID, secret redaction
 src/shared/             Shared types (used by server + potentially frontend)
-src/back/boring_ui/api/ Legacy Python backend (being replaced)
-tests/                  unit/, integration/, contract/, security/, smoke/
+tests/                  unit/, smoke/, eval/
 docs/                   Architecture, plans, runbooks, extension guide, design tokens
 scripts/                Build, lint, E2E runner utilities
 bui/                    Go CLI tool
@@ -115,7 +113,7 @@ bui/                    Go CLI tool
 | PI agent API keys | `docs/runbooks/PI_AGENT_API_KEYS.md` |
 | Smoke tests | `docs/runbooks/SMOKE_TESTS.md` |
 | Ownership cutover | `docs/runbooks/OWNERSHIP_CUTOVER.md` |
-| Backend arch plan | `docs/plans/backend-architecture-plan-python.md` |
+| TS migration plan | `docs/plans/typescript-rewrite-plan.md` |
 | Fly.io deploy plan | `docs/plans/flyio-two-mode-agent-plan.md` |
 | BUI framework plan | `docs/plans/BUI-FRAMEWORK.md` |
 | All plans | `docs/plans/` |
@@ -159,10 +157,6 @@ npm run server:dev             # tsx watch (port 8000)
 npm run server:start           # node --import tsx (production-like)
 npm run server:typecheck       # tsc --noEmit -p tsconfig.server.json
 npm run server:test            # Server unit tests (vitest)
-
-# Legacy Python Backend (being replaced)
-pip3 install -e . --break-system-packages
-python3 -m pytest tests/unit/ -v
 
 # Full stack
 export ANTHROPIC_API_KEY=$(vault kv get -field=api_key secret/agent/anthropic)

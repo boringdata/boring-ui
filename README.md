@@ -16,12 +16,12 @@ A composable, capability-gated UI framework for building IDE-like applications. 
 │  │ requirements │  │ capabilities │  │ layout state │  │ + defaults   │   │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Backend (FastAPI)                                                          │
+│  Backend (Fastify + tRPC)                                                  │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
-│  │RouterRegistry│──│  Capabilities│──│   Modular    │──│   Storage    │   │
-│  │              │  │   Endpoint   │  │   Routers    │  │   Backends   │   │
-│  │ files, git,  │  │ /api/        │  │ files, git,  │  │ LocalStorage │   │
-│  │ pty, stream  │  │ capabilities │  │ pty, stream  │  │ (pluggable)  │   │
+│  │ HTTP Routes  │──│  Capabilities│──│   Domain     │──│  Workspace   │   │
+│  │              │  │   Endpoint   │  │   Services   │  │   Backends   │   │
+│  │ files, git,  │  │ /api/        │  │ files, git,  │  │ bwrap,       │   │
+│  │ exec, auth   │  │ capabilities │  │ exec, auth   │  │ lightningfs  │   │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -217,18 +217,18 @@ boring-ui/
 │   │       ├── appConfig.js      # Config loading/merging
 │   │       └── ConfigProvider.jsx
 │   │
-│   └── back/                     # Python backend
-│       └── boring_ui/
-│           └── api/
-│               ├── app.py        # create_app() factory
-│               ├── capabilities.py # RouterRegistry + /api/capabilities
-│               ├── config.py     # APIConfig dataclass
-│               ├── storage.py    # Storage interface
-│               └── modules/
-│                   ├── files/    # File CRUD operations
-│                   ├── git/      # Git status/diff/show
-│                   ├── pty/      # Shell PTY WebSocket
-│                   └── stream/   # Claude chat WebSocket
+│   └── server/                   # TypeScript backend (Fastify + tRPC)
+│       ├── app.ts                # createApp() factory
+│       ├── config.ts             # Zod-validated ServerConfig
+│       ├── index.ts              # Server entry point
+│       ├── http/                 # HTTP route handlers
+│       │   ├── authRoutes.ts     # Auth (session, callback, token exchange)
+│       │   ├── fileRoutes.ts     # File CRUD operations
+│       │   ├── gitRoutes.ts      # Git status/diff/show
+│       │   └── execRoutes.ts     # Exec (bash/python via bwrap)
+│       ├── services/             # Domain services
+│       ├── auth/                 # Session JWT, middleware
+│       └── workspace/            # Resolver, membership, boundary
 ├── boring.app.toml              # Runtime app + frontend configuration
 └── vite.config.ts
 ```
@@ -371,31 +371,20 @@ const components = getGatedComponents(createCapabilityGatedPane)
 | review    | No        | `approval` router      | Tool approval panel      |
 | empty     | No        | None                   | Placeholder              |
 
-### Backend: Router Registry
+### Backend: Route Modules
 
-The router registry (`src/back/boring_ui/api/capabilities.py`) allows selective feature composition:
+The TypeScript backend (`src/server/`) uses Fastify route modules registered in `app.ts`:
 
-```python
-# Default registry includes all routers
-registry = create_default_registry()
+**Available Route Modules:**
 
-# Routers are mounted based on enabled set
-app = create_app(routers=['files', 'git', 'pty'])
-# → Only file, git, and PTY routes available
-# → /api/capabilities reflects actual availability
-```
-
-**Available Routers (Mount Prefixes):**
-
-| Router           | Mount Prefix   | Description                    |
-|------------------|----------|--------------------------------|
-| files            | /api/v1/files | File CRUD + directory listing/search |
-| git              | /api/v1/git   | Status, diff, show                  |
-| pty              | /ws      | Shell terminal WebSocket       |
-| chat_claude_code | /ws/agent/normal | Claude stream WebSocket  |
-| approval         | /api     | Tool approval workflow         |
-
-For WebSocket routers, the mount prefix is not necessarily the full endpoint path; see the API reference table below for the canonical WS endpoints (e.g. `/ws/pty`, `/ws/agent/normal/stream`).
+| Module           | Mount Prefix      | Description                          |
+|------------------|-------------------|--------------------------------------|
+| fileRoutes       | /api/v1/files     | File CRUD + directory listing/search |
+| gitRoutes        | /api/v1/git       | Status, diff, show, commit, push     |
+| execRoutes       | /api/v1/exec      | Bash/Python execution via bwrap      |
+| authRoutes       | /auth             | Session, callback, token exchange    |
+| workspaceRoutes  | /api/v1/workspaces| Workspace lifecycle + membership     |
+| githubRoutes     | /api/v1/github    | GitHub App integration               |
 
 ### Config: Deep Merge with Defaults
 
@@ -446,7 +435,8 @@ logo = "M"
 id = "my-ide"
 
 [backend]
-entry = "boring_ui.api.app:create_app"
+type = "typescript"
+entry = "src/server/index.ts"
 routers = []
 
 [frontend.branding]
@@ -460,7 +450,7 @@ name = "My IDE"
 npm run dev
 
 # Terminal 2: backend API server
-BUI_APP_TOML=./boring.app.toml uv run python -m uvicorn boring_ui.app_config_loader:app --host 0.0.0.0 --port 8000 --reload
+npm run server:dev
 
 # Optional production build + preview
 npm run build
@@ -478,6 +468,319 @@ python3 scripts/package_app_assets.py \
   --companion-source /path/to/boring-ui/src/companion_service/launch.sh \
   --companion-target /path/to/app/runtime_companion/launch.sh
 ```
+
+## What You Build With It
+
+boring-ui is for applications that want the ergonomics of an IDE without
+hard-forking an entire editor stack. The framework is a good fit when you need:
+
+- a panel-based workspace shell rather than a single-purpose page
+- first-party file, git, auth, and workspace flows under one origin
+- a child app that can add domain-specific panels and routes without forking the core
+- a deployable hosted app and a locally hackable dev experience using the same config contract
+- graceful degradation when some backend capabilities are absent or intentionally disabled
+
+Typical uses include internal tooling, AI-assisted operator consoles, vertical
+applications that need a working directory plus custom panels, and domain apps
+that want to mix chat, review, file editing, settings, and workflow surfaces in
+one shell.
+
+## Current Runtime Path
+
+The primary runtime path today is:
+
+- React + Vite frontend
+- Fastify TypeScript backend in `src/server/`
+- Neon Auth + Neon Postgres for hosted auth/control-plane state
+- `bui` as the framework/child-app orchestration layer
+
+### Child App Contract
+
+The canonical child-app/backend shape is:
+
+```toml
+[app]
+name = "My App"
+logo = "M"
+id = "my-app"
+
+[workspace]
+backend = "lightningfs"   # local dev default
+
+[agent]
+runtime = "pi"
+placement = "browser"
+
+[backend]
+type = "typescript"
+entry = "src/server/index.ts"
+port = 8000
+
+[frontend.branding]
+name = "My App"
+logo = "M"
+```
+
+For hosted deploys, the effective runtime contract is typically:
+
+```toml
+[workspace]
+backend = "bwrap"
+
+[agent]
+runtime = "pi"
+placement = "browser"
+```
+
+That combination yields a browser-side agent rail with server-side filesystem,
+git, and exec primitives exposed over HTTP.
+
+## Child App Development Model
+
+Child apps are the main extension mechanism. A child app owns its own
+`boring.app.toml`, panels, server entrypoint, deploy metadata, and Vault secret
+mapping, while reusing the core framework runtime.
+
+### Default Scaffold
+
+The default scaffold is TypeScript:
+
+```bash
+cd /home/ubuntu/projects
+bui init <app-name>
+cd <app-name>
+```
+
+That scaffold gives you:
+
+- `src/server/index.ts` as the child app backend entrypoint
+- `src/server/routes/*` for app-specific routes
+- `panels/` for custom workspace panels
+- a Fly deploy skeleton
+- a `boring.app.toml` that pins the app identity and backend contract
+
+Use `bui init --python` only if you explicitly want the legacy Python child-app
+loader path.
+
+### Typical Child App Loop
+
+The normal child-app workflow is:
+
+```bash
+bui init <app-name>
+bui neon setup
+bui doctor
+bui dev --backend-only
+bui deploy
+```
+
+Within that loop:
+
+- child routes live in `src/server/index.ts` or `src/server/routes/*`
+- child panels live in `panels/`
+- child branding, feature flags, panel defaults, secrets, and deploy metadata
+  live in `boring.app.toml`
+- local Neon-auth parity uses trusted loopback origins such as `127.0.0.1:5176`
+
+The core idea is composition, not inheritance. A child app does not fork the
+core app shell; it configures and extends it.
+
+## Hosted Auth, Branding, and Secrets
+
+Hosted auth is same-origin. The browser talks to boring-ui `/auth/*`, and the
+server talks to Neon Auth. boring-ui owns the application session cookie and
+the post-auth redirect behavior.
+
+### Auth Flow
+
+At a high level:
+
+1. The browser calls `POST /auth/sign-in`, `POST /auth/sign-up`, or related
+   same-origin endpoints.
+2. The server exchanges those requests with Neon Auth.
+3. The server verifies provider tokens via JWKS as needed.
+4. The server issues its own `boring_session` cookie.
+5. The app redirects into the requested workspace route.
+
+This keeps provider-specific details out of the browser and makes the session
+format stable across core app and child apps.
+
+### App-Specific Vault Layout
+
+Hosted secrets are expected to live in app-scoped Vault paths:
+
+```text
+secret/agent/app/<app-name>/prod
+```
+
+Typical fields include:
+
+- `database_url`
+- `session_secret`
+- `settings_key`
+- `neon_auth_*`
+- deploy-specific provider credentials
+
+`bui neon setup` and `bui deploy` use that app-scoped secret layout directly.
+
+### Branding Surfaces
+
+App identity is not just decorative. `boring.app.toml` feeds:
+
+- `/__bui/config`
+- hosted auth pages (`/auth/login`, `/auth/signup`, password reset pages)
+- frontend branding defaults
+- control-plane app identity
+
+That means a child app name/logo can stay consistent across auth, runtime
+config, and workspace UI without a separate branding system.
+
+## Runtime Config As A Contract
+
+`GET /__bui/config` is the runtime handshake between the server and the
+frontend. It carries:
+
+- app identity (`id`, `name`, `logo`)
+- frontend branding
+- feature flags
+- panel metadata/defaults
+- data-backend mapping
+- agent/runtime mode information
+
+This endpoint matters because it lets the same frontend bundle boot against
+different app identities and workspace backends without a rebuild.
+
+In practice, the server loads `boring.app.toml`, combines it with env-derived
+runtime settings, validates the result, and emits a single runtime payload for
+the browser.
+
+## Design Principles
+
+### 1. Capability Negotiation Beats Hard Failure
+
+Panels declare the features and routes they need. The backend advertises what
+is actually available. The UI renders the real panel or a degraded state based
+on that negotiation. This makes feature absence a runtime condition rather than
+an app-crashing edge case.
+
+### 2. Fail Closed At Startup
+
+Invalid runtime combinations should crash early. Startup validation is preferred
+over “best effort” boot when the app would otherwise come up in a misleading or
+unsafe mode.
+
+### 3. Shared Persistence For Hosted Behavior
+
+Anything that must survive deploys, restarts, or multiple Fly machines should
+live in shared persistence, not process-local memory. That rule applies to
+control-plane state and to child-app features used in hosted evals.
+
+### 4. Composition Over Forking
+
+Child apps extend boring-ui by adding routes, panels, branding, and secrets on
+top of the core runtime. The framework stays centrally maintained while domain
+apps stay small and specific.
+
+### 5. Same-Origin UX Matters
+
+Auth, workspace navigation, runtime config, and panel boot all happen under the
+same origin. That reduces browser auth edge cases and keeps the app shell in
+control of redirects, cookies, and branding.
+
+### 6. Prove The Extension Story End To End
+
+The framework is not considered healthy just because the core app boots. It
+also needs to prove that a fresh child app can scaffold, add routes/panels,
+boot locally, deploy, and behave correctly when hosted.
+
+## Algorithms And Operational Mechanics
+
+### Capability Matching
+
+boring-ui uses a simple but important matching algorithm:
+
+1. Pane registry declares requirements.
+2. Backend capabilities endpoint reports actual availability.
+3. Capability gate compares requirement sets to capability sets.
+4. The shell renders either the real panel or a structured degraded state.
+
+This is more robust than scattering feature flags across individual
+components because the contract is explicit at the registry boundary.
+
+### Layout Recovery
+
+The layout manager keeps:
+
+- current layout
+- versioned schema metadata
+- a last-known-good backup
+
+On load, it validates structure before restoring, attempts migration if the
+schema changed, falls back to a backup on drift, and only then creates a fresh
+layout. The goal is to make layout persistence self-healing instead of brittle.
+
+### Workspace Backend Resolution
+
+The runtime resolves workspace behavior from `boring.app.toml` and environment:
+
+- `lightningfs` for browser-local development
+- `bwrap` for hosted/server-backed workspaces
+- `justbash` for experimental in-browser execution
+
+The frontend sees a stable runtime-config view, while the backend enforces the
+actual backend semantics.
+
+### Child App Framework Resolution
+
+`bui` resolves the framework in a predictable order:
+
+1. local/sibling framework checkout when present
+2. pinned commit/reference from app config
+3. cached framework copy when needed
+
+That makes child apps reproducible without submodules while still supporting
+fast local iteration against a neighboring framework checkout.
+
+## Evaluation And Proof Strategy
+
+The child-app eval framework in `tests/eval/` exists to prove that the
+framework extension model works end to end rather than only in unit tests.
+
+Its lifecycle is:
+
+1. preflight checks
+2. agent-driven child-app scaffold/build work
+3. clean-room local validation
+4. hosted deploy verification
+5. scoring
+6. evidence bundle generation
+
+The eval lane is intentionally opinionated:
+
+- it expects the TypeScript child-app path
+- it checks that hosted behavior does not rely on process-local state
+- it validates both local and deployed routes
+- it records evidence rather than just returning pass/fail text
+
+That eval discipline is part of the framework design, not a separate QA layer.
+
+## Additional Current Server Surfaces
+
+In addition to the lower-level file/git endpoints listed below, the current
+TypeScript server also owns higher-level surfaces such as:
+
+- `/health`, `/healthz`
+- `/__bui/config`
+- `/auth/*`
+- `/api/v1/me`
+- `/api/v1/workspaces/*`
+- `/api/v1/github/*`
+- `/api/v1/ui-state/*`
+- workspace boundary routing under `/w/<workspace-id>/...`
+
+These routes are part of the same “IDE shell as a framework” model: not just
+editing files, but handling identity, routing, settings, control-plane state,
+and extension surfaces in one application contract.
 
 ## API Reference
 

@@ -385,8 +385,7 @@ For new projects (boring-macro, boring-sandbox, etc.) that need their own Neon d
 - Check if compute is suspended (first request after idle has cold start)
 
 **"EdDSA algorithm not supported"**
-- Pin `PyJWT[crypto]>=2.8.0` in pyproject.toml
-- Verify `cryptography` package includes Ed25519 support
+- Ensure the JWT library supports EdDSA (Ed25519) verification
 
 **Auth returns 400 "MISSING_ORIGIN"**
 - All auth POST requests need `Origin` header matching a trusted domain
@@ -394,7 +393,7 @@ For new projects (boring-macro, boring-sandbox, etc.) that need their own Neon d
 **Direct verification email link returns `INVALID_CALLBACKURL`**
 - Check Neon Auth `trusted_origins` and redirect-domain whitelist
 - Add the current Fly/Modal/custom app origin as a full URI, not just an old deploy URL or bare hostname
-- For canonical local Python-server smoke runs, do not rely on an arbitrary `http://127.0.0.1:<ephemeral-port>` callback origin. Use a stable local app origin that Neon trusts instead, typically `BORING_UI_PUBLIC_ORIGIN=http://127.0.0.1:5176`, and pass the same value to `tests/smoke/smoke_neon_auth.py` via `--public-origin` when it differs from `--base-url`.
+- For canonical local smoke runs, do not rely on an arbitrary `http://127.0.0.1:<ephemeral-port>` callback origin. Use a stable local app origin that Neon trusts instead, typically `BORING_UI_PUBLIC_ORIGIN=http://127.0.0.1:5176`, and pass the same value to `tests/smoke/smoke_neon_auth.py` via `--public-origin` when it differs from `--base-url`.
 - Re-run `tests/smoke/smoke_neon_auth.py` and confirm phase 1 clicks the exact delivered verification link successfully
 
 **Session cookie not set (cross-domain)**

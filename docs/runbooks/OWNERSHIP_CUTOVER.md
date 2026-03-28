@@ -117,59 +117,13 @@ curl -i http://<api>/api/v1/workspaces
 4. Confirm macro endpoints still isolated (`/api/v1/macro/*` only).
 5. Document incident + cause before next cutover attempt.
 
-## Rollback Rehearsal
+## Rollback
 
-Before relying on rollback during a cutover, rehearse the exact Python path that would be used as the fallback.
-
-Required env:
-
-- `DATABASE_URL`
-- `BORING_UI_SESSION_SECRET`
-- `BORING_SETTINGS_KEY`
-- `NEON_AUTH_BASE_URL`
-- `NEON_AUTH_JWKS_URL`
-- `RESEND_API_KEY` for verify-first signup rehearsals
-
-Single-command local proof:
+The Python backend has been removed. Rollback is now a standard Fly deploy revert:
 
 ```bash
-python3 scripts/rehearse_python_rollback.py \
-  --summary-out .agent-evidence/beads/bd-tpbk6.3/local-summary.json
-```
-
-The script owns the parity env for the rehearsal:
-
-- `LOCAL_PARITY_MODE=http`
-- `AUTH_SESSION_SECURE_COOKIE=false`
-- `BORING_UI_PUBLIC_ORIGIN=http://127.0.0.1:5176` by default
-- `BORING_UI_STATIC_DIR=$PWD/dist`
-- `BORING_UI_WORKSPACE_ROOT=/tmp/boring-ui-rollback-workspaces`
-- `BUI_APP_TOML=$PWD/boring.app.toml`
-- `PYTHONPATH=$PWD/src/back`
-
-Useful flags:
-
-- `--skip-signup --email <email> --password '<password>'` for repeat runs against an existing account
-- `--public-origin <origin>` if the trusted callback origin must differ from the local smoke target
-- `--dry-run` to print the exact commands without executing them
-
-Hosted rollback preview:
-
-```bash
-python3 scripts/rehearse_python_rollback.py \
-  --dry-run \
-  --skip-sync \
-  --skip-build \
-  --skip-smoke \
-  --print-hosted-commands \
-  --hosted-url https://boring-ui-frontend-agent.fly.dev
-```
-
-That preview prints the exact hosted rollback deploy sequence:
-
-```bash
-bash deploy/fly/fly.secrets.sh boring-ui-frontend-agent
-fly deploy -c deploy/fly/fly.frontend-agent.toml --remote-only
+fly releases -a boring-ui-frontend-agent
+fly deploy --image <previous-image> -a boring-ui-frontend-agent
 ```
 
 The direct cutover path uses that same Fly app/config, but it now points at the TypeScript backend image (`deploy/shared/Dockerfile.ts-backend`).

@@ -283,45 +283,14 @@ export const analyticsRouter = router({
 3. Frontend accesses via: `trpc.analytics.listEvents.useQuery({ limit: 50 })`
 4. Auth + workspace context are provided automatically via tRPC middleware
 
-### Legacy Python Router Registry
+### Built-in Backend Modules
 
-The Python backend router registry (`create_default_registry()`) is still available in `src/back/` but is being replaced by the tRPC pattern above.
-        return {'id': '123', **data}
+boring-ui's TypeScript backend (`src/server/`) provides these core route families:
 
-    return router
-```
-
-### Selective Router Inclusion
-
-```python
-# Include only specific routers
-app = create_app(routers=['files', 'git', 'my-feature'])
-
-# Or exclude optional routers
-app = create_app(include_pty=False, include_stream=False)
-```
-
-### Built-in Modules
-
-boring-ui's backend API is organized into modules under `boring_ui/api/modules/`:
-
-```
-boring_ui/api/modules/
-├── files/          # File operations (read, write, rename, delete)
-│   ├── router.py
-│   └── service.py
-├── git/            # Git operations (status, diff, show)
-│   ├── router.py
-│   └── service.py
-├── pty/            # PTY WebSocket for shell terminals
-│   ├── router.py
-│   └── service.py
-└── stream/         # Claude stream WebSocket (chat_claude_code)
-    ├── router.py
-    └── service.py
-```
-
-Each module follows the router/service pattern for clean separation of concerns.
+- **files** — File operations (read, write, rename, delete)
+- **git** — Git operations (status, diff, show)
+- **auth** — Authentication and session management
+- **workspaces** — Workspace lifecycle and settings
 
 ## Capabilities API
 
@@ -414,4 +383,4 @@ async function checkCapabilities() {
 ## See Also
 
 - [README.md](../README.md) - Quick start guide
-- [tests/unit/test_capabilities.py](../tests/unit/test_capabilities.py) - API test examples
+- [tests/](../tests/) - Test examples

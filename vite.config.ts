@@ -138,13 +138,10 @@ export default defineConfig(({ mode }) => {
           '**/test-results/**',
           '**/dist/**',
           '**/vendor/**',
-          '**/src/back/**',
           '**/tests/**',
           '**/examples/**',
           '**/docs/**',
           '**/deploy/**',
-          '**/__pycache__/**',
-          '**/*.pyc',
         ],
       },
       fs: {

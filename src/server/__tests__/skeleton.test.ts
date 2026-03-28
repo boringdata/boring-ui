@@ -40,7 +40,7 @@ describe('Service layer skeleton structure', () => {
     'trpc/framework.ts',
   ]
 
-  const expectedAdapterFiles = ['adapters/bwrap.ts']
+  const expectedAdapterFiles = ['adapters/bwrapImpl.ts']
 
   const expectedAuthFiles = [
     'auth/session.ts',
@@ -50,9 +50,9 @@ describe('Service layer skeleton structure', () => {
   ]
 
   const expectedWorkspaceFiles = [
-    'workspace/context.ts',
     'workspace/paths.ts',
     'workspace/boundary.ts',
+    'workspace/helpers.ts',
   ]
 
   it.each(expectedServiceFiles)('services/%s exists', (file) => {

@@ -110,10 +110,9 @@ These decisions are now part of the plan, not open questions:
 
 The repo still carries an older multi-surface model that no longer matches the target product:
 
-- `src/back/boring_ui/api/app.py` still mounts PTY and Claude stream paths through `include_pty` / `include_stream`
-- `src/back/boring_ui/api/capabilities.py` still registers `pty`, `chat_claude_code`, and `stream`
-- `src/back/boring_ui/runtime_config.py` still infers `claude_code` and encodes `frontend` / `backend` mode semantics
-- `src/back/boring_ui/app_config_loader.py` still parses `[agents].mode = "frontend" | "backend"`
+- the capabilities endpoint may still register legacy names like `pty`, `chat_claude_code`, and `stream`
+- runtime config may still infer `claude_code` and encode `frontend` / `backend` mode semantics
+- app config parsing may still accept `[agents].mode = "frontend" | "backend"`
 - `src/front/registry/panes.jsx` still declares `terminal` and `shell` panes
 - `src/front/utils/routes.js` still exposes websocket routes for PTY and Claude stream
 
@@ -139,57 +138,25 @@ The test suite still validates a broader product than the one we want to keep:
 
 The broad architecture is good, but the repo is growing unevenly:
 
-- `src/back/boring_ui/api/modules/control_plane/` is acting as a junk drawer for auth, users, workspaces, collaboration, provider-specific persistence, and shared helpers
-- `local` vs `neon` is still expressed as duplicated router files in too many places; that is acceptable short-term, but it should not be the steady-state architecture
-- `src/back/boring_ui/api/modules/control_plane/auth_router_neon.py` is still the clearest oversized-file warning sign in the backend
-- `src/back/boring_ui/api/` still has loose files that either belong under an existing module or should be deleted as part of the PI-only cut:
-  - `approval.py`
-  - `git_backend.py`
-  - `subprocess_git.py`
-  - `git_routes.py`
-  - `storage.py`
-  - `stream_bridge.py`
-  - `workspace_plugins.py`
 - `src/front/components/` is flatter than it needs to be, but that should be cleaned up only after the terminal/Claude removals so we do not reorganize deleted components
 - `src/companion_service/` and `src/test/` need explicit treatment: either they remain part of the supported product, or they get removed as legacy/orphan surface
 
-The target structure after the agreed cuts is closer to:
+The target structure after the agreed cuts is the TypeScript backend at `src/server/`:
 
 ```text
-src/back/boring_ui/api/
-  app.py
-  config.py
-  capabilities.py
-  observability.py
-  policy.py
-  agents/            # PI-only harness and registry
-  workspace/         # context, resolver, paths, storage, provisioning, plugins
-  modules/
-    auth/
-    users/
-    workspaces/
-    collaboration/
-    files/
-    git/
-    approval/        # only if approval stays in core
-    messaging/
-    ui_state/
-    github_auth/     # if this integration stays supported
+src/server/
+  index.ts            # entry point (Fastify)
+  config/             # app config, runtime config
+  auth/               # auth routes, session, JWKS
+  workspace/          # workspace lifecycle, settings, provisioning
+  files/              # file operations
+  git/                # git operations
+  agents/             # PI-only harness and registry
+  approval/           # only if approval stays in core
+  github/             # GitHub App integration
 ```
 
-Explicitly removed from that target shape:
-
-- `modules/pty/`
-- `modules/stream/`
-- `modules/agent_normal/`
-
-With one additional rule:
-
-- domain routers and services should become provider-neutral
-- `local` should survive only as a thin dev adapter behind those domain services
-- the final steady state should not keep parallel `*_neon.py` / local router trees for every major domain
-
-This structure work is real, but it should follow the product cuts. Do not reorganize deleted runtime families into nicer folders.
+The Python backend (`src/back/`) has been removed. PTY, Claude stream, and agent_normal modules no longer exist.
 
 ---
 
@@ -214,7 +181,7 @@ This structure work is real, but it should follow the product cuts. Do not reorg
 The repo already has four meaningful validation layers:
 
 1. frontend unit tests via Vitest
-2. backend unit/integration tests via pytest
+2. backend unit/integration tests
 3. deploy-shaped smoke tests under `tests/smoke/`
 4. framework eval harness under `tests/eval/`
 
@@ -417,7 +384,7 @@ Work:
 
 Done when:
 
-- `python3 -m pytest tests/unit/ -v` shows 0 failures
+- unit tests show 0 failures
 - auth endpoints log request errors at warning/error level with useful detail
 - workspace machine state is bounded and no longer silently accumulates
 
@@ -464,10 +431,7 @@ Tracked beads:
 
 Files likely involved:
 
-- `src/back/boring_ui/api/modules/control_plane/auth_router_neon.py`
-- `src/back/boring_ui/api/modules/control_plane/auth_session.py`
-- `src/back/boring_ui/api/modules/control_plane/me_router_neon.py`
-- `src/back/boring_ui/api/modules/control_plane/workspace_boundary_router_hosted.py`
+- `src/server/` — TypeScript backend auth, session, and workspace routes
 - `tests/unit/test_auth_session_routes.py`
 - `tests/smoke/smoke_neon_auth.py`
 - `tests/smoke/smoke_workspace_lifecycle.py`
@@ -514,13 +478,7 @@ Tracked bead:
 
 Files likely involved:
 
-- `src/back/boring_ui/api/app.py`
-- `src/back/boring_ui/api/capabilities.py`
-- `src/back/boring_ui/api/config.py`
-- `src/back/boring_ui/runtime_config.py`
-- `src/back/boring_ui/api/modules/stream/`
-- `src/back/boring_ui/api/modules/agent_normal/`
-- `src/back/boring_ui/api/modules/pty/`
+- `src/server/` — TypeScript backend capabilities and config
 - `src/front/registry/panes.jsx`
 - `src/front/components/Terminal.jsx`
 - `src/front/panels/TerminalPanel.jsx`
@@ -528,15 +486,15 @@ Files likely involved:
 - `src/front/utils/routes.js`
 - affected docs and tests under `docs/`, `tests/unit/`, `tests/integration/`, and `tests/smoke/`
 
+Note: The Python backend (`src/back/`) has already been removed, so the PTY, stream, and agent_normal backend modules are already gone.
+
 Work:
 
-- triage `src/back/boring_ui/api/stream_bridge.py` before deletion; if PI imports no helpers from it, delete it entirely, otherwise extract only the surviving PI-relevant helpers into `api/agents/` first
 - remove `terminal` and `shell` panes from the registry
 - remove PTY websocket and lifecycle routes
 - remove Claude stream and `agent_normal` routes
 - remove Claude/PTy provider config and capability names
 - remove websocket route helpers for deleted surfaces
-- delete `src/back/boring_ui/api/git_routes.py` if it remains a dead stub
 - remove docs that present the deleted runtime surface as part of the framework core
 - remove tests that lock in deleted routes/capabilities, replacing them with absence tests where needed
 - do not leave a compatibility alias layer behind
@@ -566,9 +524,7 @@ Tracked bead:
 
 Files likely involved:
 
-- `src/back/boring_ui/app_config_loader.py`
-- `src/back/boring_ui/runtime_config.py`
-- `src/back/boring_ui/api/config.py`
+- `src/server/` — TypeScript backend config and runtime payload
 - `deploy/shared/boring.app.toml`
 - `deploy/fly-lite/boring.app.toml`
 - `deploy/README.md`
@@ -725,12 +681,10 @@ Tracked bead:
 
 Files likely involved:
 
-- `src/back/boring_ui/runtime_config.py`
-- `src/back/boring_ui/api/capabilities.py`
+- `src/server/` — TypeScript backend capabilities and runtime config
 - `src/front/registry/panes.jsx`
 - `src/front/hooks/useCapabilities.js`
-- `tests/unit/test_capabilities.py`
-- `tests/unit/test_agent_app_config_loader.py`
+- tests covering capabilities and app config loading
 - new contract-focused tests under `tests/unit/` and `tests/integration/`
 
 Work:
@@ -741,13 +695,7 @@ Work:
 - align the runtime payload served from `/__bui/config` with the same contract vocabulary
 - define what is core and what is experimental
 - explicitly classify approval as either durable core or experimental non-core before leaning on it further in the shell
-- converge local and Neon behavior behind shared domain routers/services; provider-specific differences should live in small adapters, not duplicate router trees
-- split the overloaded `control_plane/` area along real domain seams instead of keeping auth, users, workspaces, and collaboration in one bucket
-- move surviving API-root stragglers into the right homes:
-  - `git_backend.py` and `subprocess_git.py` into `modules/git/`
-  - `approval.py` into `modules/approval/` if approval stays in core
-  - `storage.py` and `workspace_plugins.py` into `api/workspace/` if they still belong after the surface cut
-  - delete `git_routes.py` if it remains a dead stub
+- converge local and Neon behavior behind shared domain services; provider-specific differences should live in small adapters, not duplicate route trees
 - classify or remove `src/companion_service/` and `src/test/` instead of leaving them as ambiguous legacy surface
 
 Done when:
@@ -755,7 +703,7 @@ Done when:
 - frontend bootstrap, capability gating, and child-app extension points all speak the same contract language
 - the contract is documented and locked by tests
 - there is no ambiguity about the supported agent/runtime surface
-- backend module boundaries match the supported product instead of the historical runtime sprawl
+- backend module boundaries in `src/server/` match the supported product instead of the historical runtime sprawl
 - `local` no longer adds major structural complexity relative to Neon because it is clearly reduced to a dev adapter
 
 Why now:

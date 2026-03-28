@@ -6,15 +6,11 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { parse } from 'smol-toml'
 
-const flyTomlPath = fileURLToPath(new URL('../../../deploy/fly/fly.toml', import.meta.url))
 const flyFrontendAgentTomlPath = fileURLToPath(
   new URL('../../../deploy/fly/fly.frontend-agent.toml', import.meta.url),
 )
 const flyBackendAgentTomlPath = fileURLToPath(
   new URL('../../../deploy/fly/fly.backend-agent.toml', import.meta.url),
-)
-const flyTsBackendTomlPath = fileURLToPath(
-  new URL('../../../deploy/fly/fly.ts-backend.toml', import.meta.url),
 )
 const flySecretsPath = fileURLToPath(
   new URL('../../../deploy/fly/fly.secrets.sh', import.meta.url),
@@ -25,22 +21,6 @@ function readToml(path: string): Record<string, any> {
 }
 
 describe('Fly deploy config', () => {
-  it('locks the core app to the legacy backend image and single-machine health contract', () => {
-    const data = readToml(flyTomlPath)
-
-    expect(data.app).toBe('boring-ui')
-    expect(data.primary_region).toBe('cdg')
-    expect(data.build.dockerfile).toBe('../shared/Dockerfile.backend')
-    expect(data.http_service.internal_port).toBe(8000)
-    expect(data.http_service.force_https).toBe(true)
-    expect(data.http_service.auto_stop_machines).toBe('off')
-    expect(data.http_service.min_machines_running).toBe(1)
-    expect(data.http_service.checks[0].path).toBe('/health')
-    expect(data.vm.cpu_kind).toBe('shared')
-    expect(data.vm.cpus).toBe(1)
-    expect(data.vm.memory).toBe('512mb')
-  })
-
   it('locks the hosted frontend-agent app to the TS image and runtime contract', () => {
     const data = readToml(flyFrontendAgentTomlPath)
     const env = data.env
@@ -88,13 +68,6 @@ describe('Fly deploy config', () => {
     expect(data.deploy.strategy).toBe('immediate')
     expect(data.http_service.internal_port).toBe(8000)
     expect(data.http_service.checks[0].path).toBe('/health')
-  })
-
-  it('keeps the legacy TS deploy alias aligned with the hosted frontend-agent config', () => {
-    const canonical = readToml(flyFrontendAgentTomlPath)
-    const alias = readToml(flyTsBackendTomlPath)
-
-    expect(alias).toEqual(canonical)
   })
 
   it('keeps the Fly secrets script aligned with the hosted and core secret contract', () => {
