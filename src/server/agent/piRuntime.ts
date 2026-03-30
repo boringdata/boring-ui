@@ -6,7 +6,7 @@ import { buildSessionSystemPrompt, createWorkspaceTools } from './piTools.js'
 import { resolveAgentSessionContext, type AgentSessionContext } from './sessionContext.js'
 
 const DEFAULT_MODEL = process.env.PI_SERVICE_MODEL || 'claude-sonnet-4-5-20250929'
-const SYSTEM_PROMPT = [
+const DEFAULT_SYSTEM_PROMPT = [
   'You are an Agent integrated into Boring UI.',
   'Do not claim to be Claude Code.',
   'Be concise, accurate, and action-oriented.',
@@ -175,6 +175,7 @@ export function resolvePiSessionContext(
 
 export function createPiRuntime(config: ServerConfig) {
   ensureBuiltInProviders()
+  const SYSTEM_PROMPT = config.agentSystemPrompt || DEFAULT_SYSTEM_PROMPT
   const sessions = new Map<string, PiSession>()
 
   const requireOwnerUserId = (ownerUserId: string) => {

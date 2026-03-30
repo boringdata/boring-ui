@@ -50,6 +50,8 @@ export interface ServerConfig {
   agentPlacement: AgentPlacement
   /** Agents mode: frontend | backend */
   agentsMode: string
+  /** Custom agent system prompt from boring.app.toml [agent].system_prompt */
+  agentSystemPrompt: string | undefined
   /** Public application origin (validated URL) */
   publicAppOrigin: string | undefined
   /** GitHub App ID */
@@ -124,6 +126,7 @@ interface ParsedAppToml {
   agent?: {
     runtime?: string
     placement?: string
+    system_prompt?: string
   }
   auth?: {
     session_cookie?: string
@@ -321,6 +324,7 @@ export function loadConfig(): ServerConfig {
       envStr('AGENT_PLACEMENT', resolveAgentPlacementFallback(appToml)) as AgentPlacement
     ),
     agentsMode: normalizeAgentsMode(),
+    agentSystemPrompt: (process.env.AGENT_SYSTEM_PROMPT || appToml.agent?.system_prompt || '').trim() || undefined,
     publicAppOrigin: normalizePublicOrigin(
       process.env.BORING_UI_PUBLIC_ORIGIN || process.env.PUBLIC_APP_ORIGIN,
     ),

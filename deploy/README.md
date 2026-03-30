@@ -1,82 +1,278 @@
-# Deployment
+# Deploying boring-ui
 
-boring-ui deploys to Fly.io with a single TypeScript backend. The hosted `boring-ui-frontend-agent` app builds from `deploy/shared/Dockerfile.ts-backend`.
+boring-ui is a **standard Docker application** that runs on any platform supporting containers.
 
-## Architecture
+## Quick Deploy (Pick One)
 
-| Component | Technology | Description |
-|-----------|-----------|-------------|
-| **Backend** | Fastify (TypeScript) | API server: files, git, exec (bwrap), auth, workspaces |
-| **Frontend** | Vite (React) | Built to `dist/`, served by Fastify `@fastify/static` |
-| **Database** | Neon PostgreSQL | Auth (Neon Auth/Better Auth), workspace state (Drizzle ORM) |
-| **Agent** | PI (browser) | Browser-side agent, calls backend API for file/git/exec |
-| **Sandbox** | bubblewrap | Isolates workspace command execution |
+| Platform | Complexity | Cost | Best For |
+|----------|------------|------|----------|
+| **Docker Compose** | ⭐ Easy | Free (self-hosted) | Small teams, on-prem |
+| **Fly.io** | ⭐⭐ Medium | $5-20/mo | Managed, global edge |
+| **Railway** | ⭐ Easy | $5-15/mo | Simple managed hosting |
+| **Render** | ⭐ Easy | $7-25/mo | Auto-deploy from Git |
+| **DigitalOcean App Platform** | ⭐⭐ Medium | $12-30/mo | Managed K8s-backed |
+| **Kubernetes** | ⭐⭐⭐ Hard | Varies | Enterprise, self-hosted |
 
-## Configuration
+---
 
-Hosted TypeScript deploy contract:
+## 1. Docker Compose (Self-Hosted)
 
-```toml
-[workspace]
-backend = "bwrap"
+**Best for**: Small teams, on-premises, full control
 
-[agent]
-runtime = "pi"
-placement = "browser"
-
-[backend]
-type = "typescript"
-entry = "src/server/index.ts"
-port = 8000
-```
-
-The hosted `boring-ui-frontend-agent` image copies the repo-root `boring.app.toml`
-for app metadata and Vault secret mapping, then pins the effective runtime contract
-with Fly env (`WORKSPACE_BACKEND=bwrap`, `AGENT_RUNTIME=pi`,
-`AGENT_PLACEMENT=browser`). The frontend sees `data.backend = "http"` via the
-runtime-config mapping from `workspace.backend = "bwrap"`.
-
-Secrets are managed via Vault → `[deploy.secrets]` mapping in `boring.app.toml`.
-
-## Deploy flow
+### Setup
 
 ```bash
-# 1. Set secrets (requires Vault + flyctl auth)
-bash deploy/fly/fly.secrets.sh <app-name>
+# 1. Copy environment file
+cp deploy/.env.example deploy/.env
 
-# 2. Deploy
-fly deploy -c <config-path> --remote-only
+# 2. Edit secrets
+nano deploy/.env
 
-# Examples:
-bash deploy/fly/fly.secrets.sh boring-ui-frontend-agent
-fly deploy -c deploy/fly/fly.frontend-agent.toml --remote-only
+# 3. Start
+docker-compose -f deploy/docker-compose.yml up -d
 
-bash deploy/fly/fly.secrets.sh boring-ui-backend-agent
-fly deploy -c deploy/fly/fly.backend-agent.toml --remote-only
+# 4. Visit
+open http://localhost:8000
 ```
 
-## Smoke tests
+**Database**: Use Neon (cloud) or include PostgreSQL in compose (see file)
+
+---
+
+## 2. Fly.io (Managed Edge)
+
+**Best for**: Global deployment, automatic scaling, Heroku-like experience
+
+### Setup
 
 ```bash
-# Health-only (no auth needed)
-python tests/smoke/run_all.py --base-url https://<app>.fly.dev --suites health,capabilities
+# 1. Install flyctl
+curl -L https://fly.io/install.sh | sh
 
-# Full suite with Neon auth
-python tests/smoke/run_all.py \
-  --base-url https://<app>.fly.dev \
-  --auth-mode neon \
-  --skip-signup --email <email> --password <pw>
+# 2. Login
+fly auth login
 
-# Include backend-agent WebSocket verification
-python tests/smoke/run_all.py \
-  --base-url https://boring-ui-backend-agent.fly.dev \
-  --include-agent-ws ...
+# 3. Set secrets
+fly secrets set \
+  DATABASE_URL="postgresql://..." \
+  BORING_UI_SESSION_SECRET="$(openssl rand -hex 32)" \
+  ANTHROPIC_API_KEY="sk-ant-..."
+
+# 4. Deploy
+fly deploy -c deploy/fly/fly.backend-agent.toml
+
+# 5. Visit
+fly open
 ```
 
-## Dockerfiles
+**Database**: Use [Neon](https://neon.tech) (recommended) or `fly postgres create`
 
-- `deploy/shared/Dockerfile.ts-backend` — Two-stage build (Vite frontend + Fastify TypeScript backend). Used by all hosted apps.
+---
 
-## App config
+## 3. Railway (One-Click Deploy)
 
-- Root `boring.app.toml` — copied into the hosted TypeScript image and used for shared app/deploy metadata plus Vault secret mapping.
+**Best for**: Fastest deployment, GitHub integration
+
+### Setup
+
+1. Click: [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/YOUR_TEMPLATE)
+
+2. Or manual:
+```bash
+# 1. Install Railway CLI
+npm install -g @railway/cli
+
+# 2. Login
+railway login
+
+# 3. Create project
+railway init
+
+# 4. Add PostgreSQL
+railway add --plugin postgresql
+
+# 5. Set variables
+railway variables set BORING_UI_SESSION_SECRET="$(openssl rand -hex 32)"
+railway variables set ANTHROPIC_API_KEY="sk-ant-..."
+
+# 6. Deploy
+railway up
+```
+
+**Database**: Included PostgreSQL plugin (automatic)
+
+---
+
+## 4. Render (Git-Based Deploys)
+
+**Best for**: Auto-deploy from GitHub, simple pricing
+
+### Setup
+
+1. **Create `render.yaml`** (in repo root):
+
+```yaml
+services:
+  - type: web
+    name: boring-ui
+    env: docker
+    dockerfilePath: deploy/shared/Dockerfile.ts-backend
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Set in Render dashboard
+      - key: BORING_UI_SESSION_SECRET
+        generateValue: true
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+databases:
+  - name: boring-ui-db
+    databaseName: boring_ui
+    user: boring_user
+```
+
+2. **Deploy**:
+   - Go to [render.com/deploy](https://render.com/deploy)
+   - Connect GitHub repo
+   - Render auto-detects `render.yaml`
+   - Set `DATABASE_URL` and `ANTHROPIC_API_KEY` in dashboard
+   - Click "Create Web Service"
+
+**Database**: Managed PostgreSQL included
+
+---
+
+## 5. DigitalOcean App Platform
+
+**Best for**: DigitalOcean customers, K8s-backed simplicity
+
+### Setup
+
+1. **Create `app.yaml`**:
+
+```yaml
+name: boring-ui
+services:
+- name: web
+  dockerfile_path: deploy/shared/Dockerfile.ts-backend
+  github:
+    repo: your-org/boring-ui
+    branch: main
+  http_port: 8000
+  envs:
+  - key: DATABASE_URL
+  - key: BORING_UI_SESSION_SECRET
+    type: SECRET
+  - key: ANTHROPIC_API_KEY
+    type: SECRET
+  instance_size_slug: basic-s  # $12/mo
+
+databases:
+- name: db
+  engine: PG
+  version: "16"
+```
+
+2. **Deploy**:
+```bash
+doctl apps create --spec app.yaml
+```
+
+Or use the [web UI](https://cloud.digitalocean.com/apps/new)
+
+**Database**: Managed PostgreSQL included
+
+---
+
+## 6. Kubernetes (Advanced)
+
+**Best for**: Enterprise, multi-region, full control
+
+See [`deploy/k8s/README.md`](./k8s/README.md) for manifests and Helm chart.
+
+```bash
+kubectl apply -f deploy/k8s/
+```
+
+---
+
+## Environment Variables (Required)
+
+All platforms need these:
+
+```bash
+# Database (required)
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
+
+# Session secret (required - generate with: openssl rand -hex 32)
+BORING_UI_SESSION_SECRET=your-secret-here
+
+# Anthropic API (required)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional
+RESEND_API_KEY=re_...
+GITHUB_APP_ID=123456
+GITHUB_APP_CLIENT_ID=...
+GITHUB_APP_CLIENT_SECRET=...
+GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----..."
+GITHUB_APP_SLUG=your-app-slug
+```
+
+---
+
+## Database Options
+
+boring-ui needs PostgreSQL 14+. Options:
+
+### Managed (Recommended)
+- **[Neon](https://neon.tech)** - Serverless Postgres, free tier, fast
+- **[Supabase](https://supabase.com)** - Free tier, includes auth (optional)
+- **[Railway PostgreSQL](https://railway.app)** - Included with deployment
+- **[Render PostgreSQL](https://render.com)** - Included with deployment
+
+### Self-Hosted
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    image: postgres:16
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+```
+
+---
+
+## Health Checks
+
+All platforms should configure:
+
+- **Liveness**: `GET /health` (should return 200)
+- **Readiness**: `GET /health/ready` (checks DB connection)
+
+---
+
+## Troubleshooting
+
+### "Connection refused" errors
+- Check `DATABASE_URL` is set correctly
+- Ensure database allows connections from your platform
+
+### "bwrap not found"
+- Image includes bwrap by default
+- If custom image, install: `apt-get install bubblewrap`
+
+### "/workspaces not writable"
+- Ensure volume is mounted at `/workspaces`
+- Check container runs as non-root with write permissions
+
+---
+
+## Next Steps
+
+1. **Pick a platform** from the table above
+2. **Follow the setup guide** for that platform
+3. **Set environment variables** (DATABASE_URL, secrets)
+4. **Deploy!**
+
+Questions? See [docs/deployment/](../../docs/deployment/) or open an issue.

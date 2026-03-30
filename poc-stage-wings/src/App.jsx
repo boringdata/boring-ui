@@ -6,6 +6,8 @@ import {
   BarChart3, Table2, FileText, Image, Code2, Globe,
   PanelRightClose, Eye, FolderOpen,
 } from 'lucide-react'
+import VercelPiChat from './VercelPiChat'
+import './vercel-pi-chat.css'
 
 // ─── MOCK DATA ───────────────────────────────────────────────
 const SESSIONS = [
@@ -111,10 +113,14 @@ function LeftSidebar({ activeSession, sessions, onSwitchSession }) {
 }
 
 // ─── CHAT ────────────────────────────────────────────────────
-function Chat({ session, onOpenArtifact, openArtifacts, activeArtifact }) {
+function Chat({ session, onOpenArtifact, openArtifacts, activeArtifact, chatMode, onSetChatMode }) {
   const messages = CHAT_MESSAGES[session] || []
   return (
     <div className="center">
+      <div className="chat-mode-toggle">
+        <button className={chatMode === 'vercel' ? 'active' : ''} onClick={() => onSetChatMode('vercel')}>Vercel + PI</button>
+        <button className={chatMode === 'mock' ? 'active' : ''} onClick={() => onSetChatMode('mock')}>Mock Data</button>
+      </div>
       <div className="chat-scroll">
         <div className="chat-msgs">
           {messages.length === 0 && (
@@ -433,6 +439,7 @@ export default function App() {
   const [openArtifacts, setOpenArtifacts] = useState([])
   const [activeArtifact, setActiveArtifact] = useState(null)
   const [surfaceCollapsed, setSurfaceCollapsed] = useState(true) // hidden until first artifact
+  const [chatMode, setChatMode] = useState('vercel') // 'mock' | 'vercel'
 
   const openArtifact = useCallback((id) => {
     setOpenArtifacts(prev => prev.includes(id) ? prev : [...prev, id])
@@ -461,7 +468,20 @@ export default function App() {
   return (
     <div className="app">
       <LeftSidebar activeSession={activeSession} sessions={SESSIONS} onSwitchSession={setActiveSession} />
-      <Chat session={activeSession} onOpenArtifact={openArtifact} openArtifacts={openArtifacts} activeArtifact={activeArtifact} />
+      {chatMode === 'vercel' ? (
+        <div className="center">
+          <div className="chat-mode-toggle">
+            <button className={chatMode === 'vercel' ? 'active' : ''} onClick={() => setChatMode('vercel')}>Vercel + PI</button>
+            <button className={chatMode === 'mock' ? 'active' : ''} onClick={() => setChatMode('mock')}>Mock Data</button>
+          </div>
+          <VercelPiChat onOpenArtifact={(artifact) => {
+            // Bridge artifact from Vercel chat to Surface
+            openArtifact(artifact.id || 'chart-q3q4')
+          }} />
+        </div>
+      ) : (
+        <Chat session={activeSession} onOpenArtifact={openArtifact} openArtifacts={openArtifacts} activeArtifact={activeArtifact} chatMode={chatMode} onSetChatMode={setChatMode} />
+      )}
       <Surface
         session={activeSession}
         openArtifacts={openArtifacts}

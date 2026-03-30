@@ -1,0 +1,31 @@
+# Render Blueprint for boring-ui
+# Deploy: https://render.com/deploy
+
+services:
+  - type: web
+    name: boring-ui
+    env: docker
+    dockerfilePath: deploy/shared/Dockerfile.ts-backend
+    dockerContext: .
+    plan: starter  # $7/mo
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: boring-ui-db
+          property: connectionString
+      - key: BORING_UI_SESSION_SECRET
+        generateValue: true
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Set manually in dashboard
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8000"
+
+databases:
+  - name: boring-ui-db
+    databaseName: boring_ui
+    user: boring_user
+    plan: starter  # Free tier available

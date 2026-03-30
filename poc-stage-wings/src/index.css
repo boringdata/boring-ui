@@ -74,6 +74,14 @@ html,body,#root{height:100%;width:100%;overflow:hidden;background:var(--bg-canva
 .rail-search input::placeholder{color:var(--text-tertiary)}
 .rail-search-hint{font-size:10px;color:var(--text-tertiary);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06);border-radius:3px;padding:0 4px;font-family:var(--font-sans);line-height:1.6;flex-shrink:0}
 
+/* Chat mode toggle */
+.chat-mode-toggle{display:flex;justify-content:center;padding:8px 0 0;gap:2px}
+.chat-mode-toggle button{font-size:11px;font-weight:500;font-family:var(--font-sans);padding:4px 12px;border:1px solid var(--border-subtle);background:transparent;color:var(--text-tertiary);cursor:pointer;transition:all .15s;border-radius:var(--radius-md)}
+.chat-mode-toggle button:first-child{border-radius:var(--radius-md) 0 0 var(--radius-md)}
+.chat-mode-toggle button:last-child{border-radius:0 var(--radius-md) var(--radius-md) 0;border-left:none}
+.chat-mode-toggle button.active{background:var(--bg-active);color:var(--text-primary);border-color:var(--border-hover)}
+.chat-mode-toggle button:hover:not(.active){background:var(--bg-hover);color:var(--text-secondary)}
+
 /* ═══ CENTER — CHAT ═══ */
 .center{flex:1;height:100%;display:flex;flex-direction:column;min-width:var(--chat-min-width);background:transparent;transition:flex .3s var(--emerge)}
 .chat-scroll{flex:1;overflow-y:auto;display:flex;flex-direction:column;

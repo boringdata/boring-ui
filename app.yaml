@@ -1,0 +1,40 @@
+# DigitalOcean App Platform spec
+# Deploy: doctl apps create --spec app.yaml
+
+name: boring-ui
+region: nyc
+
+services:
+- name: web
+  dockerfile_path: deploy/shared/Dockerfile.ts-backend
+  github:
+    repo: boring-data/boring-ui
+    branch: main
+    deploy_on_push: true
+  http_port: 8000
+  health_check:
+    http_path: /health
+  instance_count: 1
+  instance_size_slug: basic-xs  # $5/mo, or basic-s ($12/mo)
+  routes:
+  - path: /
+  envs:
+  - key: DATABASE_URL
+    scope: RUN_TIME
+    type: SECRET
+  - key: BORING_UI_SESSION_SECRET
+    scope: RUN_TIME
+    type: SECRET
+  - key: ANTHROPIC_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+  - key: NODE_ENV
+    value: production
+    scope: RUN_TIME
+
+databases:
+- name: db
+  engine: PG
+  version: "16"
+  production: false  # Set true for production
+  cluster_name: boring-ui-db

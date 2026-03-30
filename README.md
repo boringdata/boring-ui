@@ -2,6 +2,15 @@
 
 A composable, capability-gated UI framework for building IDE-like applications. boring-ui separates concerns into independently configurable layers that gracefully degrade when backend features are unavailable.
 
+## 🚀 Deploy Anywhere
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/boring-ui)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/boring-data/boring-ui)
+
+**Or use**: Docker Compose • Fly.io • DigitalOcean • Kubernetes
+
+👉 **[Full deployment guide](deploy/README.md)** - Choose your platform and deploy in minutes
+
 ## Architecture Overview
 
 ```

@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  boring-ui:
+    image: ghcr.io/boring-data/boring-ui:latest
+    # Or build locally:
+    # build:
+    #   context: ..
+    #   dockerfile: deploy/shared/Dockerfile.ts-backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      BORING_UI_SESSION_SECRET: ${BORING_UI_SESSION_SECRET}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      NODE_ENV: production
+    volumes:
+      - workspaces:/workspaces
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+
+  # Optional: PostgreSQL (if not using Neon)
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: boring_ui
+      POSTGRES_USER: boring
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+
+volumes:
+  workspaces:
+  postgres_data:
