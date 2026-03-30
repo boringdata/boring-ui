@@ -52,6 +52,8 @@ export interface ServerConfig {
   agentsMode: string
   /** Custom agent system prompt from boring.app.toml [agent].system_prompt */
   agentSystemPrompt: string | undefined
+  /** Additional PI agent tools provided by the child app */
+  agentTools: any[]
   /** Public application origin (validated URL) */
   publicAppOrigin: string | undefined
   /** GitHub App ID */
@@ -325,6 +327,7 @@ export function loadConfig(): ServerConfig {
     ),
     agentsMode: normalizeAgentsMode(),
     agentSystemPrompt: (process.env.AGENT_SYSTEM_PROMPT || appToml.agent?.system_prompt || '').trim() || undefined,
+    agentTools: [],
     publicAppOrigin: normalizePublicOrigin(
       process.env.BORING_UI_PUBLIC_ORIGIN || process.env.PUBLIC_APP_ORIGIN,
     ),

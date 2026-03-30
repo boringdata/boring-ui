@@ -198,7 +198,10 @@ export function createPiRuntime(config: ServerConfig) {
     }
     if (!changed) return
     session.agent.setSystemPrompt(buildSessionSystemPrompt(SYSTEM_PROMPT, { workspaceRoot: session.workspaceRoot }))
-    session.agent.setTools(createWorkspaceTools({ workspaceRoot: session.workspaceRoot }))
+    session.agent.setTools([
+      ...createWorkspaceTools({ workspaceRoot: session.workspaceRoot }),
+      ...(config.agentTools || []),
+    ])
   }
 
   const createSession = (ownerUserId: string, sessionContext: PiSessionContext) => {
@@ -222,7 +225,10 @@ export function createPiRuntime(config: ServerConfig) {
         model,
         systemPrompt: buildSessionSystemPrompt(SYSTEM_PROMPT, { workspaceRoot: sessionContext.workspaceRoot }),
         thinkingLevel: 'off',
-        tools: createWorkspaceTools({ workspaceRoot: sessionContext.workspaceRoot }),
+        tools: [
+          ...createWorkspaceTools({ workspaceRoot: sessionContext.workspaceRoot }),
+          ...(config.agentTools || []),
+        ],
         messages: [],
       },
       getApiKey: async (provider: string) => getEnvApiKey(provider),
