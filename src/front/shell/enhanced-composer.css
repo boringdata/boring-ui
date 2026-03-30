@@ -1,0 +1,207 @@
+/*
+ * Enhanced Composer styles — ModelSelector, FileAttachment, EnhancedComposer layout.
+ * Extends chat-stage.css design tokens.
+ */
+
+/* ─── Enhanced Composer layout ─── */
+.vc-enhanced-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 24px 24px;
+  max-width: var(--vc-chat-max-width, 680px);
+  width: 100%;
+  margin: 0 auto;
+}
+
+.vc-enhanced-composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.vc-enhanced-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* Let the ChatComposer wrapper fill available space */
+.vc-enhanced-composer-row .vc-composer-wrap {
+  flex: 1;
+  padding: 0;
+}
+
+/* ─── Model Selector trigger ─── */
+.vc-model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  background: var(--bg-surface, #111113);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: 16px;
+  color: var(--text-primary, #ededed);
+  font-size: 12px;
+  font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.vc-model-trigger:hover:not(:disabled) {
+  background: var(--bg-elevated, #151518);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.vc-model-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.vc-model-provider-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-tertiary, #555);
+}
+
+.vc-model-name {
+  font-weight: 500;
+  color: var(--text-secondary, #888);
+}
+
+.vc-model-chevron {
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+/* ─── Model Selector dropdown ─── */
+.vc-model-dropdown {
+  min-width: 200px;
+}
+
+.vc-model-item-active {
+  font-weight: 600;
+}
+
+.vc-model-item-name {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+
+/* ─── File Attachment ─── */
+.vc-file-attachment {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vc-file-drop-zone {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.vc-file-drop-active {
+  outline: 2px dashed var(--accent, #3b82f6);
+  outline-offset: 4px;
+  border-radius: var(--vc-radius-md, 8px);
+}
+
+.vc-file-attach-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  color: var(--text-tertiary, #555);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.vc-file-attach-btn:hover {
+  background: var(--bg-elevated, #151518);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary, #888);
+}
+
+.vc-file-drop-indicator {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-dim, rgba(59, 130, 246, 0.12));
+  border-radius: var(--vc-radius-md, 8px);
+  color: var(--accent, #3b82f6);
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+/* ─── File preview chips ─── */
+.vc-file-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.vc-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-elevated, #151518);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--vc-radius-sm, 4px);
+  font-size: 11px;
+  max-width: 200px;
+}
+
+.vc-file-chip-name {
+  color: var(--text-primary, #ededed);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-file-chip-size {
+  color: var(--text-tertiary, #555);
+  flex-shrink: 0;
+}
+
+.vc-file-chip-remove {
+  background: none;
+  border: none;
+  color: var(--text-tertiary, #555);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.vc-file-chip-remove:hover {
+  color: var(--danger, #ef4444);
+}
+
+/* ─── File error ─── */
+.vc-file-error {
+  font-size: 11px;
+  color: var(--danger, #ef4444);
+  padding: 2px 4px;
+}
