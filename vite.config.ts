@@ -82,9 +82,101 @@ export default defineConfig(({ mode }) => {
     }
   }
 
+  // Anthropic API key for dev proxy
+  const anthropicKey = env.ANTHROPIC_API_KEY || ''
+
+  // Mock API plugin for standalone dev (no backend)
+  const mockApiPlugin = {
+    name: 'mock-api',
+    configureServer(server) {
+      server.middlewares.use('/api/capabilities', (_req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({
+          version: 'static-local',
+          features: { files: true, git: true, pi: true },
+          routers: [],
+        }))
+      })
+      // Mock file API — serves files from the workspace for the Surface viewer
+      server.middlewares.use('/api/file', async (req, res) => {
+        const url = new URL(req.url || '/', 'http://localhost')
+        const filePath = url.searchParams.get('path')
+        if (!filePath) { res.statusCode = 400; res.end('Missing path'); return }
+        const fs = await import('fs')
+        const path = await import('path')
+        const fullPath = path.default.resolve(process.cwd(), filePath)
+        // Security: only serve files within the project
+        if (!fullPath.startsWith(process.cwd())) { res.statusCode = 403; res.end('Forbidden'); return }
+        try {
+          const content = fs.default.readFileSync(fullPath, 'utf-8')
+          res.setHeader('Content-Type', 'text/plain')
+          res.end(content)
+        } catch (err) {
+          res.statusCode = 404; res.end(`File not found: ${filePath}`)
+        }
+      })
+
+      // Mock file tree API — lists directory contents
+      server.middlewares.use('/api/tree', async (req, res) => {
+        const url = new URL(req.url || '/', 'http://localhost')
+        const dirPath = url.searchParams.get('path') || '.'
+        const fs = await import('fs')
+        const path = await import('path')
+        const fullPath = path.default.resolve(process.cwd(), dirPath)
+        if (!fullPath.startsWith(process.cwd())) { res.statusCode = 403; res.end('Forbidden'); return }
+        try {
+          const entries = fs.default.readdirSync(fullPath, { withFileTypes: true })
+            .filter(e => !e.name.startsWith('.') && e.name !== 'node_modules' && e.name !== 'dist')
+            .map(e => ({ name: e.name, path: path.default.join(dirPath === '.' ? '' : dirPath, e.name), is_dir: e.isDirectory() }))
+            .sort((a, b) => (a.is_dir === b.is_dir ? a.name.localeCompare(b.name) : a.is_dir ? -1 : 1))
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(entries))
+        } catch { res.statusCode = 404; res.end('[]') }
+      })
+
+      // Anthropic streaming proxy for chat
+      server.middlewares.use('/api/anthropic', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end(); return }
+        let body = ''
+        for await (const chunk of req) body += chunk
+        try {
+          const upstream = await fetch('https://api.anthropic.com' + req.url.replace('/api/anthropic', ''), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': anthropicKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body,
+          })
+          res.statusCode = upstream.status
+          // Only forward safe headers — skip content-encoding to avoid decompression issues
+          res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
+          res.setHeader('Cache-Control', 'no-cache')
+          if (upstream.headers.get('content-type')?.includes('event-stream')) {
+            res.setHeader('Connection', 'keep-alive')
+          }
+          const reader = upstream.body.getReader()
+          const pump = async () => {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) { res.end(); return }
+              res.write(value)
+            }
+          }
+          await pump()
+        } catch (err) {
+          res.statusCode = 502
+          res.end(JSON.stringify({ error: String(err.message) }))
+        }
+      })
+    },
+  }
+
   // Development/app build configuration
   return {
     ...baseConfig,
+    plugins: [...baseConfig.plugins, mockApiPlugin],
     base: '/',
     build: {
       rollupOptions: {

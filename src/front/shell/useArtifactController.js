@@ -66,17 +66,22 @@ function open(artifact) {
     return
   }
 
+  // Generate ID if not provided
+  const id = artifact.id || `artifact-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const withId = { ...artifact, id, createdAt: artifact.createdAt || Date.now() }
+
   const nextArtifacts = new Map(state.artifacts)
-  nextArtifacts.set(artifact.id, artifact)
+  nextArtifacts.set(id, withId)
 
   const nextCanonicalIndex = new Map(state.canonicalIndex)
-  nextCanonicalIndex.set(artifact.canonicalKey, artifact.id)
+  nextCanonicalIndex.set(artifact.canonicalKey, id)
 
   state = {
     ...state,
-    activeArtifactId: artifact.id,
+    surfaceOpen: true,
+    activeArtifactId: id,
     artifacts: nextArtifacts,
-    orderedIds: [...state.orderedIds, artifact.id],
+    orderedIds: [...state.orderedIds, id],
     canonicalIndex: nextCanonicalIndex,
   }
   emitChange()

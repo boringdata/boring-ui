@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import { Plus, Clock, Settings, User } from 'lucide-react'
+import { Plus, Clock, Settings, User, Layers } from 'lucide-react'
 
 /**
  * NavRail - 48px icon strip, always visible on the left edge.
@@ -17,6 +17,8 @@ export default function NavRail({
   activeDestination = null,
   onDestinationChange,
   onNewChat,
+  onToggleSurface,
+  surfaceOpen = false,
 }) {
   const toggle = useCallback(
     (destination) => {
@@ -60,6 +62,16 @@ export default function NavRail({
         onClick={() => toggle('history')}
       >
         <Clock size={17} />
+      </button>
+
+      <button
+        className={`rail-icon-btn${surfaceOpen ? ' active' : ''}`}
+        title="Surface (⌘2)"
+        aria-label="Toggle Surface"
+        data-testid="nav-rail-surface"
+        onClick={onToggleSurface}
+      >
+        <Layers size={17} />
       </button>
 
       <div className="rail-spacer" />

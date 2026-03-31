@@ -101,6 +101,6 @@ describe('BrowseDrawer', () => {
         onClose={vi.fn()}
       />
     )
-    expect(screen.getByText('Files, Search, Git, Data')).toBeInTheDocument()
+    expect(screen.getByText('Search, Git, Data — coming soon')).toBeInTheDocument()
   })
 })

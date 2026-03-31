@@ -1,32 +1,83 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import {
   PanelRightOpen,
   PanelRightClose,
   FolderOpen,
+  Folder,
   ChevronDown,
   ChevronRight,
   X,
   Sparkles,
+  FileCode,
+  Database,
+  Layers,
 } from 'lucide-react'
+import SurfaceDockview from './SurfaceDockview'
+
+/**
+ * ExplorerSection — collapsible section in the explorer sidebar.
+ */
+function ExplorerSection({ title, icon, count, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="sf-explorer-group">
+      <div className="sf-explorer-cat" onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
+        {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        {icon}
+        {title}
+        {count != null && <span>{count}</span>}
+      </div>
+      {open && children}
+    </div>
+  )
+}
+
+/**
+ * ExplorerFileTree — browse workspace files inside the Surface explorer.
+ */
+function ExplorerFileTree({ onOpenFile }) {
+  const [entries, setEntries] = useState([])
+  const [currentPath, setCurrentPath] = useState('.')
+
+  const loadDir = useCallback((dirPath) => {
+    fetch(`/api/tree?path=${encodeURIComponent(dirPath)}`)
+      .then(r => r.json())
+      .then(data => { setEntries(data); setCurrentPath(dirPath) })
+      .catch(() => setEntries([]))
+  }, [])
+
+  useEffect(() => { loadDir('.') }, [loadDir])
+
+  return (
+    <div className="sf-explorer-filetree">
+      {currentPath !== '.' && (
+        <div className="sf-explorer-item" onClick={() => loadDir(currentPath.split('/').slice(0, -1).join('/') || '.')}>
+          <span className="sf-explorer-item-icon" style={{ opacity: 0.5 }}>..</span>
+          <span className="sf-explorer-item-title" style={{ opacity: 0.5 }}>..</span>
+        </div>
+      )}
+      {entries.map(e => (
+        <div key={e.path}
+          className="sf-explorer-item"
+          onClick={() => e.is_dir ? loadDir(e.path) : onOpenFile?.(e.path)}>
+          <span className="sf-explorer-item-icon">
+            {e.is_dir ? <Folder size={13} style={{ color: '#f59e0b' }} /> : <FileCode size={13} style={{ color: '#a78bfa' }} />}
+          </span>
+          <span className="sf-explorer-item-title">{e.name}</span>
+          {e.is_dir && <ChevronRight size={10} style={{ marginLeft: 'auto', opacity: 0.3 }} />}
+        </div>
+      ))}
+      {entries.length === 0 && <div className="sf-explorer-empty">Empty</div>}
+    </div>
+  )
+}
 
 /**
  * SurfaceShell - Floating island container for artifacts.
  *
  * When `open` is false: display: none (NOT unmounted) -- preserves state.
  * When `collapsed`: shows 36px handle strip with artifact count.
- * When open: shows floating island with top bar (explorer toggle + tabs + close).
- *
- * Props:
- *   open              - boolean  whether surface is visible
- *   collapsed         - boolean  whether surface is in collapsed handle mode
- *   width             - number   surface width in pixels
- *   artifacts         - array    list of SurfaceArtifact objects
- *   activeArtifactId  - string|null  currently active artifact
- *   onClose           - () => void
- *   onCollapse        - () => void
- *   onResize          - (width: number) => void
- *   onSelectArtifact  - (id: string) => void
- *   onCloseArtifact   - (id: string) => void
+ * When open: shows floating island with explorer sidebar + Dockview viewer.
  */
 export default function SurfaceShell({
   open = false,
@@ -39,8 +90,9 @@ export default function SurfaceShell({
   onResize,
   onSelectArtifact,
   onCloseArtifact,
+  onOpenFile,
 }) {
-  const [explorerOpen, setExplorerOpen] = useState(false)
+  const [explorerOpen, setExplorerOpen] = useState(true)
 
   const handleResizeMouseDown = useCallback(
     (e) => {
@@ -66,24 +118,24 @@ export default function SurfaceShell({
     [width, onResize]
   )
 
-  // Collapsed handle mode
+  // Collapsed handle — always visible, shows Layers icon + artifact count
   if (collapsed) {
     return (
       <div
         className="sf-handle"
         data-testid="surface-shell-handle"
         onClick={onCollapse}
-        title="Open Surface"
+        title="Open Surface (⌘2)"
       >
-        <PanelRightOpen size={14} />
-        <span className="sf-handle-count" data-testid="surface-handle-count">
-          {artifacts.length}
-        </span>
+        <Layers size={14} />
+        {artifacts.length > 0 && (
+          <span className="sf-handle-count" data-testid="surface-handle-count">
+            {artifacts.length}
+          </span>
+        )}
       </div>
     )
   }
-
-  const activeArtifact = artifacts.find((a) => a.id === activeArtifactId)
 
   return (
     <div
@@ -95,6 +147,39 @@ export default function SurfaceShell({
       }}
     >
       <div className="sf-resize" onMouseDown={handleResizeMouseDown} />
+
+      {/* Explorer sidebar — artifact browser: open tabs + file tree + data */}
+      <div className={`sf-explorer${explorerOpen ? '' : ' closed'}`}>
+        <div className="sf-explorer-head">
+          <span>Artifacts</span>
+        </div>
+        <div className="sf-explorer-list">
+          {/* Section: Open artifacts */}
+          {artifacts.length > 0 && (
+            <ExplorerSection title="Open" count={artifacts.length} defaultOpen>
+              {artifacts.map(a => (
+                <div key={a.id}
+                  className={`sf-explorer-item${a.id === activeArtifactId ? ' active' : ''}`}
+                  onClick={() => onSelectArtifact(a.id)}>
+                  <span className="sf-explorer-item-icon"><FileCode size={13} style={{ color: '#a78bfa' }} /></span>
+                  <span className="sf-explorer-item-title">{a.title}</span>
+                  {a.id === activeArtifactId && <span className="sf-explorer-item-dot" />}
+                </div>
+              ))}
+            </ExplorerSection>
+          )}
+
+          {/* Section: Files — browseable workspace file tree */}
+          <ExplorerSection title="Files" icon={<FolderOpen size={11} />} defaultOpen>
+            <ExplorerFileTree onOpenFile={onOpenFile} />
+          </ExplorerSection>
+
+          {/* Section: Data — catalog entries */}
+          <ExplorerSection title="Data" icon={<Database size={11} />}>
+            <div className="sf-explorer-empty">No data sources</div>
+          </ExplorerSection>
+        </div>
+      </div>
 
       <div className="sf-main">
         {/* Top bar: explorer toggle + tabs + close */}
@@ -149,34 +234,26 @@ export default function SurfaceShell({
           </button>
         </div>
 
-        {/* Viewer content */}
+        {/* Viewer content — Dockview for drag/split tabs */}
         <div className="sf-body">
-          {!activeArtifact ? (
+          {artifacts.length === 0 ? (
             <div className="sf-empty">
               <div className="sf-empty-icon">
                 <Sparkles size={20} />
               </div>
               <div className="sf-empty-title">Select an artifact</div>
               <div className="sf-empty-sub">
-                Ask the agent to analyze data, generate charts,
-                review documents, or write code.
+                Browse files in the explorer, or ask the agent to analyze data,
+                generate charts, review documents, or write code.
               </div>
             </div>
           ) : (
-            <div className="sf-viewer">
-              <div className="sf-viewer-head">
-                <div className="sf-viewer-info">
-                  <span className="sf-viewer-title">{activeArtifact.title}</span>
-                  <span className="sf-viewer-type">{activeArtifact.kind}</span>
-                </div>
-              </div>
-              <div className="sf-viewer-content">
-                {/* Placeholder: full renderer integration comes in Phase 4 */}
-                <div className="sf-viewer-placeholder">
-                  Artifact viewer placeholder
-                </div>
-              </div>
-            </div>
+            <SurfaceDockview
+              artifacts={artifacts}
+              activeArtifactId={activeArtifactId}
+              onSelectArtifact={onSelectArtifact}
+              onCloseArtifact={onCloseArtifact}
+            />
           )}
         </div>
       </div>

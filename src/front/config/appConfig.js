@@ -101,6 +101,18 @@ const DEFAULT_CONFIG = {
     workflows: false,
     controlPlaneOnboarding: false,
     showHeader: false,
+    chatCenteredShell: false, // Enable via ?shell=chat-centered or set to true
+  },
+
+  // Static capabilities for standalone mode (no backend)
+  capabilities: {
+    version: 'static-local',
+    features: {
+      files: true,
+      git: true,
+      pi: true,
+    },
+    routers: [],
   },
 
   // Design token customization (CSS variables)

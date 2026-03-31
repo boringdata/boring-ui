@@ -1,5 +1,18 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+
+// Mock SurfaceDockview to avoid DockviewReact DOM issues in tests
+vi.mock('../SurfaceDockview', () => ({
+  default: ({ artifacts }) => (
+    <div data-testid="mock-dockview">
+      {artifacts?.map(a => <div key={a.id}>{a.title}</div>)}
+    </div>
+  ),
+}))
+
+// Mock fetch for ExplorerFileTree
+globalThis.fetch = vi.fn(() => Promise.resolve({ json: () => Promise.resolve([]) }))
+
 import SurfaceShell from '../SurfaceShell'
 
 const mockArtifacts = [

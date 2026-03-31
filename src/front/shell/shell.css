@@ -616,3 +616,44 @@
   color: var(--text-tertiary, #555);
   line-height: 1.6;
 }
+
+/* ═══ SURFACE DOCKVIEW (suppress native chrome, fill viewer area) ═══ */
+
+/* Container for the nested Dockview inside the Surface */
+.surface-dockview {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* Suppress Dockview's native tab bar inside the Surface — we render our own */
+.surface-shell .dv-tabs-container { display: none !important; }
+.surface-shell .groupview > .dv-default-tab-header { display: none !important; }
+
+/* Let Dockview content fill the viewer area */
+.surface-shell .dv-dockview { height: 100%; }
+.surface-shell .dv-content-container { height: 100%; }
+
+/* Remove Dockview default borders/backgrounds inside Surface to match the island theme */
+.surface-shell .dv-dockview {
+  background: transparent;
+}
+
+.surface-shell .groupview {
+  background: transparent;
+}
+
+/* Panel content should fill without extra padding from Dockview */
+.surface-shell .dv-content-container .content-container {
+  background: transparent;
+}
+
+/* Loading state for lazy-loaded EditorPanel */
+.sf-panel-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-tertiary, #555);
+  font-size: 13px;
+}

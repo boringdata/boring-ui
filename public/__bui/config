@@ -1,0 +1,26 @@
+{
+  "branding": { "name": "Boring UI", "logo": "B" },
+  "storage": { "prefix": "boring-ui" },
+  "features": {
+    "gitStatus": true,
+    "search": true,
+    "showHeader": false,
+    "chatCenteredShell": false
+  },
+  "capabilities": {
+    "version": "static-local",
+    "features": {
+      "files": true,
+      "git": true,
+      "pi": true
+    },
+    "routers": []
+  },
+  "agents": {
+    "mode": "frontend",
+    "runtime": "pi",
+    "placement": "browser",
+    "default": "pi",
+    "available": ["pi"]
+  }
+}

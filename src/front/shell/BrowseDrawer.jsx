@@ -96,7 +96,7 @@ export default function BrowseDrawer({
           <div className="browse-drawer-head">Workspace</div>
           <div className="browse-drawer-workspace" data-testid="browse-drawer-workspace">
             <div className="browse-drawer-placeholder">
-              Files, Search, Git, Data
+              Search, Git, Data — coming soon
             </div>
           </div>
         </>
