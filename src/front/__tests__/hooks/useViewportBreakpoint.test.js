@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import useViewportBreakpoint from '../../hooks/useViewportBreakpoint'
+import useViewportBreakpoint from '../../shared/hooks/useViewportBreakpoint'
 import { simulateWindowResize } from '../utils/user-events'
 
 describe('useViewportBreakpoint', () => {

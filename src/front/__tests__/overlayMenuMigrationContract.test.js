@@ -8,7 +8,7 @@ const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relat
 describe('Phase 1 Overlay/Menu Migration Contract', () => {
   it('keeps CreateWorkspaceModal wired to shared dialog primitives', () => {
     const source = readRepoFile('src/front/pages/CreateWorkspaceModal.jsx')
-    expect(source).toContain("from '../components/ui/dialog'")
+    expect(source).toContain("from '../shared/components/ui/dialog'")
     expect(source).toContain('<Dialog')
     expect(source).toContain('<DialogContent')
     expect(source).toContain('<DialogTitle')
@@ -16,7 +16,7 @@ describe('Phase 1 Overlay/Menu Migration Contract', () => {
   })
 
   it('keeps EditorPanel mode selector wired to shared dropdown primitives', () => {
-    const source = readRepoFile('src/front/panels/EditorPanel.jsx')
+    const source = readRepoFile('src/front/shared/panels/EditorPanel.jsx')
     expect(source).toContain("from '../components/ui/dropdown-menu'")
     expect(source).toContain('<DropdownMenu')
     expect(source).toContain('<DropdownMenuTrigger')

@@ -1,8 +1,8 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import useWorkspaceAuth from '../../hooks/useWorkspaceAuth'
+import useWorkspaceAuth from '../../shared/hooks/useWorkspaceAuth'
 
-vi.mock('../../utils/transport', () => ({
+vi.mock('../../shared/utils/transport', () => ({
   apiFetchJson: vi.fn(),
   getHttpErrorDetail: vi.fn((response, data, fallback) => data?.message || fallback),
 }))
@@ -13,7 +13,7 @@ describe('useWorkspaceAuth', () => {
   })
 
   it('hydrates authenticated identity and workspace options on success', async () => {
-    const { apiFetchJson } = await import('../../utils/transport')
+    const { apiFetchJson } = await import('../../shared/utils/transport')
     apiFetchJson
       .mockResolvedValueOnce({
         response: { ok: true, status: 200 },
@@ -45,7 +45,7 @@ describe('useWorkspaceAuth', () => {
   })
 
   it('preserves recent authenticated identity when identity refresh fails', async () => {
-    const { apiFetchJson } = await import('../../utils/transport')
+    const { apiFetchJson } = await import('../../shared/utils/transport')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     apiFetchJson
       .mockResolvedValueOnce({
@@ -85,7 +85,7 @@ describe('useWorkspaceAuth', () => {
   })
 
   it('clears stale workspace options when the workspace list request fails', async () => {
-    const { apiFetchJson } = await import('../../utils/transport')
+    const { apiFetchJson } = await import('../../shared/utils/transport')
     apiFetchJson
       .mockResolvedValueOnce({
         response: { ok: true, status: 200 },
@@ -118,7 +118,7 @@ describe('useWorkspaceAuth', () => {
   })
 
   it('marks the user unauthenticated when the identity endpoint returns 401', async () => {
-    const { apiFetchJson } = await import('../../utils/transport')
+    const { apiFetchJson } = await import('../../shared/utils/transport')
     apiFetchJson
       .mockResolvedValueOnce({
         response: { ok: false, status: 401 },

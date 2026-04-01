@@ -1,362 +1,457 @@
-# Migration Plan: boring-ui → Stage + Wings (The Surface)
+# Migration Plan: Frontend Layout Restructuring
 
-**POC reference**: `poc-stage-wings/` — validated design at http://100.68.199.114:5175/
-**Design doc**: `.planning/chat-centered-ux-redesign.md`
+**Design doc**: `.planning/chat-centered-ux-redesign.md` (UX spec — still valid)
+**Scope**: Frontend directory structure only. Agent interface cleanup is handled separately.
+**Reviewed by**: Gemini 2.5 Flash — feedback incorporated below.
+
+---
+
+## Goal
+
+Structure the frontend so that each layout mode is a **self-contained folder**.
+Shared infrastructure (design system, UI primitives, providers, config, and
+cross-layout building blocks) lives in `shared/`.
+Each layout owns only its orchestration and layout-specific code internally.
+
+```
+src/front/
+  layouts/                     ← ONE FOLDER PER LAYOUT
+    chat/                      ← chat-centered layout (self-contained)
+      components/              ← ChatComposer, EnhancedComposer, ModelSelector, FileAttachment
+      hooks/                   ← useSessionState, useArtifactController, useToolBridge
+      utils/                   ← toolArtifactBridge, shellPersistence, shellStateReporter
+      ChatCenteredWorkspace.jsx
+      NavRail.jsx
+      ChatStage.jsx
+      BrowseDrawer.jsx
+      SurfaceShell.jsx
+      SurfaceDockview.jsx
+      layout.css
+      ...
+    ide/                       ← IDE layout (future: extract from App.jsx)
+      ...
+
+  shared/                      ← CROSS-LAYOUT SHARED LAYER
+    design-system/             ← design tokens, base styles, scrollbars
+      tokens.css               ← canonical CSS custom properties (colors, type, spacing, shadows)
+      scrollbars.css           ← scrollbar styles
+      base.css                 ← resets, fonts, theme transitions
+    components/                ← shared UI components
+      ui/                      ← shadcn primitives (button, input, dialog, tooltip, etc.)
+      FileTree.jsx             ← file browser tree
+      UserMenu.jsx             ← user/workspace menu
+      Tooltip.jsx              ← tooltip wrapper
+      DockTab.jsx              ← DockView tab component
+      CapabilityGate.jsx       ← capability context + gating
+      Editor.jsx, CodeEditor.jsx, GitDiff.jsx  ← editor components
+      chat/                    ← shared chat rendering (used by BOTH layouts)
+        ChatMessage.jsx        ← message renderer (parts, reasoning, tool dedup) [from shell/]
+        ArtifactCard.jsx       ← clickable artifact card [from shell/]
+        ToolCallCard.jsx       ← tool execution card [from shell/]
+        TextBlock.jsx          ← markdown text renderer
+        toolRenderers.jsx      ← tool-specific renderers (read, write, bash, grep, etc.)
+        ToolUseBlock.jsx       ← legacy tool block
+        styles.css             ← shared chat styles
+      ...
+    providers/                 ← data layer, PI agent adapters
+    hooks/                     ← shared hooks
+      useCapabilities.js, useWorkspaceAuth.js, etc.  ← existing
+      useReducedMotion.js      ← prefers-reduced-motion [from shell/]
+      useBlobUrl.js            ← blob URL lifecycle [from shell/]
+      useFileStorage.js        ← file storage [from shell/]
+      useChatMetrics.js        ← chat performance tracking [from shell/]
+    utils/                     ← shared utilities
+      transport.js, routes.js, debounce.js, apiBase.js, etc.  ← existing
+      sanitize.js              ← DOMPurify XSS wrappers [from shell/]
+      a11y.js                  ← ARIA live-region helpers [from shell/]
+    config/                    ← appConfig
+    panels/                    ← DockView panel wrappers (shared — IDE uses directly,
+                                  chat uses EditorPanel in SurfaceDockview)
+
+  pages/                       ← full-page views (auth, settings, workspace setup)
+  App.jsx                      ← thin shell: feature flag → pick layout → pass context
+```
+
+---
+
+## Core Principle: Maximum Shared Component Reuse
+
+**Layouts are arrangements, not reimplementations.** The chat layout does NOT rebuild
+any component that already exists. It imports the exact same shared components as the
+IDE layout and arranges them differently.
+
+### Shared Component Reuse Map
+
+Every building block the chat layout uses, and where it comes from:
+
+| Chat layout area | Shared component used | Same as IDE? |
+|-------------------|----------------------|--------------|
+| **File browser** (SurfaceShell sidebar) | `@shared/components/FileTree` | Yes — identical component, same tree rendering |
+| **Code editor** (Surface workbench tabs) | `@shared/panels/EditorPanel` → `@shared/components/CodeEditor` | Yes — same Monaco/CodeMirror editor |
+| **Markdown editor** (Surface workbench) | `@shared/panels/EditorPanel` → `@shared/components/Editor` | Yes — same TipTap editor |
+| **Git diff viewer** (Surface workbench) | `@shared/components/GitDiff` | Yes — same diff component |
+| **Chat messages** (ChatStage center) | `@shared/components/chat/ChatMessage` | Yes — shared message renderer |
+| **Chat text blocks** (inside messages) | `@shared/components/chat/TextBlock` | Yes — same markdown renderer |
+| **Tool use rendering** (inside messages) | `@shared/components/chat/toolRenderers` | Yes — same read/write/bash/grep renderers |
+| **Tool call cards** (inside messages) | `@shared/components/chat/ToolCallCard` | Yes — shared tool card |
+| **Artifact cards** (inside messages) | `@shared/components/chat/ArtifactCard` | Yes — shared artifact card |
+| **User menu** (NavRail footer) | `@shared/components/UserMenu` | Yes — same menu, workspace switcher, logout |
+| **Tooltips** (everywhere) | `@shared/components/Tooltip` | Yes — same tooltip |
+| **DockView tabs** (Surface workbench) | `@shared/components/DockTab` | Yes — same tab component |
+| **Capability gating** | `@shared/components/CapabilityGate` | Yes — same context + gating |
+| **Sidebar activity bar** (Surface collapsed) | `@shared/components/SidebarSectionHeader` | Yes — same collapsed sidebar icons |
+| **UI primitives** (buttons, inputs, etc.) | `@shared/components/ui/*` | Yes — same shadcn components |
+| **Data layer** (file search, git, fs) | `@shared/providers/data` | Yes — same hooks, same API |
+| **PI agent** (chat transport, tools) | `@shared/providers/pi/*` | Yes — same agent runtime |
+| **Design tokens** (colors, fonts, spacing) | `@shared/design-system/tokens.css` | Yes — same CSS variables |
+| **Scrollbars** | `@shared/design-system/scrollbars.css` | Yes — same styling |
+| **Theme** (light/dark) | `@shared/design-system/base.css` + ThemeProvider | Yes — same theme system |
+
+### What the chat layout adds (layout-specific only)
+
+These are the ONLY things unique to `layouts/chat/` — purely structural/positional:
+
+| Component | What it does | Why it's layout-specific |
+|-----------|-------------|-------------------------|
+| `ChatCenteredWorkspace` | Arranges NavRail + BrowseDrawer + ChatStage + SurfaceShell in a flex grid | Layout-specific arrangement |
+| `NavRail` | 48px vertical icon strip | Unique to chat layout (IDE uses sidebar headers) |
+| `BrowseDrawer` | Sessions drawer sliding from left | Unique to chat layout (IDE has no session drawer) |
+| `ChatStage` | Center area: composes ChatMessage + ChatComposer | Arranges shared components in center column |
+| `SurfaceShell` | Right workbench: composes FileTree + SurfaceDockview | Arranges shared components in right panel |
+| `SurfaceDockview` | DockView instance for artifact tabs | Thin wrapper around DockView + shared EditorPanel |
+| `ChatComposer` | Pill-shaped input | Unique presentation (IDE has inline chat input) |
+| `layout.css` | Grid positioning, responsive breakpoints | Layout-specific CSS |
+
+**If a component renders content (text, code, files, diffs, tools) → it's shared.**
+**If a component only positions/arranges other components → it's layout-specific.**
+
+---
+
+## What Goes Where
+
+### Rule: if ONLY one layout uses it → it lives inside that layout's folder.
+
+### Rule: if BOTH layouts use it (or it's a general-purpose utility) → `shared/`.
+
+### Chat layout internals (`layouts/chat/`)
+
+**Orchestration** (top-level in `layouts/chat/`):
+| File | Role |
+|------|------|
+| `ChatCenteredWorkspace.jsx` | Root — wires NavRail + BrowseDrawer + ChatStage + SurfaceShell |
+| `NavRail.jsx` | 48px icon strip |
+| `BrowseDrawer.jsx` | Left sessions drawer |
+| `ChatStage.jsx` | Center chat area (header + messages + composer) |
+| `SurfaceShell.jsx` | Right workbench (sidebar + dockview) |
+| `SurfaceDockview.jsx` | DockView instance for artifact tabs |
+| `layout.css` | Layout-specific positioning (grid, responsive, transitions) |
+| `useChatCenteredShell.js` | Feature flag hook |
+
+**`layouts/chat/components/`** — layout-specific orchestration components only:
+| File | Role |
+|------|------|
+| `ChatComposer.jsx` | Pill-shaped text input with send/stop (chat layout presentation) |
+| `EnhancedComposer.jsx` | Extended composer (stub) |
+| `ModelSelector.jsx` | Model picker (stub) |
+| `FileAttachment.jsx` | Attachment UI (stub) |
+
+**`layouts/chat/hooks/`** — chat-layout-specific state:
+| File | Role |
+|------|------|
+| `useSessionState.js` | Session CRUD + localStorage persistence |
+| `useArtifactController.js` | Artifact open/close/focus state |
+| `useToolBridge.js` | Window bridge: PI tools → artifact controller |
+| `useArtifactRouting.js` | Artifact opening logic |
+| `useShellPersistence.js` | Layout state persistence |
+| `useShellStatePublisher.js` | State reporting to backend |
+
+**`layouts/chat/utils/`** — chat-layout-specific helpers:
+| File | Role |
+|------|------|
+| `toolArtifactBridge.js` | Tool name+args → SurfaceArtifact descriptor |
+| `shellPersistence.js` | localStorage save/load for layout state |
+| `shellStateReporter.js` | Flat state snapshot producer |
+
+**Layout-specific CSS** (alongside components or top-level):
+| File | Role |
+|------|------|
+| `layout.css` | Stage+Wings grid, nav rail, browse drawer, surface positioning, responsive |
+| `components/chat-stage.css` | Composer + stage-specific styles |
+| `components/enhanced-composer.css` | Enhanced composer styles |
+
+### Shared layer (`shared/`)
+
+Everything both layouts depend on, plus general-purpose utilities:
+
+| Directory | Contains | Used by |
+|-----------|----------|---------|
+| `shared/design-system/` | `tokens.css` (CSS custom properties), `scrollbars.css`, `base.css` (resets, fonts) | Both layouts + all components |
+| `shared/components/` | FileTree, UserMenu, Tooltip, SidebarSectionHeader, DockTab, CapabilityGate, Editor, GitDiff, CodeEditor, AppErrorBoundary | Both |
+| `shared/components/ui/` | button, input, dropdown-menu, dialog, tabs, tooltip, etc. (shadcn primitives) | Both |
+| `shared/components/chat/` | **ChatMessage, ArtifactCard, ToolCallCard**, TextBlock, toolRenderers, ToolUseBlock, MessageList, AiChat, ChatPanel | Both (message rendering is a shared concern) |
+| `shared/providers/` | PI agent (native/backend adapters, tools, config), data layer (git, fs, http) | Both |
+| `shared/hooks/` | useCapabilities, useWorkspaceAuth, **useReducedMotion, useBlobUrl, useFileStorage, useChatMetrics** | Both |
+| `shared/utils/` | transport, routes, debounce, dockHelpers, apiBase, **sanitize, a11y** | Both |
+| `shared/config/` | appConfig | Both |
+| `shared/panels/` | EditorPanel, AgentPanel, FileTreePanel, etc. (DockView wrappers) | Both (IDE directly, chat via SurfaceDockview) |
+
+### Design system (`shared/design-system/`)
+
+Currently lives in `styles/` and `styles.css`. Contains:
+- **`tokens.css`** — canonical CSS custom properties: colors (light + dark), typography, spacing, shadows, radii, z-index, animation, semantic aliases, shadcn bridge tokens, syntax highlighting, terminal colors
+- **`scrollbars.css`** — thin scrollbar styling (Firefox + WebKit)
+- **`base.css`** — box-sizing reset, html/body/root setup, font imports, theme transitions, placeholder styles
+
+Both layouts consume tokens via CSS custom properties. No JS imports needed — just `@import` in the entry CSS.
+
+### Cross-layout imports from `layouts/chat/`
+
+The chat layout imports from `shared/`:
+- `shared/components/FileTree` — SurfaceShell sidebar
+- `shared/components/UserMenu` — NavRail footer
+- `shared/components/Tooltip` — SurfaceShell
+- `shared/components/SidebarSectionHeader` — CollapsedSidebarActivityBar in SurfaceShell
+- `shared/components/DockTab` — UnifiedDockTab in SurfaceDockview
+- `shared/components/CapabilityGate` — CapabilitiesContext in ChatCenteredWorkspace
+- `shared/components/chat/ChatMessage` — ChatStage message rendering
+- `shared/components/chat/ArtifactCard` — ChatMessage artifact links
+- `shared/components/chat/ToolCallCard` — ChatMessage tool display
+- `shared/components/chat/TextBlock` — ChatMessage text parts
+- `shared/components/chat/toolRenderers` — ChatMessage tool renderers
+- `shared/components/ui/button`, `shared/components/ui/input` — SurfaceShell
+- `shared/providers/data` — useFileSearch in SurfaceShell
+- `shared/providers/pi/useChatTransport` — ChatCenteredWorkspace
+- `shared/providers/pi/uiBridge` — bridge constants in useToolBridge
+- `shared/hooks/useReducedMotion` — ChatCenteredWorkspace
+- `shared/hooks/useChatMetrics` — ChatCenteredWorkspace
+- `shared/utils/sanitize` — ChatMessage (if needed)
+- `shared/utils/a11y` — accessibility helpers
+- `shared/config/appConfig` — useChatCenteredShell
+- `shared/panels/EditorPanel` — SurfaceDockview
+
+All clean, stable APIs. No circular dependencies.
+
+---
+
+## Path Aliases (Gemini recommendation)
+
+Configure Vite + jsconfig to avoid brittle deep relative paths:
+
+**`jsconfig.json`** (or `tsconfig.json`):
+```json
+{
+  "compilerOptions": {
+    "baseUrl": "src/front",
+    "paths": {
+      "@shared/*": ["shared/*"],
+      "@layouts/*": ["layouts/*"]
+    }
+  }
+}
+```
+
+**`vite.config.ts`**:
+```js
+resolve: {
+  alias: {
+    '@shared': path.resolve(__dirname, 'src/front/shared'),
+    '@layouts': path.resolve(__dirname, 'src/front/layouts'),
+  }
+}
+```
+
+This turns `../../shared/components/FileTree` into `@shared/components/FileTree`.
+
+---
+
+## CSS Isolation
+
+The project already uses scoped class naming conventions:
+- `vc-*` — chat stage / composer classes (e.g., `vc-stage`, `vc-composer`, `vc-msg`)
+- `sf-*` — surface shell classes (e.g., `sf-sidebar`, `sf-main`, `sf-empty`)
+- `nav-rail*` — nav rail classes
+- `browse-drawer*` — browse drawer classes
+- Layout root: `.chat-centered-workspace`
+
+This convention-based scoping is sufficient. No additional CSS methodology needed, but layout-specific styles MUST be scoped under the layout root class (e.g., `.chat-centered-workspace .rail-icon-btn`) to prevent leakage into the IDE layout. The existing CSS already follows this pattern.
+
+---
+
+## Phases
+
+### Phase 1: Create `shared/` + `layouts/chat/` Structure
+
+**Goal**: Restructure the frontend into the target layout. One atomic PR — the change is purely mechanical (file moves + import path updates), not logical. Breaking into smaller PRs creates confusing intermediate states.
+
+#### Step 1a: Create `shared/` from existing top-level dirs
+
+Move existing shared infrastructure into `shared/`:
+
+```
+components/      → shared/components/
+hooks/           → shared/hooks/
+providers/       → shared/providers/
+utils/           → shared/utils/
+config/          → shared/config/
+styles/          → shared/design-system/
+styles.css       → shared/design-system/base.css
+panels/          → shared/panels/
+```
+
+Update **all imports** across the entire codebase. This is the largest part of the change but fully mechanical.
+
+#### Step 1b: Move shared building blocks from `shell/` to `shared/`
+
+Before creating the chat layout folder, move the shared components identified by Gemini review:
+
+**To `shared/components/chat/`**:
+```
+shell/ChatMessage.jsx        → shared/components/chat/ChatMessage.jsx
+shell/ArtifactCard.jsx       → shared/components/chat/ArtifactCard.jsx
+shell/ToolCallCard.jsx       → shared/components/chat/ToolCallCard.jsx
+shell/chat-stage.css         → shared/components/chat/chat-stage.css
+```
+
+**To `shared/hooks/`**:
+```
+shell/useReducedMotion.js    → shared/hooks/useReducedMotion.js
+shell/useBlobUrl.js          → shared/hooks/useBlobUrl.js
+shell/useFileStorage.js      → shared/hooks/useFileStorage.js
+shell/useChatMetrics.js      → shared/hooks/useChatMetrics.js
+```
+
+**To `shared/utils/`**:
+```
+shell/sanitize.js            → shared/utils/sanitize.js
+shell/a11y.js                → shared/utils/a11y.js
+```
+
+Move corresponding test files alongside their source files.
+
+#### Step 1c: Create `layouts/chat/` from remaining `shell/` files
+
+Move the layout-specific remainder into the structured `layouts/chat/` folder:
+
+**Top-level orchestration** → `layouts/chat/`:
+```
+shell/ChatCenteredWorkspace.jsx  → layouts/chat/ChatCenteredWorkspace.jsx
+shell/NavRail.jsx                → layouts/chat/NavRail.jsx
+shell/BrowseDrawer.jsx           → layouts/chat/BrowseDrawer.jsx
+shell/ChatStage.jsx              → layouts/chat/ChatStage.jsx
+shell/SurfaceShell.jsx           → layouts/chat/SurfaceShell.jsx
+shell/SurfaceDockview.jsx        → layouts/chat/SurfaceDockview.jsx
+shell/shell.css                  → layouts/chat/layout.css
+shell/useChatCenteredShell.js    → layouts/chat/useChatCenteredShell.js
+```
+
+**Components** → `layouts/chat/components/`:
+```
+shell/ChatComposer.jsx           → layouts/chat/components/ChatComposer.jsx
+shell/EnhancedComposer.jsx       → layouts/chat/components/EnhancedComposer.jsx
+shell/ModelSelector.jsx          → layouts/chat/components/ModelSelector.jsx
+shell/FileAttachment.jsx         → layouts/chat/components/FileAttachment.jsx
+shell/enhanced-composer.css      → layouts/chat/components/enhanced-composer.css
+```
+
+**Hooks** → `layouts/chat/hooks/`:
+```
+shell/useSessionState.js         → layouts/chat/hooks/useSessionState.js
+shell/useArtifactController.js   → layouts/chat/hooks/useArtifactController.js
+shell/useToolBridge.js           → layouts/chat/hooks/useToolBridge.js
+shell/useArtifactRouting.js      → layouts/chat/hooks/useArtifactRouting.js
+shell/useShellPersistence.js     → layouts/chat/hooks/useShellPersistence.js
+shell/useShellStatePublisher.js  → layouts/chat/hooks/useShellStatePublisher.js
+```
+
+**Utils** → `layouts/chat/utils/`:
+```
+shell/toolArtifactBridge.js      → layouts/chat/utils/toolArtifactBridge.js
+shell/shellPersistence.js        → layouts/chat/utils/shellPersistence.js
+shell/shellStateReporter.js      → layouts/chat/utils/shellStateReporter.js
+```
+
+**Tests** → `layouts/chat/__tests__/` + `shared/` test dirs:
+```
+Tests for shared components  → shared/components/chat/__tests__/
+Tests for shared hooks       → shared/hooks/__tests__/
+Tests for shared utils       → shared/utils/__tests__/
+Tests for layout components  → layouts/chat/__tests__/
+```
+
+#### Step 1d: Configure path aliases
+
+Add `@shared` and `@layouts` aliases to `vite.config.ts` and `jsconfig.json`.
+Update imports to use aliases where it improves readability (especially deep cross-boundary imports).
+
+#### Step 1e: Update `App.jsx` + delete `shell/`
+
+Update `App.jsx`:
+```
+shell/useChatCenteredShell  → @layouts/chat/useChatCenteredShell
+shell/ChatCenteredWorkspace → @layouts/chat/ChatCenteredWorkspace
+```
+
+Delete `shell/` — everything has been moved.
+
+**Verification**:
+- `npm run test:run` — all tests pass
+- `npm run build` — no import errors
+- `?shell=chat-centered` — chat layout renders
+- `?shell=legacy` — IDE layout renders
+
+---
+
+### Phase 2: Verify Cross-Layout Compatibility
+
+**Goal**: Confirm the structure is clean. No code changes — just verification.
+
+| Check | How |
+|-------|-----|
+| No circular deps | `grep -r "layouts/" src/front/shared/` should return nothing |
+| Shared panels work in both layouts | `SurfaceDockview` imports `EditorPanel` from `@shared/panels/` — verify it renders |
+| Design system tokens load in both layouts | Both layouts' CSS uses `var(--color-*)` — verify light/dark themes work |
+| useToolBridge no conflicts | Only one layout active at a time, so no bridge key collision |
+| Chat layout end-to-end | Send message → tool call → artifact opens in Surface |
+| ChatMessage works with PI web format | Verify message normalizers handle PiNativeAdapter output |
+| CSS isolation | Verify no style leakage between layouts (chat classes don't affect IDE) |
+
+**Output**: Fill "Integration Gaps" section below if anything is found.
+
+---
+
+### Phase 3: IDE Layout Extraction (future, optional)
+
+Extract IDE DockView orchestration from `App.jsx` into `layouts/ide/`:
+
+```
+layouts/ide/
+  IdeWorkspace.jsx          ← extracted from App.jsx (~2000 lines of DockView logic)
+  components/               ← IDE-specific UI (header, capability warnings)
+  hooks/                    ← useDockLayout, usePanelActions, useResponsiveSidebarCollapse
+```
+
+`App.jsx` becomes a thin shell: feature flag → pick layout → pass shared context.
+
+Not blocking. Only do when `App.jsx` needs major changes anyway.
 
 ---
 
 ## Summary
 
-Transform boring-ui from IDE-first (file tree | editor | agent) to chat-first (nav rail | chat | Surface). 6 phases, each independently shippable.
+| Phase | What | Scope | Risk |
+|-------|------|-------|------|
+| 1a | Create `shared/` from top-level dirs | ~100+ import rewrites | Low — mechanical |
+| 1b | Move shared blocks from `shell/` to `shared/` | ~10 files + tests | Low — pure moves |
+| 1c | Create `layouts/chat/` from remaining `shell/` | ~20 files + tests | Low — pure moves |
+| 1d | Configure path aliases | vite.config.ts + jsconfig.json | Low |
+| 1e | Update App.jsx, delete `shell/` | 2 import changes + dir delete | Low |
+| 2 | Verify cross-layout compat | Read-only | None |
+| 3 | Extract IDE layout (future) | App.jsx split | Medium |
 
-```
-BEFORE: [FileTree 280px] [Editor tabs center] [Agent chat right]
-AFTER:  [NavRail 48px] [Chat centered] [Surface (floating island, collapsible)]
-```
-
----
-
-## Phase 1: Chat as Center Stage
-
-**Goal**: Agent panel becomes the center, essential, locked. Chat messages get max-width. Surface hidden by default.
-
-**Files to modify**:
-| File | Change |
-|------|--------|
-| `src/front/registry/panes.jsx` | `agent`: placement `'center'`, `essential: true`, `locked: true` |
-| `src/front/registry/panes.jsx` | Remove `empty` pane registration |
-| `src/front/registry/panes.jsx` | `editor`: placement `'right'` |
-| `src/front/registry/panes.jsx` | `review`: placement `'right'` |
-| `src/front/App.jsx` | `ensureCorePanels()`: create `agent` as center (not `empty-center`) |
-| `src/front/App.jsx` | Remove separate startup chat-opening logic (~lines 2421-2470) |
-| `src/front/layout/LayoutManager.js` | Bump `LAYOUT_VERSION` 22 → 23, add migration |
-| `src/front/styles.css` | Add `.chat-stage { max-width: 680px; margin: 0 auto }` |
-| `src/front/styles.css` | Add pill-shaped input, centered, with ⌘K kbd hints |
-| `src/front/providers/pi/nativeAdapter.jsx` | Wrap in max-width container |
-| `src/front/providers/pi/backendAdapter.jsx` | Wrap in max-width container |
-| `src/front/components/chat/AiChat.jsx` | Wrap in max-width container |
-
-**Files to remove**:
-| File | Why |
-|------|-----|
-| `src/front/panels/EmptyPanel.jsx` | Chat is always visible now |
-
-**Verification**:
-- Open app → chat centered with max-width, no file tree, no right panel
-- Chat input centered with pill shape
-- Agent panel can't be closed or tabbed behind
+**All of Phase 1 ships as one atomic PR.** The change is mechanical — no logic changes, no new features.
 
 ---
 
-## Phase 2: Nav Rail (Icon Strip + Expandable Panel)
+## Integration Gaps
 
-**Goal**: Replace the left sidebar with a 48px icon strip + expandable panel for session history.
-
-**Files to create**:
-| File | Purpose |
-|------|---------|
-| `src/front/components/NavRail.jsx` | 48px icon strip: B, +New, 🕐History, ⚙, 👤 |
-| `src/front/components/LeftPanel.jsx` | Expandable 220px panel (slides out from icon strip) |
-| `src/front/components/SessionList.jsx` | Session history grouped by date, status dots |
-| `src/front/hooks/useSessionState.js` | Global session state (Zustand store) |
-
-**Files to modify**:
-| File | Change |
-|------|--------|
-| `src/front/App.jsx` | Render `NavRail` outside DockView, fixed left |
-| `src/front/App.jsx` | Remove DockView left sidebar group entirely |
-| `src/front/App.jsx` | Wire session switching to global state |
-| `src/front/components/UserMenu.jsx` | Detach from FileTreePanel, move to NavRail bottom |
-| `src/front/providers/pi/PiSessionToolbar.jsx` | Rewire to `useSessionState()` |
-| `src/front/styles.css` | Nav rail styles from POC (icon buttons, active pill, tooltips) |
-
-**Files to archive** (keep for reference, remove from active):
-| File | Why |
-|------|-----|
-| `src/front/panels/FileTreePanel.jsx` | Replaced by NavRail + LeftPanel + Surface explorer |
-| `src/front/panels/DataCatalogPanel.jsx` | Replaced by Surface explorer |
-| `src/front/components/SidebarSectionHeader.jsx` | `LeftPaneHeader` + `CollapsedSidebarActivityBar` no longer needed |
-| `src/front/hooks/useResponsiveSidebarCollapse.js` | Sidebar gone; Surface has its own collapse |
-
-**Verification**:
-- 48px icon strip on left, collapsed by default
-- Click 🕐 → history panel slides out with sessions grouped by date
-- Click session → chat switches
-- Click 🕐 again → panel collapses
-- ⌘K opens command palette (or placeholder)
-
----
-
-## Phase 3: The Surface (Right-Side Artifact Display)
-
-**Goal**: Floating island on the right that shows artifacts. Explorer sidebar + viewer. Hidden until first artifact.
-
-**Files to create**:
-| File | Purpose |
-|------|---------|
-| `src/front/components/Surface.jsx` | Floating island container (explorer + viewer) |
-| `src/front/components/SurfaceExplorer.jsx` | Artifact browser sidebar (grouped by category) |
-| `src/front/components/SurfaceViewer.jsx` | Active artifact display (polymorphic) |
-| `src/front/components/SurfaceTopBar.jsx` | Explorer toggle + tabs + close |
-| `src/front/registry/artifacts.js` | Artifact type → React component mapping |
-| `src/front/hooks/useArtifactState.js` | Global artifact state (open, active, per-session) |
-
-**Files to modify**:
-| File | Change |
-|------|--------|
-| `src/front/App.jsx` | Render Surface outside DockView (or as single right DockView group) |
-| `src/front/App.jsx` | Surface hidden when no artifacts open |
-| `src/front/hooks/usePanelActions.js` | `openFile()` → opens in Surface viewer (not center editor tabs) |
-| `src/front/styles.css` | Surface island styles from POC (backdrop blur, rounded corners, shadow, animation) |
-| `src/front/styles.css` | Floating scrollbars, scroll masks |
-
-**Key decisions**:
-- Surface is rendered outside DockView OR as a managed DockView group on the right
-- Explorer sidebar: collapsed by default, toggle via 📂 button
-- Viewer: polymorphic renderer based on artifact type
-- Tabs: pill-style, not IDE tabs
-- Artifacts persist across session switches (right wing independent of chat)
-
-**Verification**:
-- No Surface visible on fresh load
-- Click artifact link in chat → Surface slides in with the artifact
-- Toggle explorer sidebar → browse all session artifacts
-- Close all artifacts → Surface disappears
-- Resize Surface via drag handle
-- ⌘2 toggles Surface
-
----
-
-## Phase 4: Artifact Links in Chat
-
-**Goal**: Agent tool-use outputs become clickable artifact cards that open in the Surface.
-
-**Files to modify**:
-| File | Change |
-|------|--------|
-| `src/front/components/chat/toolRenderers.jsx` | Add artifact card rendering for write/edit/read tool outputs |
-| `src/front/components/chat/ToolUseBlock.jsx` | Wrap tool outputs with clickable artifact cards |
-| `src/front/components/chat/MessageList.jsx` | Wire artifact card clicks to `useArtifactState().open(id)` |
-
-**Files to create**:
-| File | Purpose |
-|------|---------|
-| `src/front/components/chat/ArtifactCard.jsx` | Clickable card in chat (icon + title + type + chevron) |
-
-**Design from POC**:
-- Cards have gradient background, subtle shadow, icon with color
-- Active artifact card highlighted (accent border + glow)
-- Chevron affordance on the right
-- Avatar icons for user/agent messages
-
-**Verification**:
-- Agent edits a file → artifact card appears in chat
-- Click card → Surface opens showing the file/diff
-- Active card highlighted while viewing in Surface
-- Multiple artifacts → each clickable independently
-
----
-
-## Phase 5: Agent Auto-Open + Diff UX
-
-**Goal**: Agent edits auto-open diffs. Multi-file edits show summary blocks.
-
-**Files to modify**:
-| File | Change |
-|------|--------|
-| `src/front/providers/pi/defaultTools.js` | After write/edit completion → auto-open artifact in Surface |
-| `src/front/components/chat/toolRenderers.jsx` | Multi-file edits: summary block with file list + Accept All / Reject All |
-| `src/front/components/GitDiff.jsx` | Add inline Accept/Reject per hunk |
-
-**Files to create**:
-| File | Purpose |
-|------|---------|
-| `src/front/components/chat/MultiFileBlock.jsx` | Summary card for multi-file edits |
-| `src/front/components/artifacts/DiffArtifact.jsx` | Diff viewer with accept/reject in Surface |
-
-**Behavior**:
-- Single file edit → auto-open diff in Surface
-- Multiple files → summary block in chat, click file → opens in Surface
-- Accept → diff closes, chat shows ✓
-- Reject → reverts change
-- Chat retains focus during auto-open
-
-**Verification**:
-- Agent edits auth.js → Surface opens with diff automatically
-- Agent edits 5 files → summary block with Accept All / Reject All
-- Click individual file in summary → diff opens in Surface
-
----
-
-## Phase 6: Artifact Types (Charts, Tables, Docs)
-
-**Goal**: Surface renders not just code but charts, tables, documents, images.
-
-**Files to create**:
-| File | Purpose |
-|------|---------|
-| `src/front/components/artifacts/ChartArtifact.jsx` | Chart renderer (bar, line, pie) |
-| `src/front/components/artifacts/TableArtifact.jsx` | Interactive data table |
-| `src/front/components/artifacts/DocumentArtifact.jsx` | PDF/markdown document viewer |
-| `src/front/components/artifacts/ImageArtifact.jsx` | Image viewer |
-| `src/front/components/artifacts/CodeArtifact.jsx` | Code viewer (wraps existing EditorPanel) |
-
-**Files to modify**:
-| File | Change |
-|------|--------|
-| `src/front/registry/artifacts.js` | Register type → component mappings |
-| `src/front/components/SurfaceViewer.jsx` | Use registry to polymorphically render artifacts |
-
-**Verification**:
-- Agent creates chart → chart renders in Surface
-- Agent queries database → table renders in Surface
-- Agent finds PDF → document renders in Surface
-- Switch between artifact types via tabs
-
----
-
-## CSS Migration Strategy
-
-### From POC to boring-ui
-The POC's `index.css` contains the complete design language. Migration approach:
-
-1. **Keep** boring-ui's existing CSS variable system but update values to match POC
-2. **Add** new variables: `--bg-canvas`, `--bg-surface`, `--bg-elevated`, `--border-subtle`, `--border-hover`
-3. **Add** new classes: `.nav-rail`, `.left-panel`, `.surface`, `.sf-*`, `.chat-stage`
-4. **Remove** old classes: `.filetree-panel`, `.datacatalog-panel`, `.sidebar-activity-bar`, `.left-pane-header`
-5. **Keep** existing component styles (CodeEditor, GitDiff, etc.) — they work inside the Surface
-
-### Key CSS values from POC:
-```css
---bg-canvas: #0a0a0a;
---bg-surface: #111113 (or rgba(17,17,19,.85) with backdrop-filter);
---bg-elevated: #151518;
---border-subtle: rgba(255,255,255,0.06);
---radius-xl: 16px; /* Surface island */
---chat-max-width: 680px;
-
-/* Surface island */
-backdrop-filter: blur(16px);
-border-radius: 16px;
-box-shadow: 0 24px 48px -12px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.08);
-animation: 0.4s cubic-bezier(0.16,1,0.3,1);
-
-/* Chat input */
-border-radius: 24px; /* pill */
-box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-
-/* Send button */
-background: var(--text-primary); /* white on dark */
-border-radius: 16px; /* circle */
-```
-
----
-
-## DockView Strategy
-
-### Option A: Minimal DockView (recommended for Phase 1-3)
-- DockView manages only the center (chat) and right (Surface) groups
-- Nav rail + left panel are pure React components outside DockView
-- Surface is a single DockView group with tabs
-- Simpler, fewer DockView edge cases
-
-### Option B: Full DockView
-- Nav rail outside, everything else in DockView
-- Left panel is a DockView group (locked, collapsible)
-- Center chat is a DockView group (locked, essential)
-- Right Surface is a DockView group (tabs, splits)
-- More DockView features (drag-and-drop) but more complexity
-
-**Recommendation**: Start with Option A. Migrate to B later if power users want drag-and-drop between Surface panes.
-
----
-
-## Risk Mitigation
-
-| Risk | Mitigation |
-|------|-----------|
-| Layout migration breaks existing users | LAYOUT_VERSION bump with migration; fallback to fresh layout |
-| Chat max-width causes text reflow issues | Use `max-width` on message container, not flex-basis |
-| Surface animation performance | Use `transform` + `opacity` only (GPU composited) |
-| Session state conflicts with PI backend | Keep PI session logic; add UI-layer session switching on top |
-| Large CSS refactor breaks existing styles | Additive approach: add new classes, don't delete old ones until phase complete |
-| DockView group changes break persistence | Clear saved layout on version bump; users get fresh layout |
-
----
-
-## Effort Estimate
-
-| Phase | Description | New Files | Modified | Removed | Effort |
-|-------|-------------|-----------|----------|---------|--------|
-| 1 | Chat as Center Stage | 0 | 8 | 1 | 1-2 days |
-| 2 | Nav Rail + Left Panel | 4 | 6 | 4 (archived) | 2-3 days |
-| 3 | The Surface | 6 | 5 | 0 | 3-4 days |
-| 4 | Artifact Links in Chat | 1 | 3 | 0 | 1-2 days |
-| 5 | Auto-Open + Diff UX | 2 | 3 | 0 | 2-3 days |
-| 6 | Artifact Types | 5 | 2 | 0 | 2-3 days |
-| **Total** | | **18** | **27** | **5** | **~12-17 days** |
-
----
-
-## File Inventory
-
-### CREATE (18 files)
-```
-src/front/components/NavRail.jsx
-src/front/components/LeftPanel.jsx
-src/front/components/SessionList.jsx
-src/front/components/Surface.jsx
-src/front/components/SurfaceExplorer.jsx
-src/front/components/SurfaceViewer.jsx
-src/front/components/SurfaceTopBar.jsx
-src/front/components/chat/ArtifactCard.jsx
-src/front/components/chat/MultiFileBlock.jsx
-src/front/components/artifacts/ChartArtifact.jsx
-src/front/components/artifacts/TableArtifact.jsx
-src/front/components/artifacts/DocumentArtifact.jsx
-src/front/components/artifacts/ImageArtifact.jsx
-src/front/components/artifacts/CodeArtifact.jsx
-src/front/components/artifacts/DiffArtifact.jsx
-src/front/registry/artifacts.js
-src/front/hooks/useSessionState.js
-src/front/hooks/useArtifactState.js
-```
-
-### MODIFY (27 files)
-```
-src/front/App.jsx
-src/front/styles.css
-src/front/registry/panes.jsx
-src/front/layout/LayoutManager.js
-src/front/hooks/useDockLayout.js
-src/front/hooks/usePanelActions.js
-src/front/hooks/useKeyboardShortcuts.js
-src/front/panels/AgentPanel.jsx
-src/front/panels/EditorPanel.jsx
-src/front/panels/ReviewPanel.jsx
-src/front/panels/FileTreePanel.jsx (extract tree core)
-src/front/panels/DataCatalogPanel.jsx (extract list core)
-src/front/components/UserMenu.jsx
-src/front/components/FileTree.jsx
-src/front/components/GitChangesView.jsx
-src/front/components/chat/AiChat.jsx
-src/front/components/chat/ClaudeStreamChat.jsx
-src/front/components/chat/MessageList.jsx
-src/front/components/chat/ToolUseBlock.jsx
-src/front/components/chat/toolRenderers.jsx
-src/front/providers/pi/nativeAdapter.jsx
-src/front/providers/pi/backendAdapter.jsx
-src/front/providers/pi/PiSessionToolbar.jsx
-src/front/providers/pi/sessionBus.js
-src/front/providers/pi/defaultTools.js
-src/front/components/GitDiff.jsx
-src/front/config/appConfig.js (or equivalent)
-```
-
-### REMOVE/ARCHIVE (5 files)
-```
-src/front/panels/EmptyPanel.jsx
-src/front/components/SidebarSectionHeader.jsx
-src/front/hooks/useResponsiveSidebarCollapse.js
-src/front/components/SyncStatusFooter.jsx (if it exists)
-```
+(To be filled after Phase 2 verification)

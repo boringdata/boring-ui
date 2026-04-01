@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('../../providers/data', async () => {
-  const actual = await vi.importActual('../../providers/data')
+vi.mock('../../shared/providers/data', async () => {
+  const actual = await vi.importActual('../../shared/providers/data')
   return {
     ...actual,
     getDataProvider: vi.fn(),
@@ -9,8 +9,8 @@ vi.mock('../../providers/data', async () => {
   }
 })
 
-import { __claudeStreamChatTestUtils } from '../../components/chat/ClaudeStreamChat'
-import { getDataProvider, createHttpProvider } from '../../providers/data'
+import { __claudeStreamChatTestUtils } from '../../shared/components/chat/ClaudeStreamChat'
+import { getDataProvider, createHttpProvider } from '../../shared/providers/data'
 
 describe('ClaudeStreamChat DataProvider integration', () => {
   beforeEach(() => {

@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import AuthPage, { AuthCallbackPage } from '../pages/AuthPage'
 
-vi.mock('../config', () => ({
+vi.mock('../shared/config', () => ({
   getConfig: () => ({
     branding: { name: 'Test App' },
   }),
 }))
 
-vi.mock('../components/ThemeToggle', () => ({
+vi.mock('../shared/components/ThemeToggle', () => ({
   default: () => <button data-testid="theme-toggle">Toggle</button>,
 }))
 

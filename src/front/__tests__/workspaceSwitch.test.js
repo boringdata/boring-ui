@@ -3,7 +3,7 @@ import {
   getWorkspaceSwitchCandidates,
   buildSwitchPrompt,
   resolveWorkspaceSwitchTarget,
-} from '../utils/workspaceSwitch'
+} from '../shared/utils/workspaceSwitch'
 
 const WORKSPACES = [
   { id: 'ws-1', name: 'Alpha' },

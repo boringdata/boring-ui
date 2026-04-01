@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import FileTreePanel from '../../panels/FileTreePanel'
+import FileTreePanel from '../../shared/panels/FileTreePanel'
 
 let mockGitStatus = { is_repo: true }
 const mockGitInitMutate = vi.fn()
@@ -18,25 +18,25 @@ const mockLightningFsBootstrap = {
   retry: vi.fn(),
 }
 
-vi.mock('../../components/FileTree', () => ({
+vi.mock('../../shared/components/FileTree', () => ({
   default: () => <div data-testid="file-tree">File tree</div>,
 }))
 
-vi.mock('../../components/GitChangesView', () => ({
+vi.mock('../../shared/components/GitChangesView', () => ({
   default: () => <div data-testid="git-changes-view">Git changes</div>,
 }))
 
-vi.mock('../../providers/data', () => ({
+vi.mock('../../shared/providers/data', () => ({
   useGitStatus: () => ({ isLoading: false, isFetching: false, data: mockGitStatus }),
   useGitInit: () => ({ mutate: mockGitInitMutate, isPending: false }),
   useGitBranch: () => ({ data: 'main' }),
 }))
 
-vi.mock('../../hooks/useAutoSync', () => ({
+vi.mock('../../shared/hooks/useAutoSync', () => ({
   useAutoSync: () => ({ state: 'disabled', lastError: null, syncNow: () => {} }),
 }))
 
-vi.mock('../../providers/data/DataContext', () => ({
+vi.mock('../../shared/providers/data/DataContext', () => ({
   useDataProvider: () => ({
     git: {
       branches: vi.fn(async () => ({ branches: [] })),
@@ -46,15 +46,15 @@ vi.mock('../../providers/data/DataContext', () => ({
   }),
 }))
 
-vi.mock('../../components/GitHubConnect', () => ({
+vi.mock('../../shared/components/GitHubConnect', () => ({
   useGitHubConnection: () => mockGitHubConnection,
 }))
 
-vi.mock('../../hooks/useLightningFsGitBootstrap', () => ({
+vi.mock('../../shared/hooks/useLightningFsGitBootstrap', () => ({
   useLightningFsGitBootstrap: () => mockLightningFsBootstrap,
 }))
 
-vi.mock('../../components/UserMenu', () => ({
+vi.mock('../../shared/components/UserMenu', () => ({
   default: ({ collapsed = false }: { collapsed?: boolean }) => (
     <div data-testid={collapsed ? 'user-menu-collapsed' : 'user-menu-expanded'}>User menu</div>
   ),

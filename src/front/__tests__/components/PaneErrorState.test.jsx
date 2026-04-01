@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import PaneErrorState from '../../components/PaneErrorState'
+import PaneErrorState from '../../shared/components/PaneErrorState'
 
 describe('PaneErrorState', () => {
   it('renders unavailable message with title', () => {

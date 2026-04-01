@@ -4,22 +4,22 @@
 import { describe, it, expect, vi } from 'vitest'
 import '../setup.ts'
 import { fireEvent, render, screen } from '@testing-library/react'
-import FileTreePanel from '../../panels/FileTreePanel'
-import { ThemeProvider } from '../../hooks/useTheme'
-import { routes } from '../../utils/routes'
+import FileTreePanel from '../../shared/panels/FileTreePanel'
+import { ThemeProvider } from '../../shared/hooks/useTheme'
+import { routes } from '../../shared/utils/routes'
 
 const mockGitInitMutate = vi.fn()
 const mockGitHubConnect = vi.fn()
 
-vi.mock('../../components/FileTree', () => ({
+vi.mock('../../shared/components/FileTree', () => ({
   default: () => <div data-testid="file-tree">File tree</div>,
 }))
 
-vi.mock('../../components/GitChangesView', () => ({
+vi.mock('../../shared/components/GitChangesView', () => ({
   default: () => <div data-testid="git-changes-view">Git changes</div>,
 }))
 
-vi.mock('../../providers/data', () => ({
+vi.mock('../../shared/providers/data', () => ({
   useGitStatus: () => ({
     data: { is_repo: true, available: true },
     isLoading: false,
@@ -31,14 +31,14 @@ vi.mock('../../providers/data', () => ({
   }),
 }))
 
-vi.mock('../../components/GitHubConnect', () => ({
+vi.mock('../../shared/components/GitHubConnect', () => ({
   useGitHubConnection: () => ({
     status: null,
     connect: mockGitHubConnect,
   }),
 }))
 
-vi.mock('../../hooks/useLightningFsGitBootstrap', () => ({
+vi.mock('../../shared/hooks/useLightningFsGitBootstrap', () => ({
   useLightningFsGitBootstrap: () => ({
     state: 'disabled',
     message: '',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyLightningFsBootstrap, normalizeRepoUrl } from '../../hooks/useLightningFsGitBootstrap'
+import { classifyLightningFsBootstrap, normalizeRepoUrl } from '../../shared/hooks/useLightningFsGitBootstrap'
 
 describe('normalizeRepoUrl', () => {
   it('normalizes ssh and https GitHub urls to the same canonical form', () => {

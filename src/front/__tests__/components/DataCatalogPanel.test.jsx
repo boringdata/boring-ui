@@ -2,9 +2,9 @@ import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
-import DataCatalogPanel from '../../panels/DataCatalogPanel'
+import DataCatalogPanel from '../../shared/panels/DataCatalogPanel'
 
-vi.mock('../../components/Tooltip', () => ({
+vi.mock('../../shared/components/Tooltip', () => ({
   default: ({ children }) => <>{children}</>,
 }))
 

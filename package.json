@@ -31,7 +31,8 @@
   },
   "license": "MIT",
   "scripts": {
-    "dev": "vite",
+    "dev": "WORKSPACE_BACKEND=${WORKSPACE_BACKEND:-bwrap} tsx watch src/server/index.ts & sleep 3 && vite --host 0.0.0.0; kill %1",
+    "dev:vite": "vite",
     "companion:service": "bash src/companion_service/launch.sh",
     "pi:service": "node src/pi_service/server.mjs",
     "build": "vite build",

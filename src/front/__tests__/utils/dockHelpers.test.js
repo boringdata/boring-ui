@@ -4,7 +4,7 @@ import {
   countAgentPanels,
   listDockPanels,
   isCenterContentPanel,
-} from '../../utils/dockHelpers'
+} from '../../shared/utils/dockHelpers'
 
 const makePanel = (id, component) => ({
   id,

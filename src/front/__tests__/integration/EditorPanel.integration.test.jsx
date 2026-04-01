@@ -6,10 +6,10 @@ import '../setup.ts'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import DataContext from '../../providers/data/DataContext'
-import EditorPanel from '../../panels/EditorPanel'
+import DataContext from '../../shared/providers/data/DataContext'
+import EditorPanel from '../../shared/panels/EditorPanel'
 
-vi.mock('../../components/Editor', () => ({
+vi.mock('../../shared/components/Editor', () => ({
   default: ({ content, onChange, onAutoSave }) => (
     <div>
       <div data-testid="editor-content">{content}</div>
@@ -23,11 +23,11 @@ vi.mock('../../components/Editor', () => ({
   ),
 }))
 
-vi.mock('../../components/CodeEditor', () => ({
+vi.mock('../../shared/components/CodeEditor', () => ({
   default: () => <div data-testid="code-editor-stub" />,
 }))
 
-vi.mock('../../components/GitDiff', () => ({
+vi.mock('../../shared/components/GitDiff', () => ({
   default: () => <div data-testid="git-diff-stub" />,
 }))
 

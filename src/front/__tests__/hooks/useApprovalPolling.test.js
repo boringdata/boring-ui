@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import useApprovalPolling from '../../hooks/useApprovalPolling'
+import useApprovalPolling from '../../shared/hooks/useApprovalPolling'
 
 // Mock transport
-vi.mock('../../utils/transport', () => ({
+vi.mock('../../shared/utils/transport', () => ({
   apiFetchJson: vi.fn().mockResolvedValue({ data: { requests: [] } }),
   apiFetch: vi.fn().mockResolvedValue({}),
 }))
 
 // Mock routes
-vi.mock('../../utils/routes', () => ({
+vi.mock('../../shared/utils/routes', () => ({
   routes: {
     approval: {
       pending: () => ({ path: '/api/approval/pending', query: {} }),
@@ -81,7 +81,7 @@ describe('useApprovalPolling', () => {
   })
 
   it('marks approvals loaded even when the initial poll fails', async () => {
-    const { apiFetchJson } = await import('../../utils/transport')
+    const { apiFetchJson } = await import('../../shared/utils/transport')
     apiFetchJson.mockRejectedValueOnce(new Error('boom'))
 
     const { result } = renderHook(() =>
@@ -97,7 +97,7 @@ describe('useApprovalPolling', () => {
   })
 
   it('clears stale approvals when a later poll fails', async () => {
-    const { apiFetchJson } = await import('../../utils/transport')
+    const { apiFetchJson } = await import('../../shared/utils/transport')
     apiFetchJson
       .mockResolvedValueOnce({
         data: {
@@ -129,7 +129,7 @@ describe('useApprovalPolling', () => {
   })
 
   it('handleDecision removes approval from list', async () => {
-    const { apiFetch } = await import('../../utils/transport')
+    const { apiFetch } = await import('../../shared/utils/transport')
     const { result } = renderHook(() =>
       useApprovalPolling({ enabled: false }),
     )

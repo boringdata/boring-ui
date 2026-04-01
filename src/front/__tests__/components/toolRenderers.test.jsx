@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { renderToolPart, normalizeToolName, parseGlobFiles, parseGrepResults } from '../../components/chat/toolRenderers'
+import { renderToolPart, normalizeToolName, parseGlobFiles, parseGrepResults } from '../../shared/components/chat/toolRenderers'
 
-vi.mock('../../config', () => ({
+vi.mock('../../shared/config', () => ({
   getConfig: () => ({ branding: { name: 'Test' } }),
 }))
 

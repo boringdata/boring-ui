@@ -3,24 +3,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 
 import { getPane } from '../../registry/panes'
-import EditorPanel from '../../panels/EditorPanel'
-import { isMarkdownFile } from '../../utils/editorFiles'
+import EditorPanel from '../../shared/panels/EditorPanel'
+import { isMarkdownFile } from '../../shared/utils/editorFiles'
 
 let mockGitStatus
 
-vi.mock('../../components/Editor', () => ({
+vi.mock('../../shared/components/Editor', () => ({
   default: () => <div data-testid="editor-stub">editor</div>,
 }))
 
-vi.mock('../../components/CodeEditor', () => ({
+vi.mock('../../shared/components/CodeEditor', () => ({
   default: () => <div data-testid="code-editor-stub">code-editor</div>,
 }))
 
-vi.mock('../../components/GitDiff', () => ({
+vi.mock('../../shared/components/GitDiff', () => ({
   default: () => <div data-testid="git-diff-stub">git-diff</div>,
 }))
 
-vi.mock('../../components/ui/dropdown-menu', () => ({
+vi.mock('../../shared/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }) => <div data-testid="dropdown-menu">{children}</div>,
   DropdownMenuTrigger: ({ children }) => <>{children}</>,
   DropdownMenuContent: ({ children }) => <div data-testid="dropdown-content">{children}</div>,
@@ -35,7 +35,7 @@ vi.mock('../../components/ui/dropdown-menu', () => ({
   ),
 }))
 
-vi.mock('../../providers/data', () => ({
+vi.mock('../../shared/providers/data', () => ({
   useFileContent: () => ({
     data: 'export const foo = 1',
     isLoading: false,

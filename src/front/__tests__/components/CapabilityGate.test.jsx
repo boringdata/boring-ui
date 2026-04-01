@@ -21,7 +21,7 @@ import {
   CapabilitiesContext,
   CapabilitiesStatusContext,
   createCapabilityGatedPane,
-} from '../../components/CapabilityGate'
+} from '../../shared/components/CapabilityGate'
 
 function DummyPane() {
   return <div data-testid="dummy-pane">Pane content</div>

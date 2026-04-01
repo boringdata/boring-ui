@@ -33,8 +33,8 @@ describe('Phase 1 Form Primitive Migration Contract', () => {
 
   it('keeps shared Textarea primitives wired in approval + PI backend composer surfaces', () => {
     for (const file of [
-      'src/front/providers/pi/backendAdapter.jsx',
-      'src/front/components/ApprovalPanel.jsx',
+      'src/front/shared/providers/pi/backendAdapter.jsx',
+      'src/front/shared/components/ApprovalPanel.jsx',
     ]) {
       const source = readRepoFile(file)
       expect(source).toContain('Textarea')
@@ -44,7 +44,7 @@ describe('Phase 1 Form Primitive Migration Contract', () => {
 
   it('keeps shared Select primitives wired for workspace sync interval settings', () => {
     const source = readRepoFile('src/front/pages/WorkspaceSettingsPage.jsx')
-    expect(source).toContain("from '../components/ui/select'")
+    expect(source).toContain("from '../shared/components/ui/select'")
     expect(source).toContain('<Select ')
     expect(source).toContain('<SelectTrigger')
     expect(source).toContain('<SelectContent')

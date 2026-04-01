@@ -10,6 +10,7 @@ import { loadConfig, validateConfig, type ServerConfig } from './config.js'
 import { registerRequestIdHook } from './middleware/requestId.js'
 import { PINO_REDACT_PATHS } from './middleware/secretRedaction.js'
 import { createAuthHook } from './auth/middleware.js'
+import { createSessionCookie, parseSessionCookie, appCookieName as sessionAppCookieName } from './auth/session.js'
 import { registerHealthRoutes } from './http/health.js'
 import { registerWorkspaceRoutes } from './http/workspaceRoutes.js'
 import { registerFileRoutes } from './http/fileRoutes.js'
@@ -80,6 +81,44 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   // --- Request ID middleware ---
   app.register(registerRequestIdHook)
 
+  // --- Local dev auto-login: set session cookie on every request if missing ---
+  if (config.controlPlaneProvider === 'local') {
+    const devCookieName = config.authSessionCookieName || sessionAppCookieName()
+    const devAppId = config.appId || config.controlPlaneAppId || undefined
+    let cachedDevToken: string | null = null
+
+    app.addHook('onRequest', async (request, reply) => {
+      // Skip if there's already a valid cookie
+      const existing = request.cookies[devCookieName]
+      if (existing) {
+        try {
+          await parseSessionCookie(existing, config.sessionSecret)
+          return // Cookie is valid, nothing to do
+        } catch {
+          // Cookie is invalid/expired — replace it
+        }
+      }
+      // Reuse cached token to avoid JWT signing on every request
+      if (!cachedDevToken) {
+        cachedDevToken = await createSessionCookie('dev-local', 'dev@local', config.sessionSecret, {
+          ttlSeconds: config.authSessionTtlSeconds,
+          appId: devAppId,
+        })
+      }
+      const token = cachedDevToken
+      // Set cookie on response so browser gets it
+      reply.setCookie(devCookieName, token, {
+        path: '/',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: false,
+        maxAge: config.authSessionTtlSeconds,
+      })
+      // Inject into current request so downstream hooks see it
+      request.cookies[devCookieName] = token
+    })
+  }
+
   // --- Health, capabilities, config endpoints (public, no auth) ---
   app.register(registerHealthRoutes)
 
@@ -110,15 +149,22 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
     scoped.register(registerExecRoutes)
   }, { prefix: '/api/v1' })
 
-  // Server-side agent routes (require auth when placement=server)
-  if (config.agentPlacement === 'server' && config.agentRuntime === 'pi') {
+  // Server-side agent routes.
+  // In local dev mode, register ALL agent routes so the frontend can switch
+  // via URL params (?agent_mode=backend) without restarting the server.
+  // In production, only register routes matching the configured placement+runtime.
+  const isLocalDev = config.controlPlaneProvider === 'local'
+  const registerPi = isLocalDev || (config.agentPlacement === 'server' && config.agentRuntime === 'pi')
+  const registerAiSdk = isLocalDev || (config.agentPlacement === 'server' && config.agentRuntime === 'ai-sdk')
+
+  if (registerPi) {
     app.register(async (scoped) => {
       scoped.addHook('onRequest', createAuthHook(app))
       scoped.register(registerPiRoutes)
     }, { prefix: '/api/v1' })
   }
 
-  if (config.agentPlacement === 'server' && config.agentRuntime === 'ai-sdk') {
+  if (registerAiSdk) {
     app.register(async (scoped) => {
       scoped.addHook('onRequest', createAuthHook(app))
       scoped.register(registerAiSdkRoutes)

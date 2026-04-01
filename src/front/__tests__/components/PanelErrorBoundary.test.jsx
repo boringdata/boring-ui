@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import PanelErrorBoundary from '../../components/PanelErrorBoundary'
+import PanelErrorBoundary from '../../shared/components/PanelErrorBoundary'
 
 function BrokenChild() {
   throw new Error('Panel exploded')

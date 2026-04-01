@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, User, Palette, Shield, KeyRound } from 'lucide-react'
-import { apiFetchJson } from '../utils/transport'
-import { routeHref, routes } from '../utils/routes'
-import { useTheme } from '../hooks/useTheme'
+import { apiFetchJson } from '../shared/utils/transport'
+import { routeHref, routes } from '../shared/utils/routes'
+import { useTheme } from '../shared/hooks/useTheme'
 import {
   listPiProviderKeyStatus,
   maskPiProviderKey,
   removePiProviderKey,
   resolvePiProviderKeyScope,
   setPiProviderKey,
-} from '../providers/pi/providerKeys'
-import { Input } from '../components/ui/input'
+} from '../shared/providers/pi/providerKeys'
+import { Input } from '../shared/components/ui/input'
 import PageShell, { SettingsSection, SettingsField } from './PageShell'
 
 const centeredPageLoadingStyle = {

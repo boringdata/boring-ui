@@ -98,7 +98,7 @@ export async function registerWorkspaceBoundary(
       })
     }
 
-    // Auth check
+    // Auth check (global auto-login hook in app.ts injects cookie in local dev)
     const cookieName = app.config.authSessionCookieName || appCookieName()
     const token = request.cookies[cookieName]
 
@@ -127,10 +127,17 @@ export async function registerWorkspaceBoundary(
     const queryStr = request.url.includes('?') ? '?' + request.url.split('?')[1] : ''
     const targetUrl = normalizedPath + queryStr
 
-    // Build headers — forward cookies and workspace context
+    // Build headers — forward cookies and workspace context.
+    // The global auto-login hook injects the cookie into request.cookies,
+    // but we also need it in the header for app.inject() internal proxy.
+    const originalCookie = request.headers.cookie || ''
+    const hasCookie = originalCookie.split('; ').some(c => c.startsWith(cookieName + '='))
+    const cookieHeader = hasCookie
+      ? originalCookie
+      : `${cookieName}=${token}${originalCookie ? '; ' + originalCookie : ''}`
     const headers: Record<string, string> = {
       'x-workspace-id': workspaceId,
-      'cookie': request.headers.cookie || '',
+      'cookie': cookieHeader,
     }
     if (request.headers['content-type']) {
       headers['content-type'] = request.headers['content-type'] as string

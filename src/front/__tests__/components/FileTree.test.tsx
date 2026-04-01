@@ -14,11 +14,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import FileTree from '../../components/FileTree'
+import FileTree from '../../shared/components/FileTree'
 import { fileTree, gitStatus, searchResults } from '../fixtures'
 import { setupApiMocks, flushPromises, simulateContextMenu, simulateDragDrop } from '../utils'
-import DataContext from '../../providers/data/DataContext'
-import { createHttpProvider } from '../../providers/data'
+import DataContext from '../../shared/providers/data/DataContext'
+import { createHttpProvider } from '../../shared/providers/data'
 
 const render = (ui: ReactElement) => {
   const queryClient = new QueryClient({
@@ -89,6 +89,16 @@ describe('FileTree', () => {
       await new Promise(r => setTimeout(r, 10))
 
       expect(screen.queryByText('Project')).not.toBeInTheDocument()
+    })
+
+    it('wraps the flat file list in the shared scroll container', async () => {
+      const { container } = render(<FileTree {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('README.md')).toBeInTheDocument()
+      })
+
+      expect(container.querySelector('.file-tree-sections')).toBeInTheDocument()
     })
 
     it('retries fetch if initial load returns empty', async () => {

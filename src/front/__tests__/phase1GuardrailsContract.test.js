@@ -21,7 +21,7 @@ describe('Phase 1 guardrails and CSS retirement contract', () => {
   })
 
   it('keeps retired primitive selectors out of shared host styles', () => {
-    const styles = readRepoFile('src/front/styles.css')
+    const styles = readRepoFile('src/front/shared/design-system/base.css')
     expect(styles).not.toContain('.btn {')
     expect(styles).not.toContain('.btn-primary {')
     expect(styles).not.toContain('.btn-secondary {')

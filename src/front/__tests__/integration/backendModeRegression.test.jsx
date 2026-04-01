@@ -95,7 +95,7 @@ describe('PiBackendAdapter workspace switch', () => {
   })
 
   it('uses the correct workspace ID from URL pathname', async () => {
-    const PiBackendAdapter = (await import('../../providers/pi/backendAdapter')).default
+    const PiBackendAdapter = (await import('../../shared/providers/pi/backendAdapter')).default
 
     await act(async () => {
       render(
@@ -119,7 +119,7 @@ describe('PiBackendAdapter workspace switch', () => {
   })
 
   it('resets sessions when workspace changes via popstate', async () => {
-    const PiBackendAdapter = (await import('../../providers/pi/backendAdapter')).default
+    const PiBackendAdapter = (await import('../../shared/providers/pi/backendAdapter')).default
 
     const { container } = await act(async () =>
       render(
@@ -165,7 +165,7 @@ describe('PiBackendAdapter workspace switch', () => {
   })
 
   it('resets sessions when workspace changes via boring-ui:location-change', async () => {
-    const PiBackendAdapter = (await import('../../providers/pi/backendAdapter')).default
+    const PiBackendAdapter = (await import('../../shared/providers/pi/backendAdapter')).default
 
     await act(async () => {
       render(
@@ -212,7 +212,7 @@ describe('PiBackendAdapter workspace switch', () => {
 // ---------------------------------------------------------------------------
 describe('CreateWorkspaceModal centering', () => {
   it('.modal-header uses justify-content: center', () => {
-    const cssPath = resolve(__dirname, '../../styles.css')
+    const cssPath = resolve(__dirname, '../../shared/design-system/base.css')
     const css = readFileSync(cssPath, 'utf-8')
 
     // Extract the .modal-header rule
@@ -226,7 +226,7 @@ describe('CreateWorkspaceModal centering', () => {
   })
 
   it('.modal-body uses flex-direction: column for proper input layout', () => {
-    const cssPath = resolve(__dirname, '../../styles.css')
+    const cssPath = resolve(__dirname, '../../shared/design-system/base.css')
     const css = readFileSync(cssPath, 'utf-8')
 
     const bodyMatch = css.match(/\.modal-body\s*\{([^}]+)\}/)
@@ -239,7 +239,7 @@ describe('CreateWorkspaceModal centering', () => {
   })
 
   it('.modal-dialog does not define a custom animation (uses Tailwind animate-in)', () => {
-    const cssPath = resolve(__dirname, '../../styles.css')
+    const cssPath = resolve(__dirname, '../../shared/design-system/base.css')
     const css = readFileSync(cssPath, 'utf-8')
 
     // A custom animation on .modal-dialog conflicts with Tailwind's

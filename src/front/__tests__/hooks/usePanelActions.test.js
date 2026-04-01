@@ -1,17 +1,17 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import usePanelActions from '../../hooks/usePanelActions'
-import { PI_LIST_TABS_BRIDGE, PI_OPEN_PANEL_BRIDGE } from '../../providers/pi/uiBridge'
+import usePanelActions from '../../shared/hooks/usePanelActions'
+import { PI_LIST_TABS_BRIDGE, PI_OPEN_PANEL_BRIDGE } from '../../shared/providers/pi/uiBridge'
 
-vi.mock('../../utils/transport', () => ({
+vi.mock('../../shared/utils/transport', () => ({
   apiFetchJson: vi.fn(),
 }))
 
-vi.mock('../../utils/frontendState', () => ({
+vi.mock('../../shared/utils/frontendState', () => ({
   getFrontendStateClientId: vi.fn((prefix) => `client-${prefix}`),
 }))
 
-vi.mock('../../utils/editorFiles', () => ({
+vi.mock('../../shared/utils/editorFiles', () => ({
   getEditorPanelComponent: vi.fn(() => 'editor'),
   getMarkdownEditorParam: vi.fn(() => 'rich-text'),
   isMarkdownFile: vi.fn((path) => path.endsWith('.md')),
@@ -184,7 +184,7 @@ describe('usePanelActions', () => {
   })
 
   it('consumes focus_panel commands and publishes updated frontend state', async () => {
-    const { apiFetchJson } = await import('../../utils/transport')
+    const { apiFetchJson } = await import('../../shared/utils/transport')
     const targetPanel = makePanel('review-1')
     const dockApi = {
       getPanel: vi.fn((id) => (id === 'review-1' ? targetPanel : null)),
@@ -218,7 +218,7 @@ describe('usePanelActions', () => {
   })
 
   it('marks frontend commands unavailable after a 404 response', async () => {
-    const { apiFetchJson } = await import('../../utils/transport')
+    const { apiFetchJson } = await import('../../shared/utils/transport')
     apiFetchJson.mockResolvedValueOnce({
       response: { ok: false, status: 404 },
       data: {},

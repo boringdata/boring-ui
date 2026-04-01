@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { useState } from 'react'
-import useResponsiveSidebarCollapse from '../../hooks/useResponsiveSidebarCollapse'
+import useResponsiveSidebarCollapse from '../../shared/hooks/useResponsiveSidebarCollapse'
 
 describe('useResponsiveSidebarCollapse', () => {
   function useHarness({ isNarrowViewport, storagePrefix, initialCollapsed = false }) {

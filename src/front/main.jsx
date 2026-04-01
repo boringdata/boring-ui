@@ -2,10 +2,10 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { Buffer } from 'buffer'
 import App from './App'
-import AppErrorBoundary from './components/AppErrorBoundary'
-import { ConfigProvider } from './config'
-import { fetchRuntimeConfig, runtimeConfigToProviderConfig } from './config/runtimeConfig'
-import './styles.css'
+import AppErrorBoundary from './shared/components/AppErrorBoundary'
+import { ConfigProvider } from './shared/config'
+import { fetchRuntimeConfig, runtimeConfigToProviderConfig } from './shared/config/runtimeConfig'
+import './shared/design-system/base.css'
 
 if (typeof globalThis !== 'undefined' && !globalThis.Buffer) {
   globalThis.Buffer = Buffer

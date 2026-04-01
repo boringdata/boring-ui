@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
-import ThemeToggle from '../components/ThemeToggle'
-import { Label } from '../components/ui/label'
+import ThemeToggle from '../shared/components/ThemeToggle'
+import { Label } from '../shared/components/ui/label'
 
 export default function PageShell({ title, children, backHref, backLabel = 'Back to workspace' }) {
   return (

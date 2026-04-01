@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { getConfig } from '../config'
-import { routeHref, routes } from '../utils/routes'
-import ThemeToggle from '../components/ThemeToggle'
-import { Input } from '../components/ui/input'
-import { Label } from '../components/ui/label'
-import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs'
+import { getConfig } from '../shared/config'
+import { routeHref, routes } from '../shared/utils/routes'
+import ThemeToggle from '../shared/components/ThemeToggle'
+import { Input } from '../shared/components/ui/input'
+import { Label } from '../shared/components/ui/label'
+import { Tabs, TabsList, TabsTrigger } from '../shared/components/ui/tabs'
 import './auth.css'
 
 function safeRedirectPath(raw) {

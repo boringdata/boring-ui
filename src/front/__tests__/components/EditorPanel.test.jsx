@@ -2,7 +2,7 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 
-import EditorPanel from '../../panels/EditorPanel'
+import EditorPanel from '../../shared/panels/EditorPanel'
 
 let mockFileContent
 let mockFileWrite
@@ -10,7 +10,7 @@ let mockGitStatus
 let mockGitDiff
 let mockGitShow
 
-vi.mock('../../components/Editor', () => ({
+vi.mock('../../shared/components/Editor', () => ({
   default: ({ content, onChange, onAutoSave }) => (
     <div data-testid="editor-stub">
       <div data-testid="editor-content">{content}</div>
@@ -24,7 +24,7 @@ vi.mock('../../components/Editor', () => ({
   ),
 }))
 
-vi.mock('../../components/CodeEditor', () => ({
+vi.mock('../../shared/components/CodeEditor', () => ({
   default: ({ content, onChange, onAutoSave }) => (
     <div data-testid="code-editor-stub">
       <div data-testid="code-editor-content">{content}</div>
@@ -38,11 +38,11 @@ vi.mock('../../components/CodeEditor', () => ({
   ),
 }))
 
-vi.mock('../../components/GitDiff', () => ({
+vi.mock('../../shared/components/GitDiff', () => ({
   default: ({ diff }) => <div data-testid="git-diff-stub">{diff}</div>,
 }))
 
-vi.mock('../../components/ui/dropdown-menu', () => ({
+vi.mock('../../shared/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }) => <div data-testid="dropdown-menu">{children}</div>,
   DropdownMenuTrigger: ({ children }) => <>{children}</>,
   DropdownMenuContent: ({ children }) => <div data-testid="dropdown-content">{children}</div>,
@@ -57,7 +57,7 @@ vi.mock('../../components/ui/dropdown-menu', () => ({
   ),
 }))
 
-vi.mock('../../providers/data', () => ({
+vi.mock('../../shared/providers/data', () => ({
   useFileContent: () => mockFileContent,
   useFileWrite: () => mockFileWrite,
   useGitDiff: () => mockGitDiff,

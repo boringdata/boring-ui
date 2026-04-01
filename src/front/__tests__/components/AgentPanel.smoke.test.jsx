@@ -2,30 +2,30 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
-import { CapabilitiesContext } from '../../components/CapabilityGate'
-import { resetConfig } from '../../config'
+import { CapabilitiesContext } from '../../shared/components/CapabilityGate'
+import { resetConfig } from '../../shared/config'
 import { getPane } from '../../registry/panes'
-import AgentPanel from '../../panels/AgentPanel'
+import AgentPanel from '../../shared/panels/AgentPanel'
 
-vi.mock('../../providers/pi/PiSessionToolbar', () => ({
+vi.mock('../../shared/providers/pi/PiSessionToolbar', () => ({
   default: ({ panelId }) => <div data-testid="pi-session-toolbar">toolbar:{panelId}</div>,
 }))
 
-vi.mock('../../providers/pi/nativeAdapter', () => ({
+vi.mock('../../shared/providers/pi/nativeAdapter', () => ({
   default: ({ panelId, sessionBootstrap, initialSessionId }) => (
     <div data-testid="pi-native-adapter">
       native:{panelId}:{sessionBootstrap}:{initialSessionId}
     </div>
   ),
 }))
-vi.mock('../../providers/pi/backendAdapter', () => ({
+vi.mock('../../shared/providers/pi/backendAdapter', () => ({
   default: ({ panelId, sessionBootstrap, serviceUrl }) => (
     <div data-testid="pi-backend-adapter">
       backend:{panelId}:{sessionBootstrap}:{serviceUrl}
     </div>
   ),
 }))
-vi.mock('../../components/chat/AiChat', () => ({
+vi.mock('../../shared/components/chat/AiChat', () => ({
   default: () => <div data-testid="ai-chat">ai-sdk-chat</div>,
 }))
 

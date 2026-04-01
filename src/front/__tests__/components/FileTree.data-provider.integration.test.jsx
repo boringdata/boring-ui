@@ -6,10 +6,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '../setup.ts'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import FileTree from '../../components/FileTree'
-import DataContext from '../../providers/data/DataContext'
-import { queryKeys } from '../../providers/data/queries'
-import { createJustBashDataProvider } from '../../providers/data/justBashDataProvider'
+import FileTree from '../../shared/components/FileTree'
+import DataContext from '../../shared/providers/data/DataContext'
+import { queryKeys } from '../../shared/providers/data/queries'
+import { createJustBashDataProvider } from '../../shared/providers/data/justBashDataProvider'
 
 const defaultProps = {
   onOpen: vi.fn(),

@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import useFrontendStatePersist from '../../hooks/useFrontendStatePersist'
+import useFrontendStatePersist from '../../shared/hooks/useFrontendStatePersist'
 
-vi.mock('../../utils/transport', () => ({
+vi.mock('../../shared/utils/transport', () => ({
   apiFetch: vi.fn().mockResolvedValue({ ok: true }),
 }))
 
-vi.mock('../../utils/apiBase', () => ({
+vi.mock('../../shared/utils/apiBase', () => ({
   buildApiUrl: vi.fn((path) => `http://test${path}`),
 }))
 
-vi.mock('../../utils/routes', () => ({
+vi.mock('../../shared/utils/routes', () => ({
   routes: {
     uiState: {
       upsert: () => ({ path: '/api/v1/ui/state', query: {} }),
@@ -19,7 +19,7 @@ vi.mock('../../utils/routes', () => ({
   },
 }))
 
-vi.mock('../../utils/frontendState', () => ({
+vi.mock('../../shared/utils/frontendState', () => ({
   collectFrontendStateSnapshot: vi.fn(() => ({ panes: [], client_id: 'test' })),
   getFrontendStateClientId: vi.fn((prefix) => `client-${prefix}`),
 }))
@@ -73,8 +73,8 @@ describe('useFrontendStatePersist', () => {
   })
 
   it('publishes the collected snapshot with fetch by default', async () => {
-    const { apiFetch } = await import('../../utils/transport')
-    const { collectFrontendStateSnapshot } = await import('../../utils/frontendState')
+    const { apiFetch } = await import('../../shared/utils/transport')
+    const { collectFrontendStateSnapshot } = await import('../../shared/utils/frontendState')
     apiFetch.mockResolvedValueOnce({ ok: true, status: 200 })
 
     const { result } = renderHook(() =>
@@ -109,7 +109,7 @@ describe('useFrontendStatePersist', () => {
       configurable: true,
     })
 
-    const { buildApiUrl } = await import('../../utils/apiBase')
+    const { buildApiUrl } = await import('../../shared/utils/apiBase')
     const { result } = renderHook(() =>
       useFrontendStatePersist({ enabled: true, storagePrefix: 'test' }),
     )
@@ -132,7 +132,7 @@ describe('useFrontendStatePersist', () => {
   })
 
   it('marks the endpoint unavailable after a 404 and only retries when forced', async () => {
-    const { apiFetch } = await import('../../utils/transport')
+    const { apiFetch } = await import('../../shared/utils/transport')
     apiFetch
       .mockResolvedValueOnce({ ok: false, status: 404 })
       .mockResolvedValueOnce({ ok: true, status: 200 })

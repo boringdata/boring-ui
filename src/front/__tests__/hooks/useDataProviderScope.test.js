@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import useDataProviderScope from '../../hooks/useDataProviderScope'
+import useDataProviderScope from '../../shared/hooks/useDataProviderScope'
 import {
   createHttpProvider,
   createJustBashDataProvider,
@@ -8,9 +8,9 @@ import {
   createQueryClient,
   getDataProvider,
   getDataProviderFactory,
-} from '../../providers/data'
+} from '../../shared/providers/data'
 
-vi.mock('../../providers/data', () => ({
+vi.mock('../../shared/providers/data', () => ({
   createQueryClient: vi.fn(),
   getDataProvider: vi.fn(),
   getDataProviderFactory: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock('../../providers/data', () => ({
   createLightningDataProvider: vi.fn(),
 }))
 
-vi.mock('../../utils/frontendState', () => ({
+vi.mock('../../shared/utils/frontendState', () => ({
   getFrontendStateClientId: vi.fn((prefix) => `client-${prefix}`),
 }))
 

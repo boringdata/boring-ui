@@ -2,9 +2,9 @@ import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
-import ReviewPanel from '../../panels/ReviewPanel'
+import ReviewPanel from '../../shared/panels/ReviewPanel'
 
-vi.mock('../../components/ApprovalPanel', () => ({
+vi.mock('../../shared/components/ApprovalPanel', () => ({
   default: ({ request, onFeedbackChange }) => (
     <div data-testid="approval-panel-stub">
       <textarea

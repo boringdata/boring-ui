@@ -2,11 +2,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 
 // Mock transport before importing the hook
-vi.mock('../../utils/transport', () => ({
+vi.mock('../../shared/utils/transport', () => ({
   apiFetchJson: vi.fn(),
 }))
 
-vi.mock('../../utils/routes', () => ({
+vi.mock('../../shared/utils/routes', () => ({
   routes: {
     capabilities: {
       get: () => ({ path: '/api/capabilities', query: {} }),
@@ -14,8 +14,8 @@ vi.mock('../../utils/routes', () => ({
   },
 }))
 
-import { useCapabilities } from '../../hooks/useCapabilities'
-import { apiFetchJson } from '../../utils/transport'
+import { useCapabilities } from '../../shared/hooks/useCapabilities'
+import { apiFetchJson } from '../../shared/utils/transport'
 
 const MOCK_CAPABILITIES = {
   version: '0.1.0',

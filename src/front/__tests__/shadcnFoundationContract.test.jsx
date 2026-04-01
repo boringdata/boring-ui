@@ -5,9 +5,9 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { cn } from '../lib/utils'
-import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar'
-import { Badge, badgeVariants } from '../components/ui/badge'
-import { Button, buttonVariants } from '../components/ui/button'
+import { Avatar, AvatarFallback, AvatarImage } from '../shared/components/ui/avatar'
+import { Badge, badgeVariants } from '../shared/components/ui/badge'
+import { Button, buttonVariants } from '../shared/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '../components/ui/dialog'
+} from '../shared/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -30,21 +30,21 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from '../components/ui/dropdown-menu'
-import { Input } from '../components/ui/input'
-import { Label } from '../components/ui/label'
+} from '../shared/components/ui/dropdown-menu'
+import { Input } from '../shared/components/ui/input'
+import { Label } from '../shared/components/ui/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../components/ui/select'
-import { Separator } from '../components/ui/separator'
-import { Switch } from '../components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
-import { Textarea } from '../components/ui/textarea'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip'
+} from '../shared/components/ui/select'
+import { Separator } from '../shared/components/ui/separator'
+import { Switch } from '../shared/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../shared/components/ui/tabs'
+import { Textarea } from '../shared/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../shared/components/ui/tooltip'
 
 const repoRoot = path.resolve(__dirname, '../../..')
 const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8')
@@ -125,7 +125,7 @@ describe('Shadcn Foundation Contract', () => {
   })
 
   it('keeps token and tailwind semantic bridges for shadcn primitives', () => {
-    const tokens = readRepoFile('src/front/styles/tokens.css')
+    const tokens = readRepoFile('src/front/shared/design-system/tokens.css')
     const tailwindConfig = readRepoFile('tailwind.config.js')
 
     const requiredTokenVars = [

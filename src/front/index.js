@@ -75,33 +75,33 @@ export {
   ConfigProvider,
   useConfig,
   useConfigLoaded,
-} from './config'
+} from './shared/config'
 
 // =============================================================================
 // Hooks - React hooks
 // =============================================================================
-export { ThemeProvider, useTheme } from './hooks/useTheme'
+export { ThemeProvider, useTheme } from './shared/hooks/useTheme'
 
 // =============================================================================
 // Panels - Dockview panel components
 // =============================================================================
-export { default as FileTreePanel } from './panels/FileTreePanel'
-export { default as EditorPanel } from './panels/EditorPanel'
-export { default as EmptyPanel } from './panels/EmptyPanel'
-export { default as ReviewPanel } from './panels/ReviewPanel'
+export { default as FileTreePanel } from './shared/panels/FileTreePanel'
+export { default as EditorPanel } from './shared/panels/EditorPanel'
+export { default as EmptyPanel } from './shared/panels/EmptyPanel'
+export { default as ReviewPanel } from './shared/panels/ReviewPanel'
 
 // =============================================================================
 // Components - UI components
 // =============================================================================
-export { default as ThemeToggle } from './components/ThemeToggle'
+export { default as ThemeToggle } from './shared/components/ThemeToggle'
 export {
   setPiAgentConfig,
   addPiAgentTools,
   resetPiAgentConfig,
-} from './providers/pi/agentConfig'
+} from './shared/providers/pi/agentConfig'
 export { cn } from './lib/utils'
-export { Button, buttonVariants } from './components/ui/button'
-export { Badge, badgeVariants } from './components/ui/badge'
+export { Button, buttonVariants } from './shared/components/ui/button'
+export { Badge, badgeVariants } from './shared/components/ui/badge'
 export {
   Dialog,
   DialogTrigger,
@@ -113,7 +113,7 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-} from './components/ui/dialog'
+} from './shared/components/ui/dialog'
 export {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -130,9 +130,9 @@ export {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-} from './components/ui/dropdown-menu'
-export { Input } from './components/ui/input'
-export { Textarea } from './components/ui/textarea'
+} from './shared/components/ui/dropdown-menu'
+export { Input } from './shared/components/ui/input'
+export { Textarea } from './shared/components/ui/textarea'
 export {
   Select,
   SelectGroup,
@@ -144,18 +144,18 @@ export {
   SelectSeparator,
   SelectScrollUpButton,
   SelectScrollDownButton,
-} from './components/ui/select'
-export { Label } from './components/ui/label'
-export { Switch } from './components/ui/switch'
+} from './shared/components/ui/select'
+export { Label } from './shared/components/ui/label'
+export { Switch } from './shared/components/ui/switch'
 export {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
-} from './components/ui/tooltip'
-export { Avatar, AvatarImage, AvatarFallback } from './components/ui/avatar'
-export { Tabs, TabsList, TabsTrigger, TabsContent } from './components/ui/tabs'
-export { Separator } from './components/ui/separator'
+} from './shared/components/ui/tooltip'
+export { Avatar, AvatarImage, AvatarFallback } from './shared/components/ui/avatar'
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './shared/components/ui/tabs'
+export { Separator } from './shared/components/ui/separator'
 
 // =============================================================================
 // Main App

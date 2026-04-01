@@ -9,15 +9,15 @@ import { spawn, spawnSync } from 'node:child_process'
 import http from 'node:http'
 import net from 'node:net'
 
-import DataContext from '../../providers/data/DataContext'
-import { createHttpProvider } from '../../providers/data'
-import FileTree from '../../components/FileTree'
-import EditorPanel from '../../panels/EditorPanel'
+import DataContext from '../../shared/providers/data/DataContext'
+import { createHttpProvider } from '../../shared/providers/data'
+import FileTree from '../../shared/components/FileTree'
+import EditorPanel from '../../shared/panels/EditorPanel'
 import UserSettingsPage from '../../pages/UserSettingsPage'
 import WorkspaceSettingsPage from '../../pages/WorkspaceSettingsPage'
-import { ThemeProvider } from '../../hooks/useTheme'
+import { ThemeProvider } from '../../shared/hooks/useTheme'
 
-vi.mock('../../components/Editor', () => ({
+vi.mock('../../shared/components/Editor', () => ({
   default: ({ content, onChange, onAutoSave }) => (
     <div>
       <div data-testid="editor-content">{content}</div>
@@ -31,11 +31,11 @@ vi.mock('../../components/Editor', () => ({
   ),
 }))
 
-vi.mock('../../components/CodeEditor', () => ({
+vi.mock('../../shared/components/CodeEditor', () => ({
   default: () => <div data-testid="code-editor-stub" />,
 }))
 
-vi.mock('../../components/GitDiff', () => ({
+vi.mock('../../shared/components/GitDiff', () => ({
   default: () => <div data-testid="git-diff-stub" />,
 }))
 

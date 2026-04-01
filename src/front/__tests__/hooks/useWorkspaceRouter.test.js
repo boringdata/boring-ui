@@ -1,8 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import useWorkspaceRouter from '../../hooks/useWorkspaceRouter'
+import useWorkspaceRouter from '../../shared/hooks/useWorkspaceRouter'
 
-vi.mock('../../utils/transport', () => ({
+vi.mock('../../shared/utils/transport', () => ({
   apiFetch: vi.fn(),
   apiFetchJson: vi.fn(),
 }))
@@ -65,7 +65,7 @@ describe('useWorkspaceRouter', () => {
   })
 
   it('creates a workspace and redirects to the matching scoped route when onboarding is disabled', async () => {
-    const { apiFetchJson } = await import('../../utils/transport')
+    const { apiFetchJson } = await import('../../shared/utils/transport')
     apiFetchJson.mockResolvedValueOnce({
       response: { ok: true, status: 200 },
       data: { id: 'ws-new' },

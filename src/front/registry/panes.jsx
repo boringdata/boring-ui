@@ -47,17 +47,17 @@
  */
 
 import { lazy, Suspense } from 'react'
-import FileTreePanel from '../panels/FileTreePanel'
-import DataCatalogPanel from '../panels/DataCatalogPanel'
-import EmptyPanel from '../panels/EmptyPanel'
-import PanelErrorBoundary from '../components/PanelErrorBoundary'
+import FileTreePanel from '../shared/panels/FileTreePanel'
+import DataCatalogPanel from '../shared/panels/DataCatalogPanel'
+import EmptyPanel from '../shared/panels/EmptyPanel'
+import PanelErrorBoundary from '../shared/components/PanelErrorBoundary'
 
 // Lazy-load heavy panels to reduce initial bundle size.
 // EditorPanel pulls tiptap+lowlight (~600KB), AgentPanel pulls pi-ai+pi-web-ui
 // (~900KB), etc.
-const LazyEditorPanel = lazy(() => import('../panels/EditorPanel'))
-const LazyReviewPanel = lazy(() => import('../panels/ReviewPanel'))
-const LazyAgentPanel = lazy(() => import('../panels/AgentPanel'))
+const LazyEditorPanel = lazy(() => import('../shared/panels/EditorPanel'))
+const LazyReviewPanel = lazy(() => import('../shared/panels/ReviewPanel'))
+const LazyAgentPanel = lazy(() => import('../shared/panels/AgentPanel'))
 
 // Wrap lazy components with Suspense + ErrorBoundary so DockView gets a valid
 // component that degrades gracefully on both load and render failures.

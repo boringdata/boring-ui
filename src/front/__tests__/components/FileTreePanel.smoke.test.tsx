@@ -3,34 +3,34 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 import paneRegistry from '../../registry/panes'
-import FileTreePanel from '../../panels/FileTreePanel'
+import FileTreePanel from '../../shared/panels/FileTreePanel'
 
 const mockGitInitMutate = vi.fn()
 const mockGitHubConnect = vi.fn()
 
-vi.mock('../../components/FileTree', () => ({
+vi.mock('../../shared/components/FileTree', () => ({
   default: () => <div data-testid="file-tree">File tree</div>,
 }))
 
-vi.mock('../../components/GitChangesView', () => ({
+vi.mock('../../shared/components/GitChangesView', () => ({
   default: () => <div data-testid="git-changes-view">Git changes</div>,
 }))
 
-vi.mock('../../components/UserMenu', () => ({
+vi.mock('../../shared/components/UserMenu', () => ({
   default: ({ collapsed = false }: { collapsed?: boolean }) => (
     <div data-testid={collapsed ? 'user-menu-collapsed' : 'user-menu-expanded'}>User menu</div>
   ),
 }))
 
-vi.mock('../../components/Tooltip', () => ({
+vi.mock('../../shared/components/Tooltip', () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }))
 
-vi.mock('../../components/SyncStatusFooter', () => ({
+vi.mock('../../shared/components/SyncStatusFooter', () => ({
   default: () => <div data-testid="sync-status-footer">Sync status footer</div>,
 }))
 
-vi.mock('../../providers/data', () => ({
+vi.mock('../../shared/providers/data', () => ({
   useGitStatus: () => ({
     data: { is_repo: true, available: true },
     isLoading: false,
@@ -42,14 +42,14 @@ vi.mock('../../providers/data', () => ({
   }),
 }))
 
-vi.mock('../../components/GitHubConnect', () => ({
+vi.mock('../../shared/components/GitHubConnect', () => ({
   useGitHubConnection: () => ({
     status: null,
     connect: mockGitHubConnect,
   }),
 }))
 
-vi.mock('../../hooks/useLightningFsGitBootstrap', () => ({
+vi.mock('../../shared/hooks/useLightningFsGitBootstrap', () => ({
   useLightningFsGitBootstrap: () => ({
     state: 'disabled',
     message: '',

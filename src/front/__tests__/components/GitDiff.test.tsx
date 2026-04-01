@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import GitDiff from '../../components/GitDiff'
+import GitDiff from '../../shared/components/GitDiff'
 import { diffs } from '../fixtures'
 
 describe('GitDiff', () => {

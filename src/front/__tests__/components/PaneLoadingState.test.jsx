@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import PaneLoadingState from '../../components/PaneLoadingState'
+import PaneLoadingState from '../../shared/components/PaneLoadingState'
 
 describe('PaneLoadingState', () => {
   it('renders with pane title', () => {

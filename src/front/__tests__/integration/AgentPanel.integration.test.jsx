@@ -6,13 +6,13 @@ import '../setup.ts'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
-import AgentPanel from '../../panels/AgentPanel'
+import AgentPanel from '../../shared/panels/AgentPanel'
 import {
   CapabilitiesContext,
   CapabilitiesStatusContext,
   createCapabilityGatedPane,
-} from '../../components/CapabilityGate'
-import { resetConfig } from '../../config'
+} from '../../shared/components/CapabilityGate'
+import { resetConfig } from '../../shared/config'
 
 const mockPiNativeAdapter = vi.fn(({ panelId, sessionBootstrap, initialSessionId }) => (
   <div data-testid="pi-native-adapter">
@@ -35,17 +35,17 @@ const mockPiSessionToolbar = vi.fn(({ panelId, onSplitPanel }) => (
   </button>
 ))
 
-vi.mock('../../providers/pi/nativeAdapter', () => ({
+vi.mock('../../shared/providers/pi/nativeAdapter', () => ({
   default: (props) => mockPiNativeAdapter(props),
 }))
-vi.mock('../../providers/pi/backendAdapter', () => ({
+vi.mock('../../shared/providers/pi/backendAdapter', () => ({
   default: (props) => mockPiBackendAdapter(props),
 }))
 
-vi.mock('../../providers/pi/PiSessionToolbar', () => ({
+vi.mock('../../shared/providers/pi/PiSessionToolbar', () => ({
   default: (props) => mockPiSessionToolbar(props),
 }))
-vi.mock('../../components/chat/AiChat', () => ({
+vi.mock('../../shared/components/chat/AiChat', () => ({
   default: () => <div data-testid="ai-chat">ai-sdk-chat</div>,
 }))
 

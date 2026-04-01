@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import WorkspaceLoading from '../../components/WorkspaceLoading'
+import WorkspaceLoading from '../../shared/components/WorkspaceLoading'
 
 describe('WorkspaceLoading', () => {
   it('renders loading state with title and message', () => {

@@ -6,7 +6,7 @@ import '../setup.ts'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-import AiChat from '../../components/chat/AiChat'
+import AiChat from '../../shared/components/chat/AiChat'
 
 const mockUseChat = vi.fn()
 const mockTransport = vi.fn((options) => ({ options }))
@@ -26,15 +26,15 @@ vi.mock('ai', () => ({
   },
 }))
 
-vi.mock('../../utils/apiBase', () => ({
+vi.mock('../../shared/utils/apiBase', () => ({
   buildApiUrl: (...args) => mockBuildApiUrl(...args),
 }))
 
-vi.mock('../../utils/controlPlane', () => ({
+vi.mock('../../shared/utils/controlPlane', () => ({
   getWorkspaceIdFromPathname: (...args) => mockGetWorkspaceIdFromPathname(...args),
 }))
 
-vi.mock('../../components/chat/toolRenderers', () => ({
+vi.mock('../../shared/components/chat/toolRenderers', () => ({
   renderToolPart: (...args) => mockRenderToolPart(...args),
 }))
 

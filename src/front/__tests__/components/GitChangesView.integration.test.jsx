@@ -2,9 +2,9 @@ import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import GitChangesView from '../../components/GitChangesView'
-import DataContext from '../../providers/data/DataContext'
-import { createHttpProvider } from '../../providers/data'
+import GitChangesView from '../../shared/components/GitChangesView'
+import DataContext from '../../shared/providers/data/DataContext'
+import { createHttpProvider } from '../../shared/providers/data'
 import { setupApiMocks } from '../utils'
 
 const renderWithProvider = (provider, props = {}) => {

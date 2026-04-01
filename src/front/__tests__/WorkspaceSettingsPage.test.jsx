@@ -4,17 +4,17 @@ import WorkspaceSettingsPage from '../pages/WorkspaceSettingsPage'
 
 // Mock transport
 const mockApiFetchJson = vi.fn()
-vi.mock('../utils/transport', () => ({
+vi.mock('../shared/utils/transport', () => ({
   apiFetchJson: (...args) => mockApiFetchJson(...args),
 }))
 
 // Mock apiBase
-vi.mock('../utils/apiBase', () => ({
+vi.mock('../shared/utils/apiBase', () => ({
   buildApiUrl: (path, _query) => path,
 }))
 
 // Mock ThemeToggle
-vi.mock('../components/ThemeToggle', () => ({
+vi.mock('../shared/components/ThemeToggle', () => ({
   default: () => <button data-testid="theme-toggle">Toggle</button>,
 }))
 

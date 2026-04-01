@@ -19,16 +19,16 @@ import WorkspaceSetupPage from '../pages/WorkspaceSetupPage'
 const mockApiFetchJson = vi.fn()
 const mockApiFetch = vi.fn()
 
-vi.mock('../utils/transport', () => ({
+vi.mock('../shared/utils/transport', () => ({
   apiFetchJson: (...args) => mockApiFetchJson(...args),
   apiFetch: (...args) => mockApiFetch(...args),
 }))
 
-vi.mock('../utils/apiBase', () => ({
+vi.mock('../shared/utils/apiBase', () => ({
   buildApiUrl: (path) => path,
 }))
 
-vi.mock('../components/GitHubConnect', () => ({
+vi.mock('../shared/components/GitHubConnect', () => ({
   useGitHubConnection: () => ({
     status: null,
     loading: false,
@@ -36,7 +36,7 @@ vi.mock('../components/GitHubConnect', () => ({
   }),
 }))
 
-vi.mock('../components/ThemeToggle', () => ({
+vi.mock('../shared/components/ThemeToggle', () => ({
   default: () => <button data-testid="theme-toggle">Toggle</button>,
 }))
 
@@ -446,7 +446,7 @@ describe('WorkspaceSetupPage flow', () => {
 // ---------------------------------------------------------------------------
 describe('Runtime response shape contract', () => {
   it('getRuntimeStatus extracts state from nested runtime payload', async () => {
-    const { getRuntimeStatus, isRuntimeReady } = await import('../utils/controlPlane')
+    const { getRuntimeStatus, isRuntimeReady } = await import('../shared/utils/controlPlane')
 
     // Shape returned by TS backend: { ok: true, runtime: { state: 'ready' } }
     const tsBackendResponse = { ok: true, runtime: { state: 'ready' } }
@@ -460,27 +460,27 @@ describe('Runtime response shape contract', () => {
   })
 
   it('identifies pending state as NOT ready', async () => {
-    const { isRuntimeReady, getRuntimeStatus } = await import('../utils/controlPlane')
+    const { isRuntimeReady, getRuntimeStatus } = await import('../shared/utils/controlPlane')
 
     expect(isRuntimeReady({ state: 'pending' })).toBe(false)
     expect(getRuntimeStatus({ state: 'pending' })).toBe('pending')
   })
 
   it('identifies provisioning state as NOT ready', async () => {
-    const { isRuntimeReady } = await import('../utils/controlPlane')
+    const { isRuntimeReady } = await import('../shared/utils/controlPlane')
 
     expect(isRuntimeReady({ state: 'provisioning' })).toBe(false)
   })
 
   it('identifies error state as NOT ready', async () => {
-    const { isRuntimeReady, shouldRetryRuntime } = await import('../utils/controlPlane')
+    const { isRuntimeReady, shouldRetryRuntime } = await import('../shared/utils/controlPlane')
 
     expect(isRuntimeReady({ state: 'error' })).toBe(false)
     expect(shouldRetryRuntime({ state: 'error' })).toBe(true)
   })
 
   it('identifies running/active as ready (for backwards compatibility)', async () => {
-    const { isRuntimeReady } = await import('../utils/controlPlane')
+    const { isRuntimeReady } = await import('../shared/utils/controlPlane')
 
     expect(isRuntimeReady({ state: 'running' })).toBe(true)
     expect(isRuntimeReady({ state: 'active' })).toBe(true)

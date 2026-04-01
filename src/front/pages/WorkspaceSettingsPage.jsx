@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, Cog, Activity, Lock, AlertTriangle, Copy, Check, Github, ChevronDown, RefreshCw } from 'lucide-react'
-import { apiFetchJson } from '../utils/transport'
-import { routeHref, routes } from '../utils/routes'
+import { apiFetchJson } from '../shared/utils/transport'
+import { routeHref, routes } from '../shared/utils/routes'
 import PageShell, { SettingsSection, SettingsField } from './PageShell'
-import GitHubConnect from '../components/GitHubConnect'
-import { Input } from '../components/ui/input'
+import GitHubConnect from '../shared/components/GitHubConnect'
+import { Input } from '../shared/components/ui/input'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../components/ui/select'
+} from '../shared/components/ui/select'
 
 const centeredPageLoadingStyle = {
   display: 'flex',

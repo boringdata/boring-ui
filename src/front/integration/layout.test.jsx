@@ -17,7 +17,7 @@ import {
   getStorageKey,
   validateLayoutStructure,
 } from '../layout/LayoutManager'
-import { getDefaultConfig, setConfig, resetConfig } from '../config/appConfig'
+import { getDefaultConfig, setConfig, resetConfig } from '../shared/config/appConfig'
 
 // Mock localStorage
 const localStorageMock = (() => {

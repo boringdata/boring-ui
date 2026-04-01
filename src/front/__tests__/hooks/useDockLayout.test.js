@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import useDockLayout from '../../hooks/useDockLayout'
+import useDockLayout from '../../shared/hooks/useDockLayout'
 
 function makeDeps(overrides = {}) {
   return {

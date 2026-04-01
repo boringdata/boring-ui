@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
 import { getPane } from '../../registry/panes'
-import DataCatalogPanel from '../../panels/DataCatalogPanel'
+import DataCatalogPanel from '../../shared/panels/DataCatalogPanel'
 
-vi.mock('../../components/SidebarSectionHeader', () => ({
+vi.mock('../../shared/components/SidebarSectionHeader', () => ({
   __esModule: true,
   default: ({ title }) => <div data-testid="sidebar-section-header">{title}</div>,
   LeftPaneHeader: () => <div data-testid="left-pane-header">left-pane-header</div>,

@@ -21,10 +21,10 @@ describe('Root Package Entrypoint Contract', () => {
 
     expect(indexSource).toContain("} from './registry'")
     expect(indexSource).toContain("} from './layout'")
-    expect(indexSource).toContain("} from './config'")
-    expect(indexSource).toContain("export { ThemeProvider, useTheme } from './hooks/useTheme'")
+    expect(indexSource).toContain("} from './shared/config'")
+    expect(indexSource).toContain("export { ThemeProvider, useTheme } from './shared/hooks/useTheme'")
     expect(indexSource).toContain("export { cn } from './lib/utils'")
-    expect(indexSource).toContain("export { Button, buttonVariants } from './components/ui/button'")
+    expect(indexSource).toContain("export { Button, buttonVariants } from './shared/components/ui/button'")
     expect(indexSource).toContain("export { default as App } from './App'")
 
     // Host-private internals should not leak into the package root public API.

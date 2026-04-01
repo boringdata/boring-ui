@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Rocket, ArrowRight, Github, ExternalLink, Loader2, Check, ServerCog, RefreshCw, AlertTriangle } from 'lucide-react'
-import { useGitHubConnection } from '../components/GitHubConnect'
-import { apiFetch, apiFetchJson } from '../utils/transport'
-import { routeHref, routes } from '../utils/routes'
-import { getRuntimeStatus, isRuntimeReady, shouldRetryRuntime } from '../utils/controlPlane'
+import { useGitHubConnection } from '../shared/components/GitHubConnect'
+import { apiFetch, apiFetchJson } from '../shared/utils/transport'
+import { routeHref, routes } from '../shared/utils/routes'
+import { getRuntimeStatus, isRuntimeReady, shouldRetryRuntime } from '../shared/utils/controlPlane'
 import PageShell from './PageShell'
 
 const CAPABILITIES_MAX_RETRIES = 5

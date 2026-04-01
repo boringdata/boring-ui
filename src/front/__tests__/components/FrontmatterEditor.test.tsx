@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import FrontmatterEditor, { parseFrontmatter, reconstructContent } from '../../components/FrontmatterEditor'
+import FrontmatterEditor, { parseFrontmatter, reconstructContent } from '../../shared/components/FrontmatterEditor'
 import { frontmatter } from '../fixtures'
 
 describe('FrontmatterEditor', () => {

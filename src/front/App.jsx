@@ -3,22 +3,22 @@ import { DockviewReact } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { Bot } from 'lucide-react'
 
-import { ThemeProvider, useCapabilities, useKeyboardShortcuts, UNKNOWN_CAPABILITIES } from './hooks'
-import { TooltipProvider } from './components/ui/tooltip'
-import useApprovalPolling from './hooks/useApprovalPolling'
-import useDataProviderScope from './hooks/useDataProviderScope'
-import useFrontendStatePersist from './hooks/useFrontendStatePersist'
-import useDockLayout from './hooks/useDockLayout'
-import usePanelActions from './hooks/usePanelActions'
-import useResponsiveSidebarCollapse from './hooks/useResponsiveSidebarCollapse'
-import useViewportBreakpoint from './hooks/useViewportBreakpoint'
-import useWorkspaceAuth from './hooks/useWorkspaceAuth'
-import useWorkspaceRouter from './hooks/useWorkspaceRouter'
-import { useWorkspacePlugins } from './hooks/useWorkspacePlugins'
+import { ThemeProvider, useCapabilities, useKeyboardShortcuts, UNKNOWN_CAPABILITIES } from './shared/hooks'
+import { TooltipProvider } from './shared/components/ui/tooltip'
+import useApprovalPolling from './shared/hooks/useApprovalPolling'
+import useDataProviderScope from './shared/hooks/useDataProviderScope'
+import useFrontendStatePersist from './shared/hooks/useFrontendStatePersist'
+import useDockLayout from './shared/hooks/useDockLayout'
+import usePanelActions from './shared/hooks/usePanelActions'
+import useResponsiveSidebarCollapse from './shared/hooks/useResponsiveSidebarCollapse'
+import useViewportBreakpoint from './shared/hooks/useViewportBreakpoint'
+import useWorkspaceAuth from './shared/hooks/useWorkspaceAuth'
+import useWorkspaceRouter from './shared/hooks/useWorkspaceRouter'
+import { useWorkspacePlugins } from './shared/hooks/useWorkspacePlugins'
 import { loadWorkspacePanes } from './workspace/loader'
-import { useConfig } from './config'
-import { apiFetchJson } from './utils/transport'
-import { routeHref, routes } from './utils/routes'
+import { useConfig } from './shared/config'
+import { apiFetchJson } from './shared/utils/transport'
+import { routeHref, routes } from './shared/utils/routes'
 import {
   LAYOUT_VERSION,
   validateLayoutStructure,
@@ -32,29 +32,29 @@ import {
   getStorageKey,
   getFileName,
 } from './layout'
-import { debounce } from './utils/debounce'
+import { debounce } from './shared/utils/debounce'
 import {
   isCenterContentPanel,
   listDockPanels,
   listDockGroups,
   getPanelComponent,
   countAllAgentPanels,
-} from './utils/dockHelpers'
+} from './shared/utils/dockHelpers'
 import {
   arePlainObjectsEqual,
   getPanelSizeConfigValue,
   readPersistedCollapsedState,
   readPersistedPanelSizes,
-} from './utils/panelConfig'
-import ThemeToggle from './components/ThemeToggle'
-import Tooltip from './components/Tooltip'
-import WorkspaceLoading from './components/WorkspaceLoading'
+} from './shared/utils/panelConfig'
+import ThemeToggle from './shared/components/ThemeToggle'
+import Tooltip from './shared/components/Tooltip'
+import WorkspaceLoading from './shared/components/WorkspaceLoading'
 import {
   CapabilitiesContext,
   CapabilitiesStatusContext,
   createCapabilityGatedPane,
-} from './components/CapabilityGate'
-import { UserIdentityProvider } from './components/UserIdentityContext'
+} from './shared/components/CapabilityGate'
+import { UserIdentityProvider } from './shared/components/UserIdentityContext'
 import paneRegistry, {
   registerPane,
   getGatedComponents,
@@ -62,21 +62,21 @@ import paneRegistry, {
   getUnavailableEssentialPanes,
 } from './registry/panes'
 import { QueryClientProvider } from '@tanstack/react-query'
-import DataContext from './providers/data/DataContext'
-import { PI_OPEN_FILE_BRIDGE } from './providers/pi/uiBridge'
+import DataContext from './shared/providers/data/DataContext'
+import { PI_OPEN_FILE_BRIDGE } from './shared/providers/pi/uiBridge'
 import UserSettingsPage from './pages/UserSettingsPage'
 import WorkspaceSettingsPage from './pages/WorkspaceSettingsPage'
 import WorkspaceSetupPage from './pages/WorkspaceSetupPage'
 import AuthPage, { AuthCallbackPage } from './pages/AuthPage'
 import CreateWorkspaceModal from './pages/CreateWorkspaceModal'
-import { UnifiedDockTab, tabComponents } from './components/DockTab'
+import { UnifiedDockTab, tabComponents } from './shared/components/DockTab'
 import {
   normalizeMarkdownEditorPanels,
   normalizeMarkdownPane,
-} from './utils/editorFiles'
+} from './shared/utils/editorFiles'
 
-import { useChatCenteredShell } from './shell/useChatCenteredShell'
-import ChatCenteredWorkspace from './shell/ChatCenteredWorkspace'
+import { useChatCenteredShell } from './layouts/chat/useChatCenteredShell'
+import ChatCenteredWorkspace from './layouts/chat/ChatCenteredWorkspace'
 
 const MAIN_CONTENT_ID = 'workspace-main-content'
 const NARROW_VIEWPORT_BREAKPOINT = 960
@@ -2922,23 +2922,21 @@ export default function App() {
     isNarrowViewport && 'app-container-narrow',
   ].filter(Boolean).join(' ')
 
-  // ── Chat-centered shell branch ──
-  // When enabled, render the new workspace instead of the Dockview layout.
-  // The old shell stays exactly as-is when the flag is off.
-  if (chatCenteredShellEnabled) {
-    return <ChatCenteredWorkspace />
-  }
-
   return (
     <QueryClientProvider key={dataProviderScopeKey} client={queryClient}>
       <DataContext.Provider key={dataProviderScopeKey} value={dataProvider}>
         <ThemeProvider>
           <TooltipProvider delayDuration={300} skipDelayDuration={100}>
           <div className={appContainerClassName}>
+            {import.meta.env.DEV && (
+              <div className="dev-mode-banner">
+                {chatCenteredShellEnabled ? 'chat-centered' : 'legacy'} · agent:{agentMode}
+              </div>
+            )}
             <a className="skip-to-content-link" href={`#${MAIN_CONTENT_ID}`}>
               Skip to main content
             </a>
-            {config.features?.showHeader !== false && (
+            {config.features?.showHeader !== false && !chatCenteredShellEnabled && (
               <header className="app-header">
                 <div className="app-header-brand">
                   <div className="app-header-logo" aria-hidden="true">
@@ -2954,7 +2952,7 @@ export default function App() {
               </header>
             )}
             <main id={MAIN_CONTENT_ID} className="app-main-content" tabIndex={-1}>
-              {unavailableEssentials.length > 0 && (
+              {unavailableEssentials.length > 0 && !chatCenteredShellEnabled && (
                 <div className="capability-warning">
                   <strong>Warning:</strong> Some features are unavailable.
                   Missing capabilities for: {unavailableEssentials.map(p => p.title || p.id).join(', ')}.
@@ -2965,6 +2963,25 @@ export default function App() {
                   <CapabilitiesContext.Provider value={capabilities}>
                     {(capabilitiesPending || !userIdentityAuthResolved) ? (
                       <WorkspaceLoading />
+                    ) : chatCenteredShellEnabled ? (
+                      <ChatCenteredWorkspace
+                        shellContext={{
+                          appName: config.branding?.name || projectRoot?.split('/').pop() || 'Workspace',
+                          userEmail: menuUserEmail,
+                          workspaceName: activeWorkspaceName,
+                          workspaceId: currentWorkspaceId,
+                          onSwitchWorkspace: handleSwitchWorkspace,
+                          workspaceOptions,
+                          onCreateWorkspace: handleCreateWorkspace,
+                          onOpenUserSettings: handleOpenUserSettings,
+                          onOpenWorkspaceSettings: handleOpenWorkspaceSettings,
+                          onLogout: handleLogout,
+                          userMenuStatusMessage,
+                          userMenuStatusTone,
+                          onUserMenuRetry: handleUserMenuRetry,
+                          userMenuDisabledActions,
+                        }}
+                      />
                     ) : (
                       <div data-testid="dockview" className="dockview-host">
                         <DockviewReact

@@ -4,16 +4,16 @@ import WorkspaceSetupPage from '../pages/WorkspaceSetupPage'
 
 const mockApiFetchJson = vi.fn()
 
-vi.mock('../utils/transport', () => ({
+vi.mock('../shared/utils/transport', () => ({
   apiFetchJson: (...args) => mockApiFetchJson(...args),
   apiFetch: vi.fn(),
 }))
 
-vi.mock('../utils/apiBase', () => ({
+vi.mock('../shared/utils/apiBase', () => ({
   buildApiUrl: (path) => path,
 }))
 
-vi.mock('../components/GitHubConnect', () => ({
+vi.mock('../shared/components/GitHubConnect', () => ({
   useGitHubConnection: () => ({
     status: null,
     loading: false,
@@ -21,7 +21,7 @@ vi.mock('../components/GitHubConnect', () => ({
   }),
 }))
 
-vi.mock('../components/ThemeToggle', () => ({
+vi.mock('../shared/components/ThemeToggle', () => ({
   default: () => <button data-testid="theme-toggle">Toggle</button>,
 }))
 

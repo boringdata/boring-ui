@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { consumeInitialUpdateGuard } from '../../components/editorUpdateGuard'
+import { consumeInitialUpdateGuard } from '../../shared/components/editorUpdateGuard'
 
 describe('consumeInitialUpdateGuard', () => {
   it('consumes first update and clears guard', () => {

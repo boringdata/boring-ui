@@ -13,6 +13,9 @@ import { parseSessionCookie, appCookieName, SessionExpiredError } from './sessio
  * Create a Fastify onRequest hook that validates session cookies.
  * The hook reads the session secret and cookie name from app.config.
  *
+ * In local dev mode, the global auto-login hook in app.ts injects
+ * a session cookie before this hook runs — no manual login needed.
+ *
  * Usage:
  *   app.addHook('onRequest', createAuthHook(app))
  */

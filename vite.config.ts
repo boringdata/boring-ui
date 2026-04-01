@@ -16,21 +16,40 @@ export default defineConfig(({ mode }) => {
   const isLibMode = mode === 'lib'
   const resolveAlias = [
     { find: /^@\//, replacement: `${path.resolve(__dirname, './src/front')}/` },
+    // Path aliases for shared + layouts
+    { find: '@shared', replacement: path.resolve(__dirname, './src/front/shared') },
+    { find: '@layouts', replacement: path.resolve(__dirname, './src/front/layouts') },
     {
       find: '@mariozechner/pi-ai/dist/providers/register-builtins.js',
-      replacement: path.resolve(__dirname, './src/front/providers/pi/registerBuiltins.browser.js'),
+      replacement: path.resolve(__dirname, './src/front/shared/providers/pi/registerBuiltins.browser.js'),
+    },
+    {
+      find: '@mariozechner/pi-ai/dist/env-api-keys.js',
+      replacement: path.resolve(__dirname, './src/front/shared/providers/pi/envApiKeys.browser.js'),
     },
     {
       find: '@mariozechner/pi-ai/dist/utils/http-proxy.js',
-      replacement: path.resolve(__dirname, './src/front/providers/pi/httpProxy.noop.js'),
+      replacement: path.resolve(__dirname, './src/front/shared/providers/pi/httpProxy.noop.js'),
     },
     {
       find: /^@mariozechner\/pi-ai$/,
-      replacement: path.resolve(__dirname, './src/front/providers/pi/piAi.browser.js'),
+      replacement: path.resolve(__dirname, './src/front/shared/providers/pi/piAi.browser.js'),
     },
     {
       find: /^node:zlib$/,
-      replacement: path.resolve(__dirname, './src/front/providers/data/nodeZlib.browser.js'),
+      replacement: path.resolve(__dirname, './src/front/shared/providers/data/nodeZlib.browser.js'),
+    },
+    {
+      find: /^node:fs$/,
+      replacement: path.resolve(__dirname, './src/front/shared/providers/data/nodeFs.browser.js'),
+    },
+    {
+      find: /^node:os$/,
+      replacement: path.resolve(__dirname, './src/front/shared/providers/data/nodeOs.browser.js'),
+    },
+    {
+      find: /^node:path$/,
+      replacement: path.resolve(__dirname, './src/front/shared/providers/data/nodePath.browser.js'),
     },
   ]
   if (workspaceRoot) {
@@ -83,13 +102,32 @@ export default defineConfig(({ mode }) => {
   }
 
   // Anthropic API key for dev proxy
-  const anthropicKey = env.ANTHROPIC_API_KEY || ''
+  const anthropicKey = env.ANTHROPIC_API_KEY || env.VITE_PI_ANTHROPIC_API_KEY || ''
 
-  // Mock API plugin for standalone dev (no backend)
+  // Mock API plugin for standalone dev (no backend).
+  // Mocks are FALLBACK-only: they check if the real backend is reachable
+  // before serving stubs so they don't shadow a running server.
+  let _backendReachable: boolean | null = null
+  let _backendCheckTime = 0
+  const RECHECK_MS = 10_000
+  const isBackendReachable = async (): Promise<boolean> => {
+    const now = Date.now()
+    if (_backendReachable !== null && now - _backendCheckTime < RECHECK_MS) return _backendReachable
+    _backendCheckTime = now
+    try {
+      const res = await fetch(`${proxyApiTarget}/health`, { signal: AbortSignal.timeout(500) })
+      _backendReachable = res.ok
+    } catch {
+      _backendReachable = false
+    }
+    return _backendReachable
+  }
+
   const mockApiPlugin = {
     name: 'mock-api',
     configureServer(server) {
-      server.middlewares.use('/api/capabilities', (_req, res) => {
+      server.middlewares.use('/api/capabilities', async (_req, res, next) => {
+        if (await isBackendReachable()) return next()
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify({
           version: 'static-local',
@@ -98,7 +136,8 @@ export default defineConfig(({ mode }) => {
         }))
       })
       // Mock file API — serves files from the workspace for the Surface viewer
-      server.middlewares.use('/api/file', async (req, res) => {
+      server.middlewares.use('/api/file', async (req, res, next) => {
+        if (await isBackendReachable()) return next()
         const url = new URL(req.url || '/', 'http://localhost')
         const filePath = url.searchParams.get('path')
         if (!filePath) { res.statusCode = 400; res.end('Missing path'); return }
@@ -117,7 +156,8 @@ export default defineConfig(({ mode }) => {
       })
 
       // Mock file tree API — lists directory contents
-      server.middlewares.use('/api/tree', async (req, res) => {
+      server.middlewares.use('/api/tree', async (req, res, next) => {
+        if (await isBackendReachable()) return next()
         const url = new URL(req.url || '/', 'http://localhost')
         const dirPath = url.searchParams.get('path') || '.'
         const fs = await import('fs')
@@ -135,7 +175,8 @@ export default defineConfig(({ mode }) => {
       })
 
       // Anthropic streaming proxy for chat
-      server.middlewares.use('/api/anthropic', async (req, res) => {
+      server.middlewares.use('/api/anthropic', async (req, res, next) => {
+        if (await isBackendReachable()) return next()
         if (req.method !== 'POST') { res.statusCode = 405; res.end(); return }
         let body = ''
         for await (const chunk of req) body += chunk
@@ -177,6 +218,12 @@ export default defineConfig(({ mode }) => {
   return {
     ...baseConfig,
     plugins: [...baseConfig.plugins, mockApiPlugin],
+    define: {
+      // Inject API keys so pi-ai's getEnvApiKey() can read them in browser
+      'process.env.ANTHROPIC_API_KEY': JSON.stringify(env.VITE_PI_ANTHROPIC_API_KEY || env.ANTHROPIC_API_KEY || ''),
+      'process.env.OPENAI_API_KEY': JSON.stringify(env.VITE_PI_OPENAI_API_KEY || ''),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_PI_GOOGLE_API_KEY || ''),
+    },
     base: '/',
     build: {
       rollupOptions: {
@@ -240,6 +287,10 @@ export default defineConfig(({ mode }) => {
         allow: ['.', ...(workspaceRoot ? [workspaceRoot] : [])],
       },
       proxy: {
+        '/__bui': {
+          target: proxyApiTarget,
+          changeOrigin: false,
+        },
         '/api': {
           target: proxyApiTarget,
           changeOrigin: false,

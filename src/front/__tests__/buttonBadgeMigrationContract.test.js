@@ -7,14 +7,14 @@ const repoRoot = path.resolve(__dirname, '../../..')
 const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8')
 
 const buttonMigratedFiles = [
-  'src/front/components/UserMenu.jsx',
-  'src/front/components/ThemeToggle.jsx',
-  'src/front/components/SidebarSectionHeader.jsx',
-  'src/front/providers/pi/backendAdapter.jsx',
-  'src/front/providers/pi/PiSessionToolbar.jsx',
-  'src/front/components/FileTree.jsx',
-  'src/front/components/GitChangesView.jsx',
-  'src/front/panels/TerminalPanel.jsx',
+  'src/front/shared/components/UserMenu.jsx',
+  'src/front/shared/components/ThemeToggle.jsx',
+  'src/front/shared/components/SidebarSectionHeader.jsx',
+  'src/front/shared/providers/pi/backendAdapter.jsx',
+  'src/front/shared/providers/pi/PiSessionToolbar.jsx',
+  'src/front/shared/components/FileTree.jsx',
+  'src/front/shared/components/GitChangesView.jsx',
+  'src/front/shared/panels/TerminalPanel.jsx',
 ]
 
 describe('Phase 1 Button/Badge Migration Contract', () => {
@@ -38,9 +38,9 @@ describe('Phase 1 Button/Badge Migration Contract', () => {
 
   it('keeps shared Badge primitive usage in status/count badge surfaces', () => {
     for (const file of [
-      'src/front/components/FileTree.jsx',
-      'src/front/components/GitChangesView.jsx',
-      'src/front/panels/TerminalPanel.jsx',
+      'src/front/shared/components/FileTree.jsx',
+      'src/front/shared/components/GitChangesView.jsx',
+      'src/front/shared/panels/TerminalPanel.jsx',
     ]) {
       const source = readRepoFile(file)
       expect(source).toContain('Badge')

@@ -10,7 +10,7 @@ import {
   CapabilitiesContext,
   CapabilitiesStatusContext,
   createCapabilityGatedPane,
-} from '../../components/CapabilityGate'
+} from '../../shared/components/CapabilityGate'
 import { getGatedComponents } from '../../registry/panes'
 
 const gatedComponents = getGatedComponents(createCapabilityGatedPane)

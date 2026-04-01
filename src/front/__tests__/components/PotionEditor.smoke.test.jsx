@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { fileContents } from '../fixtures/files'
-import { parseFrontmatter, reconstructContent } from '../../components/FrontmatterEditor'
+import { parseFrontmatter, reconstructContent } from '../../shared/components/FrontmatterEditor'
 import {
   getEditorPanelComponent,
   normalizeMarkdownEditorPanels,
-} from '../../utils/editorFiles'
+} from '../../shared/utils/editorFiles'
 
 describe('host-defined markdown pane smoke', () => {
   it('keeps markdown routing generic and preserves frontmatter content', () => {

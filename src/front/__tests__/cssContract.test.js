@@ -42,20 +42,20 @@ describe('Root Package CSS Contract', () => {
 
   it('imports root styles from the frontend app entrypoint exactly once', () => {
     const mainEntry = readRepoFile('src/front/main.jsx')
-    const importMatches = mainEntry.match(/import\s+['"]\.\/styles\.css['"]/g) || []
+    const importMatches = mainEntry.match(/import\s+['"]\.\/shared\/design-system\/base\.css['"]/g) || []
     expect(importMatches).toHaveLength(1)
   })
 
   it('preserves canonical root stylesheet import order', () => {
-    const styles = readRepoFile('src/front/styles.css')
+    const styles = readRepoFile('src/front/shared/design-system/base.css')
     assertOrderedSubstrings(
       styles,
       [
         "@import url('https://fonts.googleapis.com",
-        "@import './styles/tokens.css';",
-        "@import './styles/scrollbars.css';",
+        "@import './tokens.css';",
+        "@import './scrollbars.css';",
       ],
-      'src/front/styles.css'
+      'src/front/shared/design-system/base.css'
     )
   })
 
@@ -69,13 +69,13 @@ describe('Root Package CSS Contract', () => {
   })
 
   it('keeps preflight ownership in root CSS instead of Tailwind base directives', () => {
-    const styles = readRepoFile('src/front/styles.css')
+    const styles = readRepoFile('src/front/shared/design-system/base.css')
     expect(styles).not.toMatch(/@tailwind\s+base/i)
     expect(styles).not.toMatch(/@import\s+['"]tailwindcss['"]/i)
   })
 
   it('keeps key design token bridges available for host-loaded shared styling', () => {
-    const tokens = readRepoFile('src/front/styles/tokens.css')
+    const tokens = readRepoFile('src/front/shared/design-system/tokens.css')
 
     const requiredTokens = [
       '--color-bg-primary',
@@ -92,7 +92,7 @@ describe('Root Package CSS Contract', () => {
   })
 
   it('keeps theme bridge semantics in tokens.css', () => {
-    const tokens = readRepoFile('src/front/styles/tokens.css')
+    const tokens = readRepoFile('src/front/shared/design-system/tokens.css')
     expect(tokens).toContain(':root {')
     expect(tokens).toContain('[data-theme="dark"] {')
 
@@ -111,7 +111,7 @@ describe('Root Package CSS Contract', () => {
   })
 
   it('keeps theme application wired to document root data-theme attribute', () => {
-    const themeHook = readRepoFile('src/front/hooks/useTheme.jsx')
+    const themeHook = readRepoFile('src/front/shared/hooks/useTheme.jsx')
     expect(themeHook).toContain("document.documentElement.setAttribute('data-theme', theme)")
   })
 

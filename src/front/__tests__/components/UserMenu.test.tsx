@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react'
-import UserMenu from '../../components/UserMenu'
-import { ThemeProvider } from '../../hooks/useTheme'
+import UserMenu from '../../shared/components/UserMenu'
+import { ThemeProvider } from '../../shared/hooks/useTheme'
 
 const makeProps = () => ({
   email: 'john@example.com',

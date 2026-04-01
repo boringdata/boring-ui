@@ -4,23 +4,23 @@ import UserSettingsPage from '../pages/UserSettingsPage'
 
 // Mock transport
 const mockApiFetchJson = vi.fn()
-vi.mock('../utils/transport', () => ({
+vi.mock('../shared/utils/transport', () => ({
   apiFetchJson: (...args) => mockApiFetchJson(...args),
 }))
 
 // Mock apiBase
-vi.mock('../utils/apiBase', () => ({
+vi.mock('../shared/utils/apiBase', () => ({
   buildApiUrl: (path, _query) => path,
 }))
 
 // Mock ThemeToggle
-vi.mock('../components/ThemeToggle', () => ({
+vi.mock('../shared/components/ThemeToggle', () => ({
   default: () => <button data-testid="theme-toggle">Toggle</button>,
 }))
 
 // Mock useTheme
 const mockToggleTheme = vi.fn()
-vi.mock('../hooks/useTheme', () => ({
+vi.mock('../shared/hooks/useTheme', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: mockToggleTheme }),
 }))
 
@@ -29,7 +29,7 @@ const mockMaskPiProviderKey = vi.fn()
 const mockSetPiProviderKey = vi.fn()
 const mockRemovePiProviderKey = vi.fn()
 const mockResolvePiProviderKeyScope = vi.fn()
-vi.mock('../providers/pi/providerKeys', () => ({
+vi.mock('../shared/providers/pi/providerKeys', () => ({
   listPiProviderKeyStatus: (...args) => mockListPiProviderKeyStatus(...args),
   maskPiProviderKey: (...args) => mockMaskPiProviderKey(...args),
   setPiProviderKey: (...args) => mockSetPiProviderKey(...args),
