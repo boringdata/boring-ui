@@ -102,6 +102,7 @@ export default function WorkspaceSetupPage({
       const route = routes.controlPlane.workspaces.runtime.get(workspaceId)
       const { response, data } = await apiFetchJson(route.path, {
         query: route.query,
+        rootScoped: true,
         headers: { Accept: 'application/json' },
       })
       if (response.status === 401) {
@@ -141,6 +142,7 @@ export default function WorkspaceSetupPage({
       const route = routes.controlPlane.workspaces.runtime.retry(workspaceId)
       await apiFetch(route.path, {
         query: route.query,
+        rootScoped: true,
         method: 'POST',
       })
       await loadSetup({ silent: true })

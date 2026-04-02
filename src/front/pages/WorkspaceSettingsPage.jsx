@@ -124,9 +124,9 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
     const load = async () => {
       try {
         const [workspacesResult, runtimeResult, settingsResult] = await Promise.all([
-          apiFetchJson(routes.controlPlane.workspaces.list().path),
-          apiFetchJson(routes.controlPlane.workspaces.runtime.get(workspaceId).path),
-          apiFetchJson(routes.controlPlane.workspaces.settings.get(workspaceId).path),
+          apiFetchJson(routes.controlPlane.workspaces.list().path, { rootScoped: true }),
+          apiFetchJson(routes.controlPlane.workspaces.runtime.get(workspaceId).path, { rootScoped: true }),
+          apiFetchJson(routes.controlPlane.workspaces.settings.get(workspaceId).path, { rootScoped: true }),
         ])
 
         if (workspacesResult.response.status === 401) {
@@ -166,6 +166,7 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
         ? routes.controlPlane.workspaces.update(workspaceId)
         : { path: `/api/v1/workspaces/${encodeURIComponent(workspaceId)}`, query: undefined }
       const { response } = await apiFetchJson(route.path, {
+        rootScoped: true,
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: workspaceName }),
@@ -187,7 +188,7 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
     setRetrying(true)
     try {
       const route = routes.controlPlane.workspaces.runtime.retry(workspaceId)
-      const { response, data } = await apiFetchJson(route.path, { method: 'POST' })
+      const { response, data } = await apiFetchJson(route.path, { rootScoped: true, method: 'POST' })
       if (response.ok) {
         setRuntime(data?.runtime || data)
       }
@@ -204,13 +205,13 @@ export default function WorkspaceSettingsPage({ workspaceId, capabilities }) {
       const route = routes.controlPlane.workspaces.delete
         ? routes.controlPlane.workspaces.delete(workspaceId)
         : { path: `/api/v1/workspaces/${encodeURIComponent(workspaceId)}`, query: undefined }
-      const { response } = await apiFetchJson(route.path, { method: 'DELETE' })
-      if (response.ok) {
-        window.location.assign('/')
-      } else {
+      const { response } = await apiFetchJson(route.path, { rootScoped: true, method: 'DELETE' })
+      if (!response.ok) {
         setShowDeleteConfirm(false)
         setDeleting(false)
+        return
       }
+      window.location.assign('/')
     } catch {
       setShowDeleteConfirm(false)
       setDeleting(false)

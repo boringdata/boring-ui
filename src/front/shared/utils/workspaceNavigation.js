@@ -15,13 +15,21 @@ export const syncWorkspaceRuntimeAndSettings = async ({
   const runtimeRoute = routes.controlPlane.workspaces.runtime.get(workspaceId)
   const { response: runtimeResponse, data: runtimeData } = await apiFetchJson(runtimeRoute.path, {
     query: runtimeRoute.query,
+    rootScoped: true,
   })
   let runtimePayload = runtimeResponse.ok ? runtimeData : null
 
   if (runtimeResponse.ok && shouldRetryRuntime(runtimeData)) {
     const retryRoute = routes.controlPlane.workspaces.runtime.retry(workspaceId)
-    await apiFetch(retryRoute.path, { query: retryRoute.query, method: 'POST' })
-    const retriedRuntime = await apiFetchJson(runtimeRoute.path, { query: runtimeRoute.query })
+    await apiFetch(retryRoute.path, {
+      query: retryRoute.query,
+      rootScoped: true,
+      method: 'POST',
+    })
+    const retriedRuntime = await apiFetchJson(runtimeRoute.path, {
+      query: runtimeRoute.query,
+      rootScoped: true,
+    })
     if (retriedRuntime.response.ok) {
       runtimePayload = retriedRuntime.data
     }
@@ -30,12 +38,13 @@ export const syncWorkspaceRuntimeAndSettings = async ({
   const settingsReadRoute = routes.controlPlane.workspaces.settings.get(workspaceId)
   const { response: settingsResponse, data: settingsData } = await apiFetchJson(
     settingsReadRoute.path,
-    { query: settingsReadRoute.query },
+    { query: settingsReadRoute.query, rootScoped: true },
   )
   if (writeSettings && settingsResponse.ok) {
     const settingsWriteRoute = routes.controlPlane.workspaces.settings.update(workspaceId)
     await apiFetch(settingsWriteRoute.path, {
       query: settingsWriteRoute.query,
+      rootScoped: true,
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(extractWorkspaceSettingsPayload(settingsData)),

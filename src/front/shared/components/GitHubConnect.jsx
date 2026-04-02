@@ -28,7 +28,7 @@ export function useGitHubConnection(workspaceId, { enabled = true } = {}) {
     try {
       const route = routes.github.status(workspaceId)
       const qs = route.query ? '?' + new URLSearchParams(route.query).toString() : ''
-      const { data } = await apiFetchJson(route.path + qs)
+      const { data } = await apiFetchJson(route.path + qs, { rootScoped: true })
       setStatus(data)
     } catch {
       setError('Failed to check GitHub status')
@@ -55,6 +55,7 @@ export function useGitHubConnection(workspaceId, { enabled = true } = {}) {
     if (workspaceId && status?.account_linked && status?.default_installation_id) {
       try {
         await apiFetchJson(routes.github.connect().path, {
+          rootScoped: true,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -77,6 +78,7 @@ export function useGitHubConnection(workspaceId, { enabled = true } = {}) {
     setDisconnecting(true)
     try {
       await apiFetchJson(routes.github.disconnect().path, {
+        rootScoped: true,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspace_id: workspaceId }),
@@ -129,7 +131,7 @@ export default function GitHubConnect({ workspaceId }) {
     }
     const route = routes.github.repos(status.installation_id)
     const qs = route.query ? `?${new URLSearchParams(route.query).toString()}` : ''
-    apiFetchJson(route.path + qs)
+    apiFetchJson(route.path + qs, { rootScoped: true })
       .then(({ data }) => {
         setRepoError('')
         setRepos(Array.isArray(data?.repos) ? data.repos : [])
@@ -152,6 +154,7 @@ export default function GitHubConnect({ workspaceId }) {
     setSelectingRepoUrl(repoUrl)
     try {
       await apiFetchJson(routes.github.selectRepo().path, {
+        rootScoped: true,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspace_id: workspaceId, repo_url: repoUrl }),

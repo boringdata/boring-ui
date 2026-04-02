@@ -138,6 +138,13 @@ describe('WorkspaceSetupPage flow', () => {
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalledTimes(1)
     })
+
+    expect(mockApiFetchJson).toHaveBeenCalledWith(
+      '/api/v1/workspaces/ws-test/runtime',
+      expect.objectContaining({
+        rootScoped: true,
+      }),
+    )
   })
 
   // -----------------------------------------------------------------------
