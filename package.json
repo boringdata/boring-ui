@@ -60,7 +60,8 @@
     "server:start": "node --import tsx src/server/index.ts",
     "server:typecheck": "tsc --noEmit -p tsconfig.server.json",
     "server:test": "vitest run -c vitest.config.server.ts",
-    "server:test:watch": "vitest -c vitest.config.server.ts"
+    "server:test:watch": "vitest -c vitest.config.server.ts",
+    "prepublishOnly": "npm run test:run && npm run build:lib"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.64",
