@@ -53,6 +53,7 @@ test.describe('Chat-centered shell smoke', () => {
     await expect(banner).toHaveCount(1, { timeout: 10000 })
     await expect(banner).toContainText('layout:chat')
     await expect(banner).toContainText('agent:frontend')
+    await expect(banner).toContainText('chat:ai-sdk')
   })
 
   test('dev banner reflects backend agent mode', async ({ page }) => {
@@ -184,20 +185,22 @@ test.describe('Chat-centered shell smoke', () => {
     await expect(page.locator('.vc-stage-empty-title')).toContainText('What can I help with')
   })
 
-  test('dev banner reflects chat=pi interface', async ({ page }) => {
+  test('dev banner reflects pi transport', async ({ page }) => {
     await gotoShell(page, { chat: 'pi' })
 
     const banner = page.locator('.dev-mode-banner')
     await expect(banner).toHaveCount(1, { timeout: 10000 })
-    await expect(banner).toContainText('chat:pi')
+    await expect(banner).toContainText('chat:ai-sdk')
+    await expect(banner).toContainText('transport:pi')
   })
 
-  test('dev banner reflects chat=vercel-sdk interface', async ({ page }) => {
+  test('dev banner reflects vercel-sdk transport', async ({ page }) => {
     await gotoShell(page, { chat: 'vercel-sdk' })
 
     const banner = page.locator('.dev-mode-banner')
     await expect(banner).toHaveCount(1, { timeout: 10000 })
-    await expect(banner).toContainText('chat:vercel-sdk')
+    await expect(banner).toContainText('chat:ai-sdk')
+    await expect(banner).toContainText('transport:vercel-sdk')
   })
 
   test('chat=pi renders PI controls regardless of agent_mode', async ({ page }) => {
@@ -207,22 +210,24 @@ test.describe('Chat-centered shell smoke', () => {
     await expect(page.locator('.vc-stage')).toBeVisible({ timeout: 10000 })
     await expect(page.locator('.vc-composer-input')).toBeVisible()
 
-    // Dev banner shows chat:pi
+    // Dev banner shows the AI SDK chat layer over the PI transport
     const banner = page.locator('.dev-mode-banner')
     await expect(banner).toHaveCount(1, { timeout: 10000 })
-    await expect(banner).toContainText('chat:pi')
+    await expect(banner).toContainText('chat:ai-sdk')
+    await expect(banner).toContainText('transport:pi')
 
     // PI-specific controls are visible (thinking toggle, model selector)
     await expect(page.locator('[data-testid="thinking-toggle"]')).toBeVisible()
     await expect(page.locator('[data-testid="model-selector"]')).toBeVisible()
   })
 
-  test('chat=vercel-sdk with agent_mode=frontend shows vercel-sdk in banner', async ({ page }) => {
+  test('chat=vercel-sdk with agent_mode=frontend shows vercel-sdk transport in banner', async ({ page }) => {
     await gotoShell(page, { chat: 'vercel-sdk', agent_mode: 'frontend' })
 
     const banner = page.locator('.dev-mode-banner')
     await expect(banner).toHaveCount(1, { timeout: 10000 })
-    await expect(banner).toContainText('chat:vercel-sdk')
+    await expect(banner).toContainText('chat:ai-sdk')
+    await expect(banner).toContainText('transport:vercel-sdk')
     await expect(banner).toContainText('agent:frontend')
 
     // Chat layout still renders
@@ -239,6 +244,7 @@ test.describe('Chat-centered shell smoke', () => {
     const banner = page.locator('.dev-mode-banner')
     await expect(banner).toHaveCount(1, { timeout: 10000 })
     await expect(banner).toContainText('layout:ide')
+    await expect(banner).toContainText('chat:ai-sdk')
   })
 
   test('keyboard shortcut Cmd+1 toggles session drawer', async ({ page }) => {

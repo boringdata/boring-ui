@@ -236,7 +236,8 @@ export default function useWorkspaceRouter({
     if (workspaceOptions.length > 0) {
       const firstWs = workspaceOptions[0]
       const route = routes.controlPlane.workspaces.scope(firstWs.id)
-      replaceRoute(route.path)
+      const nextHref = `${route.path}${locationState.search || ''}`
+      replaceRoute(nextHref)
       syncWorkspacePathContext()
       return
     }
@@ -250,6 +251,7 @@ export default function useWorkspaceRouter({
     controlPlaneEnabled,
     currentWorkspaceId,
     handleCreateWorkspaceSubmit,
+    locationState.search,
     pagePathname,
     replaceRoute,
     syncWorkspacePathContext,

@@ -112,6 +112,25 @@ describe('useWorkspaceRouter', () => {
     expect(replaceRoute).toHaveBeenCalledWith('/w/ws-1/')
   })
 
+  it('preserves the current query string when auto-redirecting root users to a workspace', async () => {
+    window.history.replaceState(null, '', '/?layout=chat&agent_mode=frontend')
+    const replaceRoute = vi.fn((path) => {
+      window.history.replaceState(null, '', path)
+    })
+
+    const { result } = renderHook(() => useWorkspaceRouter(makeProps({
+      workspaceOptions: [{ id: 'ws-1', name: 'Workspace One' }],
+      workspaceListStatus: 'success',
+      replaceRoute,
+    })))
+
+    await waitFor(() => {
+      expect(result.current.currentWorkspaceId).toBe('ws-1')
+    })
+
+    expect(replaceRoute).toHaveBeenCalledWith('/w/ws-1/?layout=chat&agent_mode=frontend')
+  })
+
   it('switches to a selected workspace using the current subpath when onboarding is disabled', async () => {
     window.history.replaceState(null, '', '/w/ws-current/settings')
     const promptForWorkspace = vi.fn(() => 'ws-target')

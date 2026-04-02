@@ -99,7 +99,8 @@ export default function App() {
   const agentMode = validAgentModes.includes(urlAgentMode)
     ? urlAgentMode
     : fallbackAgentMode
-  const chatInterface = resolveChatInterface()
+  const chatTransport = resolveChatInterface()
+  const chatFramework = 'ai-sdk'
   const nativeAgentEnabled = codeSessionsEnabled
   const localDataBackend = String(config.data?.backend || '').toLowerCase()
   const hasLocalDataBackend = localDataBackend === 'lightningfs'
@@ -2139,7 +2140,7 @@ export default function App() {
           <div className={appContainerClassName}>
             {import.meta.env.DEV && (
               <div className="dev-mode-banner">
-                layout:{activeLayout} · agent:{agentMode} · chat:{chatInterface}
+                layout:{activeLayout} · agent:{agentMode} · chat:{chatFramework} · transport:{chatTransport}
               </div>
             )}
             <a className="skip-to-content-link" href={`#${MAIN_CONTENT_ID}`}>
