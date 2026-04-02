@@ -38,8 +38,8 @@ IDE layout (shared/panels/)
   config.agents.mode = 'frontend' | 'backend'
 
   useAgentTransport()                        ← shared/providers/agent/
-    ├─ 'frontend' → PiAgentCoreTransport     ← browser tools + session API keys
-    └─ 'backend'  → DefaultChatTransport     ← /api/v1/agent/chat + workspace scope
+    ├─ chat='pi'         → PiAgentCoreTransport  ← browser agent + tools via dataProvider
+    └─ chat='vercel-sdk' → DefaultChatTransport  ← /api/v1/agent/chat + workspace scope
                          │
                     useChat({ transport })    ← @ai-sdk/react
                          │
@@ -113,7 +113,7 @@ src/front/
 |-------|--------|---------|
 | `layout` | `chat` \| `ide` | Which layout to render |
 | `agent_mode` | `frontend` \| `backend` | Where the agent runs |
-| `chat` | `pi` \| `vercel-sdk` | Which chat interface (future) |
+| `chat` | `pi` \| `vercel-sdk` | Which chat transport (drives `useAgentTransport`) |
 
 ```
 # All valid combinations:
@@ -135,6 +135,9 @@ Dev banner shows: `layout:chat · agent:frontend · chat:pi`
 // shared/config/appConfig.js
 agents: {
   mode: 'frontend',   // 'frontend' | 'backend'
+  // Used as fallback when ?chat= is not set:
+  //   mode='frontend' → chat='pi' (PiAgentCoreTransport)
+  //   mode='backend'  → chat='vercel-sdk' (DefaultChatTransport)
 }
 ```
 
@@ -157,9 +160,10 @@ agents: {
 | `shared/design-system/base.css` | `.dev-mode-banner` styles |
 
 **Key decisions:**
+- `resolveChatInterface()` checks `?chat=pi|vercel-sdk` first, falls back to `resolveAgentMode()` derivation
 - `resolveAgentMode()` checks `?agent_mode=` URL param first, then `config.agents.mode`
-- Frontend transport: ref-stable (preserves Agent state), tools updated via `updateTools()`
-- Backend transport: `useMemo` keyed on `workspaceId` (recreates on workspace change)
+- PI transport: held in `useState` (preserves Agent state), tools updated via `useEffect`
+- Vercel transport: `useMemo` keyed on `workspaceId` (recreates on workspace change)
 - `messages: sessionMessages` preserved in useChat (Codex review catch)
 - `resolveApiKey()` checks env vars first, then session key store
 
@@ -227,11 +231,11 @@ AgentPanel passes `panelId`, `sessionBootstrap`, `piInitialSessionId` into panel
 
 ## E2E Tests
 
-16 Playwright tests across all 4 configs:
+21 Playwright tests across all configs:
 
-**UI smoke (12 tests):** NavRail, ChatStage, ChatComposer, dev banner, thinking toggle, model selector, session drawer, keyboard shortcuts
+**UI smoke (17 tests):** NavRail, ChatStage, ChatComposer, dev banner (layout/agent/chat params), thinking toggle, model selector, session drawer, keyboard shortcuts, `?chat=pi` controls, `?chat=vercel-sdk` banner, `?layout=ide` renders DockView
 
-**Agent interaction (4 tests):** Create file → read back → open in editor → close/reopen Surface → list_tabs → cleanup
+**Agent interaction (4 tests):** Create file → read back → open in editor → close/reopen Surface → list_tabs → cleanup (Chat+frontend, Chat+backend, IDE+frontend, IDE+backend)
 
 ```bash
 PW_CHAT_SMOKE_URL=http://host:port npx playwright test --config=playwright.smoke.config.js
@@ -243,7 +247,6 @@ PW_CHAT_SMOKE_URL=http://host:port npx playwright test --config=playwright.smoke
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| `?chat=` param wiring | High | URL param parsed + shown in dev banner, but not yet wired to switch between pi-web and vercel-sdk chat interfaces |
 | Session persistence (localStorage vs IndexedDB) | Medium | useSessionState uses localStorage, pi-web-ui uses IndexedDB. Migration path TBD. |
 | XML tool normalization | Low | Edge case for LLMs that emit XML tool calls. `toolCallXmlTransform.js` exists but not wired into transport. |
 | AgentPanel rewrite (Phase 3) | Blocked | Needs Phases 1-2 validated in production first. |
