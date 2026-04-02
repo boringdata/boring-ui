@@ -109,7 +109,7 @@ export default function useSeriesDropHandler({
         }
       })
     }
-  }, [dockApi])
+  }, [dockApi, centerGroupRef, panelMinRef])
 
   const resolveDropPosition = useCallback((dropEvent) => {
     const dropGroup = dropEvent?.group

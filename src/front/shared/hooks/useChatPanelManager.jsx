@@ -8,7 +8,7 @@
  * - RightHeaderActions: header component for quick chat actions
  * - createUniquePanelId: generate unique panel IDs
  */
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Bot } from 'lucide-react'
 
 import Tooltip from '../components/Tooltip'
@@ -176,6 +176,11 @@ export default function useChatPanelManager({
       getLeftSidebarAnchorPosition,
       getLiveCenterGroup,
       collapsed.agent,
+      centerGroupRef,
+      dockApiRef,
+      panelMinRef,
+      panelSizesRef,
+      suppressPendingLayoutRestoreRef,
     ],
   )
 
@@ -188,7 +193,9 @@ export default function useChatPanelManager({
       suppressPendingLayoutRestore: true,
     })
   }, [addChatPanel])
-  handleSplitChatPanelRef.current = handleSplitChatPanel
+  useEffect(() => {
+    handleSplitChatPanelRef.current = handleSplitChatPanel
+  }, [handleSplitChatPanel])
 
   const handleOpenChatTab = useCallback(() => {
     if (!dockApi) {
