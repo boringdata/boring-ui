@@ -15,5 +15,6 @@ export {
   hasPane,
   getComponents,
   getKnownComponents,
+  getPaneForFilePath,
   default as paneRegistry,
 } from './panes'

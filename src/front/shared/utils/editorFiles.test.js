@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { registerPane } from '../../registry'
 import {
   applyMarkdownPaneParams,
   getEditorPanelComponent,
@@ -21,6 +22,20 @@ describe('editorFiles', () => {
     expect(getEditorPanelComponent('README.md', 'bdocs-markdown')).toBe('bdocs-markdown')
     expect(getEditorPanelComponent('guide.mdx', 'bdocs-markdown')).toBe('bdocs-markdown')
     expect(getEditorPanelComponent('app.py')).toBe('editor')
+  })
+
+  it('routes registered artifact file suffixes to their pane ids', () => {
+    registerPane({
+      id: 'test-feret-project-pane',
+      component: () => null,
+      title: 'Feret Project',
+      placement: 'center',
+      fileSuffixes: ['.feret-project.json'],
+    })
+
+    expect(
+      getEditorPanelComponent('feret-artifacts/projects/oat.feret-project.json'),
+    ).toBe('test-feret-project-pane')
   })
 
   it('derives markdown editor params from the selected pane', () => {

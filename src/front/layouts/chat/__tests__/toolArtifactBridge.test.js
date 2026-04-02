@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { registerPane } from '../../../registry'
 import {
   bridgeToolResultToArtifact,
   bridgeOpenPanelToArtifact,
@@ -90,6 +91,27 @@ describe('toolArtifactBridge', () => {
     expect(result.artifact.kind).toBe('code')
     expect(result.artifact.canonicalKey).toBe('src/index.jsx')
     expect(result.artifact.title).toBe('index.jsx')
+  })
+
+  it('open_file resolves registered file-backed artifact panes', () => {
+    registerPane({
+      id: 'test-feret-document-pane',
+      component: () => null,
+      title: 'Feret Document',
+      placement: 'center',
+      fileSuffixes: ['.feret-document.json'],
+    })
+
+    const result = bridgeToolResultToArtifact(
+      'open_file',
+      { path: 'feret-artifacts/documents/spec.feret-document.json' },
+      { success: true },
+      activeSessionId
+    )
+
+    expect(result.shouldOpen).toBe(true)
+    expect(result.artifact.rendererKey).toBe('test-feret-document-pane')
+    expect(result.artifact.canonicalKey).toBe('feret-artifacts/documents/spec.feret-document.json')
   })
 
   it('unknown tool returns shouldOpen false', () => {

@@ -82,6 +82,7 @@ function deriveTitle(kind, args) {
  * @returns {object} SurfaceArtifact
  */
 function createArtifact(kind, canonicalKey, args, activeSessionId, messageId) {
+  const path = args?.path
   return {
     id: generateArtifactId(),
     canonicalKey,
@@ -90,7 +91,7 @@ function createArtifact(kind, canonicalKey, args, activeSessionId, messageId) {
     source: 'tool',
     sourceSessionId: activeSessionId || null,
     sourceMessageId: messageId || null,
-    rendererKey: kind,
+    rendererKey: path ? resolveFilePanelComponent(path) : kind,
     params: { ...(args || {}) },
     status: 'ready',
     dirty: false,
@@ -169,3 +170,4 @@ export function bridgeArtifactCardToArtifact(cardData, activeSessionId, messageI
 
   return createArtifact(kind, canonicalKey, cardData, activeSessionId, messageId)
 }
+import { resolveFilePanelComponent } from '../../../shared/utils/editorFiles'

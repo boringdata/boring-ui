@@ -102,6 +102,8 @@ const AgentPanel = withSuspense(LazyAgentPanel, 'Agent')
  * @property {boolean} [hideHeader] - If true, group header is hidden (default: false)
  * @property {string} [tabComponent] - Optional Dockview tab component key
  * @property {Object} [constraints] - Size constraints { minWidth, minHeight, collapsedWidth, collapsedHeight }
+ * @property {string[]} [fileSuffixes] - Optional path suffixes that should open in this pane.
+ *   Useful for file-backed artifact renderers such as ['.feret-project.json'].
  * @property {string[]} [requiresCapabilities] - Abstract capabilities this pane requires.
  *   Checked against capabilities.capabilities from /api/capabilities.
  *   Common values: 'workspace.files', 'workspace.exec', 'agent.chat'.
@@ -238,6 +240,31 @@ class PaneRegistry {
    */
   getKnownComponents() {
     return new Set(this._panes.keys())
+  }
+
+  /**
+   * Resolve a pane configuration by file path suffix.
+   * Longest suffix wins when multiple panes match the same path.
+   * @param {string} filePath - Workspace-relative file path
+   * @returns {PaneConfig|undefined}
+   */
+  getByFilePath(filePath) {
+    const normalizedPath = String(filePath || '').trim().toLowerCase()
+    if (!normalizedPath) return undefined
+
+    let bestMatch = null
+    for (const config of this._panes.values()) {
+      const suffixes = Array.isArray(config.fileSuffixes) ? config.fileSuffixes : []
+      for (const rawSuffix of suffixes) {
+        const suffix = String(rawSuffix || '').trim().toLowerCase()
+        if (!suffix || !normalizedPath.endsWith(suffix)) continue
+        if (!bestMatch || suffix.length > bestMatch.suffix.length) {
+          bestMatch = { config, suffix }
+        }
+      }
+    }
+
+    return bestMatch?.config
   }
 
   /**
@@ -456,6 +483,7 @@ export const hasPane = (id) => defaultRegistry.has(id)
 export const getComponents = () => defaultRegistry.getComponents()
 export const getGatedComponents = (gateFactory) => defaultRegistry.getGatedComponents(gateFactory)
 export const getKnownComponents = () => defaultRegistry.getKnownComponents()
+export const getPaneForFilePath = (filePath) => defaultRegistry.getByFilePath(filePath)
 export const getRequiredCapabilities = (id) => defaultRegistry.getRequiredCapabilities(id)
 export const getRequiredFeatures = (id) => defaultRegistry.getRequiredFeatures(id)
 export const getRequiredAnyFeatures = (id) => defaultRegistry.getRequiredAnyFeatures(id)

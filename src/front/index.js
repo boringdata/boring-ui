@@ -33,6 +33,7 @@ export {
   hasPane,
   getComponents,
   getKnownComponents,
+  getPaneForFilePath,
   paneRegistry,
 } from './registry'
 

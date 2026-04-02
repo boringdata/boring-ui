@@ -1,3 +1,5 @@
+import { getPaneForFilePath } from '../../registry'
+
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx'])
 
 export const isMarkdownFile = (filepath) => {
@@ -12,7 +14,16 @@ export const normalizeMarkdownPane = (value) => {
 }
 
 export const getEditorPanelComponent = (filepath, markdownPane = 'editor') =>
-  isMarkdownFile(filepath) ? normalizeMarkdownPane(markdownPane) : 'editor'
+  resolveFilePanelComponent(filepath, markdownPane)
+
+export const resolveFilePanelComponent = (filepath, markdownPane = 'editor') => {
+  if (isMarkdownFile(filepath)) {
+    return normalizeMarkdownPane(markdownPane)
+  }
+
+  const pane = getPaneForFilePath(filepath)
+  return pane?.id || 'editor'
+}
 
 export const getMarkdownEditorParam = (filepath, markdownPane = 'editor') => {
   if (!isMarkdownFile(filepath)) return undefined
