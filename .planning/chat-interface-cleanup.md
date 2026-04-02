@@ -1,6 +1,6 @@
 # Chat Interface Cleanup: Unified Agent Transport
 
-**Status:** Phase 1-2 DONE, Phase 3 open — 2026-04-01
+**Status:** Phase 1-2 DONE, Phase 3 open — 2026-04-02
 **Builds on:** `pi-migration-phase-ab.md` (completed)
 **Reviewed by:** Codex (o3) — feedback incorporated
 
@@ -13,12 +13,12 @@ The chat interface has 3 separate rendering paths, each with its own streaming l
 ```
 BEFORE (3 paths, 3 UIs):
 
-Chat-centered shell (layouts/chat/)
+Chat layout (layouts/chat/)
   └─ useChatTransport(capabilities)       ← capability sniffing
        ├─ PiAgentCoreTransport             ← browser agent
        └─ DefaultChatTransport             ← server agent
 
-Legacy DockView shell (shared/panels/)
+IDE layout (shared/panels/)
   └─ AgentPanel (3-way conditional)
        ├─ PiNativeAdapter (857 lines)      ← pi-web-ui ChatPanel
        ├─ PiBackendAdapter (516 lines)     ← custom SSE streaming
@@ -30,8 +30,12 @@ Legacy DockView shell (shared/panels/)
 ## Architecture (target)
 
 ```
+  3 URL params (dev mode):
+    ?layout=chat|ide           — which layout to render
+    ?agent_mode=frontend|backend   — where the agent runs
+    ?chat=pi|vercel-sdk        — which chat interface
+
   config.agents.mode = 'frontend' | 'backend'
-  URL override: ?agent_mode=frontend|backend (dev only)
 
   useAgentTransport()                        ← shared/providers/agent/
     ├─ 'frontend' → PiAgentCoreTransport     ← browser tools + session API keys
@@ -43,8 +47,8 @@ Legacy DockView shell (shared/panels/)
                          │
               ┌──────────┴──────────┐
               │                     │
-    Chat-centered shell    Legacy DockView shell
-    (layouts/chat/)        (shared/panels/AgentPanel)
+         Chat layout           IDE layout
+      (layouts/chat/)    (shared/panels/AgentPanel)
 ```
 
 ---
@@ -53,7 +57,7 @@ Legacy DockView shell (shared/panels/)
 
 ```
 src/front/
-  App.jsx                                   ← shell routing, dev banner
+  App.jsx                                   ← layout routing, dev banner
   layouts/
     chat/
       ChatCenteredWorkspace.jsx             ← orchestrator (uses useAgentTransport)
@@ -62,11 +66,10 @@ src/front/
       BrowseDrawer.jsx                      ← session history drawer
       SurfaceShell.jsx                      ← right workbench
       SurfaceDockview.jsx                   ← DockView inside Surface
-      useChatCenteredShell.js               ← ?shell= feature flag
-      layout.css                            ← shell styles + API key prompt
+      useChatCenteredShell.js               ← ?layout= routing
+      layout.css                            ← layout styles + API key prompt
       components/
         ChatComposer.jsx                    ← input + model selector + thinking toggle
-        ChatMessage.jsx                     ← message part renderer
         ApiKeyPrompt.jsx                    ← inline key entry (frontend mode)
       hooks/
         useSessionState.js                  ← session store (localStorage)
@@ -77,23 +80,24 @@ src/front/
   shared/
     providers/
       agent/
-        useAgentTransport.js                ← config-driven transport hook ← NEW
-        index.js                            ← barrel export ← NEW
+        useAgentTransport.js                ← config-driven transport hook
+        index.js                            ← barrel export
       pi/
-        piAgentCoreTransport.js             ← browser agent bridge (MODIFIED)
+        piAgentCoreTransport.js             ← browser agent bridge
         defaultTools.js                     ← tool definitions
         agentConfig.js                      ← child app tool extension
         envApiKeys.browser.js               ← API key resolution from env
         useChatTransport.js                 ← OLD (replaced by useAgentTransport)
-        nativeAdapter.jsx                   ← OLD (857 lines, legacy only)
-        backendAdapter.jsx                  ← OLD (516 lines, legacy only)
+        nativeAdapter.jsx                   ← OLD (857 lines, IDE layout only)
+        backendAdapter.jsx                  ← OLD (516 lines, IDE layout only)
       data/
         DataContext.js                      ← useDataProvider hook
     panels/
-      AgentPanel.jsx                        ← legacy shell agent routing
+      AgentPanel.jsx                        ← IDE layout agent routing
     components/
       chat/
-        AiChat.jsx                          ← OLD (299 lines, legacy only)
+        ChatMessage.jsx                     ← message part renderer (shared)
+        AiChat.jsx                          ← OLD (299 lines, IDE layout only)
         chat-stage.css                      ← chat styles (thinking + model selector)
     config/
       appConfig.js                          ← agents.mode config
@@ -102,6 +106,28 @@ src/front/
 ```
 
 ---
+
+## URL Params (dev mode)
+
+| Param | Values | Purpose |
+|-------|--------|---------|
+| `layout` | `chat` \| `ide` | Which layout to render |
+| `agent_mode` | `frontend` \| `backend` | Where the agent runs |
+| `chat` | `pi` \| `vercel-sdk` | Which chat interface (future) |
+
+```
+# All valid combinations:
+?layout=chat&agent_mode=frontend              ← chat layout, browser agent
+?layout=chat&agent_mode=backend               ← chat layout, server agent
+?layout=ide&agent_mode=frontend               ← IDE layout, browser agent
+?layout=ide&agent_mode=backend                ← IDE layout, server agent
+
+# With chat interface selection:
+?layout=chat&agent_mode=frontend&chat=pi
+?layout=chat&agent_mode=backend&chat=vercel-sdk
+```
+
+Dev banner shows: `layout:chat · agent:frontend · chat:pi`
 
 ## Config
 
@@ -112,13 +138,9 @@ agents: {
 }
 ```
 
-Dev URL override: `?agent_mode=frontend` or `?agent_mode=backend`
-
-Dev banner (all modes, dev only): shows `{shell} · agent:{mode}` at top center
-
 ---
 
-## Phase 1: Transport layer + chat-centered shell — DONE
+## Phase 1: Transport layer + chat layout — DONE
 
 **Created:**
 | File | Purpose |
@@ -131,7 +153,7 @@ Dev banner (all modes, dev only): shows `{shell} · agent:{mode}` at top center
 |------|--------|
 | `layouts/chat/ChatCenteredWorkspace.jsx` | `useAgentTransport()` replaces `useChatTransport(capabilities)`, removed CapabilitiesContext |
 | `layouts/chat/__tests__/ChatCenteredWorkspace.test.jsx` | Updated mock path |
-| `App.jsx` | Dev mode banner |
+| `App.jsx` | Dev mode banner with layout/agent/chat params |
 | `shared/design-system/base.css` | `.dev-mode-banner` styles |
 
 **Key decisions:**
@@ -153,25 +175,27 @@ Dev banner (all modes, dev only): shows `{shell} · agent:{mode}` at top center
 **Modified:**
 | File | Change |
 |------|--------|
-| `shared/providers/pi/piAgentCoreTransport.js` | Added `setThinkingLevel()`, `setModel()`, `getAvailableModels()`, `_selectedModel`, `_thinkingLevel` |
-| `layouts/chat/components/ChatComposer.jsx` | Thinking toggle (Brain icon, cycles off→low→high), model selector dropdown (available models, "No key" badge) |
+| `shared/providers/pi/piAgentCoreTransport.js` | `setThinkingLevel()`, `setModel()`, `getAvailableModels()`, `MODEL_CANDIDATES`, `THINKING_LEVELS` |
+| `layouts/chat/components/ChatComposer.jsx` | Thinking toggle (Brain icon, cycles off→low→high), model selector dropdown |
 | `layouts/chat/ChatStage.jsx` | Props threading: thinkingLevel, model, agentMode |
 | `layouts/chat/ChatCenteredWorkspace.jsx` | Wires all controls from useAgentTransport → ChatStage → ChatComposer |
 | `shared/components/chat/chat-stage.css` | `.vc-thinking-toggle`, `.vc-model-selector`, `.vc-model-menu` styles |
 | `layouts/chat/layout.css` | `.vc-apikey-prompt` styles |
 
+**Bug fixes (found during testing):**
+| Fix | File | Details |
+|-----|------|---------|
+| open_file bridge conflict | `shared/hooks/usePanelActions.js` | IDE layout's bridge was overwriting chat layout's bridge; added guard via `SURFACE_OPEN_FILE_BRIDGE` check |
+| Orphaned tool_use blocks | `server/http/aiSdkRoutes.ts` | `stripOrphanedToolCalls()` removes tool-call parts without matching tool-result before sending to Anthropic API |
+| Deprecated model | `server/http/aiSdkRoutes.ts` | `claude-3-5-haiku-latest` → `claude-haiku-4-5-20251001` |
+
 **Skipped:**
 - XML tool normalization — edge case, deferred
 - Session persistence bridge (localStorage → IndexedDB) — needs investigation, not blocking
 
-**Feature visibility:**
-- Model selector + thinking toggle: only visible when `agentMode === 'frontend'`
-- API key prompt: only shown when error matches `/api key/i` in frontend mode
-- Backend mode: these controls hidden (server manages model/keys)
-
 ---
 
-## Phase 3: Wire legacy shell + deprecate adapters — OPEN
+## Phase 3: Wire IDE layout + deprecate adapters — OPEN
 
 **Prerequisite:** Validate Phases 1-2 in production first.
 
@@ -193,13 +217,25 @@ AgentPanel passes `panelId`, `sessionBootstrap`, `piInitialSessionId` into panel
 | `shared/components/chat/AiChat.jsx` | 299 | useChat + DefaultChatTransport |
 | `shared/providers/pi/useChatTransport.js` | 73 | useAgentTransport |
 
-**Verify:**
-- All 4 URLs work:
-  - `?shell=chat-centered&agent_mode=frontend`
-  - `?shell=chat-centered&agent_mode=backend`
-  - `?shell=legacy&agent_mode=frontend`
-  - `?shell=legacy&agent_mode=backend`
-- `npm run test:run` — green
+**Verify all 4 URLs:**
+- `?layout=chat&agent_mode=frontend`
+- `?layout=chat&agent_mode=backend`
+- `?layout=ide&agent_mode=frontend`
+- `?layout=ide&agent_mode=backend`
+
+---
+
+## E2E Tests
+
+16 Playwright tests across all 4 configs:
+
+**UI smoke (12 tests):** NavRail, ChatStage, ChatComposer, dev banner, thinking toggle, model selector, session drawer, keyboard shortcuts
+
+**Agent interaction (4 tests):** Create file → read back → open in editor → close/reopen Surface → list_tabs → cleanup
+
+```bash
+PW_CHAT_SMOKE_URL=http://host:port npx playwright test --config=playwright.smoke.config.js
+```
 
 ---
 
@@ -207,13 +243,7 @@ AgentPanel passes `panelId`, `sessionBootstrap`, `piInitialSessionId` into panel
 
 | Item | Priority | Notes |
 |------|----------|-------|
+| `?chat=` param wiring | High | URL param parsed + shown in dev banner, but not yet wired to switch between pi-web and vercel-sdk chat interfaces |
 | Session persistence (localStorage vs IndexedDB) | Medium | useSessionState uses localStorage, pi-web-ui uses IndexedDB. Migration path TBD. |
 | XML tool normalization | Low | Edge case for LLMs that emit XML tool calls. `toolCallXmlTransform.js` exists but not wired into transport. |
 | AgentPanel rewrite (Phase 3) | Blocked | Needs Phases 1-2 validated in production first. |
-| Streaming edge cases | Medium | PiAgentCoreTransport tested with unit tests, needs real-world validation. |
-
----
-
-## Tests
-
-150/150 passing (`src/front/layouts/chat/`).

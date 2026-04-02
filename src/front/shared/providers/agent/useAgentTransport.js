@@ -1,13 +1,16 @@
 /**
  * useAgentTransport — Config-driven agent transport selection.
  *
- * Reads `config.agents.mode` to decide where the agent runs:
+ * Two independent controls:
  *
- *   'frontend' → PiAgentCoreTransport (pi-agent-core in browser)
- *                Tools from defaultTools.js + agentConfig extensions
+ *   chat = 'pi' | 'vercel-sdk'          — which transport interface
+ *     'pi'         → PiAgentCoreTransport (pi-agent-core in browser,
+ *                    tools call dataProvider which can be HTTP or LightningFS)
+ *     'vercel-sdk' → DefaultChatTransport (POST to server, agent runs server-side)
  *
- *   'backend'  → DefaultChatTransport (Vercel AI SDK to server)
- *                POST /api/v1/agent/chat, tools resolved server-side
+ *   agent_mode = 'frontend' | 'backend' — where the agent harness runs
+ *     (currently derived: pi → frontend, vercel-sdk → backend,
+ *      but pi works with backend data providers too)
  *
  * Both transports implement ChatTransport, consumed by useChat().
  *
@@ -44,6 +47,24 @@ function resolveApiKey(provider) {
 }
 
 /**
+ * Resolve which chat interface to use.
+ *
+ * URL: ?chat=pi  or  ?chat=vercel-sdk
+ * Fallback: derived from agent_mode (frontend → pi, backend → vercel-sdk)
+ *
+ * @returns {'pi'|'vercel-sdk'}
+ */
+export function resolveChatInterface() {
+  if (typeof window !== 'undefined') {
+    const param = new URLSearchParams(window.location.search).get('chat')
+    if (param === 'pi' || param === 'vercel-sdk') return param
+  }
+
+  // Derive from agent mode when not explicitly set
+  return resolveAgentMode() === 'backend' ? 'vercel-sdk' : 'pi'
+}
+
+/**
  * Resolve agent mode from URL params (dev override) then config.
  *
  * URL: ?agent_mode=backend  or  ?agent_mode=frontend
@@ -52,7 +73,6 @@ function resolveApiKey(provider) {
  * @returns {'frontend'|'backend'}
  */
 export function resolveAgentMode() {
-  // Dev override via URL param
   if (typeof window !== 'undefined') {
     const param = new URLSearchParams(window.location.search).get('agent_mode')
     if (param === 'backend' || param === 'frontend') return param
@@ -63,50 +83,42 @@ export function resolveAgentMode() {
   return mode === 'backend' ? 'backend' : 'frontend'
 }
 
-/**
- * Get the current workspace ID from the URL path, if any.
- *
- * @returns {string} workspace ID or empty string
- */
 function getWorkspaceId() {
   if (typeof window === 'undefined') return ''
   return getWorkspaceIdFromPathname(window.location.pathname)
 }
 
 /**
- * React hook that returns the correct ChatTransport for the configured mode.
+ * React hook that returns the correct ChatTransport based on the
+ * chat interface selection (pi or vercel-sdk).
  *
- * - Frontend mode: PiAgentCoreTransport instance is kept in a ref to
- *   preserve the Agent and its conversation state across re-renders.
- *   Tools are updated via updateTools() when the data provider changes.
- *
- * - Backend mode: DefaultChatTransport is recreated when workspaceId
- *   changes (workspace scoping requires a new transport instance).
- *
- * @returns {{ transport: ChatTransport, mode: 'frontend'|'backend' }}
+ * @returns {{ transport, mode, chatInterface, thinkingLevel, setThinkingLevel, selectedModel, setModel, availableModels }}
  */
 export function useAgentTransport() {
+  const chatInterface = resolveChatInterface()
   const mode = resolveAgentMode()
   const dataProvider = useDataProvider()
   const queryClient = useQueryClient()
   const workspaceId = getWorkspaceId()
 
-  // Build tools for frontend mode (browser agent)
+  const usePi = chatInterface === 'pi'
+
+  // Build tools for PI mode (agent runs in browser, tools use dataProvider)
   const tools = useMemo(() => {
-    if (mode !== 'frontend') return []
+    if (!usePi) return []
     const defaultTools = createPiNativeTools(dataProvider, queryClient)
     const { tools: configuredTools } = getPiAgentConfig()
     if (configuredTools.length > 0) {
       return mergePiTools(defaultTools, configuredTools)
     }
     return defaultTools
-  }, [mode, dataProvider, queryClient])
+  }, [usePi, dataProvider, queryClient])
 
-  // Stable ref for frontend transport (preserves Agent state)
-  const frontendTransportRef = useRef(null)
+  // Stable ref for PI transport (preserves Agent state)
+  const piTransportRef = useRef(null)
 
   const transport = useMemo(() => {
-    if (mode === 'backend') {
+    if (!usePi) {
       return new DefaultChatTransport({
         api: buildApiUrl('/api/v1/agent/chat'),
         credentials: 'include',
@@ -114,17 +126,17 @@ export function useAgentTransport() {
       })
     }
 
-    // Frontend: reuse transport ref, update tools if changed
-    if (!frontendTransportRef.current) {
-      frontendTransportRef.current = new PiAgentCoreTransport({
+    // PI: reuse transport ref, update tools if changed
+    if (!piTransportRef.current) {
+      piTransportRef.current = new PiAgentCoreTransport({
         tools,
         getApiKey: resolveApiKey,
       })
     } else {
-      frontendTransportRef.current.updateTools(tools)
+      piTransportRef.current.updateTools(tools)
     }
-    return frontendTransportRef.current
-  }, [mode, tools, workspaceId])
+    return piTransportRef.current
+  }, [usePi, tools, workspaceId])
 
   const [thinkingLevel, setThinkingLevelState] = useState('off')
   const [selectedModel, setSelectedModelState] = useState(null)
@@ -132,31 +144,32 @@ export function useAgentTransport() {
 
   const setThinkingLevel = useCallback((level) => {
     setThinkingLevelState(level)
-    if (mode === 'frontend' && frontendTransportRef.current?.setThinkingLevel) {
-      frontendTransportRef.current.setThinkingLevel(level)
+    if (usePi && piTransportRef.current?.setThinkingLevel) {
+      piTransportRef.current.setThinkingLevel(level)
     }
-  }, [mode])
+  }, [usePi])
 
   const setModel = useCallback((provider, modelId) => {
     const value = provider && modelId ? { provider, modelId } : null
     setSelectedModelState(value)
-    if (mode === 'frontend' && frontendTransportRef.current?.setModel) {
-      frontendTransportRef.current.setModel(provider, modelId)
+    if (usePi && piTransportRef.current?.setModel) {
+      piTransportRef.current.setModel(provider, modelId)
     }
-  }, [mode])
+  }, [usePi])
 
-  // Load available models once for frontend mode
+  // Load available models for PI mode
   useMemo(() => {
-    if (mode !== 'frontend') return
-    const t = frontendTransportRef.current
+    if (!usePi) return
+    const t = piTransportRef.current
     if (t?.getAvailableModels) {
       t.getAvailableModels().then(setAvailableModels).catch(() => {})
     }
-  }, [mode, transport])
+  }, [usePi, transport])
 
   return {
     transport,
     mode,
+    chatInterface,
     thinkingLevel,
     setThinkingLevel,
     selectedModel,

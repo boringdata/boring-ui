@@ -1,40 +1,39 @@
 /**
- * useChatCenteredShell — single entry point for deciding which shell to render.
+ * useChatCenteredShell — decides which layout to render.
  *
  * Reads the feature flag `features.chatCenteredShell` from app config.
  * Supports dev overrides via URL search params:
- *   ?shell=chat-centered  — force-enable the new shell
- *   ?shell=legacy          — force-disable (use old shell)
+ *   ?layout=chat           — chat-centered layout (new)
+ *   ?layout=ide            — IDE/Dockview layout (legacy)
+ *   ?shell=chat-centered   — backward compat alias for layout=chat
+ *   ?shell=legacy           — backward compat alias for layout=ide
  *
- * Query params take precedence over config, enabling per-session testing
- * without changing the flag in the config.
- *
- * @returns {{ enabled: boolean }}
+ * @returns {{ enabled: boolean, layout: 'chat'|'ide' }}
  */
 
 import { useMemo } from 'react'
 import { getConfig } from '../../shared/config/appConfig'
 
 /**
- * @returns {{ enabled: boolean }}
+ * @returns {{ enabled: boolean, layout: 'chat'|'ide' }}
  */
 export function useChatCenteredShell() {
   return useMemo(() => {
-    // 1. Check URL search params for dev override
     const params = new URLSearchParams(window.location.search)
+
+    // New param: ?layout=chat|ide
+    const layoutParam = params.get('layout')
+    if (layoutParam === 'chat') return { enabled: true, layout: 'chat' }
+    if (layoutParam === 'ide') return { enabled: false, layout: 'ide' }
+
+    // Backward compat: ?shell=chat-centered|legacy
     const shellParam = params.get('shell')
+    if (shellParam === 'chat-centered' || shellParam === 'chat') return { enabled: true, layout: 'chat' }
+    if (shellParam === 'legacy' || shellParam === 'ide') return { enabled: false, layout: 'ide' }
 
-    if (shellParam === 'chat-centered') {
-      return { enabled: true }
-    }
-    if (shellParam === 'legacy') {
-      return { enabled: false }
-    }
-
-    // 2. Read from app config
+    // Config fallback
     const config = getConfig()
     const enabled = config?.features?.chatCenteredShell === true
-
-    return { enabled }
+    return { enabled, layout: enabled ? 'chat' : 'ide' }
   }, [])
 }

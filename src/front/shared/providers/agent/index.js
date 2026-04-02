@@ -1,1 +1,1 @@
-export { useAgentTransport, resolveAgentMode, setSessionApiKey } from './useAgentTransport'
+export { useAgentTransport, resolveAgentMode, resolveChatInterface, setSessionApiKey } from './useAgentTransport'

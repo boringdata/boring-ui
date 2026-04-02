@@ -42,59 +42,59 @@ describe('useChatCenteredShell', () => {
     expect(result.current.enabled).toBe(true)
   })
 
-  it('query param ?shell=chat-centered overrides flag to true', () => {
-    vi.mocked(getConfig).mockReturnValue({
-      features: { chatCenteredShell: false },
-    })
+  it('?layout=chat overrides flag to true', () => {
+    vi.mocked(getConfig).mockReturnValue({ features: { chatCenteredShell: false } })
+    window.location.search = '?layout=chat'
+    const { result } = renderHook(() => useChatCenteredShell())
+    expect(result.current.enabled).toBe(true)
+    expect(result.current.layout).toBe('chat')
+  })
 
+  it('?layout=ide overrides flag to false', () => {
+    vi.mocked(getConfig).mockReturnValue({ features: { chatCenteredShell: true } })
+    window.location.search = '?layout=ide'
+    const { result } = renderHook(() => useChatCenteredShell())
+    expect(result.current.enabled).toBe(false)
+    expect(result.current.layout).toBe('ide')
+  })
+
+  it('backward compat: ?shell=chat-centered still works', () => {
+    vi.mocked(getConfig).mockReturnValue({ features: { chatCenteredShell: false } })
     window.location.search = '?shell=chat-centered'
-
     const { result } = renderHook(() => useChatCenteredShell())
     expect(result.current.enabled).toBe(true)
   })
 
-  it('query param ?shell=legacy overrides flag to false', () => {
-    vi.mocked(getConfig).mockReturnValue({
-      features: { chatCenteredShell: true },
-    })
-
+  it('backward compat: ?shell=legacy still works', () => {
+    vi.mocked(getConfig).mockReturnValue({ features: { chatCenteredShell: true } })
     window.location.search = '?shell=legacy'
-
     const { result } = renderHook(() => useChatCenteredShell())
     expect(result.current.enabled).toBe(false)
   })
 
-  it('returns { enabled: false } when config is null (not yet loaded)', () => {
+  it('returns { enabled: false, layout: "ide" } when config is null', () => {
     vi.mocked(getConfig).mockReturnValue(null)
-
     const { result } = renderHook(() => useChatCenteredShell())
     expect(result.current.enabled).toBe(false)
+    expect(result.current.layout).toBe('ide')
   })
 
-  it('returns { enabled: false } when features object is missing', () => {
+  it('returns layout "ide" when features object is missing', () => {
     vi.mocked(getConfig).mockReturnValue({})
-
     const { result } = renderHook(() => useChatCenteredShell())
     expect(result.current.enabled).toBe(false)
+    expect(result.current.layout).toBe('ide')
   })
 
-  it('query param takes precedence over config in both directions', () => {
-    // Config says true, param says legacy => false
-    vi.mocked(getConfig).mockReturnValue({
-      features: { chatCenteredShell: true },
-    })
-    window.location.search = '?shell=legacy'
+  it('?layout takes precedence over config', () => {
+    vi.mocked(getConfig).mockReturnValue({ features: { chatCenteredShell: true } })
+    window.location.search = '?layout=ide'
+    const { result: r1 } = renderHook(() => useChatCenteredShell())
+    expect(r1.current.enabled).toBe(false)
 
-    const { result: result1 } = renderHook(() => useChatCenteredShell())
-    expect(result1.current.enabled).toBe(false)
-
-    // Config says false, param says chat-centered => true
-    vi.mocked(getConfig).mockReturnValue({
-      features: { chatCenteredShell: false },
-    })
-    window.location.search = '?shell=chat-centered'
-
-    const { result: result2 } = renderHook(() => useChatCenteredShell())
-    expect(result2.current.enabled).toBe(true)
+    vi.mocked(getConfig).mockReturnValue({ features: { chatCenteredShell: false } })
+    window.location.search = '?layout=chat'
+    const { result: r2 } = renderHook(() => useChatCenteredShell())
+    expect(r2.current.enabled).toBe(true)
   })
 })

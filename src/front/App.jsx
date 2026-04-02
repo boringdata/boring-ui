@@ -77,6 +77,7 @@ import {
 
 import { useChatCenteredShell } from './layouts/chat/useChatCenteredShell'
 import ChatCenteredWorkspace from './layouts/chat/ChatCenteredWorkspace'
+import { resolveChatInterface } from './shared/providers/agent/useAgentTransport'
 
 const MAIN_CONTENT_ID = 'workspace-main-content'
 const NARROW_VIEWPORT_BREAKPOINT = 960
@@ -90,7 +91,7 @@ export default function App() {
 
   // Chat-centered shell feature flag — when enabled, renders the new shell
   // instead of the Dockview-based layout. The hook reads config + URL overrides.
-  const { enabled: chatCenteredShellEnabled } = useChatCenteredShell()
+  const { enabled: chatCenteredShellEnabled, layout: activeLayout } = useChatCenteredShell()
 
   const codeSessionsEnabled = config.features?.codeSessions !== false
   const urlAgentMode = new URLSearchParams(window.location.search).get('agent_mode')
@@ -100,6 +101,7 @@ export default function App() {
   const agentMode = validAgentModes.includes(urlAgentMode)
     ? urlAgentMode
     : fallbackAgentMode
+  const chatInterface = resolveChatInterface()
   const nativeAgentEnabled = codeSessionsEnabled
   const localDataBackend = String(config.data?.backend || '').toLowerCase()
   const hasLocalDataBackend = localDataBackend === 'lightningfs'
@@ -2930,7 +2932,7 @@ export default function App() {
           <div className={appContainerClassName}>
             {import.meta.env.DEV && (
               <div className="dev-mode-banner">
-                {chatCenteredShellEnabled ? 'chat-centered' : 'legacy'} · agent:{agentMode}
+                layout:{activeLayout} · agent:{agentMode} · chat:{chatInterface}
               </div>
             )}
             <a className="skip-to-content-link" href={`#${MAIN_CONTENT_ID}`}>

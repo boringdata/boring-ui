@@ -22,7 +22,7 @@ const SKIP_REASON = 'Set PW_CHAT_SMOKE_URL (e.g. http://100.68.199.114:5173) to 
 
 const gotoShell = async (page: Page, params: Record<string, string> = {}) => {
   const base = DEV_SERVER || '/'
-  const query = new URLSearchParams({ shell: 'chat-centered', ...params }).toString()
+  const query = new URLSearchParams({ layout: 'chat', ...params }).toString()
   const url = `${base}?${query}`
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
 }
@@ -51,7 +51,7 @@ test.describe('Chat-centered shell smoke', () => {
 
     const banner = page.locator('.dev-mode-banner')
     await expect(banner).toHaveCount(1, { timeout: 10000 })
-    await expect(banner).toContainText('chat-centered')
+    await expect(banner).toContainText('layout:chat')
     await expect(banner).toContainText('agent:frontend')
   })
 
@@ -182,6 +182,63 @@ test.describe('Chat-centered shell smoke', () => {
 
     await expect(page.locator('.vc-stage-empty')).toBeVisible({ timeout: 10000 })
     await expect(page.locator('.vc-stage-empty-title')).toContainText('What can I help with')
+  })
+
+  test('dev banner reflects chat=pi interface', async ({ page }) => {
+    await gotoShell(page, { chat: 'pi' })
+
+    const banner = page.locator('.dev-mode-banner')
+    await expect(banner).toHaveCount(1, { timeout: 10000 })
+    await expect(banner).toContainText('chat:pi')
+  })
+
+  test('dev banner reflects chat=vercel-sdk interface', async ({ page }) => {
+    await gotoShell(page, { chat: 'vercel-sdk' })
+
+    const banner = page.locator('.dev-mode-banner')
+    await expect(banner).toHaveCount(1, { timeout: 10000 })
+    await expect(banner).toContainText('chat:vercel-sdk')
+  })
+
+  test('chat=pi renders PI controls regardless of agent_mode', async ({ page }) => {
+    await gotoShell(page, { chat: 'pi' })
+
+    // Chat layout renders
+    await expect(page.locator('.vc-stage')).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('.vc-composer-input')).toBeVisible()
+
+    // Dev banner shows chat:pi
+    const banner = page.locator('.dev-mode-banner')
+    await expect(banner).toHaveCount(1, { timeout: 10000 })
+    await expect(banner).toContainText('chat:pi')
+
+    // PI-specific controls are visible (thinking toggle, model selector)
+    await expect(page.locator('[data-testid="thinking-toggle"]')).toBeVisible()
+    await expect(page.locator('[data-testid="model-selector"]')).toBeVisible()
+  })
+
+  test('chat=vercel-sdk with agent_mode=frontend shows vercel-sdk in banner', async ({ page }) => {
+    await gotoShell(page, { chat: 'vercel-sdk', agent_mode: 'frontend' })
+
+    const banner = page.locator('.dev-mode-banner')
+    await expect(banner).toHaveCount(1, { timeout: 10000 })
+    await expect(banner).toContainText('chat:vercel-sdk')
+    await expect(banner).toContainText('agent:frontend')
+
+    // Chat layout still renders
+    await expect(page.locator('.vc-stage')).toBeVisible({ timeout: 10000 })
+  })
+
+  test('layout=ide renders DockView IDE layout', async ({ page }) => {
+    const base = DEV_SERVER || '/'
+    await page.goto(`${base}?layout=ide`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+
+    // IDE layout uses DockView, not the chat shell
+    await expect(page.locator('.vc-stage')).toHaveCount(0, { timeout: 10000 })
+
+    const banner = page.locator('.dev-mode-banner')
+    await expect(banner).toHaveCount(1, { timeout: 10000 })
+    await expect(banner).toContainText('layout:ide')
   })
 
   test('keyboard shortcut Cmd+1 toggles session drawer', async ({ page }) => {

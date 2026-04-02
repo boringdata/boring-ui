@@ -25,8 +25,8 @@ const SKIP_REASON = 'Set PW_CHAT_SMOKE_URL to run agent interaction tests'
 // Longer timeout for agent responses (LLM calls + tool execution)
 const AGENT_RESPONSE_TIMEOUT = 120_000
 
-const gotoShell = async (page: Page, shell: string, agentMode: string) => {
-  const url = `${DEV_SERVER}?shell=${shell}&agent_mode=${agentMode}`
+const gotoShell = async (page: Page, layout: string, agentMode: string) => {
+  const url = `${DEV_SERVER}?layout=${layout}&agent_mode=${agentMode}`
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
 }
 
@@ -34,8 +34,8 @@ const gotoShell = async (page: Page, shell: string, agentMode: string) => {
  * Wait for a new assistant message containing the expected text.
  * Scans .vc-msg elements for chat-centered, or general text for legacy.
  */
-const waitForAgentResponse = async (page: Page, shell: string, textPattern: RegExp) => {
-  if (shell === 'chat-centered') {
+const waitForAgentResponse = async (page: Page, layout: string, textPattern: RegExp) => {
+  if (layout === 'chat') {
     // Wait for any assistant message body — the agent may render text, tool cards, or markdown
     await expect(
       page.locator('.vc-msg').filter({ hasText: textPattern }).last()
@@ -51,8 +51,8 @@ const waitForAgentResponse = async (page: Page, shell: string, textPattern: RegE
 /**
  * Wait for the agent to finish streaming (send button reappears).
  */
-const waitForAgentIdle = async (page: Page, shell: string) => {
-  if (shell === 'chat-centered') {
+const waitForAgentIdle = async (page: Page, layout: string) => {
+  if (layout === 'chat') {
     // Wait for the stop button to disappear (agent done streaming)
     // then the send button reappears
     await expect(page.locator('[data-testid="chat-stop-btn"]')).toHaveCount(0, { timeout: AGENT_RESPONSE_TIMEOUT })
@@ -100,16 +100,16 @@ const sendMessageLegacy = async (page: Page, text: string) => {
   }
 }
 
-const sendMessage = async (page: Page, shell: string, text: string) => {
-  if (shell === 'chat-centered') {
+const sendMessage = async (page: Page, layout: string, text: string) => {
+  if (layout === 'chat') {
     await sendMessageChatCentered(page, text)
   } else {
     await sendMessageLegacy(page, text)
   }
 }
 
-const waitForShellReady = async (page: Page, shell: string) => {
-  if (shell === 'chat-centered') {
+const waitForShellReady = async (page: Page, layout: string) => {
+  if (layout === 'chat') {
     await expect(page.locator('.vc-composer-input')).toBeVisible({ timeout: 30000 })
   } else {
     // Legacy: wait for agent panel
@@ -125,55 +125,55 @@ const TEST_FILENAME = `tt-${TAG}.md`
 const TEST_CONTENT = 'hellooo'
 
 const configs = [
-  { shell: 'chat-centered', agentMode: 'frontend', label: 'CC+frontend' },
-  { shell: 'chat-centered', agentMode: 'backend', label: 'CC+backend' },
-  { shell: 'legacy', agentMode: 'frontend', label: 'Legacy+frontend' },
-  { shell: 'legacy', agentMode: 'backend', label: 'Legacy+backend' },
+  { layout: 'chat', agentMode: 'frontend', label: 'Chat+frontend' },
+  { layout: 'chat', agentMode: 'backend', label: 'Chat+backend' },
+  { layout: 'ide', agentMode: 'frontend', label: 'IDE+frontend' },
+  { layout: 'ide', agentMode: 'backend', label: 'IDE+backend' },
 ]
 
 test.describe('Agent interaction across all 4 configs', () => {
   test.skip(!DEV_SERVER, SKIP_REASON)
   test.describe.configure({ timeout: 180_000 })
 
-  for (const { shell, agentMode, label } of configs) {
+  for (const { layout, agentMode, label } of configs) {
     test(`[${label}] create file, open in editor, read back`, async ({ page }) => {
-      await gotoShell(page, shell, agentMode)
-      await waitForShellReady(page, shell)
+      await gotoShell(page, layout, agentMode)
+      await waitForShellReady(page, layout)
 
       // Step 1: Create a file
       await sendMessage(
         page,
-        shell,
+        layout,
         `Create a file called ${TEST_FILENAME} with exactly this content: "${TEST_CONTENT}"`,
       )
-      await waitForAgentIdle(page, shell)
+      await waitForAgentIdle(page, layout)
 
       // Verify agent acknowledged (any response mentioning the filename)
-      await waitForAgentResponse(page, shell, new RegExp(TEST_FILENAME.replace(/\./g, '\\.')))
+      await waitForAgentResponse(page, layout, new RegExp(TEST_FILENAME.replace(/\./g, '\\.')))
 
       // Step 2: Read it back
       await sendMessage(
         page,
-        shell,
+        layout,
         `Read the file ${TEST_FILENAME} and show me its exact contents.`,
       )
-      await waitForAgentIdle(page, shell)
+      await waitForAgentIdle(page, layout)
 
       // Verify our content appears in the response
-      await waitForAgentResponse(page, shell, new RegExp(TEST_CONTENT))
+      await waitForAgentResponse(page, layout, new RegExp(TEST_CONTENT))
 
       // Step 3: Open the file in editor
       await sendMessage(
         page,
-        shell,
+        layout,
         `Now open ${TEST_FILENAME} in the editor. Use the open_file tool.`,
       )
-      await waitForAgentIdle(page, shell)
+      await waitForAgentIdle(page, layout)
 
       // Verify file opens — check for tab or Surface artifact
       const fileNamePattern = new RegExp(TEST_FILENAME.replace(/\./g, '\\.'))
 
-      if (shell === 'chat-centered') {
+      if (layout === 'chat') {
         // Chat-centered: Surface should expand and show the file as a DockView tab
         await expect(
           page.locator('.surface-shell').first()
@@ -190,7 +190,7 @@ test.describe('Agent interaction across all 4 configs', () => {
       }
 
       // Step 4: Close Surface/workbench, then reopen via agent
-      if (shell === 'chat-centered') {
+      if (layout === 'chat') {
         // Close surface via the floating close button or nav rail toggle
         const closeBtn = page.locator('.sf-floating-close').first()
         if (await closeBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -204,8 +204,8 @@ test.describe('Agent interaction across all 4 configs', () => {
         await expect(page.locator('.surface-shell')).not.toBeVisible({ timeout: 5000 })
 
         // Ask agent to open the file again — Surface should auto-reopen
-        await sendMessage(page, shell, `Open ${TEST_FILENAME} in the editor again using open_file.`)
-        await waitForAgentIdle(page, shell)
+        await sendMessage(page, layout, `Open ${TEST_FILENAME} in the editor again using open_file.`)
+        await waitForAgentIdle(page, layout)
 
         // Surface should have reopened with the file
         await expect(page.locator('.surface-shell').first()).toBeVisible({ timeout: 15000 })
@@ -217,13 +217,13 @@ test.describe('Agent interaction across all 4 configs', () => {
       // Step 5: Ask agent what panes/tabs are open and which is active
       await sendMessage(
         page,
-        shell,
+        layout,
         'What tabs are open in the editor right now? Which one is active? Use the list_tabs tool.',
       )
-      await waitForAgentIdle(page, shell)
+      await waitForAgentIdle(page, layout)
 
       // Verify the agent response mentions our test file as open
-      await waitForAgentResponse(page, shell, fileNamePattern)
+      await waitForAgentResponse(page, layout, fileNamePattern)
 
       // Verify the active tab marker exists somewhere on page — list_tabs uses * prefix
       // or the agent mentions "active"/"current". Check page-wide, not scoped to agent panel.
@@ -238,8 +238,8 @@ test.describe('Agent interaction across all 4 configs', () => {
       })
 
       // Cleanup
-      await sendMessage(page, shell, `Delete the file ${TEST_FILENAME}.`)
-      await waitForAgentIdle(page, shell)
+      await sendMessage(page, layout, `Delete the file ${TEST_FILENAME}.`)
+      await waitForAgentIdle(page, layout)
     })
   }
 })
