@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
+import { registerPane } from '../../../registry'
 
 // Track DockviewReact mock API calls
 let mockDockApi
@@ -145,6 +146,43 @@ describe('SurfaceDockview', () => {
         title: 'file2.js',
         params: expect.objectContaining({ path: 'src/file2.js' }),
       })
+    )
+  })
+
+  it('routes file-backed artifact paths to registered pane components', () => {
+    registerPane({
+      id: 'test-feret-report-pane',
+      component: () => <div>report</div>,
+      title: 'Feret Report',
+      placement: 'center',
+      fileSuffixes: ['.feret-report.json'],
+    })
+
+    const artifacts = [
+      {
+        id: 'art-report',
+        title: 'clean-label-readout.feret-report.json',
+        kind: 'code',
+        params: { path: 'feret-artifacts/reports/clean-label-readout.feret-report.json' },
+      },
+    ]
+
+    render(
+      <SurfaceDockview
+        artifacts={artifacts}
+        activeArtifactId="art-report"
+        onSelectArtifact={vi.fn()}
+        onCloseArtifact={vi.fn()}
+      />
+    )
+
+    triggerReady()
+
+    expect(mockDockApi.addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'art-report',
+        component: 'test-feret-report-pane',
+      }),
     )
   })
 

@@ -2,27 +2,8 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { DockviewReact } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { UnifiedDockTab, tabComponents } from '../../shared/components/DockTab'
-
-// Lazy-load EditorPanel to avoid pulling in heavy deps at Surface mount time
-const EditorPanel = React.lazy(() => import('../../shared/panels/EditorPanel'))
-
-/**
- * EditorPanelWrapper — Adapts DockviewReact panel props to EditorPanel props.
- *
- * DockviewReact passes { params, api } where `params` is the user-supplied
- * params object from addPanel.  EditorPanel expects the same shape.
- */
-function EditorPanelWrapper({ params, api }) {
-  return (
-    <React.Suspense fallback={<div className="sf-panel-loading">Loading...</div>}>
-      <EditorPanel params={params} api={api} />
-    </React.Suspense>
-  )
-}
-
-const DOCKVIEW_COMPONENTS = {
-  editor: EditorPanelWrapper,
-}
+import { getComponents, hasPane } from '../../registry'
+import { resolveFilePanelComponent } from '../../shared/utils/editorFiles'
 
 function collectDockPanelIds(api) {
   const panelCollection = api?.panels
@@ -82,6 +63,7 @@ export default function SurfaceDockview({
     for (const a of artifacts) m.set(a.id, a)
     return m
   }, [artifacts])
+  const dockviewComponents = useMemo(() => getComponents(), [])
 
   // Store callback refs so event listeners can use latest values
   const onSelectRef = useRef(onSelectArtifact)
@@ -90,6 +72,14 @@ export default function SurfaceDockview({
   useEffect(() => { onSelectRef.current = onSelectArtifact }, [onSelectArtifact])
   useEffect(() => { onCloseRef.current = onCloseArtifact }, [onCloseArtifact])
   useEffect(() => { onLayoutRef.current = onLayoutChange }, [onLayoutChange])
+
+  const resolveComponent = useCallback((artifact) => {
+    const explicit = String(artifact?.rendererKey || '').trim()
+    if (explicit && hasPane(explicit)) return explicit
+
+    const filePath = artifact?.params?.path || artifact?.canonicalKey || ''
+    return resolveFilePanelComponent(filePath)
+  }, [])
 
   // --- Restore persisted Dockview split layout once after ready ---
   useEffect(() => {
@@ -163,7 +153,7 @@ export default function SurfaceDockview({
           try {
             dockApi.addPanel({
               id,
-              component: 'editor',
+              component: resolveComponent(artifact),
               title: artifact.title || 'Untitled',
               params: {
                 path: artifact.params?.path || '',
@@ -194,7 +184,7 @@ export default function SurfaceDockview({
     } finally {
       syncingRef.current = false
     }
-  }, [dockApi, artifactIds, artifactMap])
+  }, [dockApi, artifactIds, artifactMap, resolveComponent])
 
   // --- Sync active artifact -> Dockview focus ---
   useEffect(() => {
@@ -216,7 +206,7 @@ export default function SurfaceDockview({
   return (
     <div className="surface-dockview" data-testid="surface-dockview">
       <DockviewReact
-        components={DOCKVIEW_COMPONENTS}
+        components={dockviewComponents}
         tabComponents={tabComponents}
         defaultTabComponent={UnifiedDockTab}
         onReady={handleReady}
