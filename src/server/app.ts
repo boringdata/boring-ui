@@ -82,20 +82,24 @@ export function createApp(options: CreateAppOptions = {}): FastifyInstance {
   app.register(registerRequestIdHook)
 
   // --- Local dev auto-login: set session cookie on every request if missing ---
-  if (config.controlPlaneProvider === 'local') {
+  // Disabled during tests (NODE_ENV=test) so auth rejection tests still work.
+  const isTestEnv = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true'
+  if (config.controlPlaneProvider === 'local' && !isTestEnv) {
     const devCookieName = config.authSessionCookieName || sessionAppCookieName()
     const devAppId = config.appId || config.controlPlaneAppId || undefined
     let cachedDevToken: string | null = null
 
     app.addHook('onRequest', async (request, reply) => {
-      // Skip if there's already a valid cookie
       const existing = request.cookies[devCookieName]
       if (existing) {
+        // Fast path: if the cookie matches our cached token, skip JWT verify
+        // (the downstream auth middleware will verify it properly)
+        if (existing === cachedDevToken) return
         try {
           await parseSessionCookie(existing, config.sessionSecret)
-          return // Cookie is valid, nothing to do
+          return // Cookie is valid (e.g. from manual login), nothing to do
         } catch {
-          // Cookie is invalid/expired — replace it
+          // Cookie is invalid/expired — replace it below
         }
       }
       // Reuse cached token to avoid JWT signing on every request
