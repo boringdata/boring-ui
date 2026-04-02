@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react'
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useChat } from '@ai-sdk/react'
 
 import ChatStage from './ChatStage'
@@ -13,10 +13,89 @@ import { useReducedMotion } from '../../shared/hooks/useReducedMotion'
 import { useShellPersistence } from './hooks/useShellPersistence'
 import { useShellStatePublisher } from './hooks/useShellStatePublisher'
 import { useAgentTransport } from '../../shared/providers/agent/useAgentTransport'
+import { bridgeToolResultToArtifact } from './utils/toolArtifactBridge'
 
 const EMPTY_MESSAGES = []
 import ApiKeyPrompt from './components/ApiKeyPrompt'
+import { resolveFilePanelComponent } from '../../shared/utils/editorFiles'
 import './layout.css'
+
+function isStaticToolUiPart(part) {
+  if (!part || typeof part !== 'object') return false
+  const type = String(part.type || '')
+  if (!type.startsWith('tool-')) return false
+  return ![
+    'tool-call',
+    'tool-result',
+    'tool-error',
+    'tool-use',
+    'tool_use',
+    'tool-invocation',
+    'tool-input-available',
+    'tool-output-available',
+    'tool-output-error',
+  ].includes(type)
+}
+
+function normalizeCompletedToolPart(part) {
+  if (!part || typeof part !== 'object') return null
+
+  if (isStaticToolUiPart(part)) {
+    const state = String(part.state || '').toLowerCase()
+    if (state !== 'output-available' || part.preliminary) return null
+    return {
+      id: part.toolCallId || part.id || null,
+      name: part.toolName || String(part.type || '').slice('tool-'.length),
+      input: part.input || {},
+      output: part.output ?? null,
+    }
+  }
+
+  if (part.type === 'tool_use' || part.type === 'tool-use') {
+    const status = String(part.status || '').toLowerCase()
+    if (part.isError === true || status === 'error') return null
+    if (status === 'pending' || status === 'running' || status === 'streaming') return null
+    return {
+      id: part.toolCallId || part.id || null,
+      name: part.toolName || part.name || '',
+      input: part.args || part.input || {},
+      output: part.output ?? part.result ?? null,
+    }
+  }
+
+  if (part.type === 'tool-result') {
+    if (part.preliminary) return null
+    return {
+      id: part.toolCallId || part.id || null,
+      name: part.toolName || '',
+      input: part.input || {},
+      output: part.output ?? null,
+    }
+  }
+
+  if (part.type === 'tool-output-available') {
+    if (part.preliminary) return null
+    return {
+      id: part.toolCallId || part.id || null,
+      name: part.toolName || '',
+      input: part.input || {},
+      output: part.output ?? null,
+    }
+  }
+
+  if (part.type === 'tool-invocation') {
+    const invocation = part.toolInvocation
+    if (!invocation || invocation.state !== 'result') return null
+    return {
+      id: invocation.toolCallId || null,
+      name: invocation.toolName || '',
+      input: invocation.args || {},
+      output: invocation.result ?? null,
+    }
+  }
+
+  return null
+}
 
 /**
  * ChatCenteredWorkspace — the chat-first Stage + Wings shell.
@@ -64,6 +143,7 @@ export default function ChatCenteredWorkspace({ shellContext = {} }) {
   const [surfaceWidth, setSurfaceWidth] = useState(620)
   const [surfaceSidebarWidth, setSurfaceSidebarWidth] = useState(296)
   const [surfaceLayout, setSurfaceLayout] = useState(null)
+  const autoOpenedToolIdsRef = useRef(new Set())
 
   useEffect(() => {
     ensureSession()
@@ -137,14 +217,57 @@ export default function ChatCenteredWorkspace({ shellContext = {} }) {
   const handleOpenArtifact = useCallback((artifact) => {
     if (!artifact) return
 
+    const filePath = artifact?.params?.path || artifact?.canonicalKey || ''
+    const resolvedRenderer = filePath
+      ? resolveFilePanelComponent(filePath)
+      : (artifact.rendererKey || artifact.kind || 'code')
+
     openArtifact({
       sourceSessionId: activeSessionId || null,
-      rendererKey: artifact.rendererKey || artifact.kind || 'code',
+      rendererKey: resolvedRenderer,
       status: artifact.status || 'ready',
       ...artifact,
     })
     setSurfaceCollapsed(false)
   }, [activeSessionId, openArtifact])
+
+  useEffect(() => {
+    autoOpenedToolIdsRef.current = new Set()
+  }, [activeSessionId])
+
+  useEffect(() => {
+    if (!Array.isArray(chatMessages) || chatMessages.length === 0) return
+
+    for (const message of chatMessages) {
+      if (!Array.isArray(message?.parts)) continue
+
+      for (const part of message.parts) {
+        const normalized = normalizeCompletedToolPart(part)
+        if (!normalized?.name) continue
+
+        const artifactKey = normalized.id || [
+          message?.id || 'message',
+          normalized.name,
+          JSON.stringify(normalized.input || {}),
+        ].join(':')
+
+        if (autoOpenedToolIdsRef.current.has(artifactKey)) continue
+
+        const { shouldOpen, artifact } = bridgeToolResultToArtifact(
+          normalized.name,
+          normalized.input,
+          normalized.output,
+          activeSessionId,
+          message?.id,
+        )
+
+        if (!shouldOpen || !artifact) continue
+
+        autoOpenedToolIdsRef.current.add(artifactKey)
+        handleOpenArtifact(artifact)
+      }
+    }
+  }, [activeSessionId, chatMessages, handleOpenArtifact])
 
   useToolBridge({
     openArtifact: handleOpenArtifact,
@@ -156,11 +279,11 @@ export default function ChatCenteredWorkspace({ shellContext = {} }) {
   const handleOpenFile = useCallback((filePath) => {
     if (!filePath) return
     handleOpenArtifact({
-      kind: 'code',
+      kind: resolveFilePanelComponent(filePath),
       canonicalKey: filePath,
       title: filePath.split('/').pop() || filePath,
       source: 'user',
-      rendererKey: 'code',
+      rendererKey: resolveFilePanelComponent(filePath),
       params: { path: filePath },
     })
   }, [handleOpenArtifact])

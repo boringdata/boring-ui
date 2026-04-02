@@ -1,14 +1,19 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
-vi.mock('@ai-sdk/react', () => ({
-  useChat: vi.fn(() => ({
+const { useChatMock, openArtifactMock } = vi.hoisted(() => ({
+  useChatMock: vi.fn(() => ({
     messages: [],
     sendMessage: vi.fn(),
     status: 'ready',
     stop: vi.fn(),
     error: undefined,
   })),
+  openArtifactMock: vi.fn(),
+}))
+
+vi.mock('@ai-sdk/react', () => ({
+  useChat: useChatMock,
 }))
 
 vi.mock('../../../shared/providers/agent/useAgentTransport', () => ({
@@ -78,7 +83,7 @@ vi.mock('../hooks/useArtifactController', () => ({
     activeArtifactId: null,
     artifacts: new Map(),
     orderedIds: [],
-    open: vi.fn(),
+    open: openArtifactMock,
     focus: vi.fn(),
     close: vi.fn(),
     setSurfaceOpen: vi.fn(),
@@ -104,6 +109,17 @@ vi.mock('../hooks/useShellStatePublisher', () => ({
 import ChatCenteredWorkspace from '../ChatCenteredWorkspace'
 
 describe('ChatCenteredWorkspace', () => {
+  beforeEach(() => {
+    useChatMock.mockReturnValue({
+      messages: [],
+      sendMessage: vi.fn(),
+      status: 'ready',
+      stop: vi.fn(),
+      error: undefined,
+    })
+    openArtifactMock.mockReset()
+  })
+
   it('renders without crashing', () => {
     render(<ChatCenteredWorkspace />)
     expect(screen.getByTestId('chat-centered-workspace')).toBeInTheDocument()
@@ -134,5 +150,71 @@ describe('ChatCenteredWorkspace', () => {
   it('surface is hidden by default until explicitly opened', () => {
     render(<ChatCenteredWorkspace />)
     expect(screen.getByTestId('surface-shell')).toHaveStyle({ display: 'none' })
+  })
+
+  it('auto-opens file-backed artifacts from completed tool results', () => {
+    useChatMock.mockReturnValue({
+      messages: [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-result',
+              toolCallId: 'tool-1',
+              toolName: 'open_file',
+              input: { path: 'workbench.feret-overview.json' },
+              output: { opened: true, path: 'workbench.feret-overview.json' },
+            },
+          ],
+        },
+      ],
+      sendMessage: vi.fn(),
+      status: 'ready',
+      stop: vi.fn(),
+      error: undefined,
+    })
+
+    render(<ChatCenteredWorkspace />)
+
+    expect(openArtifactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        canonicalKey: 'workbench.feret-overview.json',
+        params: expect.objectContaining({ path: 'workbench.feret-overview.json' }),
+      }),
+    )
+  })
+
+  it('auto-opens file-backed artifacts from AI SDK static tool parts', () => {
+    useChatMock.mockReturnValue({
+      messages: [
+        {
+          id: 'assistant-2',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-open_file',
+              toolCallId: 'tool-2',
+              state: 'output-available',
+              input: { path: 'workbench.feret-overview.json' },
+              output: { opened: true, path: 'workbench.feret-overview.json' },
+            },
+          ],
+        },
+      ],
+      sendMessage: vi.fn(),
+      status: 'ready',
+      stop: vi.fn(),
+      error: undefined,
+    })
+
+    render(<ChatCenteredWorkspace />)
+
+    expect(openArtifactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        canonicalKey: 'workbench.feret-overview.json',
+        params: expect.objectContaining({ path: 'workbench.feret-overview.json' }),
+      }),
+    )
   })
 })
