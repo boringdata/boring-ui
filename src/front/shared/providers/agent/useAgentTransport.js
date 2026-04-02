@@ -114,8 +114,17 @@ export function useAgentTransport() {
     return defaultTools
   }, [usePi, dataProvider, queryClient])
 
-  // Stable ref for PI transport (preserves Agent state)
-  const piTransportRef = useRef(null)
+  // PI transport held in state (not ref) to satisfy react-hooks/refs lint rule.
+  // useState with lazy init ensures the Agent instance is created once and
+  // preserved across re-renders.
+  const [piTransport] = useState(() =>
+    new PiAgentCoreTransport({ tools: [], getApiKey: resolveApiKey }),
+  )
+
+  // Update PI transport tools when they change
+  useEffect(() => {
+    if (usePi) piTransport.updateTools(tools)
+  }, [usePi, piTransport, tools])
 
   const transport = useMemo(() => {
     if (!usePi) {
@@ -125,18 +134,8 @@ export function useAgentTransport() {
         body: workspaceId ? { workspace_id: workspaceId } : undefined,
       })
     }
-
-    // PI: reuse transport ref, update tools if changed
-    if (!piTransportRef.current) {
-      piTransportRef.current = new PiAgentCoreTransport({
-        tools,
-        getApiKey: resolveApiKey,
-      })
-    } else {
-      piTransportRef.current.updateTools(tools)
-    }
-    return piTransportRef.current
-  }, [usePi, tools, workspaceId])
+    return piTransport
+  }, [usePi, piTransport, workspaceId])
 
   const [thinkingLevel, setThinkingLevelState] = useState('off')
   const [selectedModel, setSelectedModelState] = useState(null)
@@ -144,23 +143,23 @@ export function useAgentTransport() {
 
   const setThinkingLevel = useCallback((level) => {
     setThinkingLevelState(level)
-    if (usePi && piTransportRef.current?.setThinkingLevel) {
-      piTransportRef.current.setThinkingLevel(level)
+    if (usePi && piTransport?.setThinkingLevel) {
+      piTransport.setThinkingLevel(level)
     }
   }, [usePi])
 
   const setModel = useCallback((provider, modelId) => {
     const value = provider && modelId ? { provider, modelId } : null
     setSelectedModelState(value)
-    if (usePi && piTransportRef.current?.setModel) {
-      piTransportRef.current.setModel(provider, modelId)
+    if (usePi && piTransport?.setModel) {
+      piTransport.setModel(provider, modelId)
     }
   }, [usePi])
 
   // Load available models for PI mode
   useMemo(() => {
     if (!usePi) return
-    const t = piTransportRef.current
+    const t = piTransport
     if (t?.getAvailableModels) {
       t.getAvailableModels().then(setAvailableModels).catch(() => {})
     }
