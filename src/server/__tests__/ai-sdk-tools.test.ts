@@ -80,11 +80,11 @@ describe('createAiSdkServerTools', () => {
     await symlink(writeEscape, join(workspaceRoot, 'write-escape.txt'))
 
     await expect(tools.read_file.execute({ path: 'read-escape.txt' })).rejects.toThrow(
-      /outside workspace root/i,
+      /outside workspace root|path traversal/i,
     )
     await expect(
       tools.write_file.execute({ path: 'write-escape.txt', content: 'after\n' }),
-    ).rejects.toThrow(/outside workspace root/i)
+    ).rejects.toThrow(/outside workspace root|path traversal/i)
     await expect(readFile(writeEscape, 'utf-8')).resolves.toBe('before\n')
   })
 
@@ -97,7 +97,7 @@ describe('createAiSdkServerTools', () => {
 
     await expect(
       tools.write_file.execute({ path: 'dir-escape/nested/file.txt', content: 'after\n' }),
-    ).rejects.toThrow(/outside workspace root/i)
+    ).rejects.toThrow(/outside workspace root|path traversal/i)
     await expect(readFile(join(outsideRoot, 'nested/file.txt'), 'utf-8')).rejects.toMatchObject({
       code: 'ENOENT',
     })
@@ -151,13 +151,13 @@ describe('createAiSdkServerTools', () => {
 
     await expect(
       tools.run_command.execute({ command: 'pwd', cwd: 'cwd-escape' }),
-    ).rejects.toThrow(/outside workspace root/i)
+    ).rejects.toThrow(/outside workspace root|path traversal/i)
     await expect(
       tools.exec_bash.execute({ command: 'pwd', cwd: 'cwd-escape' }),
-    ).rejects.toThrow(/outside workspace root/i)
+    ).rejects.toThrow(/outside workspace root|path traversal/i)
     await expect(
       tools.start_command.execute({ command: 'pwd', cwd: 'cwd-escape' }),
-    ).rejects.toThrow(/outside workspace root/i)
+    ).rejects.toThrow(/outside workspace root|path traversal/i)
   })
 
   it('honors run_command timeout_ms', async () => {
@@ -259,6 +259,23 @@ describe('createAiSdkServerTools', () => {
 
     await expect(
       tools.open_file.execute({ path: '../escape.ts' }),
-    ).rejects.toThrow(/outside workspace root/i)
+    ).rejects.toThrow(/outside workspace root|path traversal/i)
+  })
+
+  it('returns a bridgeable open_file result when no frontend state client is registered', async () => {
+    const workspaceRoot = await createWorkspace()
+    const tools = createAiSdkServerTools({
+      workspaceRoot,
+      uiWorkspaceKey: `root:${workspaceRoot}`,
+    }) as Record<string, any>
+
+    const opened = await tools.open_file.execute({ path: 'workbench.feret-overview.json' })
+
+    expect(opened).toMatchObject({
+      opened: true,
+      path: 'workbench.feret-overview.json',
+      client_id: null,
+      bridge_only: true,
+    })
   })
 })

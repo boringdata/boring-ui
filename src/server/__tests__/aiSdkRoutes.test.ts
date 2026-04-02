@@ -85,7 +85,7 @@ describe('AI SDK routes', () => {
 
   it('returns 503 when the server Anthropic API key is missing', async () => {
     delete process.env.ANTHROPIC_API_KEY
-    app = makeApp()
+    app = makeApp({ agentSystemPrompt: 'Open Feret artifacts with open_file when possible.' })
     const cookie = await makeCookie('user-1', 'user1@example.com')
 
     const response = await app.inject({
@@ -104,7 +104,7 @@ describe('AI SDK routes', () => {
   })
 
   it('returns 400 when no messages are provided', async () => {
-    app = makeApp()
+    app = makeApp({ agentSystemPrompt: 'Open Feret artifacts with open_file when possible.' })
     const cookie = await makeCookie('user-1', 'user1@example.com')
 
     const response = await app.inject({
@@ -130,7 +130,7 @@ describe('AI SDK routes', () => {
       options,
     }))
 
-    app = makeApp()
+    app = makeApp({ agentSystemPrompt: 'Open Feret artifacts with open_file when possible.' })
     const cookie = await makeCookie('user-1', 'user1@example.com')
     const messages = [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'pwd' }] }]
 
@@ -157,6 +157,7 @@ describe('AI SDK routes', () => {
 
     const streamOptions = mockStreamText.mock.calls[0][0]
     expect(streamOptions.system).toContain('/tmp/boring-ui-ai-sdk/ws-123')
+    expect(streamOptions.system).toContain('Open Feret artifacts with open_file when possible.')
     expect(streamOptions.tools.exec_bash).toBeDefined()
     expect(streamOptions.tools.list_panes).toBeDefined()
     expect(streamOptions.tools.open_file).toBeDefined()

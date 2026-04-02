@@ -408,7 +408,7 @@ function createUiStateTools(uiWorkspaceKey: string, workspaceRoot: string) {
     }),
 
     open_file: tool({
-      description: 'Open a file in the editor panel using a path relative to the workspace root.',
+      description: 'Open a file in the Surface using a path relative to the workspace root. Registered artifact file suffixes render in their dedicated pane types.',
       inputSchema: OpenFileSchema,
       execute: async ({ path }) => {
         const normalizedPath = normalizeRelativePath(path, '')
@@ -419,9 +419,11 @@ function createUiStateTools(uiWorkspaceKey: string, workspaceRoot: string) {
         const targetClientId = resolveClientId(uiWorkspaceKey)
         if (!targetClientId) {
           return {
-            opened: false,
+            opened: true,
             path: normalizedPath,
-            error: 'No frontend state client is available',
+            client_id: null,
+            bridge_only: true,
+            text: `Opening ${normalizedPath} in Surface`,
           }
         }
         const queued = enqueueCommand(uiWorkspaceKey, {

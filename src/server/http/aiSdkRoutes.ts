@@ -11,14 +11,15 @@ const SYSTEM_PROMPT = [
   'Be concise, accurate, and action-oriented.',
 ].join(' ')
 
-function buildAiSdkSystemPrompt(workspaceRoot: string): string {
+function buildAiSdkSystemPrompt(workspaceRoot: string, customPrompt?: string): string {
   return [
     SYSTEM_PROMPT,
+    customPrompt?.trim() || '',
     `Workspace root: ${workspaceRoot}.`,
     'Prefer structured tools first: read_file, write_file, list_dir, search_files, git_status, git_diff.',
     'Use run_command or the start_command/read_command_output/cancel_command flow only when shell access is truly needed.',
     'If UI bridge tools are available, use them to open files or inspect tabs instead of describing UI actions abstractly.',
-  ].join(' ')
+  ].filter(Boolean).join(' ')
 }
 
 function readAnthropicApiKey(): string | null {
@@ -128,7 +129,7 @@ export async function registerAiSdkRoutes(app: FastifyInstance): Promise<void> {
 
     const result = streamText({
       model: anthropic(modelId as Parameters<typeof anthropic>[0]),
-      system: buildAiSdkSystemPrompt(sessionContext.workspaceRoot),
+      system: buildAiSdkSystemPrompt(sessionContext.workspaceRoot, app.config.agentSystemPrompt),
       messages: modelMessages,
       tools: createAiSdkServerTools({
         workspaceRoot: sessionContext.workspaceRoot,
