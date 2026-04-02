@@ -146,7 +146,7 @@ export function useAgentTransport() {
     if (usePi && piTransport?.setThinkingLevel) {
       piTransport.setThinkingLevel(level)
     }
-  }, [usePi])
+  }, [usePi, piTransport])
 
   const setModel = useCallback((provider, modelId) => {
     const value = provider && modelId ? { provider, modelId } : null
@@ -154,16 +154,15 @@ export function useAgentTransport() {
     if (usePi && piTransport?.setModel) {
       piTransport.setModel(provider, modelId)
     }
-  }, [usePi])
+  }, [usePi, piTransport])
 
   // Load available models for PI mode
-  useMemo(() => {
+  useEffect(() => {
     if (!usePi) return
-    const t = piTransport
-    if (t?.getAvailableModels) {
-      t.getAvailableModels().then(setAvailableModels).catch(() => {})
+    if (piTransport?.getAvailableModels) {
+      piTransport.getAvailableModels().then(setAvailableModels).catch(() => {})
     }
-  }, [usePi, transport])
+  }, [usePi, piTransport])
 
   return {
     transport,

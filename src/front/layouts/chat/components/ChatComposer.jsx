@@ -26,7 +26,7 @@ export default function ChatComposer({
   disabled,
   thinkingLevel = 'off',
   onThinkingLevelChange,
-  agentMode,
+  agentMode: _agentMode,
   selectedModel,
   onModelChange,
   availableModels = [],

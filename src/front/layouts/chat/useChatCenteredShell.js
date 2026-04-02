@@ -11,29 +11,32 @@
  * @returns {{ enabled: boolean, layout: 'chat'|'ide' }}
  */
 
-import { useMemo } from 'react'
 import { getConfig } from '../../shared/config/appConfig'
 
 /**
+ * Resolve the active layout. Reads once per mount — URL params and config
+ * don't change within a page lifecycle.
+ *
  * @returns {{ enabled: boolean, layout: 'chat'|'ide' }}
  */
+function resolveLayout() {
+  const params = new URLSearchParams(window.location.search)
+
+  const layoutParam = params.get('layout')
+  if (layoutParam === 'chat') return { enabled: true, layout: 'chat' }
+  if (layoutParam === 'ide') return { enabled: false, layout: 'ide' }
+
+  // Backward compat: ?shell=chat-centered|legacy
+  const shellParam = params.get('shell')
+  if (shellParam === 'chat-centered' || shellParam === 'chat') return { enabled: true, layout: 'chat' }
+  if (shellParam === 'legacy' || shellParam === 'ide') return { enabled: false, layout: 'ide' }
+
+  const config = getConfig()
+  const enabled = config?.features?.chatCenteredShell === true
+  return { enabled, layout: enabled ? 'chat' : 'ide' }
+}
+
+/** @returns {{ enabled: boolean, layout: 'chat'|'ide' }} */
 export function useChatCenteredShell() {
-  return useMemo(() => {
-    const params = new URLSearchParams(window.location.search)
-
-    // New param: ?layout=chat|ide
-    const layoutParam = params.get('layout')
-    if (layoutParam === 'chat') return { enabled: true, layout: 'chat' }
-    if (layoutParam === 'ide') return { enabled: false, layout: 'ide' }
-
-    // Backward compat: ?shell=chat-centered|legacy
-    const shellParam = params.get('shell')
-    if (shellParam === 'chat-centered' || shellParam === 'chat') return { enabled: true, layout: 'chat' }
-    if (shellParam === 'legacy' || shellParam === 'ide') return { enabled: false, layout: 'ide' }
-
-    // Config fallback
-    const config = getConfig()
-    const enabled = config?.features?.chatCenteredShell === true
-    return { enabled, layout: enabled ? 'chat' : 'ide' }
-  }, [])
+  return resolveLayout()
 }
