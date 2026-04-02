@@ -12,6 +12,7 @@ from .client import SmokeClient
 from .resend import (
     assert_confirmation_callback_url,
     callback_path_from_confirmation_url,
+    extract_confirmation_code,
     extract_confirmation_url,
     get_email,
     wait_for_email,
@@ -162,7 +163,7 @@ def neon_signup_verify_flow(
     Flow:
     1. POST /auth/sign-up to boring-ui
     2. Wait for verification email in Resend
-    3. Open Neon verification link
+    3. Complete verification using the delivered link or OTP code
     4. Fetch JWT from Neon /token using verification session cookies
     5. Exchange JWT for boring-ui session
     6. Verify /auth/session
@@ -203,14 +204,40 @@ def neon_signup_verify_flow(
     if not email_id:
         raise RuntimeError("Resend list did not include email id")
     email_details = get_email(resend_api_key, email_id=email_id)
-    confirmation_url = extract_confirmation_url(email_details)
+    print(f"[smoke] Verification email received: {email_summary.get('subject', '?')}")
+    try:
+        confirmation_url = extract_confirmation_url(email_details)
+    except RuntimeError:
+        confirmation_code = extract_confirmation_code(email_details)
+        client.set_phase("neon-verify-email-otp")
+        verify_resp = httpx.post(
+            f"{neon_auth_url.rstrip('/')}/email-otp/verify-email",
+            headers={
+                "Content-Type": "application/json",
+                "Origin": origin,
+            },
+            json={"email": email, "otp": confirmation_code},
+            timeout=30.0,
+        )
+        if verify_resp.status_code != 200:
+            raise RuntimeError(
+                f"OTP verification failed: {verify_resp.status_code} {verify_resp.text[:300]}"
+            )
+        print("[smoke] Verification code accepted")
+        return neon_signin_flow(
+            client,
+            neon_auth_url=neon_auth_url,
+            email=email,
+            password=password,
+            redirect_uri=redirect_uri,
+        )
+
     callback_url = assert_confirmation_callback_url(
         confirmation_url,
         expected_app_base_url=app_origin,
         expected_redirect_uri=redirect_uri,
         require_pending_login=True,
     )
-    print(f"[smoke] Verification email received: {email_summary.get('subject', '?')}")
     if callback_url:
         print(f"[smoke] Verification callback target OK: {callback_url}")
     else:
@@ -319,15 +346,19 @@ def neon_signup_then_signin(
         if not email_id:
             raise RuntimeError("Resend list did not include email id")
         email_details = get_email(resend_api_key, email_id=email_id)
-        confirmation_url = extract_confirmation_url(email_details)
-        callback_url = assert_confirmation_callback_url(
-            confirmation_url,
-            expected_app_base_url=app_origin,
-            expected_redirect_uri=redirect_uri,
-            require_pending_login=True,
-        )
         print(f"[smoke] Verification email received: {email_summary.get('subject', '?')}")
-        print(f"[smoke] Verification callback target OK: {callback_url}")
+        try:
+            confirmation_url = extract_confirmation_url(email_details)
+            callback_url = assert_confirmation_callback_url(
+                confirmation_url,
+                expected_app_base_url=app_origin,
+                expected_redirect_uri=redirect_uri,
+                require_pending_login=True,
+            )
+            print(f"[smoke] Verification callback target OK: {callback_url}")
+        except RuntimeError:
+            confirmation_code = extract_confirmation_code(email_details)
+            print(f"[smoke] Verification code email received: {confirmation_code}")
     except Exception as exc:
         print(f"[smoke] WARN: Verification email not found within timeout: {exc}")
 

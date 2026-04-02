@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import httpx
 
 RESEND_API_BASE = "https://api.resend.com"
+CONFIRMATION_CODE_RE = re.compile(r"\b(\d{6})\b")
 
 
 def _iso_to_epoch(value: str | None) -> float | None:
@@ -64,6 +65,7 @@ def list_emails(api_key: str, *, limit: int = 25) -> list[dict[str, Any]]:
 
 
 def get_email(api_key: str, *, email_id: str) -> dict[str, Any]:
+    last_payload: dict[str, Any] | None = None
     for attempt in range(1, 8):
         resp = httpx.get(
             f"{RESEND_API_BASE}/emails/{email_id}",
@@ -76,11 +78,38 @@ def get_email(api_key: str, *, email_id: str) -> dict[str, Any]:
         resp.raise_for_status()
         payload = resp.json()
         if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
-            return payload["data"]
+            last_payload = payload["data"]
+            if _rendered_email_content(last_payload):
+                return last_payload
+            time.sleep(min(0.5 * attempt, 4.0))
+            continue
         if isinstance(payload, dict):
-            return payload
+            last_payload = payload
+            if _rendered_email_content(last_payload):
+                return last_payload
+            time.sleep(min(0.5 * attempt, 4.0))
+            continue
         raise RuntimeError("Unexpected Resend email detail payload")
+    if last_payload is not None:
+        return last_payload
     raise RuntimeError("Resend detail endpoint kept returning rate limits")
+
+
+def _rendered_email_content(payload: dict[str, Any]) -> bool:
+    for key in ("html", "text"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
+def _message_bodies(payload: dict[str, Any]) -> list[str]:
+    bodies: list[str] = []
+    for key in ("html", "text"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            bodies.append(value)
+    return bodies
 
 
 def wait_for_email(
@@ -109,10 +138,8 @@ def wait_for_email(
 
 def extract_confirmation_url(payload: dict[str, Any]) -> str:
     candidates: list[str] = []
-    for key in ("html", "text"):
-        value = payload.get(key)
-        if isinstance(value, str) and value:
-            candidates.extend(re.findall(r"https?://[^\s\"'<>]+", value))
+    for value in _message_bodies(payload):
+        candidates.extend(re.findall(r"https?://[^\s\"'<>]+", value))
 
     for raw_url in candidates:
         url = html.unescape(raw_url.strip()).rstrip("]")
@@ -129,6 +156,19 @@ def extract_confirmation_url(payload: dict[str, Any]) -> str:
     if candidates:
         return html.unescape(candidates[0].strip()).rstrip("]")
     raise RuntimeError("No URL found in Resend payload")
+
+
+def extract_confirmation_code(payload: dict[str, Any]) -> str:
+    candidates = _message_bodies(payload)
+    for value in list(candidates):
+        if "<" in value and ">" in value:
+            candidates.append(re.sub(r"<[^>]+>", " ", value))
+
+    for value in candidates:
+        match = CONFIRMATION_CODE_RE.search(value)
+        if match:
+            return match.group(1)
+    raise RuntimeError("No confirmation code found in Resend payload")
 
 
 def confirmation_callback_url(url: str) -> str | None:

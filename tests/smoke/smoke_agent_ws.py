@@ -29,12 +29,14 @@ from smoke_lib.workspace import create_workspace
 
 
 def _router_names(routers: list) -> set[str]:
-    """Normalize router entries from /api/capabilities."""
+    """Normalize enabled router entries from /api/capabilities."""
     names: set[str] = set()
     for router in routers:
         if isinstance(router, str):
             names.add(router)
         elif isinstance(router, dict):
+            if router.get("enabled") is False:
+                continue
             name = str(router.get("name", "")).strip()
             if name:
                 names.add(name)
@@ -94,10 +96,16 @@ def main() -> int:
     caps_resp = client.get("/api/capabilities", expect_status=(200,))
     if caps_resp.status_code == 200:
         caps = caps_resp.json()
+        agent = caps.get("agent", {}) if isinstance(caps, dict) else {}
+        agent_runtime = str(agent.get("runtime", "")).strip().lower()
         router_names = _router_names(caps.get("routers", []))
         has_agent = "chat_claude_code" in router_names or "stream" in router_names
+        print(f"[smoke] Agent runtime: {agent_runtime or 'unknown'}")
         print(f"[smoke] Agent router available: {has_agent}")
-        if not has_agent and not args.skip_agent:
+        if agent_runtime == "ai-sdk" and not args.skip_agent:
+            print(f"[smoke] AI SDK uses HTTP streaming, skipping WS test")
+            args.skip_agent = True
+        elif not has_agent and not args.skip_agent:
             print(f"[smoke] WARN: Agent router not available, skipping WS test")
             args.skip_agent = True
 

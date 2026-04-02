@@ -184,6 +184,29 @@ describe('GET /api/capabilities (Python-compat)', () => {
       url: 'http://example.test',
     })
   })
+
+  it('does not advertise legacy chat websocket flags for server ai-sdk mode', async () => {
+    const config = testConfig({
+      agentPlacement: 'server',
+      agentRuntime: 'ai-sdk',
+      workspaceBackend: 'bwrap',
+      databaseUrl: 'postgresql://test',
+    })
+    app = createApp({ config, skipValidation: true })
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/capabilities',
+    })
+    const body = JSON.parse(res.payload)
+
+    expect(body.agent).toEqual({
+      runtime: 'ai-sdk',
+      placement: 'server',
+    })
+    expect(body.features.chat_claude_code).toBe(false)
+    expect(body.features.stream).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------

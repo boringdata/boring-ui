@@ -30,7 +30,7 @@ describe('Agent mode: browser PI server-side contract', () => {
       // Python-compat mode: check features
       const features = body.features || body.capabilities || {}
       // Browser PI needs chat + tool approval surface
-      expect(features.chat_claude_code || features['agent.chat']).toBeTruthy()
+      expect(features.pi || features.chat_claude_code || features['agent.chat']).toBeTruthy()
       await app.close()
     })
 

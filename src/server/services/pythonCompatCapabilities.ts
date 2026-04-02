@@ -80,7 +80,10 @@ const DEFAULT_ROUTERS: Omit<RouterMeta, 'enabled'>[] = [
 
 export function buildEnabledFeatures(config: ServerConfig): Record<string, boolean> {
   // In the TS server, core routers are always enabled
-  const chatEnabled = true // chat_claude_code always available
+  // `chat_claude_code` is a browser-era legacy flag. Server-side runtimes use
+  // different transports (`/api/v1/agent/chat` for ai-sdk, PI SSE routes for pi)
+  // and should not advertise the old Claude WS surface.
+  const chatEnabled = config.agentPlacement !== 'server'
   const piEnabled = config.agentsMode === 'backend' || config.agentPlacement === 'server'
   const githubEnabled = !!config.githubAppId
 
@@ -108,6 +111,10 @@ export interface PythonCompatCapabilitiesResponse {
   agents: string[]
   agent_mode: string
   agent_default?: string
+  agent?: {
+    runtime: string
+    placement: string
+  }
   routers: RouterMeta[]
   auth?: {
     provider: string
@@ -155,6 +162,10 @@ export function buildPythonCompatCapabilities(
     features,
     agents: agents.sort(),
     agent_mode: config.agentsMode,
+    agent: {
+      runtime: config.agentRuntime,
+      placement: config.agentPlacement,
+    },
     routers,
   }
 

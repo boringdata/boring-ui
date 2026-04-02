@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import httpx
+
 from tests.smoke.smoke_lib import auth as auth_module
 
 
@@ -124,4 +126,56 @@ def test_neon_signup_verify_flow_uses_public_app_base_url_for_signup_origin_and_
         confirmation_url,
         "https://example.neonauth.test/neondb/auth/token",
     ]
+    assert session["user"]["email"] == "new@example.com"
+
+
+def test_neon_signup_verify_flow_accepts_otp_email_and_signs_in(monkeypatch) -> None:
+    client = _FakeSmokeClient("http://127.0.0.1:36213")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        auth_module,
+        "wait_for_email",
+        lambda *args, **kwargs: {"id": "email-1", "subject": "Verify your account"},
+    )
+    monkeypatch.setattr(auth_module, "get_email", lambda *args, **kwargs: {"text": "Your code is 123456"})
+
+    def _raise_no_url(_: dict) -> str:
+        raise RuntimeError("No URL found in Resend payload")
+
+    monkeypatch.setattr(auth_module, "extract_confirmation_url", _raise_no_url)
+    monkeypatch.setattr(auth_module, "extract_confirmation_code", lambda details: "123456")
+
+    def fake_post(url: str, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs.get("json")
+        captured["headers"] = kwargs.get("headers")
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr(auth_module.httpx, "post", fake_post)
+    monkeypatch.setattr(
+        auth_module,
+        "neon_signin_flow",
+        lambda *args, **kwargs: {"user": {"email": "new@example.com"}},
+    )
+
+    session = auth_module.neon_signup_verify_flow(
+        client,
+        neon_auth_url="https://example.neonauth.test/neondb/auth",
+        resend_api_key="resend-key",
+        email="new@example.com",
+        password="password123",
+        timeout_seconds=30,
+        redirect_uri="/",
+        public_app_base_url="http://127.0.0.1:8010",
+    )
+
+    assert captured == {
+        "url": "https://example.neonauth.test/neondb/auth/email-otp/verify-email",
+        "json": {"email": "new@example.com", "otp": "123456"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Origin": "https://example.neonauth.test",
+        },
+    }
     assert session["user"]["email"] == "new@example.com"
